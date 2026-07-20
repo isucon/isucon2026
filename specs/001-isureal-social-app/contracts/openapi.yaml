@@ -757,13 +757,13 @@ components:
       type: object
       required: [token, user]
       properties:
-        token: { type: string, writeOnly: true }
+        token: { type: string }
         user: { $ref: '#/components/schemas/UserDetail' }
     AdminSession:
       type: object
       required: [token, administratorId]
       properties:
-        token: { type: string, writeOnly: true }
+        token: { type: string }
         administratorId: { type: string, format: uuid }
     UserSummary:
       type: object
