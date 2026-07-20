@@ -15,25 +15,16 @@
 ## 1. Start and initialize
 
 ```bash
-docker compose -f deploy/compose.yaml up -d postgres
-go -C backend run ./cmd/migrate up
-go -C backend run ./cmd/seed --fixture minimal
-npm --prefix frontend ci
+docker compose up
 ```
 
-別ターミナルでAPI、ワーカー、Webクライアントを起動する。
-
-```bash
-go -C backend run ./cmd/api
-go -C backend run ./cmd/worker
-npm --prefix frontend run dev
-```
+PostgreSQLのhealth check後に、`init`サービスがmigrationと初回だけのminimal fixture投入を完了し、API、worker、Webクライアントが依存順に起動する。バックグラウンド起動は`docker compose up -d`、停止は`docker compose down`を使う。
 
 期待結果:
 
 - `GET /health/ready`が成功し、DBマイグレーション版を返す。
 - WebクライアントがAPIとService Workerを読み込む。
-- 同じ初期化コマンドを再実行すると既知のminimal状態へ戻る。
+- 同じ起動コマンドを再実行しても既存データは保持される。完全初期化が必要な場合だけ`docker compose down --volumes`後に再起動する。
 
 ## 2. Run automated validation
 
