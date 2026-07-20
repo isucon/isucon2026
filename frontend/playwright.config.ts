@@ -24,7 +24,8 @@ export default defineConfig({
   use: {
     baseURL: process.env.PLAYWRIGHT_BASE_URL ?? 'http://127.0.0.1:5173',
     trace: 'on-first-retry',
-    permissions: composeE2E ? ['camera'] : [],
+    permissions: composeE2E ? ['camera', 'geolocation'] : [],
+    geolocation: composeE2E ? { latitude: 35.681236, longitude: 139.767125 } : undefined,
     launchOptions: composeE2E ? { args: ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'] } : undefined,
     ...devices['Desktop Chrome'],
   },

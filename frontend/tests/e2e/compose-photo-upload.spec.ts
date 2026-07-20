@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 
 test.skip(process.env.ISUREAL_COMPOSE_E2E !== '1', 'composeで起動した実環境専用');
 
-test('compose実環境でカメラ撮影した写真を投稿して配信できる', async ({ page, request }) => {
+test('compose実環境でカメラ撮影とGPS位置を含む写真を投稿して配信できる', async ({ page, request }) => {
   const suffix = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
   const username = `compose${suffix}`;
   const password = 'compose-password-1';
@@ -16,7 +16,8 @@ test('compose実環境でカメラ撮影した写真を投稿して配信でき�
   const authorization = { Authorization: `Bearer ${token}` };
 
   let currentWindow = await request.get('/api/v1/posting-window/current', { headers: authorization });
-  if (currentWindow.status() === 404) {
+  const currentWindowBody = await currentWindow.json() as { window: unknown };
+  if (currentWindowBody.window === null) {
     const adminLogin = await request.post('/api/v1/admin/auth/login', {
       headers: { 'Idempotency-Key': crypto.randomUUID() },
       data: { username: 'root', password: 'admin-password' },
@@ -65,14 +66,20 @@ test('compose実環境でカメラ撮影した写真を投稿して配信でき�
   const caption = `compose camera upload ${suffix}`;
   await page.getByLabel('キャプション').fill(caption);
   await page.getByRole('radio', { name: '公開', exact: true }).check();
+  await page.getByRole('radio', { name: 'GPSで正確な位置を共有' }).check();
+  await expect(page.getByText('GPS位置を取得しました')).toBeVisible();
+  await expect(page.locator('input[type=number]')).toHaveCount(0);
 
   const postResponsePromise = page.waitForResponse((response) =>
     response.url().endsWith('/api/v1/posts') && response.request().method() === 'POST',
   );
   await page.getByRole('button', { name: '投稿する' }).click();
   const postResponse = await postResponsePromise;
-  const post = await postResponse.json() as { imageUrl: string };
+  const post = await postResponse.json() as { imageUrl: string; location: { kind: string; latitude: number; longitude: number } };
   expect(postResponse.status(), JSON.stringify(post)).toBe(201);
+  expect(post.location.kind).toBe('exact');
+  expect(post.location.latitude).toBeCloseTo(35.681236, 6);
+  expect(post.location.longitude).toBeCloseTo(139.767125, 6);
 
   await expect(page).toHaveURL(/\/posts\/me\/current$/);
   await expect(page.getByText(caption)).toBeVisible();
