@@ -13,8 +13,9 @@ export function PostComposer(): React.JSX.Element {
   const [caption, setCaption] = useState('');
   const [visibility, setVisibility] = useState<Visibility>('friends');
   const [locationKind, setLocationKind] = useState<Location['kind']>('none');
-  const [latitude, setLatitude] = useState('');
-  const [longitude, setLongitude] = useState('');
+  const [coordinates, setCoordinates] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [locationState, setLocationState] = useState<'idle' | 'requesting' | 'ready' | 'unavailable' | 'denied'>('idle');
+  const locationRequest = useRef(0);
   const [locality, setLocality] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -76,8 +77,36 @@ export function PostComposer(): React.JSX.Element {
     setCameraState('captured');
   }
 
+  function chooseLocationKind(kind: Location['kind']): void {
+    locationRequest.current += 1;
+    setLocationKind(kind);
+    setCoordinates(null);
+    setLocationState('idle');
+    if (kind === 'exact') requestLocation();
+  }
+
+  function requestLocation(): void {
+    const request = ++locationRequest.current;
+    setLocationState('requesting');
+    setCoordinates(null);
+    setError('');
+    if (!navigator.geolocation) { setLocationState('unavailable'); return; }
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        if (request !== locationRequest.current) return;
+        setCoordinates({ latitude: position.coords.latitude, longitude: position.coords.longitude });
+        setLocationState('ready');
+      },
+      (locationError) => {
+        if (request !== locationRequest.current) return;
+        setLocationState(locationError.code === locationError.PERMISSION_DENIED ? 'denied' : 'unavailable');
+      },
+      { enableHighAccuracy: true, maximumAge: 0, timeout: 10_000 },
+    );
+  }
+
   function location(): Location {
-    if (locationKind === 'exact') return { kind: 'exact', latitude: Number(latitude), longitude: Number(longitude) };
+    if (locationKind === 'exact' && coordinates) return { kind: 'exact', ...coordinates };
     if (locationKind === 'approximate') return { kind: 'approximate', locality };
     return { kind: 'none' };
   }
@@ -85,6 +114,7 @@ export function PostComposer(): React.JSX.Element {
   async function submit(event: React.FormEvent): Promise<void> {
     event.preventDefault();
     if (!image) { setError('写真を撮影してください。'); return; }
+    if (locationKind === 'exact' && !coordinates) { setError('GPSから位置情報を取得してください。'); return; }
     setSubmitting(true); setError('');
     try {
       await createPost({ image, caption, visibility, location: location() });
@@ -109,10 +139,16 @@ export function PostComposer(): React.JSX.Element {
       <label><input type="radio" name="visibility" checked={visibility === 'public'} onChange={() => setVisibility('public')} />公開</label>
     </fieldset>
     <fieldset><legend>位置情報</legend>
-      <label><input type="radio" name="location" checked={locationKind === 'none'} onChange={() => setLocationKind('none')} />共有しない</label>
-      <label><input type="radio" name="location" checked={locationKind === 'exact'} onChange={() => setLocationKind('exact')} />正確な位置</label>
-      {locationKind === 'exact' && <div className="inline-fields"><label>緯度<input type="number" min="-90" max="90" step="any" required value={latitude} onChange={(event) => setLatitude(event.target.value)} /></label><label>経度<input type="number" min="-180" max="180" step="any" required value={longitude} onChange={(event) => setLongitude(event.target.value)} /></label></div>}
-      <label><input type="radio" name="location" checked={locationKind === 'approximate'} onChange={() => setLocationKind('approximate')} />おおよその場所</label>
+      <label><input type="radio" name="location" checked={locationKind === 'none'} onChange={() => chooseLocationKind('none')} />共有しない</label>
+      <label><input type="radio" name="location" checked={locationKind === 'exact'} onChange={() => chooseLocationKind('exact')} />GPSで正確な位置を共有</label>
+      {locationKind === 'exact' && <div>
+        {locationState === 'requesting' && <p aria-live="polite">GPSから位置情報を取得しています…</p>}
+        {locationState === 'ready' && coordinates && <p>GPS位置を取得しました（緯度 {coordinates.latitude.toFixed(6)}、経度 {coordinates.longitude.toFixed(6)}）</p>}
+        {locationState === 'unavailable' && <p role="alert">GPS位置情報を取得できません。</p>}
+        {locationState === 'denied' && <p role="alert">位置情報の利用が拒否されました。</p>}
+        {(locationState === 'unavailable' || locationState === 'denied') && <button type="button" onClick={requestLocation}>GPSを再取得</button>}
+      </div>}
+      <label><input type="radio" name="location" checked={locationKind === 'approximate'} onChange={() => chooseLocationKind('approximate')} />おおよその場所</label>
       {locationKind === 'approximate' && <label>地域名<input required maxLength={100} value={locality} onChange={(event) => setLocality(event.target.value)} /></label>}
     </fieldset>
     {error && <p role="alert">{error}</p>}<button disabled={submitting} type="submit">{submitting ? '投稿中…' : '投稿する'}</button>
