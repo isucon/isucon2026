@@ -1,0 +1,145 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  GO_VERSION: 1.26.5
+  NODE_VERSION: 24.14.1
+  PLAYWRIGHT_CHROME_VERSION: 149.0.7827.55
+  PLAYWRIGHT_IMAGE: mcr.microsoft.com/playwright:v1.61.1-noble@sha256:5b8f294aff9041b7191c34a4bab3ac270157a28774d4b0660e9743297b697e48
+  TEST_DATABASE_URL: postgres://isureal:local-development-only@localhost:5432/isureal?sslmode=disable
+
+jobs:
+  backend-unit-contract-build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: backend/go.sum
+      - run: gofmt -l . | tee /tmp/gofmt-files && test ! -s /tmp/gofmt-files
+        working-directory: backend
+      - run: go vet ./...
+        working-directory: backend
+      - run: go test ./internal/... ./tests/contract -count=1
+        working-directory: backend
+      - run: |
+          mkdir -p build
+          for command in api worker image-sanitizer migrate reset seed; do
+            CGO_ENABLED=0 go build -trimpath -o "build/$command" "./cmd/$command"
+          done
+        working-directory: backend
+
+  backend-integration-migration:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16.9-alpine@sha256:7c688148e5e156d0e86df7ba8ae5a05a2386aaec1e2ad8e6d11bdf10504b1fb7
+        env:
+          POSTGRES_DB: isureal
+          POSTGRES_USER: isureal
+          POSTGRES_PASSWORD: local-development-only
+        options: >-
+          --health-cmd "pg_isready -U isureal -d isureal"
+          --health-interval 2s --health-timeout 2s --health-retries 20
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: backend/go.sum
+      - run: go test ./tests/integration -count=1
+        working-directory: backend
+        env:
+          ISUREAL_TEST_DATABASE_URL: ${{ env.TEST_DATABASE_URL }}
+
+  backend-concurrency:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16.9-alpine@sha256:7c688148e5e156d0e86df7ba8ae5a05a2386aaec1e2ad8e6d11bdf10504b1fb7
+        env:
+          POSTGRES_DB: isureal
+          POSTGRES_USER: isureal
+          POSTGRES_PASSWORD: local-development-only
+        options: >-
+          --health-cmd "pg_isready -U isureal -d isureal"
+          --health-interval 2s --health-timeout 2s --health-retries 20
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: backend/go.sum
+      - run: go test ./tests/concurrency -count=1
+        working-directory: backend
+        env:
+          ISUREAL_TEST_DATABASE_URL: ${{ env.TEST_DATABASE_URL }}
+
+  image-sanitizer-resource-isolation:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: backend/go.sum
+      - run: go test ./internal/image -count=1
+        working-directory: backend
+      - run: go test ./tests/integration -run 'TestSanitizer|TestSubprocessSanitizer' -count=1
+        working-directory: backend
+
+  frontend-unit-contract-build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+        working-directory: frontend
+      - run: npm run typecheck && npm run lint && npm test
+        working-directory: frontend
+      - run: npm run test:contract && npm run check:openapi
+        working-directory: frontend
+      - run: npm run build && test -f dist/service-worker.js
+        working-directory: frontend
+        env:
+          VITE_VAPID_PUBLIC_KEY: BOr6nQZxVwVGh5dY1cL0Qxq9v1rMVTg5Hf9P4Hd3JpM-nT7rF0wZ9H8vD1sK2aL3mN4oP5qR6sT7uV8wX9yZ0ab
+
+  frontend-chrome-e2e:
+    runs-on: ubuntu-24.04
+    container:
+      image: mcr.microsoft.com/playwright:v1.61.1-noble@sha256:5b8f294aff9041b7191c34a4bab3ac270157a28774d4b0660e9743297b697e48
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+        working-directory: frontend
+      - run: npm run check:browser && npm run test:e2e
+        working-directory: frontend
+
+  secret-scan:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+      - name: Install pinned gitleaks 8.30.1
+        run: |
+          curl --fail --location --silent --show-error -o /tmp/gitleaks.tar.gz https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz
+          echo '551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  /tmp/gitleaks.tar.gz' | sha256sum --check
+          tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks
+      - run: /tmp/gitleaks dir . --no-banner --redact --exit-code 1

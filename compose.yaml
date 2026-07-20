@@ -1,0 +1,91 @@
+name: isureal
+
+x-backend-build: &backend-build
+  context: .
+  dockerfile: deploy/backend.Dockerfile
+
+x-app-environment: &app-environment
+  ISUREAL_DATABASE_URL: postgres://isureal:local-development-only@postgres:5432/isureal?sslmode=disable
+  ISUREAL_OPENAPI_PATH: /usr/local/share/isureal/openapi.yaml
+  ISUREAL_PUBLIC_ORIGIN: http://localhost:${ISUREAL_FRONTEND_PORT:-5173}
+
+services:
+  postgres:
+    image: postgres:16.9-alpine@sha256:7c688148e5e156d0e86df7ba8ae5a05a2386aaec1e2ad8e6d11bdf10504b1fb7
+    environment:
+      POSTGRES_DB: isureal
+      POSTGRES_USER: isureal
+      POSTGRES_PASSWORD: local-development-only
+    ports:
+      - "${ISUREAL_POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U isureal -d isureal"]
+      interval: 2s
+      timeout: 2s
+      retries: 20
+
+  init:
+    build: *backend-build
+    entrypoint: ["/usr/local/bin/seed"]
+    command: ["--fixture", "minimal", "--dir", "/usr/local/share/isureal/migrations", "--if-empty"]
+    environment: *app-environment
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    build: *backend-build
+    env_file:
+      - deploy/config/app.env.example
+    environment: *app-environment
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    ports:
+      - "${ISUREAL_API_PORT:-8080}:8080"
+    volumes:
+      - image-data:/var/lib/isureal/images
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/health/ready"]
+      interval: 2s
+      timeout: 2s
+      retries: 20
+    restart: unless-stopped
+
+  worker:
+    build: *backend-build
+    entrypoint: ["/usr/local/bin/worker"]
+    env_file:
+      - deploy/config/app.env.example
+    environment: *app-environment
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    volumes:
+      - image-data:/var/lib/isureal/images
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      dockerfile: deploy/frontend.Dockerfile
+      args:
+        VITE_VAPID_PUBLIC_KEY: ${ISUREAL_VAPID_PUBLIC_KEY:-}
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "${ISUREAL_FRONTEND_PORT:-5173}:5173"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:5173/"]
+      interval: 2s
+      timeout: 2s
+      retries: 20
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+  image-data:

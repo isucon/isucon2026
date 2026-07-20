@@ -1,0 +1,24 @@
+# ISUReal
+
+## Docker Composeで起動
+
+必要なものはDockerとDocker Composeだけです。リポジトリ直下で次を実行します。
+
+```bash
+docker compose up
+```
+
+初回はコンテナをbuildし、PostgreSQLの起動後にmigrationとminimal fixtureの投入を行ってから、API、worker、frontendを依存順に起動します。
+
+- Web: <http://localhost:5173>
+- API readiness: <http://localhost:8080/health/ready>
+- seed user: `alice` / `password`（`bob`、`carol`、`dave`も同じパスワード）
+- seed administrator: `root` / `admin-password`
+
+バックグラウンドで起動する場合は`docker compose up -d`、停止は`docker compose down`です。通常の再起動ではDBと画像のvolumeを保持し、minimal fixtureを再投入しません。ローカルデータも削除して完全に初期化する場合だけ、意図を確認したうえで`docker compose down --volumes`を使用してください。
+
+既定ポートが使用中の場合は、次の環境変数で変更できます。
+
+```bash
+ISUREAL_FRONTEND_PORT=15173 ISUREAL_API_PORT=18080 ISUREAL_POSTGRES_PORT=55432 docker compose up
+```
