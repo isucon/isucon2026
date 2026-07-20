@@ -330,6 +330,8 @@ paths:
                 caption: { type: string, maxLength: 1000, default: '' }
                 visibility: { $ref: '#/components/schemas/Visibility' }
                 location: { $ref: '#/components/schemas/LocationInput' }
+            encoding:
+              location: { contentType: application/json }
       responses:
         '201':
           description: 投稿成立
@@ -346,6 +348,23 @@ paths:
         '200':
           description: 自分の現在投稿
           content: { application/json: { schema: { $ref: '#/components/schemas/Post' } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /images/{imageId}:
+    get:
+      tags: [images]
+      operationId: getAuthorizedImage
+      parameters:
+        - name: imageId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: 閲覧権限を確認済みのJPEG画像
+          content:
+            image/jpeg:
+              schema: { type: string, format: binary }
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
   /posts/{postId}:
     get:
