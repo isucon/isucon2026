@@ -1,0 +1,79 @@
+syntax = "proto3";
+
+package portal.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// Router が使用する設定配信と適用結果報告を扱う。
+service PortalRouterService {
+  // 接続時と desired の変更時に最新の desired を返す。
+  // 未送信の中間スナップショットは最新のものへまとめることがある。
+  rpc StreamDesired(StreamDesiredRequest) returns (stream StreamDesiredResponse);
+
+  // Router が適用結果を報告する。
+  rpc ReportApplied(ReportAppliedRequest) returns (ReportAppliedResponse);
+}
+
+enum Region {
+  REGION_UNSPECIFIED = 0;
+  REGION_US = 1;
+  REGION_AP = 2;
+  REGION_EU = 3;
+}
+
+enum ServerId {
+  SERVER_ID_UNSPECIFIED = 0;
+  SERVER_ID_SERVER1 = 1;
+  SERVER_ID_SERVER2 = 2;
+  SERVER_ID_SERVER3 = 3;
+}
+
+message TeamKey {
+  uint32 team_number = 1;
+}
+
+message ServerRegions {
+  Region server1 = 1;
+  Region server2 = 2;
+  Region server3 = 3;
+}
+
+message Config {
+  ServerRegions server_regions = 1;
+  ServerId main_server = 2;
+  // ISO 3166-1 alpha-2。
+  string default_country = 3;
+}
+
+message ConfigSnapshot {
+  string snapshot_id = 1;
+  Config config = 2;
+  google.protobuf.Timestamp issued_at = 3;
+}
+
+message StreamDesiredRequest {
+  TeamKey team = 1;
+}
+message StreamDesiredResponse {
+  ConfigSnapshot desired = 1;
+}
+
+message ReportAppliedRequest {
+  TeamKey team = 1;
+  oneof result {
+    ApplySuccess success = 2;
+    ApplyFailure failure = 3;
+  }
+}
+
+message ApplySuccess {
+  string snapshot_id = 1;
+  Config applied = 2;
+}
+
+message ApplyFailure {
+  string snapshot_id = 1;
+  string reason = 2;
+}
+
+message ReportAppliedResponse {}
