@@ -1,4 +1,7 @@
-.PHONY: fmt vet build test frontend-install frontend-lint frontend-typecheck frontend-test frontend-e2e contract generate-api check
+.PHONY: tools fmt vet build test frontend-install frontend-lint frontend-typecheck frontend-test frontend-e2e contract generate-api proto-lint proto-generate proto-build check
+
+tools:
+	mise install
 
 fmt:
 	gofmt -w $$(find backend -name '*.go' -type f)
@@ -35,4 +38,13 @@ contract:
 generate-api:
 	npm --prefix frontend run generate:api
 
-check: vet frontend-lint frontend-typecheck contract test build
+proto-lint:
+	mise exec -- buf lint
+
+proto-generate:
+	mise exec -- buf generate
+
+proto-build:
+	mise exec -- buf build -o /tmp/isucon2026-proto.binpb
+
+check: proto-lint vet frontend-lint frontend-typecheck contract test build

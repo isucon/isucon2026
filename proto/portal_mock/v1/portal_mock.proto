@@ -1,0 +1,205 @@
+syntax = "proto3";
+
+package portal_mock.v1;
+
+import "google/protobuf/timestamp.proto";
+import "portal/v1/portal.proto";
+
+// モックポータル固有の状態と操作を扱う。
+service PortalMockService {
+  // 現在状態を返す。
+  rpc GetState(GetStateRequest) returns (GetStateResponse);
+
+  // 接続時と状態変更時に最新の状態を返す。
+  rpc StreamState(StreamStateRequest) returns (stream StreamStateResponse);
+
+  // 対応国とリージョンの一覧を返す。
+  rpc ListSupportedCountries(ListSupportedCountriesRequest) returns (ListSupportedCountriesResponse);
+
+  // desired を部分更新する。
+  rpc UpdateDesired(UpdateDesiredRequest) returns (UpdateDesiredResponse);
+
+  // ベンチマークシミュレーションを開始する。
+  rpc StartBenchmark(StartBenchmarkRequest) returns (StartBenchmarkResponse);
+
+  // 進行中の処理を中止し、状態を初期化する。
+  rpc Reset(ResetRequest) returns (ResetResponse);
+}
+
+enum RouterMode {
+  ROUTER_MODE_UNSPECIFIED = 0;
+  ROUTER_MODE_STAND_IN = 1;
+  ROUTER_MODE_EXTERNAL_ROUTER = 2;
+}
+
+enum StandInProfile {
+  STAND_IN_PROFILE_UNSPECIFIED = 0;
+  STAND_IN_PROFILE_SUCCESS = 1;
+  STAND_IN_PROFILE_FAIL_ONCE_THEN_SUCCESS = 2;
+  STAND_IN_PROFILE_NO_REPORT = 3;
+}
+
+enum BenchmarkStatus {
+  BENCHMARK_STATUS_UNSPECIFIED = 0;
+  BENCHMARK_STATUS_IDLE = 1;
+  BENCHMARK_STATUS_PENDING = 2;
+  BENCHMARK_STATUS_RUNNING = 3;
+}
+
+enum BenchmarkResult {
+  BENCHMARK_RESULT_UNSPECIFIED = 0;
+  BENCHMARK_RESULT_PASS = 1;
+  BENCHMARK_RESULT_FAIL = 2;
+}
+
+enum ApplyState {
+  APPLY_STATE_UNSPECIFIED = 0;
+  APPLY_STATE_CONVERGED = 1;
+  APPLY_STATE_PENDING = 2;
+  APPLY_STATE_DELAYED = 3;
+  APPLY_STATE_FAILED_RETRYABLE = 4;
+  APPLY_STATE_UNSYNCED = 5;
+  APPLY_STATE_INVALID_REPORT = 6;
+}
+
+message ServerHostnames {
+  string server1 = 1;
+  string server2 = 2;
+  string server3 = 3;
+}
+
+message Hostnames {
+  string app = 1;
+  ServerHostnames servers = 2;
+  string target = 3;
+}
+
+message CalculatedConfig {
+  Hostnames hostnames = 1;
+  portal.v1.Region default_country_region = 2;
+}
+
+message ConfigSnapshot {
+  string snapshot_id = 1;
+  portal.v1.Config config = 2;
+  CalculatedConfig calculated = 3;
+  google.protobuf.Timestamp issued_at = 4;
+}
+
+message AppliedConfig {
+  string snapshot_id = 1;
+  portal.v1.Config config = 2;
+  CalculatedConfig calculated = 3;
+  google.protobuf.Timestamp reported_at = 4;
+}
+
+message ApplyDiagnostic {
+  ApplyState state = 1;
+  string desired_snapshot_id = 2;
+  string applied_snapshot_id = 3;
+  string reason = 4;
+  google.protobuf.Timestamp pending_since = 5;
+  bool delayed = 6;
+}
+
+message SupportedCountry {
+  string code = 1;
+  string name_ja = 2;
+  portal.v1.Region region = 3;
+}
+
+message PortalState {
+  portal.v1.TeamKey team = 1;
+  ConfigSnapshot desired = 2;
+  AppliedConfig applied = 3;
+  ApplyDiagnostic apply = 4;
+  bool converged = 5;
+  bool locked = 6;
+  string lock_reason = 7;
+  repeated SupportedCountry supported_countries = 8;
+}
+
+message MockRuntime {
+  RouterMode router_mode = 1;
+  StandInProfile stand_in_profile = 2; // stand-in モード以外では UNSPECIFIED
+  google.protobuf.Timestamp process_started_at = 3;
+}
+
+message BenchmarkRuntime {
+  BenchmarkStatus status = 1;
+  uint32 progress = 2; // 0〜100
+  string active_run_id = 3; // 実行中のみ
+  google.protobuf.Timestamp started_at = 4;
+  string lock_reason = 5;
+}
+
+message BenchmarkRun {
+  string id = 1;
+  uint64 sequence = 2;
+  google.protobuf.Timestamp started_at = 3;
+  google.protobuf.Timestamp completed_at = 4;
+  portal.v1.ServerId main_server = 5;
+  portal.v1.Region main_server_region = 6;
+  string target_hostname = 7;
+  uint64 score = 8;
+  BenchmarkResult result = 9;
+  repeated string logs = 10;
+}
+
+message ScoreSummary {
+  bool has_scores = 1;
+  uint64 best_score = 2;
+  uint64 latest_score = 3;
+  uint32 runs_count = 4;
+}
+
+message MockPortalState {
+  MockRuntime runtime = 1;
+  PortalState portal = 2;
+  BenchmarkRuntime benchmark = 3;
+  ScoreSummary scores = 4;
+  repeated BenchmarkRun history = 5; // 新しい順に並ぶ
+}
+
+message GetStateRequest {}
+message GetStateResponse {
+  MockPortalState state = 1;
+}
+
+message StreamStateRequest {}
+message StreamStateResponse {
+  MockPortalState state = 1;
+}
+
+message ListSupportedCountriesRequest {}
+message ListSupportedCountriesResponse {
+  repeated SupportedCountry countries = 1;
+}
+
+// 指定したフィールドだけを更新する。
+message DesiredPatch {
+  optional portal.v1.Region server1_region = 1;
+  optional portal.v1.Region server2_region = 2;
+  optional portal.v1.Region server3_region = 3;
+  optional portal.v1.ServerId main_server = 4;
+  optional string default_country = 5;
+}
+
+message UpdateDesiredRequest {
+  DesiredPatch patch = 1;
+}
+message UpdateDesiredResponse {
+  bool changed = 1;
+  ConfigSnapshot desired = 2;
+  ApplyDiagnostic apply = 3;
+}
+
+message StartBenchmarkRequest {}
+message StartBenchmarkResponse {
+  BenchmarkRuntime benchmark = 1;
+}
+
+message ResetRequest {}
+message ResetResponse {
+  MockPortalState state = 1;
+}
