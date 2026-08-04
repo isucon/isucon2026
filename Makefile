@@ -1,4 +1,4 @@
-.PHONY: tools fmt vet build test frontend-install frontend-lint frontend-typecheck frontend-test frontend-e2e contract generate-api proto-lint proto-generate proto-build portal-fmt portal-vet portal-test portal-build portal-web-install portal-web-lint portal-web-typecheck portal-web-test portal-web-build portal-web-e2e portal-check check
+.PHONY: tools fmt vet build test frontend-install frontend-lint frontend-typecheck frontend-test frontend-e2e contract generate-api proto-lint proto-generate proto-build portal-fmt portal-vet portal-test portal-build portal-web-install portal-web-lint portal-web-typecheck portal-web-test portal-web-build portal-web-e2e portal-check router-fmt router-vet router-test router-build router-compose-check router-envoy-check router-e2e router-check check
 
 tools:
 	mise install
@@ -86,5 +86,28 @@ portal-check: proto-lint proto-generate portal-vet portal-test portal-build
 	npm --prefix portal-mock/web run typecheck
 	npm --prefix portal-mock/web test
 	npm --prefix portal-mock/web run build
+
+router-fmt:
+	gofmt -w $$(find router -name '*.go' -type f)
+
+router-vet:
+	go -C router vet ./...
+
+router-test:
+	go -C router test ./...
+
+router-build:
+	go -C router build -trimpath -o /tmp/isureal-router ./cmd/router
+
+router-compose-check:
+	docker compose -f router/compose.e2e.yaml config --quiet
+
+router-envoy-check:
+	docker run --rm -v "$$PWD/router/envoy/bootstrap.yaml:/etc/envoy/envoy.yaml:ro" envoyproxy/envoy:v1.32.2 envoy --mode validate -c /etc/envoy/envoy.yaml
+
+router-e2e:
+	router/tests/e2e/run.sh
+
+router-check: router-vet router-test router-build router-compose-check router-envoy-check
 
 check: proto-lint vet frontend-lint frontend-typecheck contract test build
