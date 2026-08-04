@@ -9,7 +9,10 @@ managed:
     - file_option: go_package_prefix
       value: github.com/isucon/isucon2026/gen/go
 
-clean: true
+# `gen/go/go.mod` と `gen/ts/package.json` は生成コードを共有モジュールとして
+# 利用するための手書きメタデータなので、出力ディレクトリ全体は削除しない。
+# protoc-gen-* は対象ファイルを決定的に上書きする。
+clean: false
 plugins:
   - local: protoc-gen-go
     out: gen/go
