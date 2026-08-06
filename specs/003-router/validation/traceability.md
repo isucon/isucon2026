@@ -18,7 +18,7 @@ Runtime evidence の測定値と環境は [quickstart-results.md](./quickstart-r
 | FR-002 | `compose.e2e.yaml` の3専用 segment、fixture static route、6方向 route E2E | PASS |
 | FR-003 | internal network、server は単一 segment のみ、Router-down 6方向 timeout | PASS |
 | FR-004 | `config.go` の 0 ms/1 Gbps default、`tc_test.go` same class assertions | PASS |
-| FR-005 | `config.go` の 200 ms/200 Mbps default、`tc_test.go` 全 region combination | PASS |
+| FR-005 | `config.go` の 200 ms RTT/200 Mbps default、`tc_test.go` の片道分割と全 region combination | PASS |
 | FR-006 | `xds/routes.go` の app/main・individual mapping、route matrix/E2E | PASS |
 | FR-007 | exact country route + absent-header route、default propagation E2E | PASS |
 | FR-008 | domain の10か国 mapping test、E2E 10/10 header propagation | PASS |
@@ -77,7 +77,7 @@ Runtime evidence の測定値と環境は [quickstart-results.md](./quickstart-r
 | E2E assertions | `main.go` SHA-256 `1495e48989f030d2f0cd45f4ba760b1fcc98e1d29115e7bb0d0c2807d6c0d37f` |
 | E2E orchestration | `run.sh` SHA-256 `f62f254d33968a62656a812bf143c4faeb7ffa38af1ff5cee38488ff1f3b23ab` |
 | Country mapping | US/CA/MX→US、JP/KR/CN/AU→AP、GB/DE/FR→EU |
-| Production profile | same 0 ms/1 Gbps、cross 200 ms/200 Mbps |
+| Production profile | same 0 ms/1 Gbps、cross RTT 200 ms（片道100 ms）/200 Mbps |
 | Public routing invariant | app→main、serverN Host→serverN、有効国1値、欠落→default、invalid→400、unknown Host→404 |
 | Validation command | `make router-check && router/tests/e2e/run.sh` |
 

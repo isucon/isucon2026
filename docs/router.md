@@ -89,10 +89,13 @@ nft batch は一括検査後に table 単位で反映する。tc の複数 inter
 
 production default は次のとおりである。
 
-| Classification | Additional delay | Bandwidth ceiling |
+| Classification | Additional end-to-end delay | Bandwidth ceiling |
 |---|---:|---:|
 | same region | 0 ms | 1 Gbps |
 | cross region | 200 ms | 200 Mbps |
+
+サーバー間の200 msはRTTであり、Routerは各方向のtcへ100 msずつ設定する。クライアントからのHTTP通信では、
+Envoyがリクエスト処理へ200 msを1回注入する。
 
 E2E は分類 code path を変えず、測定しやすい 0/120 ms と 100/1 Mbps へ値だけを縮尺変更する。
 

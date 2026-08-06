@@ -35,7 +35,7 @@ func TestRenderTCClassifiesSourcesByRegion(t *testing.T) {
 		"class replace dev s1 parent 1: classid 1:12 htb rate 100000kbit ceil 100000kbit",
 		"qdisc replace dev s1 parent 1:12 handle 12: netem delay 0ms",
 		"class replace dev s1 parent 1: classid 1:13 htb rate 1000kbit ceil 1000kbit",
-		"qdisc replace dev s1 parent 1:13 handle 13: netem delay 120ms",
+		"qdisc replace dev s1 parent 1:13 handle 13: netem delay 60ms",
 		"filter replace dev s1 protocol ip parent 1: prio 11 u32 match ip src 172.31.1.10/32 flowid 1:12",
 		"filter replace dev s1 protocol ip parent 1: prio 12 u32 match ip src 172.31.2.10/32 flowid 1:13",
 		"filter replace dev s1 protocol ip parent 1: prio 13 u32 match ip src 172.31.3.10/32 flowid 1:12",
@@ -70,7 +70,7 @@ func TestRenderTCAllRegionCombinations(t *testing.T) {
 			wantDelay := "0ms"
 			if destination != source {
 				wantRate = "1kbit"
-				wantDelay = "1ms"
+				wantDelay = "500us"
 			}
 			if !strings.Contains(batches[domain.Server1], "classid 1:"+classID+" htb rate "+wantRate) ||
 				!strings.Contains(batches[domain.Server1], "handle "+classID+": netem delay "+wantDelay) {

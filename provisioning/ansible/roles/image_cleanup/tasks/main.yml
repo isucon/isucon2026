@@ -1,0 +1,98 @@
+---
+- name: Require explicit image-build mode for destructive cleanup
+  ansible.builtin.assert:
+    that:
+      - isucon_image_build | bool
+    fail_msg: "image_cleanup may run only during an explicit image build."
+
+- name: Check for an initialized PostgreSQL cluster
+  ansible.builtin.find:
+    paths: /var/lib/postgresql
+    patterns: PG_VERSION
+    recurse: true
+    file_type: file
+  register: isucon_postgresql_clusters
+  failed_when: false
+
+- name: Refuse to capture initialized PostgreSQL data
+  ansible.builtin.assert:
+    that:
+      - isucon_postgresql_clusters.matched | default(0) == 0
+    fail_msg: "An initialized PostgreSQL cluster must not be captured in a role image."
+
+- name: Remove cloud-init state and logs
+  ansible.builtin.command: cloud-init clean --logs --machine-id --seed
+  changed_when: true
+
+- name: Find SSH host identities
+  ansible.builtin.find:
+    paths: /etc/ssh
+    patterns: ssh_host_*
+    file_type: any
+  register: isucon_ssh_host_identities
+
+- name: Remove SSH host identities
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ isucon_ssh_host_identities.files }}"
+
+- name: Create SSH service override directory
+  ansible.builtin.file:
+    path: /etc/systemd/system/ssh.service.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Regenerate missing SSH host identities before sshd starts
+  ansible.builtin.template:
+    src: 10-isureal-hostkeys.conf.j2
+    dest: /etc/systemd/system/ssh.service.d/10-isureal-hostkeys.conf
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Inspect the SSH host identity boot override
+  ansible.builtin.stat:
+    path: /etc/systemd/system/ssh.service.d/10-isureal-hostkeys.conf
+  register: isucon_ssh_hostkey_override
+
+- name: Require a nonempty SSH host identity boot override
+  ansible.builtin.assert:
+    that:
+      - isucon_ssh_hostkey_override.stat.isreg | default(false)
+      - isucon_ssh_hostkey_override.stat.size | default(0) > 0
+    fail_msg: "The SSH host-key regeneration override must be present before image capture."
+
+- name: Clear machine identity files
+  ansible.builtin.copy:
+    dest: /etc/machine-id
+    content: ""
+    owner: root
+    group: root
+    mode: "0444"
+
+- name: Remove dbus machine-id copy
+  ansible.builtin.file:
+    path: /var/lib/dbus/machine-id
+    state: absent
+
+- name: Remove captured systemd random seed
+  ansible.builtin.file:
+    path: /var/lib/systemd/random-seed
+    state: absent
+
+- name: Clear package lists and temporary files
+  # raw runs directly over the SSH channel. A regular command/shell module
+  # executes from an uploaded /tmp/ansible_* payload, which this cleanup must
+  # remove and would therefore delete before the module can return JSON.
+  ansible.builtin.raw: |
+    set -eu
+    find /var/log -type f -exec truncate -s 0 {} \;
+    find /tmp /var/tmp -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
+    rm -rf /var/lib/apt/lists/*
+    rm -f /root/.bash_history /home/vagrant/.bash_history
+    test -s /etc/systemd/system/ssh.service.d/10-isureal-hostkeys.conf
+    sync
+  changed_when: true

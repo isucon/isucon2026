@@ -1,0 +1,14 @@
+---
+- name: Reload systemd for Router
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+
+- name: Restart Router stack
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    state: restarted
+    daemon_reload: true
+  loop:
+    - isureal-router.service
+    - isureal-envoy.service
+  when: not (isucon_image_build | bool)

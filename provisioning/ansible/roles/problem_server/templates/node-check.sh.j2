@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+set -euo pipefail
+systemctl is-active --quiet postgresql.service
+systemctl is-active --quiet isureal-api.service
+systemctl is-active --quiet isureal-worker.service
+systemctl is-active --quiet nginx.service
+curl --fail --silent --show-error http://127.0.0.1:8081/health/ready >/dev/null
+curl --fail --silent --show-error -H 'Host: app.{{ isucon_environment_id }}.{{ isucon_topology.domain }}' \
+  http://{{ isucon_data_address }}:8080/ >/dev/null
+printf '%s\n' '{{ isucon_node_id }}: ready'

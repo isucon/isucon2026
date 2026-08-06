@@ -1,0 +1,99 @@
+# frozen_string_literal: true
+
+require "json"
+require "yaml"
+
+repo_root = File.expand_path("../..", __dir__)
+topology_path = ENV.fetch("VM_TOPOLOGY", File.join(repo_root, "provisioning/config/topology.yml"))
+release_path = ENV.fetch("VM_RELEASE", File.join(repo_root, "provisioning/config/release.json"))
+topology = YAML.safe_load_file(topology_path)
+release = JSON.parse(File.read(release_path))
+environment_id = ENV.fetch("VM_ENV_ID", topology.fetch("environmentId"))
+profile_name = ENV.fetch("VM_PROFILE", topology.fetch("defaultResourceProfile"))
+profile = topology.fetch("resourceProfiles").fetch(profile_name)
+release_id = release.fetch("releaseId")
+problem_box = ENV.fetch("ISUREAL_PROBLEM_BOX", "isureal/problem-server-#{release_id}")
+router_box = ENV.fetch("ISUREAL_ROUTER_BOX", "isureal/router-#{release_id}")
+
+Vagrant.configure("2") do |config|
+  config.vm.box_check_update = false
+  config.vm.synced_folder ".", "/vagrant", disabled: true
+  config.ssh.insert_key = false
+  config.ssh.keep_alive = true
+
+  config.vm.define "server1" do |server1|
+    server1.vm.box = problem_box
+    server1.vm.hostname = "server1-#{environment_id}"
+    server1.vm.network "forwarded_port", id: "ssh", guest: 22, host: 2201,
+                       host_ip: "127.0.0.1", auto_correct: false
+    server1.vm.network "private_network", ip: "192.168.60.6", netmask: "255.255.255.240",
+                       virtualbox__intnet: "#{environment_id}-server1-data"
+    server1.vm.provider "virtualbox" do |vb|
+      vb.name = "#{environment_id}-server1"
+      vb.cpus = profile.fetch("problemServer").fetch("cpus")
+      vb.memory = profile.fetch("problemServer").fetch("memoryMiB")
+      vb.customize ["modifyvm", :id, "--macaddress1", "080027600101"]
+      vb.customize ["modifyvm", :id, "--macaddress2", "080027600102"]
+    end
+  end
+
+  config.vm.define "server2" do |server2|
+    server2.vm.box = problem_box
+    server2.vm.hostname = "server2-#{environment_id}"
+    server2.vm.network "forwarded_port", id: "ssh", guest: 22, host: 2202,
+                       host_ip: "127.0.0.1", auto_correct: false
+    server2.vm.network "private_network", ip: "192.168.60.22", netmask: "255.255.255.240",
+                       virtualbox__intnet: "#{environment_id}-server2-data"
+    server2.vm.provider "virtualbox" do |vb|
+      vb.name = "#{environment_id}-server2"
+      vb.cpus = profile.fetch("problemServer").fetch("cpus")
+      vb.memory = profile.fetch("problemServer").fetch("memoryMiB")
+      vb.customize ["modifyvm", :id, "--macaddress1", "080027600201"]
+      vb.customize ["modifyvm", :id, "--macaddress2", "080027600202"]
+    end
+  end
+
+  config.vm.define "server3" do |server3|
+    server3.vm.box = problem_box
+    server3.vm.hostname = "server3-#{environment_id}"
+    server3.vm.network "forwarded_port", id: "ssh", guest: 22, host: 2203,
+                       host_ip: "127.0.0.1", auto_correct: false
+    server3.vm.network "private_network", ip: "192.168.60.38", netmask: "255.255.255.240",
+                       virtualbox__intnet: "#{environment_id}-server3-data"
+    server3.vm.provider "virtualbox" do |vb|
+      vb.name = "#{environment_id}-server3"
+      vb.cpus = profile.fetch("problemServer").fetch("cpus")
+      vb.memory = profile.fetch("problemServer").fetch("memoryMiB")
+      vb.customize ["modifyvm", :id, "--macaddress1", "080027600301"]
+      vb.customize ["modifyvm", :id, "--macaddress2", "080027600302"]
+    end
+  end
+
+  config.vm.define "router" do |router|
+    router.vm.box = router_box
+    router.vm.hostname = "router-#{environment_id}"
+    router.vm.network "forwarded_port", id: "ssh", guest: 22, host: 2204,
+                      host_ip: "127.0.0.1", auto_correct: false
+    router.vm.network "forwarded_port", id: "client", guest: 8080, host: 18080,
+                      host_ip: "127.0.0.1", protocol: "tcp", auto_correct: false
+    router.vm.network "private_network", ip: "192.168.60.5", netmask: "255.255.255.240",
+                      virtualbox__intnet: "#{environment_id}-server1-data"
+    router.vm.network "private_network", ip: "192.168.60.21", netmask: "255.255.255.240",
+                      virtualbox__intnet: "#{environment_id}-server2-data"
+    router.vm.network "private_network", ip: "192.168.60.37", netmask: "255.255.255.240",
+                      virtualbox__intnet: "#{environment_id}-server3-data"
+    # Vagrant creates the host-only adapter at the first usable address,
+    # 192.168.60.65, while the Router uses 192.168.60.69.
+    router.vm.network "private_network", ip: "192.168.60.69", netmask: "255.255.255.240"
+    router.vm.provider "virtualbox" do |vb|
+      vb.name = "#{environment_id}-router"
+      vb.cpus = profile.fetch("router").fetch("cpus")
+      vb.memory = profile.fetch("router").fetch("memoryMiB")
+      vb.customize ["modifyvm", :id, "--macaddress1", "080027600401"]
+      vb.customize ["modifyvm", :id, "--macaddress2", "080027600411"]
+      vb.customize ["modifyvm", :id, "--macaddress3", "080027600421"]
+      vb.customize ["modifyvm", :id, "--macaddress4", "080027600431"]
+      vb.customize ["modifyvm", :id, "--macaddress5", "080027600469"]
+    end
+  end
+end
