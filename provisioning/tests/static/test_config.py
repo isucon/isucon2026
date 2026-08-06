@@ -80,11 +80,43 @@ class ConfigContractTest(unittest.TestCase):
         self.assertEqual([], preflight.check_supported_host("Linux", "x86_64"))
         self.assertTrue(preflight.check_supported_host("Darwin", "x86_64"))
         self.assertTrue(preflight.check_supported_host("Linux", "aarch64"))
+        self.assertEqual([], preflight.check_provider("auto"))
+        self.assertEqual([], preflight.check_provider("virtualbox"))
+        self.assertTrue(preflight.check_provider("libvirt"))
+
+    def test_release_rejects_duplicate_or_incompatible_artifacts(self) -> None:
+        duplicate = copy.deepcopy(self.release)
+        duplicate["artifacts"].append(copy.deepcopy(duplicate["artifacts"][0]))
+        duplicate["artifacts"][-1]["id"] = "backend.duplicate"
+        self.assertTrue(
+            any("exactly once" in error for error in preflight.validate_release(duplicate))
+        )
+
+        incompatible = copy.deepcopy(self.release)
+        backend = next(
+            artifact for artifact in incompatible["artifacts"]
+            if artifact["component"] == "backend"
+        )
+        backend["compatibilityId"] = "wrong-database-contract"
+        self.assertTrue(
+            any("incompatible" in error for error in preflight.validate_release(incompatible))
+        )
 
     def test_portal_status_does_not_require_tagged_image_metadata(self) -> None:
         script = (PROVISIONING_DIR / "scripts" / "portal-compose.sh").read_text()
         self.assertIn("compose ps --all --no-trunc", script)
         self.assertNotIn("    compose images", script)
+
+    def test_portal_noop_build_disables_nondeterministic_attestations(self) -> None:
+        script = (PROVISIONING_DIR / "scripts" / "portal-compose.sh").read_text()
+        self.assertIn("compose build --provenance=false --sbom=false", script)
+        self.assertIn("compose up -d --wait", script)
+        self.assertNotIn("compose up -d --build --wait", script)
+
+    def test_runtime_inventory_uses_the_selected_release_artifact_directory(self) -> None:
+        script = (PROVISIONING_DIR / "scripts" / "inventory.py").read_text()
+        self.assertIn('/ release["releaseId"]', script)
+        self.assertNotIn('/ "current" / "bundles"', script)
 
     def test_portal_and_router_share_topology_hostname_contract(self) -> None:
         portal = self.topology["portal"]

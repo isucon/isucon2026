@@ -137,13 +137,22 @@ promote() {
   local role="${2:-}"
   require_architecture
   local artifact_id="${4:-${release_id}/${role}/virtualbox/amd64}"
-  local report="${repo_root}/provisioning/.state/isureal-local/reports/latest.json"
-  if [[ ! -f "${report}" ]] || [[ "$(jq -r .outcome "${report}")" != "pass" ]]; then
+  local environment_id="${VM_ENV_ID:-isureal-local}"
+  if [[ ! "${environment_id}" =~ ^[a-z][a-z0-9-]{2,31}$ ]]; then
+    printf 'invalid VM_ENV_ID: %s\n' "${environment_id}" >&2
+    exit 2
+  fi
+  local report="${repo_root}/provisioning/.state/${environment_id}/reports/latest.json"
+  if [[ ! -f "${report}" ]] \
+    || [[ "$(jq -r .outcome "${report}")" != "pass" ]] \
+    || [[ "$(jq -r .environmentId "${report}")" != "${environment_id}" ]] \
+    || [[ "$(jq -r .releaseId "${report}")" != "${release_id}" ]]; then
     printf 'A passing Linux amd64 conformance report is required: %s\n' "${report}" >&2
     exit 3
   fi
+  local report_uri="file://provisioning/.state/${environment_id}/reports/latest.json"
   /usr/bin/python3 "${repo_root}/provisioning/scripts/manifest.py" --index "${index_file}" set-state \
-    --artifact-id "${artifact_id}" --state validated --report "file://provisioning/.state/isureal-local/reports/latest.json"
+    --artifact-id "${artifact_id}" --state validated --report "${report_uri}"
   /usr/bin/python3 "${repo_root}/provisioning/scripts/manifest.py" --index "${index_file}" set-state \
     --artifact-id "${artifact_id}" --state promoted --report "linux-amd64-virtualbox:${source_revision}"
 }

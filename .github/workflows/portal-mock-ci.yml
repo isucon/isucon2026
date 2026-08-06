@@ -76,17 +76,25 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
-          base_dir="$(mktemp -d)"
-          git archive "$BASE_SHA" proto | tar -x -C "$base_dir"
-          mise exec -- buf breaking --against "$base_dir/proto"
+          if git cat-file -e "$BASE_SHA:proto" 2>/dev/null; then
+            base_dir="$(mktemp -d)"
+            git archive "$BASE_SHA" proto | tar -x -C "$base_dir"
+            mise exec -- buf breaking --against "$base_dir/proto"
+          else
+            echo "Base revision has no proto directory; skipping the initial breaking-change comparison."
+          fi
       - name: Check compatibility against previous commit
         if: github.event_name == 'push' && github.event.before != '0000000000000000000000000000000000000000'
         env:
           BASE_SHA: ${{ github.event.before }}
         run: |
-          base_dir="$(mktemp -d)"
-          git archive "$BASE_SHA" proto | tar -x -C "$base_dir"
-          mise exec -- buf breaking --against "$base_dir/proto"
+          if git cat-file -e "$BASE_SHA:proto" 2>/dev/null; then
+            base_dir="$(mktemp -d)"
+            git archive "$BASE_SHA" proto | tar -x -C "$base_dir"
+            mise exec -- buf breaking --against "$base_dir/proto"
+          else
+            echo "Previous revision has no proto directory; skipping the initial breaking-change comparison."
+          fi
 
   go:
     name: Go format / vet / tests / build

@@ -17,6 +17,7 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_TOPOLOGY = REPO_ROOT / "provisioning" / "config" / "topology.yml"
+DEFAULT_RELEASE = REPO_ROOT / "provisioning" / "config" / "release.json"
 DEFAULT_STATE = REPO_ROOT / "provisioning" / ".state"
 PORTAL_GET_STATE_PATH = "/portal_mock.v1.PortalMockService/GetState"
 PORTAL_SERVER_IDS = ("server1", "server2", "server3")
@@ -97,8 +98,10 @@ def colon_mac(value: str) -> str:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Validate the running four-node local VM environment")
     parser.add_argument("--topology", type=Path, default=DEFAULT_TOPOLOGY)
+    parser.add_argument("--release", type=Path, default=DEFAULT_RELEASE)
     args = parser.parse_args()
     topology: dict[str, Any] = yaml.safe_load(args.topology.read_text())
+    release: dict[str, Any] = json.loads(args.release.read_text())
     env_id = os.environ.get("VM_ENV_ID", topology["environmentId"])
     if not re.fullmatch(r"[a-z][a-z0-9-]{2,31}", env_id):
         raise SystemExit(f"invalid VM_ENV_ID: {env_id}")
@@ -127,7 +130,7 @@ def main() -> int:
                 vagrant_dir, node,
                 ". /etc/os-release; printf '%s|%s|' \"$VERSION_ID\" \"$(uname -m)\"; jq -r .releaseId /etc/isucon/release.json",
             ).splitlines()[-1]
-            expected_identity = f"24.04|x86_64|{json.loads((REPO_ROOT / 'provisioning/config/release.json').read_text())['releaseId']}"
+            expected_identity = f"24.04|x86_64|{release['releaseId']}"
             if identity != expected_identity:
                 failures.append(f"{node} identity is {identity!r}; expected {expected_identity!r}")
             nic_output = vagrant_ssh(
@@ -226,6 +229,7 @@ def main() -> int:
     report = {
         "schemaVersion": 1,
         "environmentId": env_id,
+        "releaseId": release["releaseId"],
         "generatedAt": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
         "outcome": "fail" if failures else "pass",
         "checks": checks,
@@ -234,7 +238,9 @@ def main() -> int:
     report_dir = DEFAULT_STATE / env_id / "reports"
     report_dir.mkdir(parents=True, exist_ok=True)
     report_path = report_dir / "latest.json"
-    report_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
+    temporary_report = report_path.with_suffix(".json.tmp")
+    temporary_report.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
+    os.replace(temporary_report, report_path)
     if failures:
         print("local-vm conformance: FAIL", file=sys.stderr)
         for failure in failures:

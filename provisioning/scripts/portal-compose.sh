@@ -92,7 +92,11 @@ case "${action}" in
       printf 'Portal control address %s is not present on the host\n' "${api_address}" >&2
       exit 4
     fi
-    compose up -d --build --wait
+    # BuildKit's default provenance attestation carries build-specific
+    # metadata, so an otherwise no-op build can produce a new manifest list
+    # and make Compose restart healthy containers on every reprovision.
+    compose build --provenance=false --sbom=false
+    compose up -d --wait
     ;;
   status)
     # `compose images` fails when a no-op rebuild replaces the tag while an

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+from collections import Counter
 import hashlib
 import ipaddress
 import json
@@ -191,8 +192,10 @@ def validate_release(release: dict[str, Any]) -> list[str]:
         "database-migrations",
         "portal-mock",
     }
-    components = {artifact.get("component") for artifact in artifacts}
-    if components != required_components:
+    component_counts = Counter(artifact.get("component") for artifact in artifacts)
+    if set(component_counts) != required_components or any(
+        component_counts[component] != 1 for component in required_components
+    ):
         errors.append("release artifacts must contain each required component exactly once")
     seen_ids: set[str] = set()
     for artifact in artifacts:
@@ -212,8 +215,32 @@ def validate_release(release: dict[str, Any]) -> list[str]:
     if database.get("engine") != "postgresql" or database.get("majorVersion") != 16:
         errors.append("database contract must be PostgreSQL 16")
     migration_id = database.get("migrationArtifact")
-    if migration_id not in seen_ids:
+    artifacts_by_id = {artifact.get("id"): artifact for artifact in artifacts}
+    migration_artifact = artifacts_by_id.get(migration_id)
+    if migration_artifact is None:
         errors.append("database migration artifact does not exist")
+    elif migration_artifact.get("component") != "database-migrations":
+        errors.append("database migrationArtifact must reference the database-migrations component")
+    database_compatibility = database.get("compatibilityId")
+    for component in ("backend", "database-migrations"):
+        matches = [artifact for artifact in artifacts if artifact.get("component") == component]
+        if len(matches) == 1 and matches[0].get("compatibilityId") != database_compatibility:
+            errors.append(f"artifact {component} is incompatible with the database contract")
+
+    router_contract = release.get("routerContract", {})
+    router_matches = [artifact for artifact in artifacts if artifact.get("component") == "router"]
+    if len(router_matches) == 1 and (
+        router_matches[0].get("compatibilityId") != router_contract.get("compatibilityId")
+    ):
+        errors.append("artifact router is incompatible with the Router contract")
+    envoy_matches = [artifact for artifact in artifacts if artifact.get("component") == "envoy"]
+    if len(envoy_matches) == 1 and envoy_matches[0].get("version") != router_contract.get("envoyVersion"):
+        errors.append("artifact envoy version does not match the Router contract")
+
+    portal_contract = release.get("portalContract", {})
+    portal_matches = [artifact for artifact in artifacts if artifact.get("component") == "portal-mock"]
+    if len(portal_matches) == 1 and portal_matches[0].get("uri") != f"file://{portal_contract.get('composeFile')}":
+        errors.append("artifact portal-mock URI does not match the Portal contract")
     return errors
 
 
@@ -224,6 +251,12 @@ def check_supported_host(system: str, machine: str) -> list[str]:
     if machine not in {"x86_64", "amd64"}:
         errors.append(f"unsupported host architecture {machine}; x86_64 is required")
     return errors
+
+
+def check_provider(provider: str) -> list[str]:
+    if provider not in {"auto", "virtualbox"}:
+        return [f"unsupported VM_PROVIDER {provider}; use auto or virtualbox"]
+    return []
 
 
 def _run(command: list[str]) -> str:
@@ -476,6 +509,7 @@ def main() -> int:
     errors += validate_topology(topology)
     errors += validate_release(release)
     errors += check_supported_host(platform.system(), platform.machine())
+    errors += check_provider(os.environ.get("VM_PROVIDER", "auto"))
     errors += check_virtualization_and_capacity(topology)
     if not args.skip_tools:
         errors += check_tools(release)

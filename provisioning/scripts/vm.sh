@@ -88,7 +88,8 @@ validate_runtime() {
     render_inventory
   fi
   ansible-playbook -i "${inventory_file}" "${repo_root}/provisioning/ansible/playbooks/validate.yml"
-  /usr/bin/python3 "${repo_root}/provisioning/tests/conformance/validate.py" --topology "${topology_file}"
+  /usr/bin/python3 "${repo_root}/provisioning/tests/conformance/validate.py" \
+    --topology "${topology_file}" --release "${release_file}"
 }
 
 preflight_up() {

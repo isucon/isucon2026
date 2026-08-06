@@ -65,7 +65,14 @@ def main() -> int:
     state_dir = REPO_ROOT / "provisioning" / ".state" / environment_id
     output = args.output or state_dir / "inventory.yml"
     secret = load_secret(state_dir / "runtime-secrets.yml")
-    artifact_root = REPO_ROOT / "provisioning" / ".state" / "artifacts" / "current" / "bundles"
+    artifact_root = (
+        REPO_ROOT
+        / "provisioning"
+        / ".state"
+        / "artifacts"
+        / release["releaseId"]
+        / "bundles"
+    )
 
     host_vars: dict[str, Any] = {}
     for node_id, node in topology["nodes"].items():
