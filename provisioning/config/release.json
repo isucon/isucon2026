@@ -1,0 +1,141 @@
+{
+  "schemaVersion": 3,
+  "releaseId": "r2026.08.06.3",
+  "createdAt": "2026-08-06T04:28:00Z",
+  "sourceRevision": "e240d4ae6bbae6eecc542a1a05ffe5505aaab712",
+  "toolchain": {
+    "packer": "1.15.4",
+    "vagrant": "2.4.9",
+    "virtualBox": "7.2.14",
+    "dockerEngine": "29.7.1",
+    "dockerCompose": "5.4.0",
+    "python": "3.12.13",
+    "ansibleCore": "2.21.2",
+    "packerPlugins": {
+      "virtualbox": "1.1.5",
+      "vagrant": "1.1.7",
+      "ansible": "1.1.5"
+    },
+    "ansibleCollections": {
+      "community.postgresql": "4.2.0"
+    }
+  },
+  "ubuntu": {
+    "release": "24.04",
+    "aptSnapshot": "20260806T000000Z",
+    "installImages": {
+      "amd64": {
+        "url": "https://releases.ubuntu.com/noble/ubuntu-24.04.4-live-server-amd64.iso",
+        "sha256": "e907d92eeec9df64163a7e454cbc8d7755e8ddc7ed42f99dbc80c40f1a138433",
+        "serial": "24.04.4"
+      }
+    }
+  },
+  "packages": [
+    {
+      "name": "ca-certificates",
+      "version": "20260601~24.04.1",
+      "roles": ["base", "problem-server", "router"]
+    },
+    {
+      "name": "iproute2",
+      "version": "6.1.0-1ubuntu6.4",
+      "roles": ["base", "problem-server", "router"]
+    },
+    {
+      "name": "nftables",
+      "version": "1.0.9-1ubuntu0.1",
+      "roles": ["problem-server", "router"]
+    },
+    {
+      "name": "nginx",
+      "version": "1.24.0-2ubuntu7.15",
+      "roles": ["problem-server"]
+    },
+    {
+      "name": "postgresql-16",
+      "version": "16.14-0ubuntu0.24.04.1",
+      "roles": ["problem-server"]
+    },
+    {
+      "name": "python3-psycopg",
+      "version": "3.1.17-2",
+      "roles": ["problem-server"]
+    }
+  ],
+  "artifacts": [
+    {
+      "id": "backend.amd64",
+      "component": "backend",
+      "version": "e240d4ae6bbae6eecc542a1a05ffe5505aaab712",
+      "architecture": "amd64",
+      "uri": "file://provisioning/.state/artifacts/current/bundles/backend.tar",
+      "sha256": "9c1cbe500204dfe906057f887ba6f011f0d7cda38e5ab110e168bbe9ddabd39f",
+      "compatibilityId": "isureal-postgresql-v1"
+    },
+    {
+      "id": "frontend.any",
+      "component": "frontend",
+      "version": "e240d4ae6bbae6eecc542a1a05ffe5505aaab712",
+      "architecture": "any",
+      "uri": "file://provisioning/.state/artifacts/current/bundles/frontend.tar",
+      "sha256": "ccc2e002a41dc70fd1234b1f19838a1d0d3a4ec21404121db2e79378888a6320",
+      "compatibilityId": "isureal-frontend-v1"
+    },
+    {
+      "id": "router.amd64",
+      "component": "router",
+      "version": "e240d4ae6bbae6eecc542a1a05ffe5505aaab712",
+      "architecture": "amd64",
+      "uri": "file://provisioning/.state/artifacts/current/bundles/router.tar",
+      "sha256": "b2c572da0b63b4d931e4621010c870701e68980bd8af994950a163704fcf0bbe",
+      "compatibilityId": "isureal-router-v1"
+    },
+    {
+      "id": "envoy.amd64",
+      "component": "envoy",
+      "version": "1.32.2",
+      "architecture": "amd64",
+      "uri": "file://provisioning/.state/artifacts/current/bundles/envoy.tar",
+      "sha256": "82dacf0dce13e8c76e012613a7dba003cde3ba8a938bbea7c9bcaf0b47f73a29",
+      "compatibilityId": "isureal-envoy-bootstrap-v1"
+    },
+    {
+      "id": "database-migrations.any",
+      "component": "database-migrations",
+      "version": "e240d4ae6bbae6eecc542a1a05ffe5505aaab712",
+      "architecture": "any",
+      "uri": "file://provisioning/.state/artifacts/current/bundles/database-migrations.tar",
+      "sha256": "84d75668e4e64c85c406ad625f1fa79e6911b6976aa2941f6836582d086be924",
+      "compatibilityId": "isureal-postgresql-v1"
+    },
+    {
+      "id": "portal-mock.any",
+      "component": "portal-mock",
+      "version": "e240d4ae6bbae6eecc542a1a05ffe5505aaab712",
+      "architecture": "any",
+      "uri": "file://portal-mock/compose.yaml",
+      "sha256": "72261241fd4e5319cf55b62c6e797b1136e7a7385f129983288e8f7d97705be3",
+      "compatibilityId": "portal-external-router-v1"
+    }
+  ],
+  "databaseContract": {
+    "engine": "postgresql",
+    "majorVersion": 16,
+    "compatibilityId": "isureal-postgresql-v1",
+    "migrationArtifact": "database-migrations.any"
+  },
+  "routerContract": {
+    "specRevision": "e240d4ae6bbae6eecc542a1a05ffe5505aaab712",
+    "compatibilityId": "isureal-router-v1",
+    "envoyVersion": "1.32.2",
+    "upstreamPort": 8080
+  },
+  "portalContract": {
+    "specRevision": "e240d4ae6bbae6eecc542a1a05ffe5505aaab712",
+    "composeFile": "portal-mock/compose.yaml",
+    "routerMode": "external-router",
+    "apiContainerPort": 8080,
+    "uiContainerPort": 5174
+  }
+}

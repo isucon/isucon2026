@@ -82,7 +82,7 @@ Invariants:
 Fields:
 
 - `sameRegionDelay`（default 0 ms）
-- `crossRegionDelay`（default 200 ms）
+- `crossRegionDelay`（default 200 ms end-to-end。サーバー間tcでは片道100 msずつ）
 - `sameRegionBandwidthBitsPerSecond`（default 1,000,000,000）
 - `crossRegionBandwidthBitsPerSecond`（default 200,000,000）
 

@@ -108,7 +108,9 @@ Controller は region local IP から interface 名を解決するため、Compo
 | `ROUTER_SAME_REGION_BANDWIDTH_BPS` | `1000000000` | `100000000` |
 | `ROUTER_CROSS_REGION_BANDWIDTH_BPS` | `200000000` | `1000000` |
 
-bandwidth は bit/s で、正数かつ cross が same 以下でなければならない。tc の delay は0または1 ms以上を受け付ける。
+delay は end-to-end の追加遅延を表す。HTTP は Envoy が設定値を1回注入し、サーバー間通信は往復で設定値に
+なるよう tc が各方向へ半分ずつ注入する（production の `200ms` は片道100 ms、RTT 200 ms）。
+bandwidth は bit/s で、正数かつ cross が same 以下でなければならない。delay は0または1 ms以上を受け付ける。
 E2E override は class 判定を変えず、共有 CI host でも差を測定できるよう値だけを縮尺する。
 
 ## Health and diagnostics

@@ -1,0 +1,21 @@
+[Unit]
+Description=ISUReal Envoy edge proxy
+After=network-online.target isureal-router.service
+Wants=network-online.target
+Requires=isureal-router.service
+
+[Service]
+Type=simple
+User=isureal-router
+Group=isureal-router
+ExecStartPre=/opt/isucon/bin/envoy --mode validate -c /etc/isucon/envoy/bootstrap.yaml
+ExecStart=/opt/isucon/bin/envoy -c /etc/isucon/envoy/bootstrap.yaml --disable-hot-restart
+Restart=on-failure
+RestartSec=1s
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

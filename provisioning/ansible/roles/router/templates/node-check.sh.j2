@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -euo pipefail
+systemctl is-active --quiet isureal-router.service
+systemctl is-active --quiet isureal-envoy.service
+curl --fail --silent --show-error http://{{ isucon_topology.networks.control.routerAddress }}:18081/healthz >/dev/null
+curl --fail --silent --show-error http://{{ isucon_topology.networks.control.routerAddress }}:18081/readyz >/dev/null
+printf '%s\n' 'router: ready'

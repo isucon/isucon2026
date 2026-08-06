@@ -139,14 +139,14 @@ HTTP 経路、国別制約、サーバー間経路、動的設定変更、再接
 - **FR-002**: System MUST place the three server identities in mutually isolated connection segments and MUST route every supported server-to-server path through the Router.
 - **FR-003**: System MUST prevent an application server from bypassing the Router to reach another application server's segment.
 - **FR-004**: System MUST apply no Router-added latency and a 1 Gbps ceiling to same-region server traffic.
-- **FR-005**: System MUST apply 200 ms additional latency and a 200 Mbps per-region ceiling to cross-region server traffic in both directions.
+- **FR-005**: System MUST apply 200 ms additional round-trip latency and a 200 Mbps per-region ceiling to cross-region server traffic, splitting the delay evenly as 100 ms in each direction.
 - **FR-006**: System MUST route the team application hostname to the configured main server and each server-specific hostname only to its named server.
 - **FR-007**: System MUST determine the effective client country from one valid `X-Country-Code` value, or use the configured default country when the header is absent.
 - **FR-008**: System MUST support the same initial country set and country-to-region mapping as the Portal contract: US/CA/MX→US, JP/KR/CN/AU→AP, GB/DE/FR→EU.
 - **FR-009**: System MUST reject malformed, duplicated, or unsupported country headers before forwarding a request.
 - **FR-010**: System MUST forward exactly one effective `X-Country-Code` value to the selected application server, including when the default was used.
 - **FR-011**: System MUST apply no Router-added latency and a 1 Gbps ceiling when effective client and selected server regions match.
-- **FR-012**: System MUST apply 200 ms additional latency and a 200 Mbps per-region ceiling when effective client and selected server regions differ.
+- **FR-012**: System MUST add 200 ms to the HTTP request/response latency and apply a 200 Mbps per-region ceiling when effective client and selected server regions differ.
 - **FR-013**: System MUST consume desired configuration through the versioned Portal Router contract using the configured positive team number.
 - **FR-014**: System MUST validate every received snapshot completely before changing the active data plane.
 - **FR-015**: System MUST make a snapshot externally active only when all required routing, network-control, and HTTP-control changes for that snapshot have succeeded.

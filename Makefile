@@ -1,4 +1,4 @@
-.PHONY: tools fmt vet build test frontend-install frontend-lint frontend-typecheck frontend-test frontend-e2e contract generate-api proto-lint proto-generate proto-build portal-fmt portal-vet portal-test portal-build portal-web-install portal-web-lint portal-web-typecheck portal-web-test portal-web-build portal-web-e2e portal-check router-fmt router-vet router-test router-build router-compose-check router-envoy-check router-e2e router-check check
+.PHONY: tools fmt vet build test frontend-install frontend-lint frontend-typecheck frontend-test frontend-e2e contract generate-api proto-lint proto-generate proto-build portal-fmt portal-vet portal-test portal-build portal-web-install portal-web-lint portal-web-typecheck portal-web-test portal-web-build portal-web-e2e portal-check router-fmt router-vet router-test router-build router-compose-check router-envoy-check router-e2e router-check provisioning-static provisioning-artifacts vm-preflight vm-up vm-provision vm-validate vm-status vm-logs vm-reset-data vm-destroy image-validate image-build-base image-build-role image-promote check
 
 tools:
 	mise install
@@ -109,5 +109,47 @@ router-e2e:
 	router/tests/e2e/run.sh
 
 router-check: router-vet router-test router-build router-compose-check router-envoy-check
+
+provisioning-static:
+	provisioning/tests/static/run.sh
+
+provisioning-artifacts:
+	provisioning/scripts/build-artifacts.sh
+
+vm-preflight:
+	provisioning/scripts/vm.sh preflight
+
+vm-up:
+	provisioning/scripts/vm.sh up
+
+vm-provision:
+	provisioning/scripts/vm.sh provision
+
+vm-validate:
+	provisioning/scripts/vm.sh validate
+
+vm-status:
+	provisioning/scripts/vm.sh status
+
+vm-logs:
+	provisioning/scripts/vm.sh logs
+
+vm-reset-data:
+	provisioning/scripts/vm.sh reset-data
+
+vm-destroy:
+	provisioning/scripts/vm.sh destroy
+
+image-validate:
+	provisioning/scripts/image.sh validate
+
+image-build-base:
+	provisioning/scripts/image.sh build-base "$(or $(ARCH),amd64)"
+
+image-build-role:
+	provisioning/scripts/image.sh build-role "$(ROLE)" "$(or $(ARCH),amd64)"
+
+image-promote:
+	provisioning/scripts/image.sh promote "$(ROLE)" "$(or $(ARCH),amd64)" "$(ARTIFACT_ID)"
 
 check: proto-lint vet frontend-lint frontend-typecheck contract test build

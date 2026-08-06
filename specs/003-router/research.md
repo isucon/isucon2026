@@ -42,7 +42,7 @@ References:
 
 **Decision**: IPv4 forwarding と専用 nftables forward chain を Router namespace で管理する。各 server 向け egress に
 HTB root/class と netem leaf を作り、source server IP を region class へ分類する。同一 region は追加 delay なし／
-1 Gbps、異 region は200 ms／200 Mbps。E2E では値だけ縮尺変更する。
+1 Gbps、異 region はend-to-endで200 ms（server間は片道100 ms、RTT 200 ms）／200 Mbps。E2E では値だけ縮尺変更する。
 
 **Rationale**: destination interface で shaping すれば両方向の各 packet を同じ規則で扱え、server の配置変更は class
 mapping の再生成だけで済む。nft batch は ruleset を一括適用できる。
@@ -106,7 +106,7 @@ RDS が失敗した場合は last-known-good を再適用する。Portal report 
 
 ## Decision 7: E2E measurement
 
-**Decision**: production default 200 ms／200 Mbps と1 Gbpsは維持し、E2E では cross 120 ms／1 Mbps、same 100 Mbps
+**Decision**: production default 200 ms RTT／200 Mbps と1 Gbpsは維持し、E2E では cross 120 ms RTT／1 Mbps、same 100 Mbps
 等へ環境変数で縮尺変更する。HTTP は同じ fixture payload の elapsed/throughput、server 間は server 内部 fetch の
 elapsed/throughput、経路は `ip route get`、隔離は Router namespace 停止時の新規接続失敗で判定する。
 

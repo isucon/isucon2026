@@ -20,7 +20,7 @@ func RenderTC(interfaces map[domain.ServerID]string, networks map[domain.ServerI
 		return nil, err
 	}
 	if (profile.SameRegionDelay > 0 && profile.SameRegionDelay < time.Millisecond) || (profile.CrossRegionDelay > 0 && profile.CrossRegionDelay < time.Millisecond) {
-		return nil, fmt.Errorf("tc delay must be zero or at least 1ms")
+		return nil, fmt.Errorf("configured round-trip delay must be zero or at least 1ms")
 	}
 	for _, server := range domain.ServerIDs() {
 		network, ok := networks[server]
@@ -36,12 +36,12 @@ func RenderTC(interfaces map[domain.ServerID]string, networks map[domain.ServerI
 		var builder strings.Builder
 		fmt.Fprintf(&builder, "qdisc replace dev %s root handle 1: htb default 10\n", device)
 		fmt.Fprintf(&builder, "class replace dev %s parent 1: classid 1:10 htb rate %s ceil %s\n", device, rateKbit(profile.SameRegionBandwidthBPS), rateKbit(profile.SameRegionBandwidthBPS))
-		fmt.Fprintf(&builder, "qdisc replace dev %s parent 1:10 handle 10: netem delay %s\n", device, delayString(profile.SameRegionDelay))
+		fmt.Fprintf(&builder, "qdisc replace dev %s parent 1:10 handle 10: netem delay %s\n", device, delayString(oneWayDelay(profile.SameRegionDelay)))
 		for _, sourceRegion := range []domain.Region{domain.RegionUS, domain.RegionAP, domain.RegionEU} {
 			delay, bandwidth := profile.Class(sourceRegion, destinationRegion)
 			classID := regionClassID(sourceRegion)
 			fmt.Fprintf(&builder, "class replace dev %s parent 1: classid 1:%s htb rate %s ceil %s\n", device, classID, rateKbit(bandwidth), rateKbit(bandwidth))
-			fmt.Fprintf(&builder, "qdisc replace dev %s parent 1:%s handle %s: netem delay %s\n", device, classID, classID, delayString(delay))
+			fmt.Fprintf(&builder, "qdisc replace dev %s parent 1:%s handle %s: netem delay %s\n", device, classID, classID, delayString(oneWayDelay(delay)))
 		}
 		for index, source := range domain.ServerIDs() {
 			classID := regionClassID(routerConfig.RegionFor(source))
@@ -70,6 +70,17 @@ func rateKbit(bitsPerSecond uint64) string {
 	return fmt.Sprintf("%dkbit", kbit)
 }
 
+// TrafficProfile delays are end-to-end round-trip budgets. Server-to-server
+// packets cross a destination-side netem qdisc in each direction, so each
+// qdisc contributes half of the configured delay.
+func oneWayDelay(roundTripDelay time.Duration) time.Duration {
+	return roundTripDelay / 2
+}
+
 func delayString(delay time.Duration) string {
+	if delay%time.Millisecond != 0 {
+		microseconds := (delay + time.Microsecond - 1) / time.Microsecond
+		return fmt.Sprintf("%dus", microseconds)
+	}
 	return fmt.Sprintf("%dms", delay.Milliseconds())
 }

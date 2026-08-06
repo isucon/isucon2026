@@ -1,0 +1,271 @@
+---
+- name: Resolve problem-server artifact input
+  ansible.builtin.set_fact:
+    isucon_problem_artifacts:
+      backend: "{{ isucon_release_manifest.artifacts | selectattr('component', 'equalto', 'backend') | first }}"
+      frontend: "{{ isucon_release_manifest.artifacts | selectattr('component', 'equalto', 'frontend') | first }}"
+      migrations: "{{ isucon_release_manifest.artifacts | selectattr('component', 'equalto', 'database-migrations') | first }}"
+    isucon_effective_artifact_root: "{{ isucon_artifact_root | default(lookup('ansible.builtin.env', 'ISUREAL_ARTIFACT_ROOT'), true) }}"
+
+- name: Require controller artifact directory
+  ansible.builtin.assert:
+    that:
+      - isucon_effective_artifact_root | length > 0
+    fail_msg: "ISUREAL_ARTIFACT_ROOT or isucon_artifact_root is required."
+
+- name: Create PostgreSQL common configuration directory before package install
+  ansible.builtin.file:
+    path: /etc/postgresql-common
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Prevent PostgreSQL package from creating a capture-time cluster
+  ansible.builtin.copy:
+    dest: /etc/postgresql-common/createcluster.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      create_main_cluster = false
+
+- name: Install pinned problem-server packages
+  ansible.builtin.apt:
+    name:
+      - "nginx={{ (isucon_release_manifest.packages | selectattr('name', 'equalto', 'nginx') | first).version }}"
+      - "postgresql-16={{ (isucon_release_manifest.packages | selectattr('name', 'equalto', 'postgresql-16') | first).version }}"
+      - "python3-psycopg={{ (isucon_release_manifest.packages | selectattr('name', 'equalto', 'python3-psycopg') | first).version }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+    install_recommends: false
+    lock_timeout: 300
+
+- name: Remove any package-created PostgreSQL cluster before image capture
+  ansible.builtin.command: pg_dropcluster --stop 16 main
+  args:
+    removes: /var/lib/postgresql/16/main/PG_VERSION
+  when: isucon_image_build | bool
+
+- name: Create native application account
+  ansible.builtin.user:
+    name: isureal
+    system: true
+    home: /var/lib/isureal
+    shell: /usr/sbin/nologin
+
+- name: Create problem-server directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - {path: /opt/isucon/bin, owner: root, group: root, mode: "0755"}
+    - {path: /opt/isucon/frontend, owner: root, group: root, mode: "0755"}
+    - {path: /opt/isucon/share/migrations, owner: root, group: root, mode: "0755"}
+    - {path: /var/lib/isureal/images, owner: isureal, group: isureal, mode: "0750"}
+    - {path: /etc/isucon/artifacts, owner: root, group: root, mode: "0755"}
+
+- name: Check installed problem-server artifact markers
+  ansible.builtin.stat:
+    path: "/etc/isucon/artifacts/{{ item.value.component }}.{{ item.value.sha256 }}"
+  loop: "{{ isucon_problem_artifacts | dict2items }}"
+  register: isucon_problem_markers
+
+- name: Extract backend.tar
+  ansible.builtin.unarchive:
+    src: "{{ isucon_effective_artifact_root }}/backend.tar"
+    dest: /opt/isucon
+    owner: root
+    group: root
+  when: not isucon_problem_markers.results[0].stat.exists
+
+- name: Extract frontend.tar
+  ansible.builtin.unarchive:
+    src: "{{ isucon_effective_artifact_root }}/frontend.tar"
+    dest: /opt/isucon
+    owner: root
+    group: root
+  when: not isucon_problem_markers.results[1].stat.exists
+
+- name: Extract database-migrations.tar
+  ansible.builtin.unarchive:
+    src: "{{ isucon_effective_artifact_root }}/database-migrations.tar"
+    dest: /opt/isucon
+    owner: root
+    group: root
+  when: not isucon_problem_markers.results[2].stat.exists
+
+- name: Record installed problem-server artifact checksums
+  ansible.builtin.file:
+    path: "/etc/isucon/artifacts/{{ item.value.component }}.{{ item.value.sha256 }}"
+    state: touch
+    access_time: preserve
+    modification_time: preserve
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ isucon_problem_artifacts | dict2items }}"
+  when: not isucon_problem_markers.results[ansible_loop.index0].stat.exists
+  loop_control:
+    extended: true
+
+- name: Install problem-server systemd units
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - isureal-api.service
+    - isureal-worker.service
+  notify: Reload systemd for problem server
+
+- name: Keep runtime services disabled in reusable image
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    state: stopped
+    enabled: false
+    daemon_reload: true
+  loop:
+    - isureal-api.service
+    - isureal-worker.service
+    - nginx.service
+    - postgresql.service
+  when: isucon_image_build | bool
+
+- name: Initialize PostgreSQL 16 cluster at runtime
+  ansible.builtin.command: pg_createcluster 16 main --start
+  args:
+    creates: /var/lib/postgresql/16/main/PG_VERSION
+  when: not (isucon_image_build | bool)
+
+- name: Enable PostgreSQL 16 at runtime
+  ansible.builtin.systemd_service:
+    name: postgresql.service
+    enabled: true
+    state: started
+  when: not (isucon_image_build | bool)
+
+- name: Create application PostgreSQL role
+  community.postgresql.postgresql_user:
+    name: isureal
+    password: "{{ isucon_database_password }}"
+    role_attr_flags: LOGIN
+    login_unix_socket: /var/run/postgresql
+  become: true
+  become_user: postgres
+  no_log: true
+  when: not (isucon_image_build | bool)
+
+- name: Create application PostgreSQL database
+  community.postgresql.postgresql_db:
+    name: isureal
+    owner: isureal
+    encoding: UTF8
+    login_unix_socket: /var/run/postgresql
+  become: true
+  become_user: postgres
+  when: not (isucon_image_build | bool)
+
+- name: Install backend runtime environment
+  ansible.builtin.template:
+    src: backend.env.j2
+    dest: /etc/isucon/backend.env
+    owner: root
+    group: isureal
+    mode: "0640"
+  no_log: true
+  notify: Restart problem-server application
+  when: not (isucon_image_build | bool)
+
+- name: Run migrations and seed only an empty database
+  ansible.builtin.command:
+    argv:
+      - /opt/isucon/bin/seed
+      - --if-empty
+      - --dir
+      - /opt/isucon/share/migrations
+  environment:
+    ISUREAL_DATABASE_URL: "postgresql://isureal:{{ isucon_database_password }}@127.0.0.1:5432/isureal?sslmode=disable"
+  no_log: true
+  changed_when: false
+  when: not (isucon_image_build | bool)
+
+- name: Install nginx application configuration
+  ansible.builtin.template:
+    src: nginx.conf.j2
+    dest: /etc/nginx/sites-available/isureal
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart problem-server application
+  when: not (isucon_image_build | bool)
+
+- name: Enable nginx application configuration
+  ansible.builtin.file:
+    src: /etc/nginx/sites-available/isureal
+    dest: /etc/nginx/sites-enabled/isureal
+    state: link
+    force: true
+  notify: Restart problem-server application
+  when: not (isucon_image_build | bool)
+
+- name: Remove default nginx site
+  ansible.builtin.file:
+    path: /etc/nginx/sites-enabled/default
+    state: absent
+  notify: Restart problem-server application
+  when: not (isucon_image_build | bool)
+
+- name: Install problem-server local health command
+  ansible.builtin.template:
+    src: node-check.sh.j2
+    dest: /usr/local/sbin/isureal-node-check
+    owner: root
+    group: root
+    mode: "0755"
+  when: not (isucon_image_build | bool)
+
+- name: Flush problem-server handlers before readiness
+  ansible.builtin.meta: flush_handlers
+  when: not (isucon_image_build | bool)
+
+- name: Enable and start native problem-server services
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    enabled: true
+    state: started
+    daemon_reload: true
+  loop:
+    - isureal-api.service
+    - isureal-worker.service
+    - nginx.service
+  when: not (isucon_image_build | bool)
+
+- name: Wait for backend readiness
+  ansible.builtin.uri:
+    url: http://127.0.0.1:8081/health/ready
+    status_code: 200
+  register: isucon_backend_ready
+  retries: 30
+  delay: 2
+  until: isucon_backend_ready.status == 200
+  when: not (isucon_image_build | bool)
+
+- name: Wait for nginx frontend
+  ansible.builtin.uri:
+    url: "http://{{ isucon_data_address }}:8080/"
+    headers:
+      Host: "app.{{ isucon_environment_id }}.{{ isucon_topology.domain }}"
+    status_code: 200
+    return_content: true
+  register: isucon_nginx_ready
+  retries: 30
+  delay: 2
+  until: isucon_nginx_ready.status == 200 and '<!doctype html' in (isucon_nginx_ready.content | lower)
+  when: not (isucon_image_build | bool)

@@ -35,7 +35,9 @@ Docker Compose だけで起動する場合は Docker Engine と Compose v2 が�
 | `PORTAL_BENCHMARK_STEP_MS` | `120` | running 中の決定的な進捗 step 間隔 |
 | `PORTAL_LISTEN_ADDRESS` | `0.0.0.0:8080` | Server の listen address |
 | `PORTAL_WEB_DIR` | 空 | Server 自身が配信する SPA directory。Compose では未使用 |
+| `PORTAL_SERVER_BIND_IP` | `127.0.0.1` | Compose が Server を公開する host address |
 | `PORTAL_SERVER_PORT` | `8080` | Compose が Server を公開するホスト側ポート |
+| `PORTAL_WEB_BIND_IP` | `127.0.0.1` | Compose が Web を公開する host address |
 | `PORTAL_WEB_PORT` | `5174` | Compose が Web を公開するホスト側ポート |
 
 `PORTAL_TEAM_HASH` はローカル例示値から変更できますが、秘密鍵や認証トークンを設定しないでください。
@@ -83,7 +85,8 @@ docker compose --env-file portal-mock/.env -f portal-mock/compose.yaml down --re
 
 Compose project 名は `portal-mock` で、本体のサービス、network、volume、port routing を再利用しません。
 ホスト側で 8080/5174 が使用中なら `.env` の `PORTAL_SERVER_PORT` /
-`PORTAL_WEB_PORT` だけ変更します。
+`PORTAL_WEB_PORT` を変更します。bind address の既定値は loopback です。VM provisioning は
+Server だけを Router control address に bind し、`0.0.0.0` へは公開しません。
 
 ## stand-in profiles
 

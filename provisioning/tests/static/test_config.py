@@ -1,0 +1,139 @@
+from __future__ import annotations
+
+import copy
+import unittest
+
+from provisioning.scripts import preflight
+
+from support import FEATURE_DIR, PROVISIONING_DIR, load_json, load_yaml
+
+
+class ConfigContractTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.topology_path = PROVISIONING_DIR / "config" / "topology.yml"
+        self.release_path = PROVISIONING_DIR / "config" / "release.json"
+        self.topology = load_yaml(self.topology_path)
+        self.release = load_json(self.release_path)
+
+    def test_documents_match_json_schemas(self) -> None:
+        topology_errors = preflight.validate_instance(
+            self.topology,
+            FEATURE_DIR / "contracts" / "topology.schema.json",
+        )
+        release_errors = preflight.validate_instance(
+            self.release,
+            FEATURE_DIR / "contracts" / "release-manifest.schema.json",
+        )
+        self.assertEqual([], topology_errors)
+        self.assertEqual([], release_errors)
+
+    def test_default_topology_has_exact_nodes_segments_and_forwards(self) -> None:
+        self.assertEqual([], preflight.validate_topology(self.topology))
+        self.assertEqual(
+            {"server1", "server2", "server3", "router"},
+            set(self.topology["nodes"]),
+        )
+        self.assertEqual(2, len(self.topology["nodes"]["server1"]["interfaces"]))
+        self.assertEqual(2, len(self.topology["nodes"]["server2"]["interfaces"]))
+        self.assertEqual(2, len(self.topology["nodes"]["server3"]["interfaces"]))
+        self.assertEqual(5, len(self.topology["nodes"]["router"]["interfaces"]))
+        self.assertEqual("127.0.0.1", self.topology["clientForward"]["hostAddress"])
+        self.assertEqual(18080, self.topology["clientForward"]["hostPort"])
+        self.assertFalse(self.topology["clientForward"]["autoCorrect"])
+
+    def test_duplicate_ports_are_rejected(self) -> None:
+        invalid = copy.deepcopy(self.topology)
+        invalid["portal"]["uiHostPort"] = invalid["clientForward"]["hostPort"]
+        self.assertTrue(any("port" in error.lower() for error in preflight.validate_topology(invalid)))
+
+    def test_overlapping_segments_are_rejected(self) -> None:
+        invalid = copy.deepcopy(self.topology)
+        invalid["networks"]["server2Data"]["cidr"] = invalid["networks"]["server1Data"]["cidr"]
+        self.assertTrue(any("overlap" in error.lower() for error in preflight.validate_topology(invalid)))
+
+    def test_duplicate_macs_are_rejected(self) -> None:
+        invalid = copy.deepcopy(self.topology)
+        invalid["nodes"]["server2"]["interfaces"][0]["macAddress"] = invalid["nodes"]["server1"]["interfaces"][0]["macAddress"]
+        self.assertTrue(any("mac" in error.lower() for error in preflight.validate_topology(invalid)))
+
+    def test_release_is_linux_amd64_and_pins_host_tools(self) -> None:
+        self.assertEqual([], preflight.validate_release(self.release))
+        self.assertEqual("29.7.1", self.release["toolchain"]["dockerEngine"])
+        self.assertEqual("5.4.0", self.release["toolchain"]["dockerCompose"])
+        self.assertEqual({"amd64"}, set(self.release["ubuntu"]["installImages"]))
+        self.assertNotIn(
+            "arm64",
+            {artifact["architecture"] for artifact in self.release["artifacts"]},
+        )
+
+    def test_autoinstall_uses_the_global_archive_without_geoip(self) -> None:
+        user_data = load_yaml(PROVISIONING_DIR / "packer" / "local-base" / "http" / "user-data")
+        apt = user_data["autoinstall"]["apt"]
+        self.assertFalse(apt["geoip"])
+        self.assertEqual("abort", apt["fallback"])
+        self.assertEqual(
+            [{"arches": ["amd64"], "uri": "http://archive.ubuntu.com/ubuntu"}],
+            apt["mirror-selection"]["primary"],
+        )
+
+    def test_unsupported_hosts_are_rejected_without_fallback(self) -> None:
+        self.assertEqual([], preflight.check_supported_host("Linux", "x86_64"))
+        self.assertTrue(preflight.check_supported_host("Darwin", "x86_64"))
+        self.assertTrue(preflight.check_supported_host("Linux", "aarch64"))
+
+    def test_portal_status_does_not_require_tagged_image_metadata(self) -> None:
+        script = (PROVISIONING_DIR / "scripts" / "portal-compose.sh").read_text()
+        self.assertIn("compose ps --all --no-trunc", script)
+        self.assertNotIn("    compose images", script)
+
+    def test_portal_and_router_share_topology_hostname_contract(self) -> None:
+        portal = self.topology["portal"]
+        self.assertEqual(1, portal["teamNumber"])
+        self.assertEqual("local", portal["teamHash"])
+        self.assertEqual(
+            {
+                "app": "app.team1-local.isureal.test",
+                "servers": {
+                    "server1": "server1.team1-local.isureal.test",
+                    "server2": "server2.team1-local.isureal.test",
+                    "server3": "server3.team1-local.isureal.test",
+                },
+            },
+            preflight.portal_hostnames(self.topology),
+        )
+
+        portal_script = (PROVISIONING_DIR / "scripts" / "portal-compose.sh").read_text()
+        self.assertIn('topology["portal"]["teamNumber"]', portal_script)
+        self.assertIn('topology["portal"]["teamHash"]', portal_script)
+        self.assertNotIn("printf 'PORTAL_TEAM_NUMBER=1", portal_script)
+        self.assertNotIn("printf 'PORTAL_TEAM_HASH=local", portal_script)
+
+        router_env = (
+            PROVISIONING_DIR
+            / "ansible"
+            / "roles"
+            / "router"
+            / "templates"
+            / "router.env.j2"
+        ).read_text()
+        self.assertIn("isucon_topology.portal.teamNumber", router_env)
+        self.assertIn("isucon_topology.portal.teamHash", router_env)
+        for prefix in ("APP", "SERVER1", "SERVER2", "SERVER3"):
+            hostname_line = next(
+                line for line in router_env.splitlines()
+                if line.startswith(f"ROUTER_{prefix}_HOST=")
+            )
+            self.assertNotIn("isucon_environment_id", hostname_line)
+
+    def test_invalid_portal_team_hash_is_rejected(self) -> None:
+        invalid = copy.deepcopy(self.topology)
+        invalid["portal"]["teamHash"] = "Not_A_Host_Label"
+        errors = preflight.validate_instance(
+            invalid,
+            FEATURE_DIR / "contracts" / "topology.schema.json",
+        )
+        self.assertTrue(any("teamHash" in error for error in errors))
+
+
+if __name__ == "__main__":
+    unittest.main()
