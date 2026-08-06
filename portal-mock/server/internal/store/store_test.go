@@ -93,3 +93,40 @@ func TestResetCreatesNewSnapshotAndExternalUnsynced(t *testing.T) {
 		t.Fatalf("unexpected reset state: %+v", reset)
 	}
 }
+
+// A success report with a valid Config but a missing (empty) snapshot ID is a
+// required-field violation. Per the spec it must be treated as an invalid
+// success report: applied stays unchanged, the diagnostic becomes
+// INVALID_REPORT with the validity reason, and INVALID_ARGUMENT is returned.
+func TestEmptySnapshotIDValidConfigSetsInvalidReport(t *testing.T) {
+	stateStore, _ := testStore(t, domain.RouterModeStandIn)
+	before := stateStore.Snapshot()
+	valid := before.Desired.Config
+	valid.MainServer = domain.Server2
+
+	err := stateStore.ReportSuccess("", valid)
+	if !errors.Is(err, ErrInvalidArgument) {
+		t.Fatalf("expected ErrInvalidArgument, got %v", err)
+	}
+	after := stateStore.Snapshot()
+	if after.Apply.State != domain.ApplyInvalidReport {
+		t.Fatalf("expected INVALID_REPORT diagnostic, got %q", after.Apply.State)
+	}
+	if after.Apply.Reason == "" {
+		t.Fatal("expected a validity reason on the diagnostic")
+	}
+	if after.Applied == nil || after.Applied.Config != before.Applied.Config {
+		t.Fatalf("applied config must be preserved: %+v", after.Applied)
+	}
+	// A subsequent valid report must clear the INVALID_REPORT diagnostic,
+	// proving the state is not a terminal error.
+	recovered := before.Desired.Config
+	recovered.MainServer = domain.Server3
+	if err := stateStore.ReportSuccess("late-valid", recovered); err != nil {
+		t.Fatalf("valid recovery report failed: %v", err)
+	}
+	state := stateStore.Snapshot()
+	if state.Apply.State == domain.ApplyInvalidReport || state.Apply.Reason != "" {
+		t.Fatalf("diagnostic did not recover: %+v", state.Apply)
+	}
+}

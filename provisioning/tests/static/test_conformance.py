@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 import unittest
 
 from provisioning.scripts import preflight
@@ -56,6 +57,11 @@ class ConformanceContractTest(unittest.TestCase):
             validate.portal_reported_hostnames(
                 {"state": {"portal": {"converged": False}}}
             )
+
+    def test_report_uses_selected_release_and_atomic_replace(self) -> None:
+        source = inspect.getsource(validate.main)
+        self.assertIn('"releaseId": release["releaseId"]', source)
+        self.assertIn("os.replace(temporary_report, report_path)", source)
         with self.assertRaisesRegex(ValueError, "server3"):
             validate.portal_reported_hostnames(
                 {

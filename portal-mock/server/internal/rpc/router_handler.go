@@ -60,14 +60,11 @@ func (h *RouterHandler) ReportApplied(
 	switch result := request.Msg.Result.(type) {
 	case *portalv1.ReportAppliedRequest_Success:
 		if result.Success == nil {
-			return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("success is required"))
+			return nil, connectError(h.store.ReportInvalidSuccess(errors.New("success is required")))
 		}
 		cfg, err := configFromProto(result.Success.Applied)
 		if err != nil {
-			if reportErr := h.store.ReportSuccess(result.Success.SnapshotId, cfg); reportErr != nil {
-				return nil, connectError(reportErr)
-			}
-			return nil, connect.NewError(connect.CodeInvalidArgument, err)
+			return nil, connectError(h.store.ReportInvalidSuccess(err))
 		}
 		if err := h.store.ReportSuccess(result.Success.SnapshotId, cfg); err != nil {
 			return nil, connectError(err)

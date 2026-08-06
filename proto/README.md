@@ -49,8 +49,12 @@ mise exec -- buf generate
 
 ```bash
 BASE_REF="${BASE_REF:-origin/main}"
-BASE_DIR="$(mktemp -d)"
-git archive "$BASE_REF" proto | tar -x -C "$BASE_DIR"
-mise exec -- buf breaking --against "$BASE_DIR/proto"
-rm -rf "$BASE_DIR"
+if git cat-file -e "$BASE_REF:proto" 2>/dev/null; then
+  BASE_DIR="$(mktemp -d)"
+  trap 'rm -rf "$BASE_DIR"' EXIT
+  git archive "$BASE_REF" proto | tar -x -C "$BASE_DIR"
+  mise exec -- buf breaking --against "$BASE_DIR/proto"
+else
+  echo "$BASE_REF has no proto directory; there is no prior API to compare."
+fi
 ```

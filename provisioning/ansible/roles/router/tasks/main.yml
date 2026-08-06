@@ -55,6 +55,7 @@
     owner: root
     group: root
   when: not isucon_router_markers.results[0].stat.exists
+  notify: Restart Router stack
 
 - name: Extract envoy.tar
   ansible.builtin.unarchive:
@@ -63,6 +64,7 @@
     owner: root
     group: root
   when: not isucon_router_markers.results[1].stat.exists
+  notify: Restart Router stack
 
 - name: Record installed Router artifact checksums
   ansible.builtin.file:

@@ -179,9 +179,11 @@ cat >/tmp/report-applied.json <<'JSON'
   "success": {
     "snapshotId": "<StreamDesiredから受信した値>",
     "applied": {
-      "server1Region": "REGION_AP",
-      "server2Region": "REGION_EU",
-      "server3Region": "REGION_AP",
+      "serverRegions": {
+        "server1": "REGION_AP",
+        "server2": "REGION_EU",
+        "server3": "REGION_AP"
+      },
       "mainServer": "SERVER_ID_SERVER3",
       "defaultCountry": "US"
     }

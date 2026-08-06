@@ -16,21 +16,36 @@ class VagrantContractTest(unittest.TestCase):
         self.assertEqual(["server1", "server2", "server3", "router"], declarations)
 
     def test_fixed_forward_contract_is_literal_and_not_auto_corrected(self) -> None:
-        self.assertIn('host: 18080', self.vagrantfile)
-        self.assertIn('guest: 8080', self.vagrantfile)
-        self.assertIn('host_ip: "127.0.0.1"', self.vagrantfile)
-        self.assertIn('auto_correct: false', self.vagrantfile)
-        for node, port in self.topology["sshPorts"].items():
-            self.assertRegex(self.vagrantfile, rf'host:\s*{port}', msg=node)
+        self.assertIn('client = topology.fetch("clientForward")', self.vagrantfile)
+        self.assertIn('guest: client.fetch("guestPort")', self.vagrantfile)
+        self.assertIn('host: client.fetch("hostPort")', self.vagrantfile)
+        self.assertIn('host_ip: client.fetch("hostAddress")', self.vagrantfile)
+        self.assertIn('auto_correct: client.fetch("autoCorrect")', self.vagrantfile)
+        self.assertIn('topology.fetch("sshPorts").fetch("server1")', self.vagrantfile)
+        self.assertIn('topology.fetch("sshPorts").fetch("server2")', self.vagrantfile)
+        self.assertIn('topology.fetch("sshPorts").fetch("server3")', self.vagrantfile)
+        self.assertIn('topology.fetch("sshPorts").fetch("router")', self.vagrantfile)
 
     def test_data_segments_and_control_adapter_are_explicit(self) -> None:
         for segment in ("server1-data", "server2-data", "server3-data"):
             self.assertIn(segment, self.vagrantfile)
-        self.assertIn("192.168.60.69", self.vagrantfile)
-        self.assertIn("192.168.60.65", self.vagrantfile)
-        for node in self.topology["nodes"].values():
-            for interface in node["interfaces"]:
-                self.assertIn(interface["macAddress"], self.vagrantfile)
+        for network in ("server1Data", "server2Data", "server3Data", "control"):
+            self.assertIn(f'network(topology, "{network}")', self.vagrantfile)
+        self.assertIn('data.fetch("peerAddress")', self.vagrantfile)
+        self.assertIn('data1.fetch("routerAddress")', self.vagrantfile)
+        self.assertIn('control.fetch("routerAddress")', self.vagrantfile)
+        self.assertIn('adapter_ip: control.fetch("hostAddress")', self.vagrantfile)
+        self.assertIn('interface(topology, "server1", "bootstrap0")', self.vagrantfile)
+        self.assertIn('interface(topology, "router", "control0")', self.vagrantfile)
+
+    def test_guest_hostnames_come_from_the_topology_contract(self) -> None:
+        for node in ("server1", "server2", "server3", "router"):
+            self.assertIn(
+                f'topology.fetch("nodes").fetch("{node}").fetch("hostname")',
+                self.vagrantfile,
+            )
+        self.assertNotIn('vm.hostname = "server1-#{environment_id}"', self.vagrantfile)
+        self.assertNotIn('vm.hostname = "router-#{environment_id}"', self.vagrantfile)
 
     def test_shared_folders_and_automatic_provision_are_disabled(self) -> None:
         self.assertIn('"/vagrant", disabled: true', self.vagrantfile)
