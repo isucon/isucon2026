@@ -14,6 +14,8 @@ import (
 
 var fixedTime = time.Date(2026, 7, 19, 0, 0, 0, 0, time.UTC)
 
+func FixedTime() time.Time { return fixedTime }
+
 type fixtureUser struct{ ID, Username, DisplayName, Region string }
 
 var users = []fixtureUser{

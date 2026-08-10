@@ -31,6 +31,7 @@ type RouterDependencies struct {
 	Idempotency       idempotency.Store
 	OpenAPI           *OpenAPIValidator
 	PublicOrigin      string
+	Initialize        *InitializeHandler
 }
 
 func NewRouter(dependencies RouterDependencies) *echo.Echo {
@@ -55,6 +56,11 @@ func NewRouter(dependencies RouterDependencies) *echo.Echo {
 		}
 		return c.JSON(http.StatusOK, map[string]any{"status": "ready", "migrationVersion": version})
 	})
+
+	if dependencies.Initialize != nil {
+		e.POST("/api/v1/initialize", dependencies.Initialize.Initialize)
+		e.POST("/api/v1/virtual-time/advance", dependencies.Initialize.AdvanceTime)
+	}
 
 	auth := NewAuthHandler(dependencies.Sessions, dependencies.Logger)
 	e.POST("/api/v1/auth/register", auth.Register,
