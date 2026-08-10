@@ -34,7 +34,7 @@ func main() {
 		os.Exit(1)
 	}
 	defer db.Close()
-	source := clock.System{}
+	source := clock.NewVirtual()
 	ids := domain.RandomIDGenerator{}
 	sanitizer := isurealimage.NewIsolatedSanitizer(isurealimage.NewSubprocessProcess(cfg.Sanitizer.Path), cfg.Sanitizer.Concurrency, isurealimage.ResourceBudget{MemoryBytes: cfg.Sanitizer.MemoryBytes, CPUSeconds: cfg.Sanitizer.CPUSeconds, Timeout: cfg.Sanitizer.Timeout})
 	images := isurealimage.NewStore(cfg.ImageRoot, sanitizer, ids)
