@@ -414,7 +414,23 @@ def check_host_route_conflict(topology: dict[str, Any]) -> list[str]:
         routes = _run(["ip", "-4", "route", "show"])
     except subprocess.CalledProcessError as exc:
         return [f"host route inspection failed: {exc.stdout.strip()}"]
+    return host_route_conflicts(routes, topology)
+
+
+def host_route_conflicts(routes: str, topology: dict[str, Any]) -> list[str]:
     base = ipaddress.ip_network(topology["baseCidr"])
+    # Routes that fall inside this environment's own declared segments (for
+    # example the control host-only network) are expected and often linger on
+    # the host after `vm-destroy`.  They must not be treated as foreign
+    # conflicts, otherwise a destroy/up cycle fails preflight on our own route.
+    own_networks: list[ipaddress.IPv4Network] = []
+    for definition in topology.get("networks", {}).values():
+        if definition.get("kind") != "host-only":
+            continue
+        try:
+            own_networks.append(ipaddress.ip_network(definition["cidr"]))
+        except (KeyError, ValueError):
+            continue
     errors: list[str] = []
     for line in routes.splitlines():
         token = line.split(maxsplit=1)[0]
@@ -424,8 +440,11 @@ def check_host_route_conflict(topology: dict[str, Any]) -> list[str]:
             route = ipaddress.ip_network(token, strict=False)
         except ValueError:
             continue
-        if route.overlaps(base):
-            errors.append(f"host route {route} overlaps topology {base}")
+        if not route.overlaps(base):
+            continue
+        if any(route.subnet_of(network) for network in own_networks):
+            continue
+        errors.append(f"host route {route} overlaps topology {base}")
     return errors
 
 
