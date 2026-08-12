@@ -58,11 +58,11 @@ make vm-logs
 make vm-provision
 ```
 
-明示的な data reset と environment destroy には、対象 environment ID と一致する確認値が必要です。
+data reset と environment destroy は、意図が明確な専用 target から直接実行します。
 
 ```bash
-CONFIRM_RESET=isureal-local make vm-reset-data
-CONFIRM_DESTROY=isureal-local make vm-destroy
+make vm-reset-data
+make vm-destroy
 ```
 
 ## Image build と変更境界
@@ -81,7 +81,7 @@ make image-build-role ROLE=router ARCH=amd64
 - Ubuntu ISO、共通 package、Autoinstall 変更: base と両 role box を新しい release ID で再buildする。
 - IP、hostname、runtime secret、Portal port: image に焼き込まず runtime provisioning だけで適用する。
 
-box は release ID、role、provider、architecture、SHA-256 とともに `provisioning/.state/images/image-artifact-index.json` へ記録され、同じ ID の異なる内容で上書きできません。
+box は release ID、role、provider、architecture、SHA-256 とともに `provisioning/.state/images/image-artifact-index.json` へ記録されます。既定では同じ ID を別内容で上書きしませんが、ローカル開発で作り直したいときは `FORCE=1 make image-build-base` / `FORCE=1 make image-build-role ROLE=...` で既存 box を再生成できます（`promoted` 済み artifact は保護されます）。
 
 ## 将来の AMI
 

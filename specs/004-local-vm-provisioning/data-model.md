@@ -346,7 +346,7 @@ absent
 configured/ready -> reprovisioning -> configured -> validating -> ready
 any non-destructive state -> failed-retryable -> reprovisioning
 ready -> rebooting -> configured -> validating -> ready
-ready -> reset-requested -> reset-confirmed -> configured -> validating -> ready
+ready -> resetting -> configured -> validating -> ready
 any existing state -> destroy-requested -> absent
 destroy failure -> cleanup-failed -> destroy-requested
 ```

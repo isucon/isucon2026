@@ -284,7 +284,7 @@ mise.toml                          # Packer/Python tool pins where supported
 - **Static CI**: HCL/YAML/JSON formatting、schema、Packer/Vagrant/Ansible validation、`docker compose config --quiet`、Portal bind/default config、template rendering、role argument specs、generated inventory snapshot。hosted `ubuntu-24.04`でVirtualBox起動は要求しない。
 - **Base image**: ISO checksum、Autoinstall schema、SSH、Guest Additions、OS/arch、machine-id/host-key cleanup、no secret。
 - **Role image**: exact package/artifact/release manifest、service disabled until runtime config、未初期化PostgreSQL cluster、Router/Envoy config validation。
-- **Runtime/idempotence**: initial apply、second apply `changed=0`、targeted handler、failure retry、reboot recovery、sentinel DB row preservation、confirmed reset only。
+- **Runtime/idempotence**: initial apply、second apply `changed=0`、targeted handler、failure retry、reboot recovery、sentinel DB row preservation、explicit reset target only。
 - **Service integration**: PostgreSQL 16 compatibility/migration、backend/worker、frontend/nginx、Router/Envoy xDS、Compose API/UI health、Portal desired/applied、health/readiness separation。
 - **Network E2E**: provider NIC/forward model、MAC mapping、route、nft ruleset hash、Client loopback forwardでのHost/country routing、6 ordered peer connectionsとRouter counter、peer MAC absence、Router停止失敗/復旧、未許可forward・bootstrap L3 bypass拒否、Portal API/UI bind境界、control/application cross-exposure拒否、IPv6 bypass不在。
 - **Matrix**: Linux x86_64/VirtualBox/amd64。性能値はhost間比較や公式較正に使わず、機能判定だけを共通化する。
