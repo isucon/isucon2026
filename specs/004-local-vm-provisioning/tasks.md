@@ -81,13 +81,13 @@
 
 ### Validation for User Story 2 (MANDATORY) ⚠️
 
-- [ ] T024 [P] [US2] Write lifecycle confirmation, scope, idempotence, and redaction tests in `provisioning/tests/static/test_lifecycle.py`
+- [ ] T024 [P] [US2] Write lifecycle scope, idempotence, and redaction tests in `provisioning/tests/static/test_lifecycle.py`
 - [ ] T025 [P] [US2] Add DB sentinel, second-apply, reboot recovery, and scoped-destroy checks to `provisioning/tests/conformance/validate.py`
 
 ### Implementation for User Story 2
 
 - [ ] T026 [US2] Implement idempotent reprovision, read-only status, and bounded redacted logs in `provisioning/scripts/vm.sh` and `Makefile`
-- [ ] T027 [US2] Implement confirmation-gated deterministic PostgreSQL/application reset in `provisioning/ansible/playbooks/reset-data.yml`, `provisioning/scripts/vm.sh`, and `Makefile`
+- [ ] T027 [US2] Implement explicit-target deterministic PostgreSQL/application reset in `provisioning/ansible/playbooks/reset-data.yml`, `provisioning/scripts/vm.sh`, and `Makefile`
 - [ ] T028 [US2] Implement exact environment-scoped Portal/VM/state destruction without global pruning in `provisioning/scripts/vm.sh` and `Makefile`
 - [ ] T029 [US2] Run repeated provision/reboot/data-preservation/destruction validation and append evidence to `specs/004-local-vm-provisioning/validation/quickstart-results.md`
 
@@ -148,7 +148,7 @@ Setup -> Foundation -> US1 four-VM/frontend -> US2 safe iteration -> Qualificati
 
 - 対応するvalidation taskを先に作成し、実装前に失敗を確認する。
 - canonical config → rendered provider/guest state → side effect → conformanceの順に実装する。
-- destructive commandはexact environment identityと確認値を検証してから実行する。
+- destructive commandは`VM_ENV_ID`が示すenvironmentだけをscopeとして実行する。
 - story checkpointで該当static/integration testを通してから次へ進む。
 
 ### Parallel Opportunities

@@ -222,8 +222,6 @@ Expected: Portal Composeはhealthyを維持し、RouterはPortalへ再収束し�
 resetが通常provisionから分離されていることを確認してから、test environmentだけで実行する。
 
 ```bash
-VM_ENV_ID=isureal-local \
-CONFIRM_RESET=isureal-local \
 make vm-reset-data
 ```
 
@@ -233,8 +231,6 @@ Expected:
 - schema/migration compatibilityを確認し、deterministic initial dataへ戻す。
 - VM、network、box、Router configurationは作り直さない。
 - reset後にfull conformanceがpassする。
-
-`CONFIRM_RESET`欠落またはenvironment ID不一致なら、DBを変更せずexit code `7`になる。
 
 ## 10. Failure diagnostics
 
@@ -264,8 +260,6 @@ Expected:
 ## 11. Scoped destruction
 
 ```bash
-VM_ENV_ID=isureal-local \
-CONFIRM_DESTROY=isureal-local \
 make vm-destroy
 ```
 
@@ -274,7 +268,6 @@ Expected:
 - exact Compose projectのcontainer/networkを先に削除し、その後に対象4 VM、environment専用network/stateを削除する。
 - 他Compose projectのcontainer/network/volume、他Vagrant project、他VM、他host-only network、global OCI image/box/artifact cacheを保持する。
 - 中断/partial failure時は残存resourceを列挙し、同じcommandでcleanupを再試行できる。
-- 確認値が欠落・不一致なら何も削除せずexit code `7`。
 
 ## 12. Release qualification
 

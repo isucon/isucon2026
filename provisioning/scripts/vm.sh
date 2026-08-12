@@ -136,19 +136,11 @@ case "${action}" in
     "${repo_root}/provisioning/scripts/portal-compose.sh" logs
     ;;
   reset-data)
-    if [[ "${CONFIRM_RESET:-}" != "${environment_id}" ]]; then
-      printf 'Set CONFIRM_RESET=%s to reset PostgreSQL data on server1..3\n' "${environment_id}" >&2
-      exit 7
-    fi
     render_inventory
     mise exec -- ansible-playbook -i "${inventory_file}" "${repo_root}/provisioning/ansible/playbooks/reset-data.yml"
     validate_runtime
     ;;
   destroy)
-    if [[ "${CONFIRM_DESTROY:-}" != "${environment_id}" ]]; then
-      printf 'Set CONFIRM_DESTROY=%s to destroy only this environment\n' "${environment_id}" >&2
-      exit 7
-    fi
     if [[ -f "${state_dir}/portal.env" ]]; then
       "${repo_root}/provisioning/scripts/portal-compose.sh" down
     fi

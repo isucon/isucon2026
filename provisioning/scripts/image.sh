@@ -27,6 +27,44 @@ source_revision="$(read_release sourceRevision)"
 image_dir="${repo_root}/provisioning/.state/images/${release_id}"
 base_box="${image_dir}/ubuntu-24.04.4-amd64-virtualbox.box"
 
+force_enabled() {
+  [[ "${FORCE:-0}" == "1" ]]
+}
+
+prepare_rebuild() {
+  local artifact_id="$1"
+  local output="$2"
+  if [[ ! -e "${output}" ]]; then
+    return
+  fi
+  if ! force_enabled; then
+    printf 'Image already exists: %s\nSet FORCE=1 to rebuild this local image.\n' "${output}" >&2
+    exit 3
+  fi
+  if [[ -f "${index_file}" ]] \
+    && [[ "$(jq -r --arg id "${artifact_id}" '.artifacts[] | select(.artifactId == $id) | .validationState' "${index_file}")" == "promoted" ]]; then
+    printf 'Promoted artifact cannot be rebuilt in place: %s\n' "${artifact_id}" >&2
+    exit 3
+  fi
+  printf 'Rebuilding local image: %s\n' "${output}"
+  rm -f -- "${output}"
+}
+
+record_box() {
+  local role="$1"
+  local box="$2"
+  local source_image_id="$3"
+  local build_name="$4"
+  local replace=()
+  if force_enabled; then
+    replace+=(--replace)
+  fi
+  mise exec -- python "${repo_root}/provisioning/scripts/manifest.py" --index "${index_file}" record-box \
+    --release "${release_file}" --role "${role}" --box "${box}" \
+    --source-image-id "${source_image_id}" --build-name "${build_name}" \
+    "${replace[@]}"
+}
+
 require_architecture() {
   if [[ "${architecture}" != "amd64" ]]; then
     printf 'Only amd64 image builds are supported; got %s\n' "${architecture}" >&2
@@ -72,10 +110,7 @@ validate_all() {
 build_base() {
   require_architecture
   mkdir -p "${image_dir}"
-  if [[ -e "${base_box}" ]]; then
-    printf 'Immutable base box already exists: %s\n' "${base_box}" >&2
-    exit 3
-  fi
+  prepare_rebuild "${release_id}/base/virtualbox/amd64" "${base_box}"
   PACKER_LOG_PATH="${image_dir}/base-packer.log" \
     mise exec -- packer build \
       -var "architecture=amd64" \
@@ -84,10 +119,9 @@ build_base() {
       -var "ubuntu_iso_checksum=sha256:${iso_sha}" \
       "${base_root}"
   register_box "isureal/base-${release_id}" "${base_box}"
-  mise exec -- python "${repo_root}/provisioning/scripts/manifest.py" --index "${index_file}" record-box \
-    --release "${release_file}" --role base --box "${base_box}" \
-    --source-image-id "ubuntu-24.04.4-amd64@sha256:${iso_sha}" \
-    --build-name ubuntu-noble-amd64-base
+  record_box base "${base_box}" \
+    "ubuntu-24.04.4-amd64@sha256:${iso_sha}" \
+    ubuntu-noble-amd64-base
 }
 
 build_role() {
@@ -103,10 +137,7 @@ build_role() {
   fi
   local output_dir="${image_dir}/${role}-output"
   local output_box="${image_dir}/${role}-amd64-virtualbox.box"
-  if [[ -e "${output_box}" ]]; then
-    printf 'Immutable role box already exists: %s\n' "${output_box}" >&2
-    exit 3
-  fi
+  prepare_rebuild "${release_id}/${role}/virtualbox/amd64" "${output_box}"
   if [[ -d "${output_dir}" ]]; then
     rm -rf -- "${output_dir}"
   fi
@@ -127,10 +158,9 @@ build_role() {
   mv "${output_dir}/package.box" "${output_box}"
   rmdir "${output_dir}" 2>/dev/null || true
   register_box "isureal/${role}-${release_id}" "${output_box}"
-  mise exec -- python "${repo_root}/provisioning/scripts/manifest.py" --index "${index_file}" record-box \
-    --release "${release_file}" --role "${role}" --box "${output_box}" \
-    --source-image-id "${release_id}/base/virtualbox/amd64" \
-    --build-name "${role}-amd64"
+  record_box "${role}" "${output_box}" \
+    "${release_id}/base/virtualbox/amd64" \
+    "${role}-amd64"
 }
 
 promote() {

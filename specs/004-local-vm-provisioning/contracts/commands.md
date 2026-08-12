@@ -39,7 +39,6 @@ default topologyはClient `127.0.0.1:18080`、Portal UI `127.0.0.1:15174`、Port
 | `4` | VM/provider/network lifecycle failure |
 | `5` | Ansible runtime convergence or service readiness failure |
 | `6` | conformance failure after services became inspectable |
-| `7` | destructive confirmation missing or target identity mismatch |
 
 ## `make vm-preflight`
 
@@ -135,11 +134,6 @@ Includes: Vagrant/provider metadata、Ansible recap、systemd status/journalのb
 
 Purpose: 3 problem serversのPostgreSQL schema/dataとapplication image dataを既知の初期状態へ戻す。
 
-Required inputs:
-
-- `VM_ENV_ID=<exact-id>`
-- `CONFIRM_RESET=<exact-id>`
-
 Behavior:
 
 - target 4 VMとrelease compatibilityを再確認。
@@ -154,7 +148,7 @@ Behavior:
 
 Purpose: 指定environmentのPortal Compose project、VM、environment専用host-only/internal network state、generated inventory/runtime secretを削除する。
 
-Required input: `VM_ENV_ID=<exact-id>`。interactive terminalでは確認を要求し、CI/non-interactiveでは`CONFIRM_DESTROY=<exact-id>`を必須とする。
+Default targetはtopologyの`environmentId`。別environmentを対象にする場合だけ`VM_ENV_ID=<id>`で上書きする。
 
 Safety:
 
@@ -172,11 +166,11 @@ Packer HCL、plugin pins、Autoinstall schema、Ansible、release manifestをsta
 
 ### `make image-build-base [ARCH=amd64]`
 
-公式Ubuntu amd64 ISO + SHA-256からVirtualBox base boxを生成する。`ARCH`省略時は`amd64`とし、他の値はrelease buildで拒否する。`ROLE`を受け付けない。outputはcontent-addressed pathとPacker manifest。既存promoted artifactを上書きしない。
+公式Ubuntu amd64 ISO + SHA-256からVirtualBox base boxを生成する。`ARCH`省略時は`amd64`とし、他の値はrelease buildで拒否する。`ROLE`を受け付けない。outputはcontent-addressed pathとPacker manifest。既定では既存boxを上書きしないが、`FORCE=1`でローカル再buildできる（`promoted` artifactは不可）。
 
 ### `make image-build-role ROLE=<problem-server|router> [ARCH=amd64]`
 
-exact amd64 base boxからAnsible `image.yml`を適用し、role boxを生成する。`ARCH`の省略・固定値制約はbase buildと同じ。build時secretを受け付けず、capture cleanup、image smoke、SHA-256を必須とする。
+exact amd64 base boxからAnsible `image.yml`を適用し、role boxを生成する。`ARCH`の省略・固定値制約はbase buildと同じ。build時secretを受け付けず、capture cleanup、image smoke、SHA-256を必須とする。既定では既存boxを上書きしないが、`FORCE=1`でローカル再buildできる（`promoted` artifactは不可）。
 
 ### `make image-promote ROLE=... ARCH=... ARTIFACT_ID=...`
 

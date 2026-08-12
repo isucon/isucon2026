@@ -111,10 +111,14 @@ def record_box(args: argparse.Namespace) -> None:
     matches = [item for item in index["artifacts"] if item["artifactId"] == artifact_id]
     if matches:
         old = matches[0]
-        if old["output"]["sha256"] != digest:
+        if old["output"]["sha256"] == digest:
+            print(artifact_id)
+            return
+        if not getattr(args, "replace", False):
             raise ValueError(f"immutable artifact already exists with a different checksum: {artifact_id}")
-        print(artifact_id)
-        return
+        if old.get("validationState") == "promoted":
+            raise ValueError(f"promoted artifact cannot be replaced: {artifact_id}")
+        index["artifacts"] = [item for item in index["artifacts"] if item["artifactId"] != artifact_id]
     index["artifacts"].append(artifact)
     index["artifacts"].sort(key=lambda item: item["artifactId"])
     write_index(args.index, index)
@@ -164,6 +168,7 @@ def parser() -> argparse.ArgumentParser:
     record.add_argument("--box", type=Path, required=True)
     record.add_argument("--source-image-id", required=True)
     record.add_argument("--build-name", required=True)
+    record.add_argument("--replace", action="store_true")
     record.set_defaults(function=record_box)
 
     state = subparsers.add_parser("set-state")
