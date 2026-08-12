@@ -49,7 +49,7 @@
 
 **Goal**: 3 problem server + Routerを起動し、loopback Client forwardからRouter/Envoy経由でfrontendを表示する。
 
-**Independent Test**: `make vm-up`後、exactly 4 VMとPortal projectがreadyになり、`curl -H 'Host: app.team1-local.isureal.test' http://127.0.0.1:18080/`がfrontend HTMLを返す。各serverは専用data segmentだけを持つ。
+**Independent Test**: `make vm-up`後、exactly 4 VMとPortal projectがreadyになり、`curl http://app.team1-local.127.0.0.1.nip.io:18080/`がfrontend HTMLを返す。各serverは専用data segmentだけを持つ。
 
 ### Validation for User Story 1 (MANDATORY) ⚠️
 

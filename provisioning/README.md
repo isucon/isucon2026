@@ -19,18 +19,18 @@ host の入口は次の 2 つです。
 - Portal UI: `127.0.0.1:15174`
 
 Portal API は Router 専用 control path `192.168.60.65:18082` にだけ publish されます。problem server の application/database port は host へ forward しません。
-Portalの`teamNumber=1`、`teamHash=local`、`domain=isureal.test`が公開hostnameの正本で、Router/Envoyも`app.team1-local.isureal.test`と`server1..3.team1-local.isureal.test`を受理します。environment IDはVM・Compose・生成stateの名前空間にだけ使います。
+Portalの`teamNumber=1`、`teamHash=local`、`domain=127.0.0.1.nip.io`が公開hostnameの正本で、Router/Envoyも`app.team1-local.127.0.0.1.nip.io`と`server1..3.team1-local.127.0.0.1.nip.io`を受理します。既定domainは`nip.io`なので、これらのhostnameはDNSで自動的に`127.0.0.1`へ解決され、`/etc/hosts`を編集せずローカルからアクセスできます。environment IDはVM・Compose・生成stateの名前空間にだけ使います。
 
 ## 前提と確認
 
-version は `provisioning/config/release.json` が唯一の入力です。現在の対応組は Linux x86_64、VirtualBox 7.2.14、Vagrant 2.4.9、Packer 1.15.4、Ansible Core 2.21.2、Docker Engine 29.7.1、Docker Compose 5.4.0 です。
+`provisioning/config/release.json` が release 入力で、Python/ansible-core/Packer は `mise.toml` で固定します。対象 host は Linux x86_64 + VirtualBox で、Vagrant・VirtualBox・Docker Engine/Compose は exact version を要求しません。
 
 ```bash
 make vm-preflight
 make image-validate
 ```
 
-preflight は VM を変更せず、host/architecture、hardware virtualization、driver、CPU/RAM/disk、exact tool/plugin version、schema、CIDR/port、artifact checksum、Portal の specific-address publish を検査します。
+preflight は VM を変更せず、host/architecture、hardware virtualization、driver、CPU/RAM/disk、必要コマンドの存在、Docker daemon/Compose 接続、schema、CIDR/port、ローカル artifact の存在、Portal の specific-address publish を検査します。
 
 ## 起動と確認
 
@@ -44,9 +44,8 @@ make vm-up
 
 ```bash
 curl --fail --show-error \
-  -H 'Host: app.team1-local.isureal.test' \
   -H 'X-Country-Code: JP' \
-  http://127.0.0.1:18080/
+  http://app.team1-local.127.0.0.1.nip.io:18080/
 
 make vm-status
 make vm-validate

@@ -84,7 +84,7 @@ duration は Go duration 形式で指定する。
 | `ROUTER_SERVER2_HOST` | `server2.team1-abc123.isucon2026.westens.tokyo` |
 | `ROUTER_SERVER3_HOST` | `server3.team1-abc123.isucon2026.westens.tokyo` |
 
-4値は妥当な小文字 hostname かつ相互に異なる必要がある。Envoy は port 付き Host を別値として扱う。
+4値は妥当な小文字 hostname かつ相互に異なる必要がある。Envoy はvirtual-host照合時にHostのportを無視するため、同じhostnameを任意の公開port経由で利用できる。
 
 ### Server topology
 

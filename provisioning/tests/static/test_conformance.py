@@ -28,13 +28,13 @@ class ConformanceContractTest(unittest.TestCase):
                     "applied": {
                         "calculated": {
                             "hostnames": {
-                                "app": "app.team1-local.isureal.test",
+                                "app": "app.team1-local.127.0.0.1.nip.io",
                                 "servers": {
-                                    "server1": "server1.team1-local.isureal.test",
-                                    "server2": "server2.team1-local.isureal.test",
-                                    "server3": "server3.team1-local.isureal.test",
+                                    "server1": "server1.team1-local.127.0.0.1.nip.io",
+                                    "server2": "server2.team1-local.127.0.0.1.nip.io",
+                                    "server3": "server3.team1-local.127.0.0.1.nip.io",
                                 },
-                                "target": "server1.team1-local.isureal.test",
+                                "target": "server1.team1-local.127.0.0.1.nip.io",
                             }
                         }
                     },
@@ -44,10 +44,10 @@ class ConformanceContractTest(unittest.TestCase):
 
         self.assertEqual(
             {
-                "app": "app.team1-local.isureal.test",
-                "server1": "server1.team1-local.isureal.test",
-                "server2": "server2.team1-local.isureal.test",
-                "server3": "server3.team1-local.isureal.test",
+                "app": "app.team1-local.127.0.0.1.nip.io",
+                "server1": "server1.team1-local.127.0.0.1.nip.io",
+                "server2": "server2.team1-local.127.0.0.1.nip.io",
+                "server3": "server3.team1-local.127.0.0.1.nip.io",
             },
             validate.portal_reported_hostnames(response),
         )

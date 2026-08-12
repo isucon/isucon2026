@@ -32,6 +32,9 @@ func TestBuildRoutesMatrix(t *testing.T) {
 	if routes.Name != "isureal_routes" || len(routes.VirtualHosts) != 5 {
 		t.Fatalf("unexpected route config: name=%q vhosts=%d", routes.Name, len(routes.VirtualHosts))
 	}
+	if !routes.IgnorePortInHostMatching {
+		t.Fatal("route config must ignore the request port when matching virtual hosts")
+	}
 
 	app := virtualHost(t, routes, hosts.App)
 	if len(app.Routes) != len(domain.Countries())+2 {
