@@ -73,7 +73,6 @@ def main() -> int:
         / release["releaseId"]
         / "bundles"
     )
-
     host_vars: dict[str, Any] = {}
     for node_id, node in topology["nodes"].items():
         ssh = ssh_config(node_id)

@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import argparse
 from collections import Counter
-import hashlib
 import ipaddress
 import json
 import os
@@ -25,17 +24,6 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 FEATURE_DIR = REPO_ROOT / "specs" / "004-local-vm-provisioning"
 DEFAULT_TOPOLOGY = REPO_ROOT / "provisioning" / "config" / "topology.yml"
 DEFAULT_RELEASE = REPO_ROOT / "provisioning" / "config" / "release.json"
-
-EXPECTED_TOOLCHAIN = {
-    "packer": "1.15.4",
-    "vagrant": "2.4.9",
-    "virtualBox": "7.2.14",
-    "dockerEngine": "29.7.1",
-    "dockerCompose": "5.4.0",
-    "python": "3.12.13",
-    "ansibleCore": "2.21.2",
-}
-
 
 def _read_document(path: Path) -> Any:
     text = path.read_text()
@@ -176,10 +164,6 @@ def validate_topology(topology: dict[str, Any]) -> list[str]:
 
 def validate_release(release: dict[str, Any]) -> list[str]:
     errors: list[str] = []
-    toolchain = release.get("toolchain", {})
-    for key, expected in EXPECTED_TOOLCHAIN.items():
-        if toolchain.get(key) != expected:
-            errors.append(f"toolchain {key} must be {expected}")
     install_images = release.get("ubuntu", {}).get("installImages", {})
     if set(install_images) != {"amd64"}:
         errors.append("Ubuntu install image must contain only amd64")
@@ -211,6 +195,8 @@ def validate_release(release: dict[str, Any]) -> list[str]:
             errors.append(f"artifact {component} has unsupported architecture")
         if "?" in artifact.get("uri", ""):
             errors.append(f"artifact {component} URI must not be temporary or signed")
+        if urlparse(artifact.get("uri", "")).scheme in {"https", "s3"} and not artifact.get("sha256"):
+            errors.append(f"remote artifact {component} must declare a SHA-256 checksum")
     database = release.get("databaseContract", {})
     if database.get("engine") != "postgresql" or database.get("majorVersion") != 16:
         errors.append("database contract must be PostgreSQL 16")
@@ -263,63 +249,26 @@ def _run(command: list[str]) -> str:
     return subprocess.run(command, check=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT).stdout.strip()
 
 
-def check_tools(release: dict[str, Any]) -> list[str]:
+def check_tools(_release: dict[str, Any]) -> list[str]:
     errors: list[str] = []
-    required = ["packer", "vagrant", "VBoxManage", "docker", "ansible"]
+    required = ["packer", "vagrant", "VBoxManage", "docker", "ansible-playbook"]
     for command in required:
         if shutil.which(command) is None:
             errors.append(f"required command is missing: {command}")
     if errors:
         return errors
-    expected = release["toolchain"]
-    checks = {
-        "packer": (r"Packer v([0-9.]+)", ["packer", "version"], expected["packer"]),
-        "vagrant": (r"Vagrant ([0-9.]+)", ["vagrant", "--version"], expected["vagrant"]),
-        "VirtualBox": (r"^([0-9.]+)", ["VBoxManage", "--version"], expected["virtualBox"]),
-        "Docker Compose": (r"^v?([0-9.]+)", ["docker", "compose", "version", "--short"], expected["dockerCompose"]),
-        "ansible-core": (r"ansible \[core ([0-9.]+)\]", ["ansible", "--version"], expected["ansibleCore"]),
-    }
-    for name, (pattern, command, wanted) in checks.items():
-        try:
-            output = _run(command)
-        except subprocess.CalledProcessError as exc:
-            errors.append(f"{name} check failed: {exc.stdout.strip()}")
-            continue
-        match = re.search(pattern, output, re.MULTILINE)
-        actual = match.group(1) if match else "unknown"
-        if actual != wanted:
-            errors.append(f"{name} version is {actual}; required {wanted}")
     try:
-        docker_versions = _run(["docker", "version", "--format", "{{.Client.Version}} {{.Server.Version}}"])
-        client, server = docker_versions.split()
-        if client != expected["dockerEngine"] or server != expected["dockerEngine"]:
-            errors.append(
-                f"Docker Engine client/server are {client}/{server}; required {expected['dockerEngine']}"
-            )
+        docker_versions = _run(
+            ["docker", "version", "--format", "{{.Client.Version}} {{.Server.Version}}"]
+        ).split()
+        if len(docker_versions) != 2:
+            errors.append("Docker Engine did not report both client and server versions")
     except (subprocess.CalledProcessError, ValueError) as exc:
         errors.append(f"Docker daemon/version check failed: {exc}")
     try:
-        ansible_output = _run(["ansible", "--version"])
-        match = re.search(r"python version = ([0-9.]+)", ansible_output)
-        actual = match.group(1) if match else "unknown"
-        if actual != expected["python"]:
-            errors.append(f"Ansible Python version is {actual}; required {expected['python']}")
+        _run(["docker", "compose", "version", "--short"])
     except subprocess.CalledProcessError as exc:
-        errors.append(f"Ansible Python check failed: {exc.stdout.strip()}")
-    try:
-        installed_plugins = _run(["packer", "plugins", "installed"])
-        for plugin, wanted in expected["packerPlugins"].items():
-            if f"packer-plugin-{plugin}_v{wanted}_" not in installed_plugins:
-                errors.append(f"Packer plugin {plugin} {wanted} is not installed")
-    except subprocess.CalledProcessError as exc:
-        errors.append(f"Packer plugin check failed: {exc.stdout.strip()}")
-    try:
-        collections = _run(["ansible-galaxy", "collection", "list", "community.postgresql"])
-        wanted = expected["ansibleCollections"]["community.postgresql"]
-        if re.search(rf"^community\.postgresql\s+{re.escape(wanted)}$", collections, re.MULTILINE) is None:
-            errors.append(f"Ansible collection community.postgresql {wanted} is not installed")
-    except subprocess.CalledProcessError as exc:
-        errors.append(f"Ansible collection check failed: {exc.stdout.strip()}")
+        errors.append(f"Docker Compose check failed: {exc.stdout.strip()}")
     return errors
 
 
@@ -438,10 +387,6 @@ def check_artifact_files(release: dict[str, Any]) -> list[str]:
             continue
         if not path.is_file():
             errors.append(f"artifact {artifact['id']} is missing: {path}")
-            continue
-        actual = hashlib.sha256(path.read_bytes()).hexdigest()
-        if actual != artifact["sha256"]:
-            errors.append(f"artifact {artifact['id']} checksum mismatch")
     return errors
 
 

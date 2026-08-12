@@ -162,10 +162,10 @@ Invariants:
 Fields:
 
 - `schemaVersion`, `releaseId`, `createdAt`, `sourceRevision`。
-- `toolchain`: Packer、Vagrant、VirtualBox、Docker Engine `29.7.1`、Docker Compose `5.4.0`、Python、ansible-core、Packer plugins、Ansible collectionsのexact version。
+- `toolchain`: release検証時に使用したtool versionのprovenance。host側のversion一致を要求するcompatibility gateではない。Python、ansible-core、Packerは`mise.toml`、Packer pluginsはHCL、Ansible collectionsは`requirements.yml`を再現用の正とする。
 - `ubuntu`: release、amd64 ISO URL/SHA-256、APT snapshot ID。
 - `packages`: package名とexact version。
-- `artifacts`: role/component/architectureごとのURI、SHA-256、version。Portalはsource/base-image digestも含む。
+- `artifacts`: role/component/architectureごとのURI、version。開発用local artifactはchecksumを持たない。将来のremote artifactはSHA-256を必須とする。Portalはsource/base-image digestも含む。
 - `databaseContract`: engine `postgresql`、major version `16`、minor update policy、schema compatibility ID、migration artifact。
 - `routerContract`: `specs/003-router` revision、Router/Envoy version、xDS/bootstrap compatibility ID。
 - `portalContract`: Portal source revision、Compose file、external-Router mode、API/UI container port。
@@ -224,7 +224,7 @@ Fields:
 - `version`: human-readable release。
 - `architecture`: `amd64`またはarchitecture-neutral artifact用の`any`。
 - `uri`: `file://`または認可されたprivate HTTPS/S3 location。
-- `sha256`: 64桁lowercase hex。
+- `sha256`: remote artifactでのみ使用する64桁lowercase hex。local development artifactでは省略する。
 - `compatibilityId`: DB、Router、config schema等の検証ID。
 
 Validation:

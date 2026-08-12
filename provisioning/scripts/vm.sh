@@ -6,7 +6,7 @@ topology_file="${VM_TOPOLOGY:-${repo_root}/provisioning/config/topology.yml}"
 release_file="${VM_RELEASE:-${repo_root}/provisioning/config/release.json}"
 action="${1:-}"
 
-mapfile -t environment_values < <(/usr/bin/python3 - "${topology_file}" "${release_file}" <<'PY'
+mapfile -t environment_values < <(mise exec -- python - "${topology_file}" "${release_file}" <<'PY'
 import json
 import re
 import sys
@@ -80,15 +80,15 @@ render_inventory() {
 
 provision_runtime() {
   render_inventory
-  ansible-playbook -i "${inventory_file}" "${repo_root}/provisioning/ansible/playbooks/runtime.yml"
+  mise exec -- ansible-playbook -i "${inventory_file}" "${repo_root}/provisioning/ansible/playbooks/runtime.yml"
 }
 
 validate_runtime() {
   if [[ ! -f "${inventory_file}" ]]; then
     render_inventory
   fi
-  ansible-playbook -i "${inventory_file}" "${repo_root}/provisioning/ansible/playbooks/validate.yml"
-  /usr/bin/python3 "${repo_root}/provisioning/tests/conformance/validate.py" \
+  mise exec -- ansible-playbook -i "${inventory_file}" "${repo_root}/provisioning/ansible/playbooks/validate.yml"
+  mise exec -- python "${repo_root}/provisioning/tests/conformance/validate.py" \
     --topology "${topology_file}" --release "${release_file}"
 }
 
@@ -141,7 +141,7 @@ case "${action}" in
       exit 7
     fi
     render_inventory
-    ansible-playbook -i "${inventory_file}" "${repo_root}/provisioning/ansible/playbooks/reset-data.yml"
+    mise exec -- ansible-playbook -i "${inventory_file}" "${repo_root}/provisioning/ansible/playbooks/reset-data.yml"
     validate_runtime
     ;;
   destroy)

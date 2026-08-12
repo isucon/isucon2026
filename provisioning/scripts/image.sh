@@ -10,7 +10,7 @@ action="${1:-}"
 architecture="${3:-${2:-amd64}}"
 
 read_release() {
-  /usr/bin/python3 - "${release_file}" "$1" <<'PY'
+  mise exec -- python - "${release_file}" "$1" <<'PY'
 import json
 import sys
 value = json.load(open(sys.argv[1]))
@@ -43,20 +43,20 @@ register_box() {
 validate_all() {
   "${repo_root}/provisioning/tests/static/run.sh"
   "${repo_root}/provisioning/scripts/preflight.sh" --skip-ports --skip-routes
-  packer init "${base_root}"
-  packer validate \
+  mise exec -- packer init "${base_root}"
+  mise exec -- packer validate \
     -var "architecture=amd64" \
     -var "release_id=${release_id}" \
     -var "ubuntu_iso_url=${iso_url}" \
     -var "ubuntu_iso_checksum=sha256:${iso_sha}" \
     "${base_root}"
-  packer init "${role_root}"
-  packer inspect "${role_root}" >/dev/null
+  mise exec -- packer init "${role_root}"
+  mise exec -- packer inspect "${role_root}" >/dev/null
   ANSIBLE_CONFIG="${repo_root}/provisioning/ansible/ansible.cfg" \
-    ansible-playbook -i 'localhost,' --connection=local --syntax-check \
+    mise exec -- ansible-playbook -i 'localhost,' --connection=local --syntax-check \
     "${repo_root}/provisioning/ansible/playbooks/image.yml"
   if [[ -f "${base_box}" ]]; then
-    packer validate \
+    mise exec -- packer validate \
       -var "architecture=amd64" \
       -var "release_id=${release_id}" \
       -var "base_box_path=${base_box}" \
@@ -65,7 +65,7 @@ validate_all() {
       "${role_root}"
   fi
   if [[ -f "${index_file}" ]]; then
-    /usr/bin/python3 "${repo_root}/provisioning/scripts/manifest.py" --index "${index_file}" validate
+    mise exec -- python "${repo_root}/provisioning/scripts/manifest.py" --index "${index_file}" validate
   fi
 }
 
@@ -77,14 +77,14 @@ build_base() {
     exit 3
   fi
   PACKER_LOG_PATH="${image_dir}/base-packer.log" \
-    packer build \
+    mise exec -- packer build \
       -var "architecture=amd64" \
       -var "release_id=${release_id}" \
       -var "ubuntu_iso_url=${iso_url}" \
       -var "ubuntu_iso_checksum=sha256:${iso_sha}" \
       "${base_root}"
   register_box "isureal/base-${release_id}" "${base_box}"
-  /usr/bin/python3 "${repo_root}/provisioning/scripts/manifest.py" --index "${index_file}" record-box \
+  mise exec -- python "${repo_root}/provisioning/scripts/manifest.py" --index "${index_file}" record-box \
     --release "${release_file}" --role base --box "${base_box}" \
     --source-image-id "ubuntu-24.04.4-amd64@sha256:${iso_sha}" \
     --build-name ubuntu-noble-amd64-base
@@ -117,7 +117,7 @@ build_role() {
     only="router-amd64.vagrant.router"
   fi
   PACKER_LOG_PATH="${image_dir}/${role}-packer.log" \
-    packer build -only="${only}" \
+    mise exec -- packer build -only="${only}" \
       -var "architecture=amd64" \
       -var "release_id=${release_id}" \
       -var "base_box_path=${base_box}" \
@@ -127,7 +127,7 @@ build_role() {
   mv "${output_dir}/package.box" "${output_box}"
   rmdir "${output_dir}" 2>/dev/null || true
   register_box "isureal/${role}-${release_id}" "${output_box}"
-  /usr/bin/python3 "${repo_root}/provisioning/scripts/manifest.py" --index "${index_file}" record-box \
+  mise exec -- python "${repo_root}/provisioning/scripts/manifest.py" --index "${index_file}" record-box \
     --release "${release_file}" --role "${role}" --box "${output_box}" \
     --source-image-id "${release_id}/base/virtualbox/amd64" \
     --build-name "${role}-amd64"
@@ -151,9 +151,9 @@ promote() {
     exit 3
   fi
   local report_uri="file://provisioning/.state/${environment_id}/reports/latest.json"
-  /usr/bin/python3 "${repo_root}/provisioning/scripts/manifest.py" --index "${index_file}" set-state \
+  mise exec -- python "${repo_root}/provisioning/scripts/manifest.py" --index "${index_file}" set-state \
     --artifact-id "${artifact_id}" --state validated --report "${report_uri}"
-  /usr/bin/python3 "${repo_root}/provisioning/scripts/manifest.py" --index "${index_file}" set-state \
+  mise exec -- python "${repo_root}/provisioning/scripts/manifest.py" --index "${index_file}" set-state \
     --artifact-id "${artifact_id}" --state promoted --report "linux-amd64-virtualbox:${source_revision}"
 }
 

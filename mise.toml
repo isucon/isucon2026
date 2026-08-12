@@ -1,8 +1,22 @@
 [tools]
+ansible-core = "2.21.2"
 buf = "1.72.0"
 go = "1.26.5"
 node = "24.14.1"
+packer = "1.15.4"
 protoc = "35.1"
 protoc-gen-go = "1.36.11"
 protoc-gen-connect-go = "1.20.0"
+python = "3.12.13"
 "npm:@bufbuild/protoc-gen-es" = "2.13.0"
+
+[env]
+_.python.venv = { path = ".venv", create = true }
+
+[tasks."provisioning:install"]
+description = "Install repository-pinned Python and Ansible provisioning dependencies"
+run = [
+  "python -m ensurepip --upgrade",
+  "python -m pip install -r provisioning/requirements.txt",
+  "ansible-galaxy collection install -r provisioning/ansible/requirements.yml",
+]

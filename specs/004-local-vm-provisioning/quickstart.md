@@ -10,25 +10,27 @@
 
 | Host | Hypervisor | Guest | Required full validation |
 |---|---|---|---|
-| Linux x86_64 | VirtualBox 7.2.14 | Ubuntu 24.04 amd64 | Yes |
+| Linux x86_64 | VirtualBox | Ubuntu 24.04 amd64 | Yes |
 
-開始時の固定toolchain:
+開始時の検証基準toolchain:
 
 - Vagrant 2.4.9
 - VirtualBox 7.2.14 Base Package。Extension Packは不要。
 - Docker Engine 29.7.1 + Docker Compose 5.4.0
+
+preflightのhost tool検証は最小限に絞る。Vagrant・VirtualBox・Docker Engine・Docker Composeはコマンドの存在とDocker daemonへの接続だけを確認し、exact versionでは弾かない。互換性はresolved Compose configとspecific-address publish contractの実動作で判定する。Python/ansible-coreはリポジトリの`mise.toml`（`python`、`ansible-core`）で固定するため、preflightでは別途versionを検査しない。上記のversion値はrelease manifestが記録する検証基準であり、host側との完全一致要件ではない。
 - Packer 1.15.4（image build担当者のみ）
 - Python 3.12 + ansible-core 2.21.2
 - Packer plugins: virtualbox 1.1.5、vagrant 1.1.7、ansible 1.1.5
 - Ansible collection: community.postgresql 4.2.0
 
-macOS、Linux arm64、その他のhost OS/architecture、別VirtualBox minor、VMware/QEMU系providerは今回のsupport・artifact・合格matrixに含めない。自動fallbackもしない。
+macOS、Linux arm64、その他のhost OS/architecture、VMware/QEMU系providerは今回のsupport・artifact・合格matrixに含めない。自動fallbackもしない。
 
 ## 2. Prerequisites
 
 1. hostのhardware virtualizationを有効にする。
 2. 上記Vagrant/VirtualBoxとDocker Engine/Composeを導入し、Docker daemonを起動する。
-3. repository toolchainからPython/Ansibleと、image担当者はPackerを導入する。
+3. `mise install && mise run provisioning:install`でrepository-pinnedなPython/Ansible/Packerと依存を導入する。
 4. `provisioning/config/release.json`が参照するrole boxesまたはprivate artifact accessを用意する。
 5. VMとPortal container用にresource profileが要求する空きmemory、CPU、diskを確保する。
 
@@ -50,7 +52,7 @@ make vm-preflight
 Expected:
 
 - host profileが`linux-amd64-virtualbox`として一意に解決される。
-- topology/release schema、ISO/artifact checksum、architecture、DB/Router compatibilityがpassする。
+- topology/release schema、ローカルartifactの存在、ISO checksum、architecture、DB/Router compatibilityがpassする。開発用にローカルbuildするapplication/Router artifactはchecksumを比較しない。
 - 4 subnet、MAC、SSH port、Client/Portal port、VirtualBox network、host/VPN routeに衝突がない。
 - Docker daemonがreadyで、`portal-mock/compose.yaml`の解決済みconfigが有効かつwildcard publishを含まない。
 - node別resourceと合計が表示される。
@@ -239,7 +241,7 @@ Expected:
 
 検証用release/profileで次を一度ずつ注入する。
 
-- checksum mismatch。
+- downloaded remote artifactに対するchecksum mismatch。ローカル開発artifactは対象外。
 - 1 nodeのruntime template failure。
 - PostgreSQL major/schema/migration compatibility mismatch。
 - nginx/backend/Router/Envoy停止。

@@ -127,9 +127,9 @@ References:
 
 ## Decision 6: versionとpackage sourceを完全に記録する
 
-**Decision**: 開始時のtoolchainをPacker `1.15.4`、Vagrant `2.4.9`、VirtualBox `7.2.14`、ansible-core `2.21.2`、Python `3.12`とする。Packer pluginsは`virtualbox = 1.1.5`、`vagrant = 1.1.7`、`ansible = 1.1.5`、PostgreSQL collectionは`community.postgresql = 4.2.0`を完全一致で指定し、将来のAMI incrementで`amazon` pluginを同様に固定する。
+**Decision**: Python `3.12.13`、ansible-core `2.21.2`、Packer `1.15.4`は`mise.toml`でリポジトリに固定する。Packer pluginsは`virtualbox = 1.1.5`、`vagrant = 1.1.7`、`ansible = 1.1.5`、PostgreSQL collectionは`community.postgresql = 4.2.0`をそれぞれHCLと`requirements.yml`で指定する。VagrantとVirtualBoxはhost providerとしてversionを固定せず、実際のvalidationで使用したversionのみrelease provenanceへ記録する。
 
-Portal用host toolの検証開始値はDocker Engine `29.7.1` + Docker Compose `5.4.0`とする。release manifestはEngine/Compose版を完全一致で固定する。Compose project名、Portal source revision、Dockerfile base image digest、amd64で生成したimage IDをValidationReportへ記録する。
+Portal用host toolの検証開始値はDocker Engine `29.7.1` + Docker Compose `5.4.0`とする。release manifestには実際のvalidationで使用したversionをprovenanceとして記録するが、hostのEngine/Compose版との完全一致は要求しない。互換性はDocker daemonへの接続、resolved Compose config、specific-address publish contractの実動作で判定する。Compose project名、Portal source revision、Dockerfile base image digest、amd64で生成したimage IDをValidationReportへ記録する。
 
 Ubuntu packageはrelease manifestにUTCのUbuntu Snapshot IDとexact package versionを記録し、Nobleのdeb822 `ubuntu.sources`へ`Snapshot:`を設定する。release buildでは`latest`、無条件upgrade、floating third-party repositoryを使わない。security updateは新しいsnapshotへの明示的PRとして全適合性testを再実行する。
 
@@ -193,7 +193,7 @@ References:
 
 ## Decision 9: 入力manifest、出力manifest、runtime stateを分離する
 
-**Decision**: version管理する`release.json`を唯一のbuild入力manifestとする。Ubuntu amd64 source/checksum、APT snapshot、package版、amd64 app/Router artifact URIとSHA-256、Portal source/base-image digest、DB compatibility、host/build tool/plugin版を持つ。Packer生成物は`packer-manifest.json`へbuild名、時刻、artifact ID/path、role、provider、arch、source ID、git revisionを記録し、provider非依存の`image-artifact-index.json`へ正規化する。Portal Composeのproject、effective config hash、amd64 OCI image IDはenvironmentのValidationReportへ記録する。guest内`/etc/isucon/release.json`は入力releaseを保持し、node固有値は`/etc/isucon/runtime.json`へ分離する。
+**Decision**: version管理する`release.json`をbuild入力manifestとする。Ubuntu amd64 source/checksum、APT snapshot、package版、app/Router artifact URI、Portal source/base-image digest、DB compatibility、host/build tool/plugin版を持つ。開発用local app/Router artifactは頻繁に再buildされ、独立した信頼源もないためchecksum比較を行わない。将来remote artifactを配布する場合だけ入力manifestでSHA-256を必須とする。Packer生成物は`packer-manifest.json`へbuild名、時刻、artifact ID/path、role、provider、arch、source ID、git revisionを記録し、provider非依存の`image-artifact-index.json`へ正規化する。Portal Composeのproject、effective config hash、amd64 OCI image IDはenvironmentのValidationReportへ記録する。guest内`/etc/isucon/release.json`は入力releaseを保持し、node固有値は`/etc/isucon/runtime.json`へ分離する。
 
 private box/artifactは将来のversioned private S3 bucketへ置き、短期資格情報でhost/CIが取得してSHA-256検証後、Packer/Ansibleへlocal fileとして渡す。初期incrementは同じcontractの`file://` sourceを使えるようにする。
 
@@ -256,13 +256,13 @@ References:
 
 ## Resolved Unknowns
 
-- 対応host/provider: Linux x86_64 + VirtualBox 7.2.14だけ。macOS、local arm64、別providerへfallbackしない。
+- 対応host/provider: Linux x86_64 + VirtualBox。macOS、local arm64、別providerへfallbackしない。
 - guest/artifact architecture: amd64だけ。release buildでcross-emulationしない。
 - Canonical Vagrant box: Ubuntu 24.04では提供されないため自前buildする。
 - role image: problem-serverとRouterの2種類。server identityはruntimeで与える。
 - provisioning方式: Packer build時とVagrant runtimeの双方から同じAnsible rolesを呼ぶhybrid。
 - network: Router 5 NIC、server 2 NIC、3 internal data + control host-only + per-VM NAT。ClientはRouter NATへのloopback-only forward。
-- package再現性: Ubuntu Snapshot ID、exact version、artifact SHA-256、完全一致tool/plugin版。
+- package再現性: Ubuntu Snapshot ID、exact package version、artifact SHA-256、mise/HCL/requirementsで管理するtool/plugin版。
 - runtime形式: native systemd services。既存Router/Envoy契約とupstream port 8080を維持する。
 - Portal: 4 VM外のenvironment-scoped Docker Compose projectをexternal-Router modeで起動し、APIはcontrol IP、UIはloopbackだけへpublishする。imageへ含めない。
 - Database: 既存backendとPostgreSQL 16を直接組み合わせ、major version・schema・migrationの互換ID不一致は失敗させる。

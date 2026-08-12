@@ -1,9 +1,6 @@
 ---
 - name: Resolve Router artifact input
   ansible.builtin.set_fact:
-    isucon_router_artifacts:
-      router: "{{ isucon_release_manifest.artifacts | selectattr('component', 'equalto', 'router') | first }}"
-      envoy: "{{ isucon_release_manifest.artifacts | selectattr('component', 'equalto', 'envoy') | first }}"
     isucon_effective_artifact_root: "{{ isucon_artifact_root | default(lookup('ansible.builtin.env', 'ISUREAL_ARTIFACT_ROOT'), true) }}"
 
 - name: Require controller artifact directory for Router
@@ -40,13 +37,6 @@
   loop:
     - /opt/isucon/bin
     - /etc/isucon/envoy
-    - /etc/isucon/artifacts
-
-- name: Check installed Router artifact markers
-  ansible.builtin.stat:
-    path: "/etc/isucon/artifacts/{{ item.value.component }}.{{ item.value.sha256 }}"
-  loop: "{{ isucon_router_artifacts | dict2items }}"
-  register: isucon_router_markers
 
 - name: Extract router.tar
   ansible.builtin.unarchive:
@@ -54,7 +44,6 @@
     dest: /opt/isucon
     owner: root
     group: root
-  when: not isucon_router_markers.results[0].stat.exists
   notify: Restart Router stack
 
 - name: Extract envoy.tar
@@ -63,22 +52,7 @@
     dest: /opt/isucon
     owner: root
     group: root
-  when: not isucon_router_markers.results[1].stat.exists
   notify: Restart Router stack
-
-- name: Record installed Router artifact checksums
-  ansible.builtin.file:
-    path: "/etc/isucon/artifacts/{{ item.value.component }}.{{ item.value.sha256 }}"
-    state: touch
-    access_time: preserve
-    modification_time: preserve
-    owner: root
-    group: root
-    mode: "0644"
-  loop: "{{ isucon_router_artifacts | dict2items }}"
-  when: not isucon_router_markers.results[ansible_loop.index0].stat.exists
-  loop_control:
-    extended: true
 
 - name: Install native Router systemd units
   ansible.builtin.template:
