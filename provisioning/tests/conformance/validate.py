@@ -9,6 +9,7 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+import time
 from typing import Any
 from urllib.request import Request, urlopen
 
@@ -23,11 +24,30 @@ PORTAL_GET_STATE_PATH = "/portal_mock.v1.PortalMockService/GetState"
 PORTAL_SERVER_IDS = ("server1", "server2", "server3")
 
 
-def run(command: list[str], *, timeout: int = 60, cwd: Path | None = None) -> str:
-    return subprocess.run(
-        command, check=True, text=True, timeout=timeout,
-        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, cwd=cwd,
-    ).stdout.strip()
+def run(
+    command: list[str],
+    *,
+    timeout: int = 60,
+    cwd: Path | None = None,
+    retries: int = 0,
+    retry_delay: float = 3.0,
+) -> str:
+    # VirtualBox/VBoxManage occasionally returns a transient error while the
+    # host is busy right after services start, which makes `vagrant` commands
+    # exit non-zero.  A couple of bounded retries keep local conformance from
+    # failing on that flake without hiding a genuinely broken environment.
+    attempt = 0
+    while True:
+        try:
+            return subprocess.run(
+                command, check=True, text=True, timeout=timeout,
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, cwd=cwd,
+            ).stdout.strip()
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+            if attempt >= retries:
+                raise
+            attempt += 1
+            time.sleep(retry_delay)
 
 
 def request(
@@ -88,7 +108,7 @@ def portal_reported_hostnames(response: dict[str, Any]) -> dict[str, str]:
 
 
 def vagrant_ssh(vagrant_dir: Path, node: str, command: str, timeout: int = 60) -> str:
-    return run(["vagrant", "ssh", node, "-c", command], timeout=timeout, cwd=vagrant_dir)
+    return run(["vagrant", "ssh", node, "-c", command], timeout=timeout, cwd=vagrant_dir, retries=2)
 
 
 def colon_mac(value: str) -> str:
@@ -110,7 +130,7 @@ def main() -> int:
     checks: dict[str, Any] = {}
 
     try:
-        status = run(["vagrant", "status", "--machine-readable"], timeout=30, cwd=vagrant_dir)
+        status = run(["vagrant", "status", "--machine-readable"], timeout=60, cwd=vagrant_dir, retries=2)
         running = {
             line.split(",")[1]
             for line in status.splitlines()
