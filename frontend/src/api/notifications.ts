@@ -1,4 +1,5 @@
 import { jsonRequest } from './client';
+import { randomUUID } from './ids';
 
 export interface NotificationItem {
   id: string;
@@ -13,7 +14,7 @@ export interface NotificationPage {
   nextCursor: string | null;
 }
 
-const idempotencyHeaders = (): HeadersInit => ({ 'Idempotency-Key': crypto.randomUUID() });
+const idempotencyHeaders = (): HeadersInit => ({ 'Idempotency-Key': randomUUID() });
 
 export const listNotifications = (cursor?: string) =>
   jsonRequest<NotificationPage>(`/notifications${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`);
