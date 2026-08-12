@@ -186,9 +186,9 @@ amd64 AMI build/publish commandは今回実装しない。後続featureが同じ
 
 ## Hostname access
 
-default hostnamesはPortal topology contractの`teamNumber=1`、`teamHash=local`、`domain=isureal.test`から導出する`app.team1-local.isureal.test`と`server1..3.team1-local.isureal.test`。environment IDはresource namespacingだけに使い、公開hostnameの正本にしない。commandsはhost `/etc/hosts`を自動変更しない。
+default hostnamesはPortal topology contractの`teamNumber=1`、`teamHash=local`、`domain=127.0.0.1.nip.io`から導出する`app.team1-local.127.0.0.1.nip.io`と`server1..3.team1-local.127.0.0.1.nip.io`。environment IDはresource namespacingだけに使い、公開hostnameの正本にしない。commandsはhost `/etc/hosts`を自動変更しない。
 
-ValidationはPortal applied stateが返したapp/server1〜3の全hostnameについて`curl -H 'Host: <host>' http://127.0.0.1:<client-port>/`相当を実行し、接続先portを送信Hostから分離して既存RouterのportなしHost contractを満たす。Portal UIは`http://127.0.0.1:<portal-ui-port>/`でbrowserから利用できる。
+ValidationはPortal applied stateが返したapp/server1〜3の全hostnameについてClient forward経由でHTTP requestを実行する。Routerのvirtual-host照合はHostのportを無視するため、default appは`http://app.team1-local.127.0.0.1.nip.io:<client-port>/`としてbrowser/curlから直接利用できる。Portal UIは`http://127.0.0.1:<portal-ui-port>/`でbrowserから利用できる。
 
 ## JSON output envelope
 

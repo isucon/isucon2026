@@ -154,12 +154,11 @@ host `/etc/hosts`を変更せずapplication ingressを確認する例:
 
 ```bash
 curl --fail --show-error \
-  -H 'Host: app.team1-local.isureal.test' \
   -H 'X-Country-Code: JP' \
-  http://127.0.0.1:18080/
+  http://app.team1-local.127.0.0.1.nip.io:18080/
 ```
 
-既存Router contractはport付きHostを拒否するため、connection先はloopback forward、送信Hostはportなしで分離する。Portal UIはbrowserで`http://127.0.0.1:15174/`から確認できる。host `/etc/hosts`の変更は不要である。
+Routerはvirtual-host照合時にHostのportを無視するため、`nip.io` hostnameとClient forward portを含むURLをbrowser/curlから直接利用できる。Portal UIはbrowserで`http://127.0.0.1:15174/`から確認できる。host `/etc/hosts`の変更は不要である。
 
 ## 7. Full conformance
 

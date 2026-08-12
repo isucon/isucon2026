@@ -89,7 +89,7 @@ func BuildRoutes(name string, hosts config.Hostnames, routerConfig domain.Config
 		Name: "unknown-host", Domains: []string{"*"}, Routes: []*routev3.Route{directResponseRoute("unknown-host", 404)},
 	})
 	return &routev3.RouteConfiguration{
-		Name: name, VirtualHosts: virtualHosts, ValidateClusters: wrapperspb.Bool(true), IgnorePortInHostMatching: false,
+		Name: name, VirtualHosts: virtualHosts, ValidateClusters: wrapperspb.Bool(true), IgnorePortInHostMatching: true,
 	}, nil
 }
 

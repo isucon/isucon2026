@@ -158,11 +158,11 @@ class ConfigContractTest(unittest.TestCase):
         self.assertEqual("local", portal["teamHash"])
         self.assertEqual(
             {
-                "app": "app.team1-local.isureal.test",
+                "app": "app.team1-local.127.0.0.1.nip.io",
                 "servers": {
-                    "server1": "server1.team1-local.isureal.test",
-                    "server2": "server2.team1-local.isureal.test",
-                    "server3": "server3.team1-local.isureal.test",
+                    "server1": "server1.team1-local.127.0.0.1.nip.io",
+                    "server2": "server2.team1-local.127.0.0.1.nip.io",
+                    "server3": "server3.team1-local.127.0.0.1.nip.io",
                 },
             },
             preflight.portal_hostnames(self.topology),
