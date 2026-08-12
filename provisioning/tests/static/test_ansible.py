@@ -86,6 +86,16 @@ class AnsibleContractTest(unittest.TestCase):
         self.assertIn('oifname "${bootstrap_iface}" ip daddr 10.0.0.0/8 drop', firewall)
         self.assertIn('oifname "${bootstrap_iface}" ip daddr 192.168.0.0/16 drop', firewall)
         self.assertIn('oifname "${bootstrap_iface}" meta nfproto ipv6 drop', firewall)
+        self.assertIn('tcp dport 443 accept', firewall)
+
+        router_tasks = self.read("roles/router/tasks/main.yml")
+        envoy_bootstrap = self.read("roles/router/templates/envoy-bootstrap.yaml.j2")
+        envoy_service = self.read("roles/router/templates/isureal-envoy.service.j2")
+        self.assertIn("Install local TLS certificates", router_tasks)
+        self.assertIn("port_value: 443", envoy_bootstrap)
+        self.assertIn("envoy.transport_sockets.tls", envoy_bootstrap)
+        self.assertIn("/etc/isucon/envoy/tls/server.crt", envoy_bootstrap)
+        self.assertIn("CAP_NET_BIND_SERVICE", envoy_service)
 
     def test_image_cleanup_removes_clone_identity_and_restores_ssh_bootability(self) -> None:
         tasks = self.read("roles/image_cleanup/tasks/main.yml")

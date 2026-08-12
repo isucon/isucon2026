@@ -1,4 +1,4 @@
-.PHONY: tools fmt vet build test frontend-install frontend-lint frontend-typecheck frontend-test frontend-e2e contract generate-api proto-lint proto-generate proto-build portal-fmt portal-vet portal-test portal-build portal-web-install portal-web-lint portal-web-typecheck portal-web-test portal-web-build portal-web-e2e portal-check router-fmt router-vet router-test router-build router-compose-check router-envoy-check router-e2e router-check provisioning-static provisioning-artifacts vm-preflight vm-up vm-provision vm-validate vm-status vm-logs vm-reset-data vm-destroy image-validate image-build-base image-build-role image-promote check
+.PHONY: tools fmt vet build test frontend-install frontend-lint frontend-typecheck frontend-test frontend-e2e contract generate-api proto-lint proto-generate proto-build portal-fmt portal-vet portal-test portal-build portal-web-install portal-web-lint portal-web-typecheck portal-web-test portal-web-build portal-web-e2e portal-check router-fmt router-vet router-test router-build router-compose-check router-envoy-check router-e2e router-check provisioning-static provisioning-artifacts vm-preflight vm-up vm-provision vm-validate vm-status vm-logs vm-tls-ca vm-reset-data vm-destroy image-validate image-build-base image-build-role image-promote check
 
 tools:
 	mise install
@@ -133,6 +133,9 @@ vm-status:
 
 vm-logs:
 	provisioning/scripts/vm.sh logs
+
+vm-tls-ca:
+	provisioning/scripts/tls.sh
 
 vm-reset-data:
 	provisioning/scripts/vm.sh reset-data

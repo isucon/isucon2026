@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import re
+import ssl
 import subprocess
 import sys
 import time
@@ -54,11 +55,12 @@ def request(
     url: str,
     host: str | None = None,
     extra_headers: dict[str, str] | None = None,
+    ssl_context: ssl.SSLContext | None = None,
 ) -> tuple[int, str]:
     headers = dict(extra_headers or {})
     if host:
         headers["Host"] = host
-    with urlopen(Request(url, headers=headers), timeout=10) as response:
+    with urlopen(Request(url, headers=headers), timeout=10, context=ssl_context) as response:
         return response.status, response.read(4096).decode("utf-8", errors="replace")
 
 
@@ -233,6 +235,32 @@ def main() -> int:
     checks["clientHosts"] = client_checks
     if "app" in client_checks:
         checks["client"] = client_checks["app"]
+
+    tls = topology["clientTlsForward"]
+    tls_ca = DEFAULT_STATE / "tls" / "local-ca.crt"
+    try:
+        app_host = reported_hostnames["app"]
+        tls_url = f"https://{app_host}:{tls['hostPort']}/"
+        tls_context = ssl.create_default_context(cafile=str(tls_ca))
+        code, body = request(
+            tls_url,
+            extra_headers={"X-Country-Code": "JP"},
+            ssl_context=tls_context,
+        )
+        frontend_marker = "<!doctype html" in body.lower()
+        checks["tlsClient"] = {
+            "url": tls_url,
+            "status": code,
+            "frontendMarker": frontend_marker,
+            "ca": str(tls_ca),
+        }
+        if code != 200 or not frontend_marker:
+            failures.append(
+                f"TLS Client forward returned status={code} frontendMarker={frontend_marker}"
+            )
+    except Exception as exc:  # network/TLS clients raise several concrete errors
+        checks["tlsClient"] = {"error": str(exc)}
+        failures.append(f"TLS Client forward failed: {exc}")
 
     for name, url in {
         "portalApi": f"http://{control}:{portal['apiHostPort']}/healthz",

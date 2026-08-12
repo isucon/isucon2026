@@ -41,6 +41,10 @@ class ConfigContractTest(unittest.TestCase):
         self.assertEqual("127.0.0.1", self.topology["clientForward"]["hostAddress"])
         self.assertEqual(18080, self.topology["clientForward"]["hostPort"])
         self.assertFalse(self.topology["clientForward"]["autoCorrect"])
+        self.assertEqual("127.0.0.1", self.topology["clientTlsForward"]["hostAddress"])
+        self.assertEqual(18443, self.topology["clientTlsForward"]["hostPort"])
+        self.assertEqual(443, self.topology["clientTlsForward"]["guestPort"])
+        self.assertFalse(self.topology["clientTlsForward"]["autoCorrect"])
 
     def test_duplicate_ports_are_rejected(self) -> None:
         invalid = copy.deepcopy(self.topology)
@@ -229,7 +233,8 @@ class ConfigContractTest(unittest.TestCase):
             if line.startswith("ISUREAL_PUBLIC_ORIGIN=")
         )
         self.assertIn("isucon_topology.domain", public_origin)
-        self.assertIn("isucon_topology.clientForward.hostPort", public_origin)
+        self.assertIn("https://", public_origin)
+        self.assertIn("isucon_topology.clientTlsForward.hostPort", public_origin)
 
     def test_invalid_portal_team_hash_is_rejected(self) -> None:
         invalid = copy.deepcopy(self.topology)

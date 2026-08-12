@@ -132,6 +132,7 @@ def validate_topology(topology: dict[str, Any]) -> list[str]:
     ports: dict[int, str] = {}
     port_inputs = {
         "client": topology.get("clientForward", {}).get("hostPort"),
+        "client-tls": topology.get("clientTlsForward", {}).get("hostPort"),
         "portal-api": topology.get("portal", {}).get("apiHostPort"),
         "portal-ui": topology.get("portal", {}).get("uiHostPort"),
         **{f"ssh-{name}": value for name, value in topology.get("sshPorts", {}).items()},
@@ -147,6 +148,10 @@ def validate_topology(topology: dict[str, Any]) -> list[str]:
         errors.append("Client forward must bind 127.0.0.1")
     if topology.get("clientForward", {}).get("autoCorrect") is not False:
         errors.append("Client forward auto-correction must be disabled")
+    if topology.get("clientTlsForward", {}).get("hostAddress") != "127.0.0.1":
+        errors.append("TLS Client forward must bind 127.0.0.1")
+    if topology.get("clientTlsForward", {}).get("autoCorrect") is not False:
+        errors.append("TLS Client forward auto-correction must be disabled")
     if topology.get("portal", {}).get("uiHostAddress") != "127.0.0.1":
         errors.append("Portal UI must bind 127.0.0.1")
     try:
@@ -251,7 +256,7 @@ def _run(command: list[str]) -> str:
 
 def check_tools(_release: dict[str, Any]) -> list[str]:
     errors: list[str] = []
-    required = ["packer", "vagrant", "VBoxManage", "docker", "ansible-playbook"]
+    required = ["packer", "vagrant", "VBoxManage", "docker", "ansible-playbook", "openssl"]
     for command in required:
         if shutil.which(command) is None:
             errors.append(f"required command is missing: {command}")
@@ -394,6 +399,7 @@ def check_ports(topology: dict[str, Any]) -> list[str]:
     errors: list[str] = []
     ports = [
         topology["clientForward"]["hostPort"],
+        topology["clientTlsForward"]["hostPort"],
         topology["portal"]["apiHostPort"],
         topology["portal"]["uiHostPort"],
         *topology["sshPorts"].values(),
@@ -509,7 +515,8 @@ def main() -> int:
             f"local-vm preflight: PASS\n"
             f"environment={topology['environmentId']} release={release['releaseId']} "
             f"profile=linux-amd64-virtualbox cpus={total_cpus} memoryMiB={total_memory}\n"
-            f"client={topology['clientForward']['hostAddress']}:{topology['clientForward']['hostPort']} "
+            f"client-http={topology['clientForward']['hostAddress']}:{topology['clientForward']['hostPort']} "
+            f"client-https={topology['clientTlsForward']['hostAddress']}:{topology['clientTlsForward']['hostPort']} "
             f"portal-ui={topology['portal']['uiHostAddress']}:{topology['portal']['uiHostPort']} "
             f"portal-api={topology['networks']['control']['hostAddress']}:{topology['portal']['apiHostPort']}"
         )

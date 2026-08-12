@@ -93,6 +93,7 @@ Vagrant.configure("2") do |config|
     data3 = network(topology, "server3Data")
     control = network(topology, "control")
     client = topology.fetch("clientForward")
+    client_tls = topology.fetch("clientTlsForward")
     router.vm.box = router_box
     router.vm.hostname = topology.fetch("nodes").fetch("router").fetch("hostname")
     router.vm.network "forwarded_port", id: "ssh", guest: 22, host: topology.fetch("sshPorts").fetch("router"),
@@ -100,6 +101,9 @@ Vagrant.configure("2") do |config|
     router.vm.network "forwarded_port", id: "client", guest: client.fetch("guestPort"), host: client.fetch("hostPort"),
                       host_ip: client.fetch("hostAddress"), protocol: client.fetch("protocol"),
                       auto_correct: client.fetch("autoCorrect")
+    router.vm.network "forwarded_port", id: "client-tls", guest: client_tls.fetch("guestPort"), host: client_tls.fetch("hostPort"),
+                      host_ip: client_tls.fetch("hostAddress"), protocol: client_tls.fetch("protocol"),
+                      auto_correct: client_tls.fetch("autoCorrect")
     router.vm.network "private_network", ip: data1.fetch("routerAddress"), netmask: netmask(data1.fetch("cidr")),
                       virtualbox__intnet: "#{environment_id}-server1-data"
     router.vm.network "private_network", ip: data2.fetch("routerAddress"), netmask: netmask(data2.fetch("cidr")),

@@ -13,9 +13,10 @@ Linux x86_64 上に Ubuntu 24.04 amd64 の problem server 3 台と Router 1 台�
 
 3 台の server は別々の VirtualBox internal network に接続し、相互向け route は各 segment の Router だけを next hop にします。Portal は VM に含めず、host の Docker Compose project `isureal-isureal-local-portal` で起動します。
 
-host の入口は次の 2 つです。
+host の入口は次の 3 つです。
 
-- Client: `127.0.0.1:18080` → Router/Envoy `:8080`
+- HTTP Client（ベンチマーク用）: `127.0.0.1:18080` → Router/Envoy `:8080`
+- HTTPS Client（ローカル開発用）: `127.0.0.1:18443` → Router/Envoy TLS `:443`
 - Portal UI: `127.0.0.1:15174`
 
 Portal API は Router 専用 control path `192.168.60.65:18082` にだけ publish されます。problem server の application/database port は host へ forward しません。
@@ -40,17 +41,22 @@ repository root から次を実行します。初回は ISO、box、OCI image �
 make vm-up
 ```
 
-`vm-up` は preflight、application artifact build、必要な Packer image build、4 VM 起動、Portal 起動、inventory 生成、runtime Ansible、conformance の順に実行します。host の `/etc/hosts` は変更しません。
+`vm-up` は preflight、application artifact build、ローカルTLS証明書生成、必要な Packer image build、4 VM 起動、Portal 起動、inventory 生成、runtime Ansible、conformance の順に実行します。host の `/etc/hosts` は変更しません。
 
 ```bash
+make vm-tls-ca
+
 curl --fail --show-error \
+  --cacert provisioning/.state/tls/local-ca.crt \
   -H 'X-Country-Code: JP' \
-  http://app.team1-local.127.0.0.1.nip.io:18080/
+  https://app.team1-local.127.0.0.1.nip.io:18443/
 
 make vm-status
 make vm-validate
 make vm-logs
 ```
+
+ブラウザでカメラ、Service Worker、`crypto.randomUUID()`などsecure-context限定APIを使うには、`provisioning/.state/tls/local-ca.crt`をOSまたはブラウザの信頼済みCAへ手動登録する。CAはenvironment destroy後も保持される。HTTP `:18080` はベンチマーク互換経路として残し、ローカルブラウザ開発ではHTTPS `:18443`を使う。
 
 通常の再適用は PostgreSQL data を消しません。
 

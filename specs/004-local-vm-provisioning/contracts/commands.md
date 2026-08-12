@@ -27,7 +27,7 @@
 
 `auto`はLinux x86_64と利用可能なVirtualBoxを検出して`virtualbox`を選ぶ。未対応host/profileを別providerへ暗黙fallbackしない。
 
-default topologyはClient `127.0.0.1:18080`、Portal UI `127.0.0.1:15174`、Portal API `192.168.60.65:18082`を固定する。変更はschema検証される`VM_TOPOLOGY`で明示し、自動port correctionは行わない。local workflowに外部Portalへの切替入力は設けない。
+default topologyはbenchmark HTTP Client `127.0.0.1:18080`、local development HTTPS Client `127.0.0.1:18443`、Portal UI `127.0.0.1:15174`、Portal API `192.168.60.65:18082`を固定する。HTTPSはRouter guest `443`のEnvoyで終端する。変更はschema検証される`VM_TOPOLOGY`で明示し、自動port correctionは行わない。local workflowに外部Portalへの切替入力は設けない。
 
 ## Exit codes
 
@@ -98,7 +98,8 @@ Required checks:
 - exactly 4 VM、expected NIC count/mode/name、余分なbridged/NAT Network NICなし。
 - guest OS/architecture/release/runtime manifestsとnode identity。
 - PostgreSQL/backend/worker/nginx、Router/Envoy、Portal Compose API/UI、desired/applied convergence、health/readiness。
-- `127.0.0.1:18080`からHost/country付きrequestが期待serverへ届き、Vagrant Client forwardがRouter guest `8080`へのexact TCP ruleである。
+- `127.0.0.1:18080`からHost/country付きHTTP requestが期待serverへ届き、Vagrant Client forwardがRouter guest `8080`へのexact TCP ruleである。
+- local CAを信頼した`127.0.0.1:18443`のHTTPS requestが期待serverへ届き、Vagrant TLS Client forwardがRouter guest `443`へのexact TCP ruleである。
 - peer 6方向のroute、new TCP connection、Router nft counter、neighbor table。
 - Router停止時の6方向failure、再起動後のrecovery。
 - problem serverから`10.0.2.2:18080`、他VMのforwarded SSH port、Portal API、収集済み非data addressへのnegative connection。
@@ -182,7 +183,7 @@ amd64 AMI build/publish commandは今回実装しない。後続featureが同じ
 
 default hostnamesはPortal topology contractの`teamNumber=1`、`teamHash=local`、`domain=127.0.0.1.nip.io`から導出する`app.team1-local.127.0.0.1.nip.io`と`server1..3.team1-local.127.0.0.1.nip.io`。environment IDはresource namespacingだけに使い、公開hostnameの正本にしない。commandsはhost `/etc/hosts`を自動変更しない。
 
-ValidationはPortal applied stateが返したapp/server1〜3の全hostnameについてClient forward経由でHTTP requestを実行する。Routerのvirtual-host照合はHostのportを無視するため、default appは`http://app.team1-local.127.0.0.1.nip.io:<client-port>/`としてbrowser/curlから直接利用できる。Portal UIは`http://127.0.0.1:<portal-ui-port>/`でbrowserから利用できる。
+ValidationはPortal applied stateが返したapp/server1〜3の全hostnameについてbenchmark互換HTTP Client forward経由でrequestを実行し、local development用HTTPS Client forwardについてもlocal CA、SAN、Router guest `443`でのTLS終端、frontend応答を検証する。Routerのvirtual-host照合はHostのportを無視する。Portal UIは`http://127.0.0.1:<portal-ui-port>/`でbrowserから利用できる。
 
 ## JSON output envelope
 

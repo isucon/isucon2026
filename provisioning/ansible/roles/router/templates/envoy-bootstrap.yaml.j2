@@ -55,6 +55,53 @@ static_resources:
                   - name: envoy.filters.http.router
                     typed_config:
                       "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+    - name: edge_https
+      address:
+        socket_address:
+          address: 0.0.0.0
+          port_value: 443
+      filter_chains:
+        - transport_socket:
+            name: envoy.transport_sockets.tls
+            typed_config:
+              "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.DownstreamTlsContext
+              common_tls_context:
+                tls_certificates:
+                  - certificate_chain:
+                      filename: /etc/isucon/envoy/tls/server.crt
+                    private_key:
+                      filename: /etc/isucon/envoy/tls/server.key
+          filters:
+            - name: envoy.filters.network.http_connection_manager
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+                stat_prefix: edge_https
+                codec_type: AUTO
+                request_timeout: 30s
+                normalize_path: true
+                merge_slashes: true
+                internal_address_config:
+                  cidr_ranges:
+                    - address_prefix: {{ isucon_topology.baseCidr.split('/')[0] }}
+                      prefix_len: {{ isucon_topology.baseCidr.split('/')[1] }}
+                rds:
+                  route_config_name: isureal_routes
+                  config_source:
+                    ads: {}
+                    resource_api_version: V3
+                    initial_fetch_timeout: 15s
+                http_filters:
+                  - name: envoy.filters.http.fault
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.fault.v3.HTTPFault
+                  - name: envoy.filters.http.bandwidth_limit
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.bandwidth_limit.v3.BandwidthLimit
+                      stat_prefix: edge_https_bandwidth
+                      enable_mode: DISABLED
+                  - name: envoy.filters.http.router
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
 
   clusters:
     - name: xds_cluster
