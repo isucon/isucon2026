@@ -216,6 +216,21 @@ class ConfigContractTest(unittest.TestCase):
             )
             self.assertNotIn("isucon_environment_id", hostname_line)
 
+        backend_env = (
+            PROVISIONING_DIR
+            / "ansible"
+            / "roles"
+            / "problem_server"
+            / "templates"
+            / "backend.env.j2"
+        ).read_text()
+        public_origin = next(
+            line for line in backend_env.splitlines()
+            if line.startswith("ISUREAL_PUBLIC_ORIGIN=")
+        )
+        self.assertIn("isucon_topology.domain", public_origin)
+        self.assertIn("isucon_topology.clientForward.hostPort", public_origin)
+
     def test_invalid_portal_team_hash_is_rejected(self) -> None:
         invalid = copy.deepcopy(self.topology)
         invalid["portal"]["teamHash"] = "Not_A_Host_Label"
