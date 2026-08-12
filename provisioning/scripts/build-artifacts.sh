@@ -5,7 +5,7 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 release_file="${VM_RELEASE:-${repo_root}/provisioning/config/release.json}"
 
 if [[ -f "${release_file}" ]]; then
-  release_id="$(/usr/bin/python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["releaseId"])' "${release_file}")"
+  release_id="$(mise exec -- python -c 'import json,sys; print(json.load(open(sys.argv[1]))["releaseId"])' "${release_file}")"
 else
   release_id="development"
 fi
@@ -53,37 +53,7 @@ tar "${tar_flags[@]}" -cf "${bundle_dir}/router.tar" -C "${artifact_root}" bin/i
 tar "${tar_flags[@]}" -cf "${bundle_dir}/envoy.tar" -C "${artifact_root}" bin/envoy
 tar "${tar_flags[@]}" -cf "${bundle_dir}/database-migrations.tar" -C "${artifact_root}" share/migrations
 
-/usr/bin/python3 - "${artifact_root}" "${release_id}" "${envoy_image}" <<'PY'
-import hashlib
-import json
-import os
-from pathlib import Path
-import sys
-
-root = Path(sys.argv[1])
-release_id = sys.argv[2]
-envoy_image = sys.argv[3]
-entries = []
-for path in sorted(root.rglob("*")):
-    if not path.is_file() or path.name == "manifest.json":
-        continue
-    digest = hashlib.sha256(path.read_bytes()).hexdigest()
-    entries.append({
-        "path": path.relative_to(root).as_posix(),
-        "sha256": digest,
-        "size": path.stat().st_size,
-    })
-manifest = {
-    "schemaVersion": 1,
-    "releaseId": release_id,
-    "architecture": "amd64",
-    "envoySourceImage": envoy_image,
-    "files": entries,
-}
-temporary = root / "manifest.json.tmp"
-temporary.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
-os.replace(temporary, root / "manifest.json")
-PY
+rm -f "${artifact_root}/manifest.json" "${artifact_root}/release.json"
 
 ln -sfn "${release_id}" "${repo_root}/provisioning/.state/artifacts/current"
 printf 'artifacts: %s\n' "${artifact_root}"

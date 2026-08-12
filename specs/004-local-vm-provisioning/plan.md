@@ -6,15 +6,15 @@
 
 ## Summary
 
-Linux x86_64で、Vagrant 2.4.9 + VirtualBox 7.2.14からUbuntu 24.04 amd64の4 VMを起動する。problem-server 3台はそれぞれ専用internal networkへ置き、Router VMは3 data segmentとhost-only controlへ接続する5 NIC構成とする。Client ingressはRouterのNAT adapterへ`127.0.0.1:18080`からguest `8080`への固定Vagrant port forwardで渡し、専用ingress NICは作らない。Packerは公式Ubuntu amd64 ISOから単一のbase boxを作り、共通Ansible rolesからproblem-server/Routerのrole boxを生成する。通常の`vm-up`は検証済みboxを利用し、薄いruntime playbookだけでnode identity、network、秘密値、初回DB構成を収束させる。
+Linux x86_64で、Vagrant + VirtualBoxからUbuntu 24.04 amd64の4 VMを起動する。problem-server 3台はそれぞれ専用internal networkへ置き、Router VMは3 data segmentとhost-only controlへ接続する5 NIC構成とする。Client ingressはRouterのNAT adapterへ`127.0.0.1:18080`からguest `8080`への固定Vagrant port forwardで渡し、専用ingress NICは作らない。Packerは公式Ubuntu amd64 ISOから単一のbase boxを作り、共通Ansible rolesからproblem-server/Routerのrole boxを生成する。通常の`vm-up`は検証済みboxを利用し、薄いruntime playbookだけでnode identity、network、秘密値、初回DB構成を収束させる。
 
 問題VMにはPostgreSQL 16、backend、frontend、nginxを、Router VMには既存`003-router`仕様のRouter + Envoyをnative systemd serviceとして配備する。Portalは既存`portal-mock/compose.yaml`をenvironment専用Docker Compose projectとしてexternal-Router modeで起動し、APIはcontrol host-only addressだけ、UIはhost loopbackだけへpublishする。入力release manifest、生成artifact manifest、guest runtime stateを分け、同じAnsible image playbookを将来の`amazon-ebs` buildへ渡す。現行backendのPostgreSQL URL、pgx、migrationをそのままversioned application contractとして利用し、DB major version・schema・migrationの不一致をready扱いしない。
 
 ## Technical Context
 
-**Language/Version**: Packer HCL2（Packer 1.15.4）、Ansible YAML/Jinja（Python 3.12 + ansible-core 2.21.2）、Vagrant Ruby DSL（Vagrant 2.4.9）、Docker Compose YAML、POSIX shell + Make、JSON Schema 2020-12
+**Language/Version**: Packer HCL2（mise: Packer 1.15.4）、Ansible YAML/Jinja（mise: Python 3.12.13 + ansible-core 2.21.2）、Vagrant Ruby DSL、Docker Compose YAML、POSIX shell + Make、JSON Schema 2020-12
 
-**Primary Dependencies**: VirtualBox 7.2.14、Docker Engine 29.7.1 + Docker Compose 5.4.0、Packer plugins `virtualbox=1.1.5` / `vagrant=1.1.7` / `ansible=1.1.5`、`community.postgresql=4.2.0`、Ubuntu Subiquity Autoinstall、Ubuntu Snapshot Service、systemd、netplan、nftables、iproute2、PostgreSQL 16 + `python3-psycopg`（Ubuntu Noble snapshot固定）、nginx、Envoy 1.32.2、既存Go 1.26.5 / Node 24.14.1 Portal artifacts
+**Primary Dependencies**: VirtualBox、Docker Engine + Docker Compose、Packer plugins `virtualbox=1.1.5` / `vagrant=1.1.7` / `ansible=1.1.5`、`community.postgresql=4.2.0`、Ubuntu Subiquity Autoinstall、Ubuntu Snapshot Service、systemd、netplan、nftables、iproute2、PostgreSQL 16 + `python3-psycopg`（Ubuntu Noble snapshot固定）、nginx、Envoy 1.32.2、既存Go 1.26.5 / Node 24.14.1 Portal artifacts
 
 **Storage**: hostのcontent-addressed box/artifact/OCI image cache、environment-scoped Compose/Vagrant state、将来のversioned private S3 artifact registry。guestはPostgreSQL cluster data directory、画像領域、release/runtime manifest、journald。通常reprovisionはguest永続データを保持し、reset/destroyだけが明示的に変更・削除する。Portal Mockは永続volumeを持たない。
 
@@ -166,8 +166,8 @@ isureal-api / isureal-worker / image-sanitizer
 
 ### 7. Artifact and promotion flow
 
-1. `release.json`変更をreviewし、ISO/AMI owner/checksum、APT snapshot、package、app/Router/Portal sourceとbase-image digest、DB compatibility、host tool/pluginを固定する。
-2. Linux x86_64上でamd64 base/role imageをbuildし、`packer-manifest.json`とSHA-256を生成する。
+1. `release.json`変更をreviewし、ISO/AMI owner/checksum、APT snapshot、package、app/Router/Portal sourceとbase-image digest、DB compatibility、host tool/pluginを固定する。開発用local app artifactにchecksumは設定しない。
+2. Linux x86_64上でapp bundleとamd64 base/role imageをbuildする。Packer imageについては`packer-manifest.json`とSHA-256を生成する。
 3. built artifactそのものをbootし、同じsource revisionからPortal OCI imageをamd64 buildしてimage IDを記録し、idempotence、clone hygiene、secret scan、Portal/Clientを含む4-node conformanceを実行する。
 4. 合格済みchecksumだけをprivate registry metadataへ昇格する。同じrelease IDの再build/上書きを禁止する。
 5. snapshot/security/tool更新は新release IDのPRとして全matrixを再実行する。

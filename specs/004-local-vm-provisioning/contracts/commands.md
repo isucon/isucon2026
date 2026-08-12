@@ -25,7 +25,7 @@
 | `VM_KEEP_ON_FAILURE` | `0` | `1`なら診断用に起動済みresourceを保持。ただし新規破壊は行わない |
 | `VM_OUTPUT` | `human` | `human`または`json`; secretはどちらでもredact |
 
-`auto`はLinux x86_64とVirtualBox 7.2.14を検出して`virtualbox`を選ぶ。未対応host/profileを別providerへ暗黙fallbackしない。
+`auto`はLinux x86_64と利用可能なVirtualBoxを検出して`virtualbox`を選ぶ。未対応host/profileを別providerへ暗黙fallbackしない。
 
 default topologyはClient `127.0.0.1:18080`、Portal UI `127.0.0.1:15174`、Portal API `192.168.60.65:18082`を固定する。変更はschema検証される`VM_TOPOLOGY`で明示し、自動port correctionは行わない。local workflowに外部Portalへの切替入力は設けない。
 
@@ -47,8 +47,8 @@ Purpose: VMを作成・変更せず、実行可能性を判定する。
 
 Must check:
 
-- Linux x86_64、Vagrant/VirtualBox、Docker Engine 29.7.1、Docker Compose 5.4.0、Python/Ansibleのexact supported versions、Docker daemon、hardware virtualization。
-- topology/release schema、role/provider/architecture artifact variant、SHA-256、DB compatibility。
+- Linux x86_64、Packer、Vagrant、VirtualBox、ansible-playbook、Docker Engine/Composeコマンド、Docker daemon、hardware virtualization。host toolのversionはpreflightで完全一致検査せず、Python/ansible-core/Packerは`mise.toml`で固定する。Docker/Compose互換性はresolved Compose configと必要なpublish機能を実動作で検査する。
+- topology/release schema、role/provider/architecture artifact variant、DB compatibility、ローカルartifactの存在。開発用のlocal build artifactはchecksumを照合しない。将来remote artifactを取得する場合だけrelease manifestのSHA-256を検証する。
 - 4 CIDRの相互関係とhost/VPN/policy route、VirtualBox host-only/NAT/DHCP、既存VMとの衝突。
 - environment-namespaced internal network名、MAC、`127.0.0.1:2201..2204`、Client/Portal portの衝突。
 - host-only CIDRがVirtualBox許可範囲にあること。
@@ -168,7 +168,7 @@ Safety:
 
 ### `make image-validate`
 
-Packer HCL、plugin pins、Autoinstall schema、Ansible、release manifest、artifact checksumをstatic validationする。hypervisor side effectなし。
+Packer HCL、plugin pins、Autoinstall schema、Ansible、release manifestをstatic validationする。開発用local artifactのchecksum contractは持たない。hypervisor side effectなし。
 
 ### `make image-build-base [ARCH=amd64]`
 

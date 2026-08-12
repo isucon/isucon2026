@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import tomllib
 import unittest
 
 from provisioning.scripts import preflight
@@ -56,7 +57,7 @@ class ConfigContractTest(unittest.TestCase):
         invalid["nodes"]["server2"]["interfaces"][0]["macAddress"] = invalid["nodes"]["server1"]["interfaces"][0]["macAddress"]
         self.assertTrue(any("mac" in error.lower() for error in preflight.validate_topology(invalid)))
 
-    def test_release_is_linux_amd64_and_pins_host_tools(self) -> None:
+    def test_release_is_linux_amd64_and_records_tool_provenance(self) -> None:
         self.assertEqual([], preflight.validate_release(self.release))
         self.assertEqual("29.7.1", self.release["toolchain"]["dockerEngine"])
         self.assertEqual("5.4.0", self.release["toolchain"]["dockerCompose"])
@@ -65,6 +66,12 @@ class ConfigContractTest(unittest.TestCase):
             "arm64",
             {artifact["architecture"] for artifact in self.release["artifacts"]},
         )
+
+    def test_repository_tools_are_pinned_by_mise(self) -> None:
+        mise = tomllib.loads((PROVISIONING_DIR.parent / "mise.toml").read_text())
+        self.assertEqual("1.15.4", mise["tools"]["packer"])
+        self.assertEqual("3.12.13", mise["tools"]["python"])
+        self.assertEqual("2.21.2", mise["tools"]["ansible-core"])
 
     def test_autoinstall_uses_the_global_archive_without_geoip(self) -> None:
         user_data = load_yaml(PROVISIONING_DIR / "packer" / "local-base" / "http" / "user-data")
@@ -101,6 +108,33 @@ class ConfigContractTest(unittest.TestCase):
         self.assertTrue(
             any("incompatible" in error for error in preflight.validate_release(incompatible))
         )
+
+    def test_remote_artifact_requires_checksum_but_local_build_does_not(self) -> None:
+        self.assertEqual([], preflight.validate_release(self.release))
+        remote = copy.deepcopy(self.release)
+        backend = next(
+            artifact for artifact in remote["artifacts"]
+            if artifact["component"] == "backend"
+        )
+        backend["uri"] = "https://artifacts.example.invalid/backend.tar"
+        self.assertTrue(
+            any(
+                "remote artifact backend must declare a SHA-256 checksum" in error
+                for error in preflight.validate_release(remote)
+            )
+        )
+
+    def test_local_artifacts_are_deployed_without_checksum_markers(self) -> None:
+        build_script = (PROVISIONING_DIR / "scripts" / "build-artifacts.sh").read_text()
+        problem_role = (
+            PROVISIONING_DIR / "ansible" / "roles" / "problem_server" / "tasks" / "main.yml"
+        ).read_text()
+        router_role = (
+            PROVISIONING_DIR / "ansible" / "roles" / "router" / "tasks" / "main.yml"
+        ).read_text()
+        self.assertNotIn('artifact["sha256"]', build_script)
+        self.assertNotIn("item.value.sha256", problem_role)
+        self.assertNotIn("item.value.sha256", router_role)
 
     def test_portal_status_does_not_require_tagged_image_metadata(self) -> None:
         script = (PROVISIONING_DIR / "scripts" / "portal-compose.sh").read_text()

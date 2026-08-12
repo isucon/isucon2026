@@ -13,7 +13,7 @@ case "${action}" in
     ;;
 esac
 
-mapfile -t portal_values < <(/usr/bin/python3 - "${topology_file}" <<'PY'
+mapfile -t portal_values < <(mise exec -- python - "${topology_file}" <<'PY'
 import re
 import sys
 from pathlib import Path
