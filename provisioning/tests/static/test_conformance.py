@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import inspect
+import subprocess
 import unittest
+from unittest import mock
 
 from provisioning.scripts import preflight
 from provisioning.tests.conformance import validate
@@ -9,6 +11,24 @@ from support import PROVISIONING_DIR, load_yaml
 
 
 class ConformanceContractTest(unittest.TestCase):
+    @mock.patch("provisioning.tests.conformance.validate.time.sleep")
+    @mock.patch("provisioning.tests.conformance.validate.subprocess.run")
+    def test_command_runner_retries_transient_failures(
+        self,
+        run: mock.Mock,
+        sleep: mock.Mock,
+    ) -> None:
+        run.side_effect = [
+            subprocess.CalledProcessError(1, ["vagrant", "status"]),
+            subprocess.CompletedProcess(["vagrant", "status"], 0, stdout="ready\n"),
+        ]
+
+        self.assertEqual(
+            "ready",
+            validate.run(["vagrant", "status"], retries=1, retry_delay=0.1),
+        )
+        sleep.assert_called_once_with(0.1)
+
     def test_expected_hostnames_match_the_topology_contract(self) -> None:
         topology = load_yaml(PROVISIONING_DIR / "config" / "topology.yml")
         contract = preflight.portal_hostnames(topology)

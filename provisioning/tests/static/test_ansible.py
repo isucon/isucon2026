@@ -77,6 +77,11 @@ class AnsibleContractTest(unittest.TestCase):
             self.assertIn("[10:12]", rendered_template)
         self.assertIn('chain output', firewall)
         self.assertIn('ct state established,related accept', firewall)
+        self.assertIn('tcp sport 22 accept', firewall)
+        self.assertLess(
+            firewall.index('tcp sport 22 accept'),
+            firewall.index('ip daddr 10.0.0.0/8 drop'),
+        )
         self.assertIn('ip daddr 10.0.2.3 udp dport 53 accept', firewall)
         self.assertIn('oifname "${bootstrap_iface}" ip daddr 10.0.0.0/8 drop', firewall)
         self.assertIn('oifname "${bootstrap_iface}" ip daddr 192.168.0.0/16 drop', firewall)
