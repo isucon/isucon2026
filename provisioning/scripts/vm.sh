@@ -20,10 +20,14 @@ if not re.fullmatch(r"[a-z][a-z0-9-]{2,31}", environment_id):
     raise SystemExit("invalid environmentId")
 print(environment_id)
 print(release["releaseId"])
+print(topology["clientTlsForward"]["hostPort"])
+print(topology["clientTlsForward"]["guestPort"])
 PY
 )
 environment_id="${VM_ENV_ID:-${environment_values[0]}}"
 release_id="${environment_values[1]}"
+tls_host_port="${environment_values[2]}"
+tls_guest_port="${environment_values[3]}"
 if [[ ! "${environment_id}" =~ ^[a-z][a-z0-9-]{2,31}$ ]]; then
   printf 'invalid VM_ENV_ID: %s\n' "${environment_id}" >&2
   exit 2
@@ -124,12 +128,27 @@ preflight_up() {
   "${repo_root}/provisioning/scripts/preflight.sh"
 }
 
+ensure_tls() {
+  "${repo_root}/provisioning/scripts/tls.sh"
+}
+
+ensure_router_forwards() {
+  local ports
+  ports="$(vagrant_cmd port router 2>/dev/null || true)"
+  if grep -Eq "^[[:space:]]*${tls_guest_port} \\(guest\\) => ${tls_host_port} \\(host\\)$" <<<"${ports}"; then
+    return
+  fi
+  printf 'Applying Router TLS forward %s -> %s\n' "${tls_host_port}" "${tls_guest_port}"
+  vagrant_cmd reload router --no-provision
+}
+
 case "${action}" in
   preflight)
     exec "${repo_root}/provisioning/scripts/preflight.sh"
     ;;
   up)
     preflight_up
+    ensure_tls
     ensure_images
     install -d -m 0700 "${state_dir}"
     remove_stale_vm_folders
@@ -140,6 +159,8 @@ case "${action}" in
     ;;
   provision)
     "${repo_root}/provisioning/scripts/preflight.sh" --skip-ports --skip-routes
+    ensure_tls
+    ensure_router_forwards
     "${repo_root}/provisioning/scripts/portal-compose.sh" up
     provision_runtime
     validate_runtime
@@ -149,6 +170,7 @@ case "${action}" in
     ;;
   status)
     printf 'environment=%s release=%s\n' "${environment_id}" "${release_id}"
+    printf 'tls-ca=%s\n' "${repo_root}/provisioning/.state/tls/local-ca.crt"
     vagrant_cmd status
     "${repo_root}/provisioning/scripts/portal-compose.sh" status
     if [[ -f "${state_dir}/reports/latest.json" ]]; then

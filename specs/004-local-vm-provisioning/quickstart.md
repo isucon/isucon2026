@@ -129,7 +129,8 @@ Expected host entry points:
 
 | Purpose | Host bind | Target / caller |
 |---|---|---|
-| Client application ingress | `127.0.0.1:18080/tcp` | Vagrant forward → Router guest `8080` |
+| HTTP Client application ingress (benchmark) | `127.0.0.1:18080/tcp` | Vagrant forward → Router guest `8080` |
+| HTTPS Client application ingress (local development) | `127.0.0.1:18443/tcp` | Vagrant forward → Router guest `443` (Envoy TLS termination) |
 | Portal UI | `127.0.0.1:15174/tcp` | Compose `web:5174` |
 | Portal API | `192.168.60.65:18082/tcp` | Compose `server:8080`; Routerだけが`control0`から利用 |
 | VM SSH | `127.0.0.1:2201..2204/tcp` | Vagrant管理用forward |
@@ -147,18 +148,21 @@ Expected:
 - 4 VM、release ID、host profile、provider versionが表示される。
 - PostgreSQL/backend/worker/nginx、Router/EnvoyのhealthとRouter readinessがpass。
 - Portal Compose project、source revision、image ID、API/UI publish、healthとdesired/applied convergenceが表示される。
-- Client forwardが`127.0.0.1:18080`からRouter `8080`へのexact ruleとして表示される。
+- benchmark HTTP Client forwardが`127.0.0.1:18080`からRouter `8080`、local HTTPS Client forwardが`127.0.0.1:18443`からRouter `443`へのexact ruleとして表示される。
 - 最新ValidationReport pathと、driftがあれば再実行commandが表示される。
 
 host `/etc/hosts`を変更せずapplication ingressを確認する例:
 
 ```bash
+make vm-tls-ca
+
 curl --fail --show-error \
+  --cacert provisioning/.state/tls/local-ca.crt \
   -H 'X-Country-Code: JP' \
-  http://app.team1-local.127.0.0.1.nip.io:18080/
+  https://app.team1-local.127.0.0.1.nip.io:18443/
 ```
 
-Routerはvirtual-host照合時にHostのportを無視するため、`nip.io` hostnameとClient forward portを含むURLをbrowser/curlから直接利用できる。Portal UIはbrowserで`http://127.0.0.1:15174/`から確認できる。host `/etc/hosts`の変更は不要である。
+Routerはvirtual-host照合時にHostのportを無視するため、`nip.io` hostnameとClient forward portを含むURLをbrowser/curlから直接利用できる。ブラウザでは`provisioning/.state/tls/local-ca.crt`を信頼済みCAへ登録し、HTTPS `:18443`を使う。HTTP `:18080`はベンチマーク用に維持する。Portal UIはbrowserで`http://127.0.0.1:15174/`から確認でき、host `/etc/hosts`の変更は不要である。
 
 ## 7. Full conformance
 

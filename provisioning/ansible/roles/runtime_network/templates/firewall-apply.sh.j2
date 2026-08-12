@@ -32,6 +32,7 @@ table inet isureal_guard {
     iifname "${iface_data0}" tcp dport 8080 accept
 {% else %}
     iifname "${bootstrap_iface}" tcp dport 8080 accept
+    iifname "${bootstrap_iface}" tcp dport 443 accept
     iifname "${iface_control0}" tcp dport 18081 accept
 {% endif %}
   }

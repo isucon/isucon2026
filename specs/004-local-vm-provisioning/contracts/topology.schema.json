@@ -11,6 +11,7 @@
     "domain",
     "portal",
     "clientForward",
+    "clientTlsForward",
     "sshPorts",
     "resourceProfiles",
     "defaultResourceProfile",
@@ -102,6 +103,29 @@
         },
         "guestPort": {
           "const": 8080
+        },
+        "protocol": {
+          "const": "tcp"
+        },
+        "autoCorrect": {
+          "const": false
+        }
+      }
+    },
+    "clientTlsForward": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hostAddress", "hostPort", "guestPort", "protocol", "autoCorrect"],
+      "properties": {
+        "hostAddress": {
+          "const": "127.0.0.1"
+        },
+        "hostPort": {
+          "$ref": "#/$defs/tcpPort",
+          "default": 18443
+        },
+        "guestPort": {
+          "const": 443
         },
         "protocol": {
           "const": "tcp"
