@@ -91,6 +91,31 @@ class ConfigContractTest(unittest.TestCase):
         self.assertEqual([], preflight.check_provider("virtualbox"))
         self.assertTrue(preflight.check_provider("libvirt"))
 
+    def test_own_host_only_route_is_not_a_conflict(self) -> None:
+        routes = "\n".join(
+            [
+                "default via 192.0.2.1 dev eth0",
+                "192.168.60.64/28 dev vboxnet0 proto kernel scope link",
+            ]
+        )
+        self.assertEqual([], preflight.host_route_conflicts(routes, self.topology))
+
+    def test_foreign_routes_overlapping_topology_are_rejected(self) -> None:
+        routes = "\n".join(
+            [
+                # Internal segments are not host routes owned by this workflow.
+                "192.168.60.0/28 dev tun0",
+                # A supernet of the control segment is not the exact host-only
+                # route created for this environment.
+                "192.168.60.64/27 dev tun1",
+                "203.0.113.0/24 dev eth0",
+            ]
+        )
+        errors = preflight.host_route_conflicts(routes, self.topology)
+        self.assertEqual(2, len(errors))
+        self.assertTrue(any("192.168.60.0/28" in error for error in errors))
+        self.assertTrue(any("192.168.60.64/27" in error for error in errors))
+
     def test_release_rejects_duplicate_or_incompatible_artifacts(self) -> None:
         duplicate = copy.deepcopy(self.release)
         duplicate["artifacts"].append(copy.deepcopy(duplicate["artifacts"][0]))

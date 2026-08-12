@@ -72,6 +72,14 @@ class VagrantContractTest(unittest.TestCase):
         self.assertIn("vb.cpus = 4", template)
         self.assertIn("vb.memory = 4096", template)
 
+    def test_vm_lifecycle_cleans_only_unregistered_environment_folders(self) -> None:
+        script = (PROVISIONING_DIR / "scripts" / "vm.sh").read_text()
+        self.assertIn("remove_stale_vm_folders()", script)
+        self.assertIn('name="${environment_id}-${node}"', script)
+        self.assertIn('VBoxManage showvminfo "${name}"', script)
+        self.assertIn('folder="${machine_folder%/}/${name}"', script)
+        self.assertGreaterEqual(script.count("remove_stale_vm_folders"), 3)
+
 
 if __name__ == "__main__":
     unittest.main()

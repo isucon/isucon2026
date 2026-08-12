@@ -58,6 +58,32 @@ ensure_registered_box() {
   fi
 }
 
+# VirtualBox sometimes leaves an empty per-VM folder (for example a lingering
+# .nvram file) after a machine is unregistered.  On the next `vagrant up`, the
+# box is imported under a temporary name and then renamed to the environment VM
+# name, and that rename fails because the destination folder already exists.
+# Remove only this environment's own leftover folders, and only when no VM of
+# that exact name is still registered, so a healthy environment is never touched.
+remove_stale_vm_folders() {
+  local machine_folder
+  machine_folder="$(VBoxManage list systemproperties 2>/dev/null | sed -n 's/^Default machine folder: *//p')"
+  if [[ -z "${machine_folder}" || "${machine_folder}" == "/" || ! -d "${machine_folder}" ]]; then
+    return 0
+  fi
+  local node name folder
+  for node in server1 server2 server3 router; do
+    name="${environment_id}-${node}"
+    if VBoxManage showvminfo "${name}" >/dev/null 2>&1; then
+      continue
+    fi
+    folder="${machine_folder%/}/${name}"
+    if [[ -d "${folder}" ]]; then
+      printf 'Removing stale VirtualBox folder: %s\n' "${folder}" >&2
+      rm -rf -- "${folder}"
+    fi
+  done
+}
+
 ensure_images() {
   if [[ ! -f "${base_box}" ]]; then
     "${repo_root}/provisioning/scripts/image.sh" build-base amd64
@@ -106,6 +132,7 @@ case "${action}" in
     preflight_up
     ensure_images
     install -d -m 0700 "${state_dir}"
+    remove_stale_vm_folders
     vagrant_cmd up --provider=virtualbox --no-provision
     "${repo_root}/provisioning/scripts/portal-compose.sh" up
     provision_runtime
@@ -145,6 +172,7 @@ case "${action}" in
       "${repo_root}/provisioning/scripts/portal-compose.sh" down
     fi
     vagrant_cmd destroy --force
+    remove_stale_vm_folders
     if [[ -d "${state_dir}" ]]; then
       rm -rf -- "${state_dir}"
     fi
