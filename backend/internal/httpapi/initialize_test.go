@@ -1,8 +1,12 @@
 package httpapi_test
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
+	"path/filepath"
+	"runtime"
+	"sync"
 	"testing"
 	"time"
 
@@ -12,10 +16,29 @@ import (
 	"github.com/labstack/echo/v5"
 )
 
+type fakeOffsetStore struct {
+	mu     sync.Mutex
+	saved  []time.Duration
+	failed error
+}
+
+func (f *fakeOffsetStore) SaveVirtualOffset(_ context.Context, offset time.Duration) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.failed != nil {
+		return f.failed
+	}
+	f.saved = append(f.saved, offset)
+	return nil
+}
+
 func TestInitializeHandler(t *testing.T) {
 	pool := testkit.Database(t)
+	_, filename, _, _ := runtime.Caller(0)
+	t.Setenv("ISUREAL_MIGRATIONS_DIR", filepath.Join(filepath.Dir(filename), "..", "..", "migrations"))
 	clk := clock.NewVirtual()
-	handler := httpapi.NewInitializeHandler(pool, clk)
+	store := &fakeOffsetStore{}
+	handler := httpapi.NewInitializeHandler(pool, clk, store)
 
 	harness := testkit.NewHTTPHarness(func(e *echo.Echo) {
 		e.POST("/api/v1/initialize", handler.Initialize)
@@ -44,13 +67,20 @@ func TestInitializeHandler(t *testing.T) {
 	if diff > tolerance {
 		t.Fatalf("clock not set to base_time: Now()=%v, base_time=%v, diff=%v", clk.Now(), body.BaseTime, diff)
 	}
+	if len(store.saved) != 1 {
+		t.Fatalf("offset saves = %d, want 1", len(store.saved))
+	}
+	if store.saved[0] != clk.Offset() {
+		t.Fatalf("saved offset = %v, want %v", store.saved[0], clk.Offset())
+	}
 }
 
 func TestVirtualTimeAdvanceHandler(t *testing.T) {
 	clk := clock.NewVirtual()
 	base := time.Date(2026, 7, 19, 0, 0, 0, 0, time.UTC)
 	clk.SetBaseTime(base)
-	handler := httpapi.NewInitializeHandler(nil, clk)
+	store := &fakeOffsetStore{}
+	handler := httpapi.NewInitializeHandler(nil, clk, store)
 
 	harness := testkit.NewHTTPHarness(func(e *echo.Echo) {
 		e.POST("/api/v1/virtual-time/advance", handler.AdvanceTime)
@@ -74,5 +104,11 @@ func TestVirtualTimeAdvanceHandler(t *testing.T) {
 	const tolerance = time.Second
 	if diff > tolerance {
 		t.Fatalf("current_time = %v, want within %v of %v", result.CurrentTime, tolerance, want)
+	}
+	if len(store.saved) != 1 {
+		t.Fatalf("offset saves = %d, want 1", len(store.saved))
+	}
+	if store.saved[0] != clk.Offset() {
+		t.Fatalf("saved offset = %v, want %v", store.saved[0], clk.Offset())
 	}
 }

@@ -59,6 +59,19 @@ func TestVirtualOffset(t *testing.T) {
 	}
 }
 
+func TestVirtualSetOffset(t *testing.T) {
+	v := clock.NewVirtual()
+	v.SetOffset(3 * time.Hour)
+	if got := v.Offset(); got != 3*time.Hour {
+		t.Fatalf("Offset() = %v, want %v", got, 3*time.Hour)
+	}
+
+	v.SetOffset(-time.Minute)
+	if got := v.Offset(); got != -time.Minute {
+		t.Fatalf("Offset() = %v, want %v", got, -time.Minute)
+	}
+}
+
 func TestVirtualConcurrentAccess(t *testing.T) {
 	v := clock.NewVirtual()
 	v.SetBaseTime(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))

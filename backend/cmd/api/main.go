@@ -37,6 +37,10 @@ func main() {
 	}
 	defer db.Close()
 	source := clock.NewVirtual()
+	settingsRepository := postgres.NewSettingsRepository(db, source)
+	if offset, found, err := settingsRepository.LoadVirtualOffset(ctx); err == nil && found {
+		source.SetOffset(offset)
+	}
 	ids := domain.RandomIDGenerator{}
 	sessionRepository := postgres.NewSessionRepository(db, ids, source)
 	idempotencyRepository := postgres.NewIdempotencyRepository(db, ids, source)
@@ -74,7 +78,7 @@ func main() {
 	e := httpapi.NewRouter(httpapi.RouterDependencies{
 		DB: db, Logger: logger, Sessions: service.NewSessionService(sessionRepository), SessionStore: sessionRepository, PublicOrigin: cfg.PublicOrigin,
 		Posts: postService, Interactions: interactionService, Accounts: accountService, Memories: service.NewMemoryService(memoryRepository), Notifications: service.NewNotificationService(notificationRepository), PushSubscriptions: service.NewPushSubscriptionService(notificationRepository), Schedules: service.NewScheduleService(notificationRepository, source), Relationships: service.NewRelationshipService(relationshipRepository, userRepository), Administrators: service.NewAdminService(sessionRepository, relationshipRepository), Images: imageStore, Cursor: cursorCodec, Idempotency: idempotencyRepository, OpenAPI: contract,
-		Initialize: httpapi.NewInitializeHandler(db.Pool, source),
+		Initialize: httpapi.NewInitializeHandler(db.Pool, source, settingsRepository),
 	})
 	start := echo.StartConfig{Address: cfg.ListenAddress}
 	if err := start.Start(ctx, e); err != nil && !errors.Is(err, http.ErrServerClosed) {

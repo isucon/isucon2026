@@ -1,7 +1,9 @@
 package httpapi
 
 import (
+	"context"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/isucon/isucon2026/backend/internal/clock"
@@ -10,19 +12,34 @@ import (
 	"github.com/labstack/echo/v5"
 )
 
-const defaultMigrationDirectory = "migrations"
+const (
+	defaultMigrationDirectory = "migrations"
+	migrationDirectoryEnvKey  = "ISUREAL_MIGRATIONS_DIR"
+)
 
-type InitializeHandler struct {
-	pool   *pgxpool.Pool
-	clock  *clock.Virtual
-	migDir string
+// VirtualOffsetStore persists the virtual clock offset so that other
+// processes (e.g. the worker) can follow the API's virtual time.
+type VirtualOffsetStore interface {
+	SaveVirtualOffset(ctx context.Context, offset time.Duration) error
 }
 
-func NewInitializeHandler(pool *pgxpool.Pool, clk *clock.Virtual) *InitializeHandler {
+type InitializeHandler struct {
+	pool    *pgxpool.Pool
+	clock   *clock.Virtual
+	offsets VirtualOffsetStore
+	migDir  string
+}
+
+func NewInitializeHandler(pool *pgxpool.Pool, clk *clock.Virtual, offsets VirtualOffsetStore) *InitializeHandler {
+	migDir := os.Getenv(migrationDirectoryEnvKey)
+	if migDir == "" {
+		migDir = defaultMigrationDirectory
+	}
 	return &InitializeHandler{
-		pool:   pool,
-		clock:  clk,
-		migDir: defaultMigrationDirectory,
+		pool:    pool,
+		clock:   clk,
+		offsets: offsets,
+		migDir:  migDir,
 	}
 }
 
@@ -52,6 +69,14 @@ func (h *InitializeHandler) Initialize(c *echo.Context) error {
 
 	baseTime := seed.FixedTime()
 	h.clock.SetBaseTime(baseTime)
+	if err := h.offsets.SaveVirtualOffset(ctx, h.clock.Offset()); err != nil {
+		return &AppError{
+			Status: http.StatusInternalServerError,
+			Code:   "initialize_failed",
+			Title:  "Internal Server Error",
+			Cause:  err,
+		}
+	}
 
 	return c.JSON(http.StatusOK, InitializeResponse{
 		Language: "go",
@@ -65,6 +90,14 @@ func (h *InitializeHandler) AdvanceTime(c *echo.Context) error {
 		return err
 	}
 	h.clock.Advance(time.Duration(req.OffsetSeconds) * time.Second)
+	if err := h.offsets.SaveVirtualOffset(c.Request().Context(), h.clock.Offset()); err != nil {
+		return &AppError{
+			Status: http.StatusInternalServerError,
+			Code:   "virtual_time_advance_failed",
+			Title:  "Internal Server Error",
+			Cause:  err,
+		}
+	}
 	return c.JSON(http.StatusOK, VirtualTimeAdvanceResponse{
 		CurrentTime: h.clock.Now(),
 	})

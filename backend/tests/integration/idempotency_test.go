@@ -51,8 +51,14 @@ func TestEveryStateChangingOpenAPIOperationRequiresIdempotencyKey(t *testing.T) 
 	if err := yaml.Unmarshal(body, &document); err != nil {
 		t.Fatal(err)
 	}
+	// Competition-operation endpoints deliberately skip the Idempotency-Key
+	// requirement (spec-bench.md INIT-03).
+	exempt := map[string]bool{"/initialize": true, "/virtual-time/advance": true}
 	paths := document["paths"].(map[string]any)
 	for path, rawPath := range paths {
+		if exempt[path] {
+			continue
+		}
 		operations := rawPath.(map[string]any)
 		for method, rawOperation := range operations {
 			operation := rawOperation.(map[string]any)
