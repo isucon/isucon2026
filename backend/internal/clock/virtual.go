@@ -29,6 +29,12 @@ func (v *Virtual) Advance(d time.Duration) {
 	v.offset.Add(int64(d))
 }
 
+// SetOffset replaces the current offset. Used to synchronize the clock with
+// an offset persisted by another process.
+func (v *Virtual) SetOffset(d time.Duration) {
+	v.offset.Store(int64(d))
+}
+
 // Offset returns the current offset applied to the system clock.
 func (v *Virtual) Offset() time.Duration {
 	return time.Duration(v.offset.Load())
