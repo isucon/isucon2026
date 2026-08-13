@@ -10,10 +10,20 @@ import (
 	"github.com/isucon/isucon2026/backend/internal/httpapi"
 )
 
+// operationsExemptFromIdempotency are competition-operation endpoints that
+// deliberately skip the Idempotency-Key requirement (spec-bench.md INIT-03).
+var operationsExemptFromIdempotency = map[string]bool{
+	"/initialize":           true,
+	"/virtual-time/advance": true,
+}
+
 func TestOpenAPIStateChangesAndProblemTaxonomy(t *testing.T) {
 	validator := loadContract(t)
 	document := validator.Document()
 	for path, item := range document.Paths.Map() {
+		if operationsExemptFromIdempotency[path] {
+			continue
+		}
 		for method, operation := range item.Operations() {
 			hasKey := false
 			for _, parameter := range operation.Parameters {

@@ -33,6 +33,7 @@ tags:
   - name: interactions
   - name: notifications
   - name: admin
+  - name: ops
 
 paths:
   /auth/register:
@@ -646,6 +647,52 @@ paths:
         '409':
           description: 認定公開状態は不可逆であり、認定状態と既存関係を変更せず拒否
           content: { application/problem+json: { schema: { $ref: '#/components/schemas/Problem' } } }
+
+  /initialize:
+    post:
+      tags: [ops]
+      security: []
+      operationId: initialize
+      description: 競技運用エンドポイント。データベースを既知の初期状態へ戻し、仮想時間の起点を返す。Idempotency-Keyは不要（spec-bench.md INIT-03）
+      responses:
+        '200':
+          description: 初期化完了。base_timeが仮想時間の起点（spec-bench.md VT-003）
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [language, base_time]
+                properties:
+                  language: { type: string, description: 実装言語識別子 }
+                  base_time: { type: string, format: date-time, description: 仮想時間の起点（RFC 3339 UTC） }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /virtual-time/advance:
+    post:
+      tags: [ops]
+      security: []
+      operationId: advanceVirtualTime
+      description: 競技運用エンドポイント。仮想時間のオフセットを加算し、適用後の仮想現在時刻を返す（spec-bench.md VT-API-01〜06）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [offset_seconds]
+              properties:
+                offset_seconds: { type: integer, description: 現在のオフセットに加算する秒数 }
+      responses:
+        '200':
+          description: 適用後の仮想現在時刻
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [current_time]
+                properties:
+                  current_time: { type: string, format: date-time, description: 適用後の仮想現在時刻（RFC 3339 UTC） }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '415': { $ref: '#/components/responses/UnsupportedMedia' }
 
 components:
   securitySchemes:
