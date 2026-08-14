@@ -10,7 +10,7 @@ export default defineConfig({
     'Permissions-Policy': 'camera=(self)',
     'Referrer-Policy': 'no-referrer',
     'X-Content-Type-Options': 'nosniff',
-  }, proxy: { '/api': 'http://127.0.0.1:8080' } },
+  }, proxy: { '/api': process.env.ISUREAL_API_PROXY_TARGET ?? 'http://127.0.0.1:8080' } },
   build: {
     rollupOptions: {
       input: { app: resolve(import.meta.dirname, 'index.html'), 'service-worker': resolve(import.meta.dirname, 'src/service-worker/push.ts') },
