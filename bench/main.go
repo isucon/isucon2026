@@ -11,22 +11,19 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	"github.com/isucon/isucon2026/bench/internal/scenario"
 )
 
 const (
-	defaultTarget   = "http://localhost:8080"
-	defaultUsers    = 8
-	defaultDuration = 30 * time.Second
+	defaultTarget = "http://localhost:8080"
+	defaultUsers  = 8
 )
 
 func main() {
 	target := flag.String("target", defaultTarget, "base URL of the target application")
 	users := flag.Int("users", defaultUsers, "number of concurrent load users")
-	duration := flag.Duration("duration", defaultDuration, "load phase duration")
-	cycles := flag.Int("cycles", 0, "run exactly this many posting cycles instead of -duration (0 = duration-bound)")
+	cycles := flag.Int("cycles", 0, "run exactly this many posting cycles instead of the fixed 60s load (0 = 60s-bound)")
 	flag.Parse()
 
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
@@ -39,11 +36,10 @@ func main() {
 	defer cancel()
 
 	runner, err := scenario.NewRunner(scenario.Config{
-		Target:       *target,
-		Users:        *users,
-		LoadDuration: *duration,
-		MaxCycles:    *cycles,
-		Logger:       logger,
+		Target:    *target,
+		Users:     *users,
+		MaxCycles: *cycles,
+		Logger:    logger,
 	})
 	if err != nil {
 		logger.Error("benchmarker setup failed", "error", err.Error())

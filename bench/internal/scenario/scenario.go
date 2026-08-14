@@ -31,11 +31,17 @@ const (
 	asiaUTCOffset     = 9 * time.Hour
 
 	initializeTimeout = 30 * time.Second // INIT-10 provisional limit
-	scheduleLead      = 3 * time.Second  // virtual delay until the window opens
-	windowPollEvery   = 500 * time.Millisecond
-	windowPollTimeout = 20 * time.Second
-	offsetSyncWait    = 2 * time.Second // D-006: wait for worker clock sync
-	virtualDay        = 24 * time.Hour
+	// loadDuration is fixed at 60 seconds like every past ISUCON (D-008,
+	// docs/research/isucon-benchmarker-termination.md).
+	loadDuration = 60 * time.Second
+	// abortErrorThreshold aborts the load phase as fail once the total
+	// error count reaches it (D-009, fixed-count style like ISUCON 11/12/14).
+	abortErrorThreshold = 100
+	scheduleLead        = 3 * time.Second // virtual delay until the window opens
+	windowPollEvery     = 500 * time.Millisecond
+	windowPollTimeout   = 20 * time.Second
+	offsetSyncWait      = 2 * time.Second // D-006: wait for worker clock sync
+	virtualDay          = 24 * time.Hour
 
 	postImageSize       = 64
 	realMojiImageSize   = 32
@@ -50,11 +56,10 @@ const (
 var reactionTypes = []string{"like", "heart", "laugh", "smile", "surprise", "instant"}
 
 type Config struct {
-	Target       string
-	Users        int
-	LoadDuration time.Duration
+	Target string
+	Users  int
 	// MaxCycles > 0 runs exactly that many posting cycles instead of the
-	// real-time LoadDuration bound, so repeated runs score identically.
+	// fixed 60-second load duration, so repeated runs score identically.
 	MaxCycles int
 	Logger    *slog.Logger
 }
@@ -71,17 +76,18 @@ type Result struct {
 }
 
 type Runner struct {
-	cfg        Config
-	api        *client.Client
-	clock      *vt.Clock
-	board      *score.Board
-	adminToken string
-	users      []client.User
-	postImage  []byte
-	mojiImage  []byte
-	language   string
-	baseTime   time.Time
-	cycles     int
+	cfg         Config
+	api         *client.Client
+	clock       *vt.Clock
+	board       *score.Board
+	adminToken  string
+	users       []client.User
+	postImage   []byte
+	mojiImage   []byte
+	language    string
+	baseTime    time.Time
+	cycles      int
+	abortReason string
 }
 
 func NewRunner(cfg Config) (*Runner, error) {
@@ -113,6 +119,9 @@ func (r *Runner) Run(ctx context.Context) Result {
 		return r.failResult(reason)
 	}
 	r.load(ctx)
+	if r.abortReason != "" {
+		return r.failResult(r.abortReason)
+	}
 	return Result{
 		Pass:      true,
 		Score:     r.board.Total(),
@@ -214,12 +223,12 @@ func (r *Runner) pretest(ctx context.Context) (string, bool) {
 // --- phase 3: load (spec-bench.md §8, basic cycle) ---
 
 func (r *Runner) load(ctx context.Context) {
-	r.cfg.Logger.Info("phase: load", "users", r.cfg.Users, "duration", r.cfg.LoadDuration.String(), "maxCycles", r.cfg.MaxCycles)
+	r.cfg.Logger.Info("phase: load", "users", r.cfg.Users, "duration", loadDuration.String(), "maxCycles", r.cfg.MaxCycles)
 	if reason := r.prepareUsers(ctx); reason != "" {
 		r.board.Errorf("%s", reason)
 		return
 	}
-	deadline := time.Now().Add(r.cfg.LoadDuration)
+	deadline := time.Now().Add(loadDuration)
 	for cycle := 0; r.hasNextCycle(cycle, deadline); cycle++ {
 		if ctx.Err() != nil {
 			return
@@ -228,6 +237,9 @@ func (r *Runner) load(ctx context.Context) {
 			return
 		}
 		r.cycles++
+		if r.shouldAbort() {
+			return
+		}
 		if !r.hasNextCycle(cycle+1, deadline.Add(-offsetSyncWait)) {
 			break
 		}
@@ -244,6 +256,20 @@ func (r *Runner) hasNextCycle(cycle int, deadline time.Time) bool {
 		return cycle < r.cfg.MaxCycles
 	}
 	return time.Now().Before(deadline)
+}
+
+// shouldAbort marks the run as fail once the total error count reaches the
+// threshold (D-009). The abort survives into the final Result.
+func (r *Runner) shouldAbort() bool {
+	if r.abortReason != "" {
+		return true
+	}
+	if count := r.board.ErrorCount(); count >= abortErrorThreshold {
+		r.abortReason = fmt.Sprintf("load aborted: error count reached %d (threshold %d, D-009)", count, abortErrorThreshold)
+		r.cfg.Logger.Error("load aborted", "errorCount", count, "threshold", abortErrorThreshold)
+		return true
+	}
+	return false
 }
 
 func (r *Runner) prepareUsers(ctx context.Context) string {
@@ -274,6 +300,9 @@ func (r *Runner) runCycle(ctx context.Context, cycle int) bool {
 
 	r.checkNotifications(ctx, window.ID)
 	r.fanOutUsers(ctx, cycle)
+	if r.shouldAbort() {
+		return false
+	}
 	if cycle > 0 {
 		r.checkMemories(ctx)
 	}
