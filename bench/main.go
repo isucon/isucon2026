@@ -26,6 +26,7 @@ func main() {
 	target := flag.String("target", defaultTarget, "base URL of the target application")
 	users := flag.Int("users", defaultUsers, "number of concurrent load users")
 	duration := flag.Duration("duration", defaultDuration, "load phase duration")
+	cycles := flag.Int("cycles", 0, "run exactly this many posting cycles instead of -duration (0 = duration-bound)")
 	flag.Parse()
 
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
@@ -41,6 +42,7 @@ func main() {
 		Target:       *target,
 		Users:        *users,
 		LoadDuration: *duration,
+		MaxCycles:    *cycles,
 		Logger:       logger,
 	})
 	if err != nil {

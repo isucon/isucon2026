@@ -53,7 +53,10 @@ type Config struct {
 	Target       string
 	Users        int
 	LoadDuration time.Duration
-	Logger       *slog.Logger
+	// MaxCycles > 0 runs exactly that many posting cycles instead of the
+	// real-time LoadDuration bound, so repeated runs score identically.
+	MaxCycles int
+	Logger    *slog.Logger
 }
 
 type Result struct {
@@ -211,13 +214,13 @@ func (r *Runner) pretest(ctx context.Context) (string, bool) {
 // --- phase 3: load (spec-bench.md §8, basic cycle) ---
 
 func (r *Runner) load(ctx context.Context) {
-	r.cfg.Logger.Info("phase: load", "users", r.cfg.Users, "duration", r.cfg.LoadDuration.String())
+	r.cfg.Logger.Info("phase: load", "users", r.cfg.Users, "duration", r.cfg.LoadDuration.String(), "maxCycles", r.cfg.MaxCycles)
 	if reason := r.prepareUsers(ctx); reason != "" {
 		r.board.Errorf("%s", reason)
 		return
 	}
 	deadline := time.Now().Add(r.cfg.LoadDuration)
-	for cycle := 0; time.Now().Before(deadline); cycle++ {
+	for cycle := 0; r.hasNextCycle(cycle, deadline); cycle++ {
 		if ctx.Err() != nil {
 			return
 		}
@@ -225,13 +228,22 @@ func (r *Runner) load(ctx context.Context) {
 			return
 		}
 		r.cycles++
-		if !time.Now().Add(offsetSyncWait).Before(deadline) {
+		if !r.hasNextCycle(cycle+1, deadline.Add(-offsetSyncWait)) {
 			break
 		}
 		if !r.advanceToNextDay(ctx, cycle) {
 			return
 		}
 	}
+}
+
+// hasNextCycle decides whether cycle should run: a fixed cycle count when
+// MaxCycles is set, otherwise the real-time deadline.
+func (r *Runner) hasNextCycle(cycle int, deadline time.Time) bool {
+	if r.cfg.MaxCycles > 0 {
+		return cycle < r.cfg.MaxCycles
+	}
+	return time.Now().Before(deadline)
 }
 
 func (r *Runner) prepareUsers(ctx context.Context) string {
