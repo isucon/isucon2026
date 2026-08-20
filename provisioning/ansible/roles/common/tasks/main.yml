@@ -18,6 +18,7 @@
       - isucon_release_manifest.schemaVersion == 3
       - isucon_release_manifest.ubuntu.release == "24.04"
       - isucon_release_manifest.ubuntu.installImages.keys() | list == ["amd64"]
+      - isucon_release_manifest.ubuntu.cloudImages.keys() | list == ["amd64"]
       - isucon_release_manifest.databaseContract.engine == "postgresql"
       - isucon_release_manifest.databaseContract.majorVersion == 16
 

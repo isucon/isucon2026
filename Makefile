@@ -1,4 +1,4 @@
-.PHONY: tools fmt vet build test frontend-install frontend-lint frontend-typecheck frontend-test frontend-e2e contract generate-api proto-lint proto-generate proto-build portal-fmt portal-vet portal-test portal-build portal-web-install portal-web-lint portal-web-typecheck portal-web-test portal-web-build portal-web-e2e portal-check router-fmt router-vet router-test router-build router-compose-check router-envoy-check router-e2e router-check provisioning-static provisioning-artifacts vm-preflight vm-up vm-provision vm-validate vm-status vm-logs vm-tls-ca vm-reset-data vm-destroy image-validate image-build-base image-build-role image-promote check
+.PHONY: tools fmt vet build test frontend-install frontend-lint frontend-typecheck frontend-test frontend-e2e contract generate-api proto-lint proto-generate proto-build portal-fmt portal-vet portal-test portal-build portal-web-install portal-web-lint portal-web-typecheck portal-web-test portal-web-build portal-web-e2e portal-check router-fmt router-vet router-test router-build router-compose-check router-envoy-check router-e2e router-check provisioning-static provisioning-artifacts vm-preflight vm-up vm-provision vm-validate vm-status vm-logs vm-tls-ca vm-reset-data vm-destroy image-validate image-build-base image-build-role image-promote aws-image-validate aws-image-build-role aws-infra-install aws-infra-check aws-infra-preview aws-infra-up aws-infra-validate aws-infra-destroy check
 
 tools:
 	mise install
@@ -154,5 +154,30 @@ image-build-role:
 
 image-promote:
 	provisioning/scripts/image.sh promote "$(ROLE)" "$(or $(ARCH),amd64)" "$(ARTIFACT_ID)"
+
+aws-image-validate:
+	provisioning/scripts/aws-image.sh validate
+
+aws-image-build-role:
+	provisioning/scripts/aws-image.sh build-role "$(ROLE)"
+
+aws-infra-install:
+	npm --prefix provisioning/aws ci
+
+aws-infra-check:
+	npm --prefix provisioning/aws run typecheck
+	npm --prefix provisioning/aws test
+
+aws-infra-preview:
+	cd provisioning/aws && pulumi preview --stack "$(or $(STACK),dev)"
+
+aws-infra-up:
+	cd provisioning/aws && pulumi up --stack "$(or $(STACK),dev)"
+
+aws-infra-validate:
+	STACK="$(or $(STACK),dev)" provisioning/scripts/aws-validate.sh
+
+aws-infra-destroy:
+	cd provisioning/aws && pulumi destroy --stack "$(or $(STACK),dev)"
 
 check: proto-lint vet frontend-lint frontend-typecheck contract test build

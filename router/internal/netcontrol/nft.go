@@ -29,7 +29,7 @@ func RenderNFT(interfaces map[domain.ServerID]string, tableExists bool) (string,
 			if source == destination {
 				continue
 			}
-			fmt.Fprintf(&builder, "        iifname %q oifname %q accept comment %q\n", interfaces[source], interfaces[destination], source+"-to-"+destination)
+			fmt.Fprintf(&builder, "        iifname %q oifname %q counter accept comment %q\n", interfaces[source], interfaces[destination], source+"-to-"+destination)
 		}
 	}
 	builder.WriteString("    }\n")
