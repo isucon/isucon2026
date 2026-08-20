@@ -89,6 +89,70 @@ make image-build-role ROLE=router ARCH=amd64
 
 box は release ID、role、provider、architecture、SHA-256 とともに `provisioning/.state/images/image-artifact-index.json` へ記録されます。既定では同じ ID を別内容で上書きしませんが、ローカル開発で作り直したいときは `FORCE=1 make image-build-base` / `FORCE=1 make image-build-role ROLE=...` で既存 box を再生成できます（`promoted` 済み artifact は保護されます）。
 
-## 将来の AMI
+## AWS AMI
 
-guest 構成の中心は `provisioning/ansible/playbooks/image.yml` と provider 非依存 role です。将来の `amazon-ebs` source はこの playbook を再利用し、AWS の source image、network、credential、AMI registration/share を Packer/provider 側へ限定します。現時点の local command は AWS credential を受け取らず、AMI の生成・登録・公開を行いません。
+AWSではVirtualBox boxを変換せず、release manifestへ固定したCanonical Ubuntu 24.04 amd64 AMIから、同じ
+`provisioning/ansible/playbooks/image.yml`を使って次の2種類を作ります。
+
+- `problem-server`: 3台のService VMで共用
+- `router`: 中央Router VM
+
+```bash
+make provisioning-artifacts
+make aws-image-validate
+make aws-image-build-role ROLE=problem-server
+make aws-image-build-role ROLE=router
+```
+
+既定regionは`ap-northeast-1`です。`AWS_REGION`、`AMI_BUILD_INSTANCE_TYPE`を明示的に上書きできます。
+Packerの一時instanceへ到達できるpublic subnetを使う場合は、同じVPCに属する
+`AMI_BUILD_VPC_ID`と`AMI_BUILD_SUBNET_ID`を両方指定します。AWS資格情報、Private IP、node identity、
+runtime secret、Portal endpointはAMIへ保存しません。
+
+生成AMIはregion、owner、source AMI、role、releaseとともに
+`provisioning/.state/images/image-artifact-index.json`へ記録されます。同じrelease/role/regionを異なるAMIで
+上書きしません。作り直す場合は新release IDを使用します。
+
+## AWS検証トポロジー
+
+`provisioning/aws`はPulumi TypeScriptで一時的な検証環境を作ります。3つのService VPCへ各1台の
+problem serverを置き、中央Router EC2へ各VPCのdata ENIをattachします。Routerのprimary ENIは
+server1 VPC内の専用control subnetに置くため、作成するVPCは合計3つです。既定Router instance typeは
+4 ENIを収容できる`c8in.large`、Service VMは検証用の`t3.small`です。競技用の正式なinstance typeは
+後続の競技環境仕様で上書きします。全VPC/ENIは同一Availability Zoneに作成し、Private IPは固定します。
+
+各Service subnetのroute tableは、他の2 Service VPC CIDRを自身のVPC内にあるRouter ENIへ向けます。
+VPC peering、Transit Gateway、Service VMのPublic IPは作りません。Router data ENIとRouter instanceの
+source/destination checkは無効化し、guest内ではIP forwardingを有効化します。Service VMの管理経路は
+各VPC内のSSM Interface Endpointへ閉じ、Routerのcontrol経路やインターネットを迂回路として使いません。
+
+```bash
+make aws-infra-install
+
+cd provisioning/aws
+pulumi stack init dev
+pulumi config set aws:region ap-northeast-1
+pulumi config set releaseId r2026.08.20.2
+pulumi config set serviceAmiId ami-...
+pulumi config set routerAmiId ami-...
+pulumi config set clientCidr 203.0.113.10/32
+pulumi config set --secret databasePassword '...'
+pulumi config set --secret cursorHmacKey '...'
+pulumi config set --secret tlsCertificate "$(cat server.crt)"
+pulumi config set --secret tlsPrivateKey "$(cat server.key)"
+
+make -C ../.. aws-infra-preview STACK=dev
+make -C ../.. aws-infra-up STACK=dev
+make -C ../.. aws-infra-validate STACK=dev
+make -C ../.. aws-infra-destroy STACK=dev
+```
+
+検証用Portal APIはRouter AMIへ同梱し、Router VMのloopback `127.0.0.1:18082`だけで起動します。
+`clientCidr`を設定した場合だけRouterの443/8080を指定CIDRへ公開します。SSHを許可する場合だけ
+`keyName`と`sshCidr`を同時に設定します。通常は全4台のSSM managed-instance profileを使います。
+検証環境はAMIから独立したPulumi stackなので、`aws-infra-destroy`はEC2、ENI、
+VPC、route、SGを削除しますがAMIを削除しません。
+
+AMIを昇格する前に、3台のservice health、6方向のpeer通信、Routerのnft/tc counter、Router停止中の
+新規peer通信失敗、復旧後の再接続、clone identityの一意性を確認します。合格レポートは
+`provisioning/.state/aws/<stack>/reports/`へ保存され、検証した2つのAMI artifactを`validated`へ遷移させます。

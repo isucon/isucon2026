@@ -1,8 +1,8 @@
 {
   "schemaVersion": 3,
-  "releaseId": "r2026.08.06.3",
-  "createdAt": "2026-08-06T04:28:00Z",
-  "sourceRevision": "e240d4ae6bbae6eecc542a1a05ffe5505aaab712",
+  "releaseId": "r2026.08.20.2",
+  "createdAt": "2026-08-20T06:21:00Z",
+  "sourceRevision": "59051655e21190d876649305390de3ce1bdcd296353c5a2b13af2c155a351356",
   "toolchain": {
     "packer": "1.15.4",
     "vagrant": "2.4.9",
@@ -12,6 +12,7 @@
     "python": "3.12.13",
     "ansibleCore": "2.21.2",
     "packerPlugins": {
+      "amazon": "1.8.1",
       "virtualbox": "1.1.5",
       "vagrant": "1.1.7",
       "ansible": "1.1.5"
@@ -28,6 +29,15 @@
         "url": "https://releases.ubuntu.com/noble/ubuntu-24.04.4-live-server-amd64.iso",
         "sha256": "e907d92eeec9df64163a7e454cbc8d7755e8ddc7ed42f99dbc80c40f1a138433",
         "serial": "24.04.4"
+      }
+    },
+    "cloudImages": {
+      "amd64": {
+        "region": "ap-northeast-1",
+        "amiId": "ami-0e239f7f4b3226722",
+        "ownerId": "099720109477",
+        "name": "ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-20260714",
+        "serial": "20260714"
       }
     }
   },
@@ -49,7 +59,7 @@
     },
     {
       "name": "nginx",
-      "version": "1.24.0-2ubuntu7.15",
+      "version": "1.24.0-2ubuntu7.17",
       "roles": ["problem-server"]
     },
     {
@@ -67,7 +77,7 @@
     {
       "id": "backend.amd64",
       "component": "backend",
-      "version": "e240d4ae6bbae6eecc542a1a05ffe5505aaab712",
+      "version": "59051655e21190d876649305390de3ce1bdcd296353c5a2b13af2c155a351356",
       "architecture": "amd64",
       "uri": "file://provisioning/.state/artifacts/current/bundles/backend.tar",
       "compatibilityId": "isureal-postgresql-v1"
@@ -75,7 +85,7 @@
     {
       "id": "frontend.any",
       "component": "frontend",
-      "version": "e240d4ae6bbae6eecc542a1a05ffe5505aaab712",
+      "version": "59051655e21190d876649305390de3ce1bdcd296353c5a2b13af2c155a351356",
       "architecture": "any",
       "uri": "file://provisioning/.state/artifacts/current/bundles/frontend.tar",
       "compatibilityId": "isureal-frontend-v1"
@@ -83,7 +93,7 @@
     {
       "id": "router.amd64",
       "component": "router",
-      "version": "e240d4ae6bbae6eecc542a1a05ffe5505aaab712",
+      "version": "59051655e21190d876649305390de3ce1bdcd296353c5a2b13af2c155a351356",
       "architecture": "amd64",
       "uri": "file://provisioning/.state/artifacts/current/bundles/router.tar",
       "compatibilityId": "isureal-router-v1"
@@ -99,7 +109,7 @@
     {
       "id": "database-migrations.any",
       "component": "database-migrations",
-      "version": "e240d4ae6bbae6eecc542a1a05ffe5505aaab712",
+      "version": "59051655e21190d876649305390de3ce1bdcd296353c5a2b13af2c155a351356",
       "architecture": "any",
       "uri": "file://provisioning/.state/artifacts/current/bundles/database-migrations.tar",
       "compatibilityId": "isureal-postgresql-v1"
@@ -107,7 +117,7 @@
     {
       "id": "portal-mock.any",
       "component": "portal-mock",
-      "version": "e240d4ae6bbae6eecc542a1a05ffe5505aaab712",
+      "version": "59051655e21190d876649305390de3ce1bdcd296353c5a2b13af2c155a351356",
       "architecture": "any",
       "uri": "file://portal-mock/compose.yaml",
       "compatibilityId": "portal-external-router-v1"
@@ -120,13 +130,13 @@
     "migrationArtifact": "database-migrations.any"
   },
   "routerContract": {
-    "specRevision": "e240d4ae6bbae6eecc542a1a05ffe5505aaab712",
+    "specRevision": "59051655e21190d876649305390de3ce1bdcd296353c5a2b13af2c155a351356",
     "compatibilityId": "isureal-router-v1",
     "envoyVersion": "1.32.2",
     "upstreamPort": 8080
   },
   "portalContract": {
-    "specRevision": "e240d4ae6bbae6eecc542a1a05ffe5505aaab712",
+    "specRevision": "59051655e21190d876649305390de3ce1bdcd296353c5a2b13af2c155a351356",
     "composeFile": "portal-mock/compose.yaml",
     "routerMode": "external-router",
     "apiContainerPort": 8080,

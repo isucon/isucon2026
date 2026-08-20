@@ -27,6 +27,10 @@ CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
   go -C "${repo_root}/router" build -buildvcs=false -trimpath -ldflags='-buildid=' \
   -o "${bin_dir}/isureal-router" ./cmd/router
 
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+  go -C "${repo_root}/portal-mock/server" build -buildvcs=false -trimpath -ldflags='-buildid=' \
+  -o "${bin_dir}/isureal-portal" ./cmd/portal
+
 npm --prefix "${repo_root}/frontend" ci
 npm --prefix "${repo_root}/frontend" run build
 rsync -a --delete "${repo_root}/frontend/dist/" "${frontend_dir}/"
@@ -49,7 +53,8 @@ tar_flags=(--sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner)
 tar "${tar_flags[@]}" -cf "${bundle_dir}/backend.tar" -C "${artifact_root}" \
   bin/api bin/worker bin/image-sanitizer bin/migrate bin/reset bin/seed share/openapi.yaml
 tar "${tar_flags[@]}" -cf "${bundle_dir}/frontend.tar" -C "${artifact_root}" frontend
-tar "${tar_flags[@]}" -cf "${bundle_dir}/router.tar" -C "${artifact_root}" bin/isureal-router
+tar "${tar_flags[@]}" -cf "${bundle_dir}/router.tar" -C "${artifact_root}" \
+  bin/isureal-router bin/isureal-portal
 tar "${tar_flags[@]}" -cf "${bundle_dir}/envoy.tar" -C "${artifact_root}" bin/envoy
 tar "${tar_flags[@]}" -cf "${bundle_dir}/database-migrations.tar" -C "${artifact_root}" share/migrations
 

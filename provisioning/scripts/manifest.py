@@ -49,11 +49,13 @@ def validate(index: dict[str, Any]) -> list[str]:
         f"{'.'.join(str(part) for part in error.absolute_path) or '<root>'}: {error.message}"
         for error in sorted(validator.iter_errors(index), key=lambda item: list(item.absolute_path))
     ]
-    keys: set[tuple[str, str, str, str]] = set()
+    keys: set[tuple[str, str, str, str, str]] = set()
     for artifact in index.get("artifacts", []):
+        output = artifact.get("output", {})
         key = (
             artifact.get("releaseId", ""), artifact.get("role", ""),
             artifact.get("provider", ""), artifact.get("architecture", ""),
+            output.get("region", "") if output.get("kind") == "ami" else "",
         )
         if key in keys:
             errors.append(f"duplicate artifact variant: {'/'.join(key)}")
@@ -125,6 +127,47 @@ def record_box(args: argparse.Namespace) -> None:
     print(artifact_id)
 
 
+def record_ami(args: argparse.Namespace) -> None:
+    release = read_json(args.release.resolve())
+    release_id = release["releaseId"]
+    artifact_id = f"{release_id}/{args.role}/amazon-ebs/amd64/{args.region}"
+    artifact = {
+        "artifactId": artifact_id,
+        "releaseId": release_id,
+        "role": args.role,
+        "provider": "amazon-ebs",
+        "architecture": "amd64",
+        "sourceImageId": args.source_image_id,
+        "buildName": args.build_name,
+        "buildTime": args.build_time or now(),
+        "sourceRevision": release["sourceRevision"],
+        "output": {
+            "kind": "ami",
+            "region": args.region,
+            "amiId": args.ami_id,
+            "ownerId": args.owner_id,
+        },
+        "validationState": "unverified",
+        "validationReports": [],
+    }
+    index = load_index(args.index)
+    matches = [item for item in index["artifacts"] if item["artifactId"] == artifact_id]
+    if matches:
+        old = matches[0]
+        if old["output"] == artifact["output"]:
+            print(artifact_id)
+            return
+        if not getattr(args, "replace", False):
+            raise ValueError(f"immutable artifact already exists with a different output: {artifact_id}")
+        if old.get("validationState") == "promoted":
+            raise ValueError(f"promoted artifact cannot be replaced: {artifact_id}")
+        index["artifacts"] = [item for item in index["artifacts"] if item["artifactId"] != artifact_id]
+    index["artifacts"].append(artifact)
+    index["artifacts"].sort(key=lambda item: item["artifactId"])
+    write_index(args.index, index)
+    print(artifact_id)
+
+
 def transition(args: argparse.Namespace) -> None:
     index = load_index(args.index)
     matches = [item for item in index["artifacts"] if item["artifactId"] == args.artifact_id]
@@ -137,7 +180,7 @@ def transition(args: argparse.Namespace) -> None:
         raise ValueError(f"terminal artifact state cannot transition: {old} -> {args.state}")
     allowed = {
         "unverified": {"validated", "rejected"},
-        "validated": {"promoted", "rejected"},
+        "validated": {"validated", "promoted", "rejected"},
         "promoted": {"promoted"},
         "rejected": {"rejected"},
     }
@@ -170,6 +213,18 @@ def parser() -> argparse.ArgumentParser:
     record.add_argument("--build-name", required=True)
     record.add_argument("--replace", action="store_true")
     record.set_defaults(function=record_box)
+
+    record_cloud = subparsers.add_parser("record-ami")
+    record_cloud.add_argument("--release", type=Path, default=DEFAULT_RELEASE)
+    record_cloud.add_argument("--role", choices=("problem-server", "router"), required=True)
+    record_cloud.add_argument("--region", required=True)
+    record_cloud.add_argument("--ami-id", required=True)
+    record_cloud.add_argument("--owner-id", required=True)
+    record_cloud.add_argument("--source-image-id", required=True)
+    record_cloud.add_argument("--build-name", required=True)
+    record_cloud.add_argument("--build-time")
+    record_cloud.add_argument("--replace", action="store_true")
+    record_cloud.set_defaults(function=record_ami)
 
     state = subparsers.add_parser("set-state")
     state.add_argument("--artifact-id", required=True)

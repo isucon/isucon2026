@@ -200,7 +200,7 @@
     "ubuntu": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["release", "aptSnapshot", "installImages"],
+      "required": ["release", "aptSnapshot", "installImages", "cloudImages"],
       "properties": {
         "release": {
           "const": "24.04"
@@ -218,6 +218,16 @@
               "$ref": "#/$defs/installImage"
             }
           }
+        },
+        "cloudImages": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["amd64"],
+          "properties": {
+            "amd64": {
+              "$ref": "#/$defs/cloudImage"
+            }
+          }
         }
       }
     },
@@ -233,6 +243,33 @@
         },
         "sha256": {
           "$ref": "#/$defs/sha256"
+        },
+        "serial": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "cloudImage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["region", "amiId", "ownerId", "name", "serial"],
+      "properties": {
+        "region": {
+          "type": "string",
+          "pattern": "^[a-z]{2}(?:-gov)?-[a-z]+-[1-9][0-9]*$"
+        },
+        "amiId": {
+          "type": "string",
+          "pattern": "^ami-[0-9a-f]+$"
+        },
+        "ownerId": {
+          "type": "string",
+          "pattern": "^[0-9]{12}$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
         },
         "serial": {
           "type": "string",
