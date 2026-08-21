@@ -125,6 +125,9 @@ server1 VPC内の専用control subnetに置くため、作成するVPCは合計3
 VPC peering、Transit Gateway、Service VMのPublic IPは作りません。Router data ENIとRouter instanceの
 source/destination checkは無効化し、guest内ではIP forwardingを有効化します。Service VMの管理経路は
 各VPC内のSSM Interface Endpointへ閉じ、Routerのcontrol経路やインターネットを迂回路として使いません。
+Service VMのSecurity Groupは、他の2 Service VPC CIDRと自身のRouter data IP `/32`からの全IPv4
+プロトコルを許可します。peer VPCからの通信は送信元Service IPを維持したまま必ずRouterを通過します。
+自身のVPC CIDR全体は許可しないため、control subnetからService VMへの直接バイパスは作りません。
 
 ```bash
 make aws-infra-install
@@ -150,6 +153,30 @@ make -C ../.. aws-infra-destroy STACK=dev
 検証用Portal APIはRouter AMIへ同梱し、Router VMのloopback `127.0.0.1:18082`だけで起動します。
 `clientCidr`を設定した場合だけRouterの443/8080を指定CIDRへ公開します。SSHを許可する場合だけ
 `keyName`と`sshCidr`を同時に設定します。通常は全4台のSSM managed-instance profileを使います。
+Router AMIにPortalのブラウザUIは同梱しません。AWS上のPortal APIへはSSM port forwardingで接続し、
+ローカルのVite UIをそのトンネルへ向けます。Terminal Aで次を実行してsessionを維持します。
+
+```bash
+ROUTER_ID="$(pulumi -C provisioning/aws stack output routerInstanceId --stack dev)"
+aws ssm start-session \
+  --region ap-northeast-1 \
+  --target "${ROUTER_ID}" \
+  --document-name AWS-StartPortForwardingSession \
+  --parameters '{"portNumber":["18082"],"localPortNumber":["28082"]}'
+```
+
+Terminal Bでhealthを確認し、UIを起動します。
+
+```bash
+curl -fsS http://127.0.0.1:28082/healthz
+npm --prefix portal-mock/web ci
+PORTAL_API_TARGET=http://127.0.0.1:28082 \
+  npm --prefix portal-mock/web run dev -- --host 127.0.0.1 --port 15174
+```
+
+ブラウザで`http://127.0.0.1:15174/`を開きます。SSHを有効化したstackでは、同じloopback宛ての
+local port forwardingをSSHで作ることもできます。`portal-mock/compose.yaml`は別のローカルPortal APIを
+起動するため、AWS Routerの状態確認には使いません。
 検証環境はAMIから独立したPulumi stackなので、`aws-infra-destroy`はEC2、ENI、
 VPC、route、SGを削除しますがAMIを削除しません。
 

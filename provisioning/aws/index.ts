@@ -6,6 +6,7 @@ import * as pulumi from "@pulumi/pulumi";
 import {
   controlRouterIp,
   controlSubnetCidr,
+  routerMediatedIngressCidrs,
   serverNetworks,
 } from "./lib/topology";
 import { routerUserData, serviceUserData } from "./lib/user-data";
@@ -199,17 +200,14 @@ const servers: ServerResources[] = serverNetworks.map((network, index) => {
   });
   const serviceSecurityGroup = new aws.ec2.SecurityGroup(`${network.id}-service-sg`, {
     vpcId: vpc.id,
-    description: `ISUCON ${network.id} service interface`,
+    description: `ISUCON ${network.id} Router-mediated internal traffic`,
     ingress: [
       {
-        protocol: "tcp",
-        fromPort: 8080,
-        toPort: 8080,
-        cidrBlocks: serverNetworks.map((item) => item.vpcCidr),
+        protocol: "-1",
+        fromPort: 0,
+        toPort: 0,
+        cidrBlocks: routerMediatedIngressCidrs(network),
       },
-      ...(sshCidr
-        ? [{ protocol: "tcp", fromPort: 22, toPort: 22, cidrBlocks: [sshCidr] }]
-        : []),
     ],
     egress: [
       {
