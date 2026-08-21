@@ -34,7 +34,11 @@ func main() {
 		os.Exit(1)
 	}
 	defer db.Close()
-	source := clock.System{}
+	source := clock.NewVirtual()
+	clockSync := worker.ClockSync{Source: postgres.NewSettingsRepository(db, source), Clock: source, Interval: cfg.Worker.PollInterval, Logger: logger}
+	if err := clockSync.Poll(ctx); err != nil {
+		logger.Warn("initial virtual clock sync failed", "operation", "worker_startup", "result", "retryable_error", "correlationId", "00000000-0000-0000-0000-000000000000")
+	}
 	ids := domain.RandomIDGenerator{}
 	sanitizer := isurealimage.NewIsolatedSanitizer(isurealimage.NewSubprocessProcess(cfg.Sanitizer.Path), cfg.Sanitizer.Concurrency, isurealimage.ResourceBudget{MemoryBytes: cfg.Sanitizer.MemoryBytes, CPUSeconds: cfg.Sanitizer.CPUSeconds, Timeout: cfg.Sanitizer.Timeout})
 	images := isurealimage.NewStore(cfg.ImageRoot, sanitizer, ids)
@@ -44,13 +48,15 @@ func main() {
 	purger := worker.AccountPurgeWorker{Service: accounts, Interval: 30 * time.Second, BatchSize: cfg.Worker.BatchSize, Logger: logger}
 	scheduler := worker.WindowScheduler{Repository: notifications, Interval: cfg.Worker.PollInterval, BatchSize: cfg.Worker.BatchSize, Logger: logger}
 	delivery := worker.PushDelivery{Repository: notifications, Sender: isurealpush.WebPush{PublicKey: cfg.VAPID.PublicKey, PrivateKey: cfg.VAPID.PrivateKey, Subject: cfg.VAPID.Subject}, Interval: cfg.Worker.PollInterval, BatchSize: cfg.Worker.BatchSize, Logger: logger}
-	results := make(chan error, 4)
+	results := make(chan error, 5)
 	go func() { results <- runner.Run(ctx) }()
 	go func() { results <- purger.Run(ctx) }()
 	go func() { results <- scheduler.Run(ctx) }()
 	go func() { results <- delivery.Run(ctx) }()
+	go func() { results <- clockSync.Run(ctx) }()
 	err = <-results
 	cancel()
+	<-results
 	<-results
 	<-results
 	<-results
