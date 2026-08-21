@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { gzipSync } from "node:zlib";
 import {
+  routerMediatedIngressCidrs,
   serverNetworks,
 } from "../lib/topology";
 import { routerUserData, serviceUserData } from "../lib/user-data";
@@ -28,6 +29,20 @@ describe("AWS topology", () => {
         ),
       ).toString();
       expect(rendered).not.toContain("ip route replace");
+    }
+  });
+
+  test("allows every protocol only from Router-mediated internal sources", () => {
+    for (const destination of serverNetworks) {
+      const ingressCidrs = routerMediatedIngressCidrs(destination);
+      expect(ingressCidrs).toHaveLength(3);
+      expect(ingressCidrs).toContain(`${destination.routerIp}/32`);
+      expect(ingressCidrs).not.toContain(destination.vpcCidr);
+      for (const source of serverNetworks) {
+        if (source.id !== destination.id) {
+          expect(ingressCidrs).toContain(source.vpcCidr);
+        }
+      }
     }
   });
 

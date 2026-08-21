@@ -38,3 +38,14 @@ export const serverNetworks: readonly ServerNetwork[] = [
     routerIp: "192.168.62.21",
   },
 ] as const;
+
+export function routerMediatedIngressCidrs(
+  destination: ServerNetwork,
+): string[] {
+  return [
+    `${destination.routerIp}/32`,
+    ...serverNetworks
+      .filter((source) => source.id !== destination.id)
+      .map((source) => source.vpcCidr),
+  ];
+}

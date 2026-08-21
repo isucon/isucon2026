@@ -78,6 +78,14 @@ class AWSProvisioningContractTest(unittest.TestCase):
         self.assertIn('"t3.small"', source)
         self.assertIn('"c8in.large"', source)
         self.assertIn("cidrBlocks: [network.vpcCidr]", source)
+        self.assertIn("routerMediatedIngressCidrs(network)", source)
+        service_sg = source[
+            source.index("const serviceSecurityGroup"):
+            source.index("const routerSecurityGroup")
+        ]
+        self.assertIn('protocol: "-1"', service_sg)
+        self.assertNotIn("fromPort: 8080", service_sg)
+        self.assertNotIn("cidrBlocks: [sshCidr]", service_sg)
         for cidr in ("192.168.60.0/24", "192.168.61.0/24", "192.168.62.0/24"):
             self.assertIn(cidr, topology)
         self.assertEqual(1, source.count("new aws.ec2.Vpc("))
