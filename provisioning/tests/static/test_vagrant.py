@@ -84,6 +84,14 @@ class VagrantContractTest(unittest.TestCase):
         self.assertIn('folder="${machine_folder%/}/${name}"', script)
         self.assertGreaterEqual(script.count("remove_stale_vm_folders"), 3)
 
+    def test_benchmark_entrypoint_uses_the_topology_client_forward(self) -> None:
+        script = (PROVISIONING_DIR / "scripts" / "vm-benchmark.sh").read_text()
+        makefile = (PROVISIONING_DIR.parent / "Makefile").read_text()
+        self.assertIn("benchmark_endpoint(topology)", script)
+        self.assertIn('-target "${target}" -host "${request_host}"', script)
+        self.assertIn("vm-benchmark:", makefile)
+        self.assertIn("provisioning/scripts/vm-benchmark.sh $(BENCH_ARGS)", makefile)
+
 
 if __name__ == "__main__":
     unittest.main()

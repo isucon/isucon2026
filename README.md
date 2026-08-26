@@ -45,3 +45,13 @@ make vm-down
 ```
 
 起動後は http://127.0.0.1:15174/ からポータルに、https://server1.team1-local.127.0.0.1.nip.io:18443 からアプリケーションにアクセスする。
+
+ベンチマーカーは Vagrant の HTTP Client forward と Router を経由して実行する。
+実行すると initialize phase で対象アプリのデータが初期化される。
+
+```bash
+make vm-benchmark
+
+# 開発用の固定 1 サイクル
+make vm-benchmark BENCH_ARGS='-users 2 -cycles 1'
+```

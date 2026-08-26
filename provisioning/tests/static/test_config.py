@@ -190,6 +190,13 @@ class ConfigContractTest(unittest.TestCase):
             },
             preflight.portal_hostnames(self.topology),
         )
+        self.assertEqual(
+            (
+                "http://127.0.0.1:18080",
+                "app.team1-local.127.0.0.1.nip.io",
+            ),
+            preflight.benchmark_endpoint(self.topology),
+        )
 
         portal_script = (PROVISIONING_DIR / "scripts" / "portal-compose.sh").read_text()
         self.assertIn('topology["portal"]["teamNumber"]', portal_script)

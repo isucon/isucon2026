@@ -56,6 +56,17 @@ make vm-validate
 make vm-logs
 ```
 
+Vagrant の HTTP Client forward を通してベンチマーカーを実行する。接続先と HTTP Host
+ヘッダーは topology から導出するため、port や team hostname をコマンドへ重複記載しない。
+実行時はベンチマーカーの initialize phase により対象アプリのデータが初期化される。
+
+```bash
+make vm-benchmark
+
+# 開発用の固定 1 サイクル
+make vm-benchmark BENCH_ARGS='-users 2 -cycles 1'
+```
+
 ブラウザでカメラ、Service Worker、`crypto.randomUUID()`などsecure-context限定APIを使うには、`provisioning/.state/tls/local-ca.crt`をOSまたはブラウザの信頼済みCAへ手動登録する。CAはenvironment destroy後も保持される。HTTP `:18080` はベンチマーク互換経路として残し、ローカルブラウザ開発ではHTTPS `:18443`を使う。
 
 通常の再適用は PostgreSQL data を消しません。

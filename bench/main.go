@@ -22,6 +22,7 @@ const (
 
 func main() {
 	target := flag.String("target", defaultTarget, "base URL of the target application")
+	host := flag.String("host", "", "HTTP Host header override (empty uses the target host)")
 	users := flag.Int("users", defaultUsers, "number of concurrent load users")
 	cycles := flag.Int("cycles", 0, "run exactly this many posting cycles instead of the fixed 60s load (0 = 60s-bound)")
 	flag.Parse()
@@ -37,6 +38,7 @@ func main() {
 
 	runner, err := scenario.NewRunner(scenario.Config{
 		Target:    *target,
+		Host:      *host,
 		Users:     *users,
 		MaxCycles: *cycles,
 		Logger:    logger,

@@ -69,6 +69,17 @@ def portal_hostnames(topology: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def benchmark_endpoint(topology: dict[str, Any]) -> tuple[str, str]:
+    client = topology.get("clientForward", {})
+    address = client.get("hostAddress")
+    port = client.get("hostPort")
+    if not isinstance(address, str) or not address:
+        raise ValueError("Client forward hostAddress must be a non-empty string")
+    if isinstance(port, bool) or not isinstance(port, int) or not 1 <= port <= 65535:
+        raise ValueError("Client forward hostPort must be a valid TCP port")
+    return f"http://{address}:{port}", portal_hostnames(topology)["app"]
+
+
 def validate_topology(topology: dict[str, Any]) -> list[str]:
     errors: list[str] = []
     try:
