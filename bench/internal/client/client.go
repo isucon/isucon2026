@@ -31,12 +31,21 @@ const (
 
 type Client struct {
 	base string
+	host string
 	http *http.Client
 }
 
 func New(base string) *Client {
+	return NewWithHost(base, "")
+}
+
+// NewWithHost creates a client that connects to base while overriding the
+// HTTP Host header. This is useful when a benchmark ingress is reached through
+// an IP/port forward but routes requests by the public application hostname.
+func NewWithHost(base, host string) *Client {
 	return &Client{
 		base: strings.TrimRight(base, "/"),
+		host: host,
 		// No cookie jar: any Cookie header is rejected with 400 by the app.
 		http: &http.Client{Timeout: requestTimeout},
 	}
@@ -81,6 +90,9 @@ func (c *Client) do(ctx context.Context, r request, out any) error {
 	httpRequest, err := http.NewRequestWithContext(ctx, r.method, c.base+r.path, bytes.NewReader(r.body))
 	if err != nil {
 		return err
+	}
+	if c.host != "" {
+		httpRequest.Host = c.host
 	}
 	if r.contentType != "" {
 		httpRequest.Header.Set("Content-Type", r.contentType)

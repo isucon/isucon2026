@@ -61,6 +61,27 @@ func TestLoginSendsContractHeaders(t *testing.T) {
 	}
 }
 
+func TestHostOverride(t *testing.T) {
+	var capturedHost string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedHost = r.Host
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"token": "session-token",
+			"user":  map[string]any{"id": "u1", "username": "alice"},
+		})
+	}))
+	defer server.Close()
+
+	api := client.NewWithHost(server.URL, "app.team1-local.127.0.0.1.nip.io")
+	if _, err := api.Login(context.Background(), "alice", "password"); err != nil {
+		t.Fatal(err)
+	}
+	if capturedHost != "app.team1-local.127.0.0.1.nip.io" {
+		t.Fatalf("Host = %q, want Vagrant application hostname", capturedHost)
+	}
+}
+
 func TestUnexpectedStatusBecomesAPIError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/problem+json")

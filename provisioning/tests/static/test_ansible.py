@@ -44,6 +44,13 @@ class AnsibleContractTest(unittest.TestCase):
             self.assertIn("isucon_topology.portal.teamHash", content)
             self.assertNotIn("app.{{ isucon_environment_id }}", content)
 
+    def test_problem_server_initialize_uses_deployed_migrations(self) -> None:
+        environment = self.read("roles/problem_server/templates/backend.env.j2")
+        self.assertIn(
+            "ISUREAL_MIGRATIONS_DIR=/opt/isucon/share/migrations",
+            environment,
+        )
+
     def test_reset_restores_services_even_when_seed_fails(self) -> None:
         reset = self.read("playbooks/reset-data.yml")
         self.assertIn("      always:", reset)
