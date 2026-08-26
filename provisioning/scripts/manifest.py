@@ -104,7 +104,7 @@ def record_box(args: argparse.Namespace) -> None:
         "sourceImageId": args.source_image_id,
         "buildName": args.build_name,
         "buildTime": now(),
-        "sourceRevision": release["sourceRevision"],
+        "sourceRevision": args.source_revision,
         "output": {"kind": "vagrant-box", "uri": file_uri(box), "sha256": digest},
         "validationState": "unverified",
         "validationReports": [],
@@ -140,7 +140,7 @@ def record_ami(args: argparse.Namespace) -> None:
         "sourceImageId": args.source_image_id,
         "buildName": args.build_name,
         "buildTime": args.build_time or now(),
-        "sourceRevision": release["sourceRevision"],
+        "sourceRevision": args.source_revision,
         "output": {
             "kind": "ami",
             "region": args.region,
@@ -211,6 +211,7 @@ def parser() -> argparse.ArgumentParser:
     record.add_argument("--box", type=Path, required=True)
     record.add_argument("--source-image-id", required=True)
     record.add_argument("--build-name", required=True)
+    record.add_argument("--source-revision", required=True)
     record.add_argument("--replace", action="store_true")
     record.set_defaults(function=record_box)
 
@@ -223,6 +224,7 @@ def parser() -> argparse.ArgumentParser:
     record_cloud.add_argument("--source-image-id", required=True)
     record_cloud.add_argument("--build-name", required=True)
     record_cloud.add_argument("--build-time")
+    record_cloud.add_argument("--source-revision", required=True)
     record_cloud.add_argument("--replace", action="store_true")
     record_cloud.set_defaults(function=record_ami)
 

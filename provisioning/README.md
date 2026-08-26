@@ -24,7 +24,7 @@ Portalの`teamNumber=1`、`teamHash=local`、`domain=127.0.0.1.nip.io`が公開h
 
 ## 前提と確認
 
-`provisioning/config/release.json` が release 入力で、Python/ansible-core/Packer は `mise.toml` で固定します。対象 host は Linux x86_64 + VirtualBox で、Vagrant・VirtualBox・Docker Engine/Compose は exact version を要求しません。
+`provisioning/config/release.json` はOS source、artifact参照、runtime compatibilityだけを持つrelease入力です。version制約は実際に導入へ使う`mise.toml`、Packer HCL、`requirements.yml`へ置き、Ubuntu packageは生成boxのSHA-256またはAMI IDで配備物を固定します。対象hostはLinux x86_64 + VirtualBoxで、host toolはexact versionを要求しません。
 
 ```bash
 make vm-preflight

@@ -80,8 +80,9 @@ EOF
 record_ami() {
   local ami_id="$1"
   local build_time="$2"
-  local owner_id
+  local owner_id source_revision
   owner_id="$(aws sts get-caller-identity --query Account --output text)"
+  source_revision="$(git -C "${repo_root}" rev-parse HEAD)"
   mise exec -- python "${repo_root}/provisioning/scripts/manifest.py" \
     --index "${index_file}" record-ami \
     --release "${release_file}" \
@@ -91,7 +92,8 @@ record_ami() {
     --owner-id "${owner_id}" \
     --source-image-id "${source_ami}" \
     --build-name "${role}-amd64" \
-    --build-time "${build_time}"
+    --build-time "${build_time}" \
+    --source-revision "${source_revision}"
 }
 
 adopt_existing_ami() {

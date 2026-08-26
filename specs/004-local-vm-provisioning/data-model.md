@@ -137,7 +137,6 @@ Fields:
 - `teamNumber`: PortalとRouter contractで共有する正のteam番号。
 - `teamHash`: Portalのhostname label生成に使うDNS-safe hash。
 - `calculatedHostnames`: `app|server1..3.team<teamNumber>-<teamHash>.<domain>`から決定的に導出し、Router/Envoyが受理するHostと一致させる。
-- `sourceRevision`: ReleaseManifestと同じGit revision。
 - `apiHostAddress`: control SegmentDefinitionのhost address。
 - `apiHostPort`: 既定`18082`、container target `8080`。
 - `uiHostAddress`: 固定値`127.0.0.1`。
@@ -157,27 +156,24 @@ Invariants:
 
 ## ReleaseManifest
 
-再現可能なbuildの唯一のversion管理入力。`contracts/release-manifest.schema.json`に従う。
+image buildに必要なrelease入力。`contracts/release-manifest.schema.json`に従う。
 
 Fields:
 
-- `schemaVersion`, `releaseId`, `createdAt`, `sourceRevision`。
-- `toolchain`: release検証時に使用したtool versionのprovenance。host側のversion一致を要求するcompatibility gateではない。Python、ansible-core、Packerは`mise.toml`、Packer pluginsはHCL、Ansible collectionsは`requirements.yml`を再現用の正とする。
-- `ubuntu`: release、amd64 ISO URL/SHA-256、APT snapshot ID。
-- `packages`: package名とexact version。
-- `artifacts`: role/component/architectureごとのURI、version。開発用local artifactはchecksumを持たない。将来のremote artifactはSHA-256を必須とする。Portalはsource/base-image digestも含む。
-- `databaseContract`: engine `postgresql`、major version `16`、minor update policy、schema compatibility ID、migration artifact。
-- `routerContract`: `specs/003-router` revision、Router/Envoy version、xDS/bootstrap compatibility ID。
-- `portalContract`: Portal source revision、Compose file、external-Router mode、API/UI container port。
+- `schemaVersion`, `releaseId`。
+- `ubuntu`: release、amd64 ISO URL/SHA-256、AWS source AMIのregion/ID/owner。
+- `artifacts`: component、architecture、URI、必要なcompatibility ID。開発用local artifactはchecksumを持たず、将来のremote artifactだけSHA-256を必須とする。
+- `databaseContract`: engine `postgresql`、major version `16`、schema compatibility ID。
+
+Toolのversionは実際に導入へ使う`mise.toml`、Packer HCL、`requirements.yml`が正本である。Ubuntu packageはroleにpackage名を記述し、24.04 repositoryから取得してmachine imageへ閉じ込める。Git revisionはbuild時にrepositoryから取得して出力artifactへ記録するため、release入力へ重複させない。Router compatibilityはRouter artifact自身が持ち、同じrelease内に比較用の複製を置かない。PortalのCompose path、mode、portはtopologyを正本とする。
 
 Invariants:
 
-- mutable tag、checksumなしURL、`latest`を許可しない。
 - backendとRouterはamd64 artifactを持つ。frontendがarchitecture-neutralの場合は`architecture: any`を明示する。
-- PostgreSQL major version、backend compatibility ID、migration IDが一致しないreleaseはbuild/ready不可。
-- Portal source revision、Compose contract、resolved image identityが一致しないreleaseはbuild/ready不可。
-- secret、access token、signed temporary URLを含まない。
-- release IDは内容を変更して再利用しない。
+- remote artifactはchecksumなしURLやsigned temporary URLを許可しない。
+- PostgreSQL major version、backend/database-migrations artifactのcompatibility IDが一致しないreleaseはbuild/ready不可。
+- secret、access tokenを含まない。
+- release IDはimage/artifactの名前空間であり、promoted outputは同じIDで上書きしない。
 
 ## MachineImageArtifact
 
@@ -221,7 +217,6 @@ ReleaseManifest内で外部成果物を指すcontent-addressed参照。
 Fields:
 
 - `component`: backend、frontend、router、envoy、migration等。
-- `version`: human-readable release。
 - `architecture`: `amd64`またはarchitecture-neutral artifact用の`any`。
 - `uri`: `file://`または認可されたprivate HTTPS/S3 location。
 - `sha256`: remote artifactでのみ使用する64桁lowercase hex。local development artifactでは省略する。

@@ -26,12 +26,12 @@
     content: |
       create_main_cluster = false
 
-- name: Install pinned problem-server packages
+- name: Install problem-server packages
   ansible.builtin.apt:
     name:
-      - "nginx={{ (isucon_release_manifest.packages | selectattr('name', 'equalto', 'nginx') | first).version }}"
-      - "postgresql-16={{ (isucon_release_manifest.packages | selectattr('name', 'equalto', 'postgresql-16') | first).version }}"
-      - "python3-psycopg={{ (isucon_release_manifest.packages | selectattr('name', 'equalto', 'python3-psycopg') | first).version }}"
+      - nginx
+      - postgresql-16
+      - python3-psycopg
     state: present
     update_cache: true
     cache_valid_time: 3600

@@ -23,7 +23,6 @@ PY
 release_id="$(read_release releaseId)"
 iso_url="$(read_release ubuntu.installImages.amd64.url)"
 iso_sha="$(read_release ubuntu.installImages.amd64.sha256)"
-source_revision="$(read_release sourceRevision)"
 image_dir="${repo_root}/provisioning/.state/images/${release_id}"
 base_box="${image_dir}/ubuntu-24.04.4-amd64-virtualbox.box"
 
@@ -55,6 +54,8 @@ record_box() {
   local box="$2"
   local source_image_id="$3"
   local build_name="$4"
+  local source_revision
+  source_revision="$(git -C "${repo_root}" rev-parse HEAD)"
   local replace=()
   if force_enabled; then
     replace+=(--replace)
@@ -62,7 +63,7 @@ record_box() {
   mise exec -- python "${repo_root}/provisioning/scripts/manifest.py" --index "${index_file}" record-box \
     --release "${release_file}" --role "${role}" --box "${box}" \
     --source-image-id "${source_image_id}" --build-name "${build_name}" \
-    "${replace[@]}"
+    --source-revision "${source_revision}" "${replace[@]}"
 }
 
 require_architecture() {
@@ -166,6 +167,8 @@ build_role() {
 promote() {
   local role="${2:-}"
   require_architecture
+  local source_revision
+  source_revision="$(git -C "${repo_root}" rev-parse HEAD)"
   local artifact_id="${4:-${release_id}/${role}/virtualbox/amd64}"
   local environment_id="${VM_ENV_ID:-isureal-local}"
   if [[ ! "${environment_id}" =~ ^[a-z][a-z0-9-]{2,31}$ ]]; then

@@ -74,7 +74,7 @@ Linuxを使う作問者は、前提ツールを準備したクリーンな作業
 - Portal image buildまたはCompose health checkが失敗した場合は、Routerをreadyとせず、environment専用Compose logsと再実行方法を残す。
 - 1台だけ停止または再起動した場合に、他の問題サーバーへ直接到達する経路が新たに生じない。
 - アプリ成果物、DBマイグレーション、設定の版が互換でない場合は、サービス起動後の曖昧な障害ではなく配備検証で失敗する。
-- PostgreSQL major version、schema compatibility ID、migration revisionのいずれかがbackend releaseと一致しない場合は、環境全体をreadyと報告しない。
+- PostgreSQL major versionまたはschema compatibility IDがbackend/database-migrations artifactと一致しない場合は、環境全体をreadyと報告しない。
 - 破棄または再作成を中断しても、次回の状態確認で残存資源を列挙できる。
 
 ## Requirements *(mandatory)*
@@ -101,7 +101,7 @@ Linuxを使う作問者は、前提ツールを準備したクリーンな作業
 - **FR-018**: Provisioning failures MUST identify the node and stage and MUST leave enough state and diagnostics for safe retry.
 - **FR-019**: Destruction MUST target only VM, network, state, and Compose resources carrying this environment's explicit identity and MUST NOT remove unrelated host, VM, container, network, image, or volume resources.
 - **FR-020**: Guest role definitions MUST be shared between local VM image creation and future cloud image creation; provider-specific source, transport, networking, and output settings MUST remain outside those roles.
-- **FR-021**: All base images, system packages, application artifacts, Router artifacts, and configuration inputs MUST be versioned or content-addressed in a machine-readable manifest.
+- **FR-021**: Base ISO/AMI、remote artifact、promoted machine imageはmachine-readableなIDまたはchecksumで識別しなければならない。system packageのminor versionは個別固定せず、Ubuntu 24.04 repositoryからbuildしたmachine imageのID/checksumで固定する。
 - **FR-022**: Build-time images MUST contain no developer credentials, cloud credentials, private keys, Portal credentials, or environment-specific secrets.
 - **FR-023**: Runtime secrets MUST be supplied through ignored or external inputs, rendered with least-privilege permissions, and redacted from normal logs and validation output.
 - **FR-024**: Results measured on the local development host MUST NOT be used as official score, latency, or throughput calibration values.
@@ -110,7 +110,7 @@ Linuxを使う作問者は、前提ツールを準備したクリーンな作業
 - **FR-027**: The local Portal MUST run from the repository's Portal definition as an environment-scoped Docker Compose stack in external-Router mode, and both its API health and Router desired/applied convergence MUST pass before the environment is ready.
 - **FR-028**: Client ingress MUST use one fixed TCP port forward from host loopback to the Router application listener; automatic port correction and application or database forwards to problem servers MUST NOT be permitted.
 - **FR-029**: The Portal UI MUST be published only to host loopback, while the Portal API used by the Router MUST be published only on the dedicated control path; neither endpoint may bind indiscriminately to every host interface.
-- **FR-030**: Portal Compose source revision, container image identities, Compose project identity, and effective non-secret configuration MUST be inspectable in status and validation results.
+- **FR-030**: Portal container image identities, Compose project identity, and effective non-secret configuration MUST be inspectable in status and validation results.
 
 ### Key Entities
 
@@ -118,10 +118,10 @@ Linuxを使う作問者は、前提ツールを準備したクリーンな作業
 - **Node**: `server1`〜`server3`または`router`という不変ID、役割、アドレス、割当資源、適用済みリリースを持つゲスト。
 - **Network Segment**: 用途、CIDR、Router側アドレス、接続を許可されたノード集合を持つ論理ネットワーク。
 - **Port Forward Binding**: environment、host loopback port、Router guest port、protocol、衝突判定を持つClient入口。
-- **Portal Compose Deployment**: environment専用project identity、Portal API/UIの公開境界、source revision、image identity、healthを持つhost側stack。
+- **Portal Compose Deployment**: environment専用project identity、Portal API/UIの公開境界、image identity、healthを持つhost側stack。
 - **Guest Role**: 問題サーバーまたはRouterへ適用する、環境出力先に依存しない望ましい構成。
 - **Machine Image Artifact**: ベースOS、アーキテクチャ、ビルド時刻、入力リビジョン、チェックサムを持つ再利用可能なイメージ。
-- **Release Manifest**: OS、パッケージ、アプリ、Router、設定スキーマ、イメージの互換な組を固定する記録。
+- **Release Manifest**: OS source、artifact参照、database compatibilityをまとめるimage build入力。
 - **Runtime Configuration**: アドレス、環境識別子、公開ホスト名、外部接続先、秘密値参照など、イメージへ焼き込まない環境固有値。
 - **Validation Result**: 環境ID、リリース、検査時刻、ノード別health、経路、分離、失敗理由を持つ適合性判定。
 
@@ -158,5 +158,5 @@ Linuxを使う作問者は、前提ツールを準備したクリーンな作業
 - Routerは既存の`specs/003-router`とその必要なHTTP proxyを一体のRouterスタックとして配備し、Portal endpointはtopologyのcontrol pathから導出してruntime設定として与える。
 - ローカルPortalは既存`portal-mock/compose.yaml`をexternal-Router modeで起動する。Portalは5台目のVMには数えず、Linux上のDocker EngineとDocker Composeをhost toolとして利用する。
 - Clientは独立VMやcontainerとして追加せず、host上のloopback-only forwarded portからRouterへ接続する。
-- 現行backendのPostgreSQL URL、pgx、migrationを既存のDB契約として利用し、PostgreSQL 16、schema compatibility ID、migration revisionをrelease manifestへ固定する。
+- 現行backendのPostgreSQL URL、pgx、migrationを既存のDB契約として利用し、PostgreSQL 16とschema compatibility IDをrelease manifestへ置く。
 - frontendはビルド済み静的成果物、backendとRouterはCPUアーキテクチャに対応した版固定成果物として配備できるものとする。

@@ -18,7 +18,7 @@ class ArtifactContractTest(unittest.TestCase):
             release = {
                 "artifacts": [
                     {
-                        "id": "backend.amd64",
+                        "component": "backend",
                         "uri": f"file://{relative}",
                     }
                 ]
@@ -34,7 +34,7 @@ class ArtifactContractTest(unittest.TestCase):
             {
                 "artifacts": [
                     {
-                        "id": "backend.amd64",
+                        "component": "backend",
                         "uri": "file://provisioning/.state/artifacts/missing/backend.tar",
                     }
                 ]
