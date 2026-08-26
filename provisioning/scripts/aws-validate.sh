@@ -85,6 +85,84 @@ peer_http_all() {
   done
 }
 
+global_ip_isolation_all() {
+  local node_ids=("${router_id}" "${service_ids[@]}")
+  local public_ips=("${router_public_ip}" "${service_public_ips[@]}")
+  local -a checks
+  local source_index target_index source_id source_public target_public
+  local subnet_id acl_json egress
+  for source_index in 0 1 2 3; do
+    source_id="${node_ids[$source_index]}"
+    source_public="${public_ips[$source_index]}"
+    checks=(
+      "observed_public=\$(curl -4fsS --connect-timeout 5 https://checkip.amazonaws.com | tr -d '[:space:]')"
+      "[ \"\$observed_public\" = '${source_public}' ] || { echo 'unexpected public egress identity' >&2; exit 1; }"
+    )
+    for target_index in 0 1 2 3; do
+      if [[ "${source_index}" -eq "${target_index}" ]]; then
+        continue
+      fi
+      target_public="${public_ips[$target_index]}"
+      checks+=(
+        "if ping -c 1 -W 1 '${target_public}' >/dev/null 2>&1; then echo 'Global IP ICMP bypassed isolation: ${source_public} -> ${target_public}' >&2; exit 1; fi"
+        "if timeout 2 bash -c 'exec 3<>/dev/tcp/${target_public}/22' >/dev/null 2>&1; then echo 'Global IP TCP bypassed isolation: ${source_public} -> ${target_public}' >&2; exit 1; fi"
+      )
+    done
+    run_ssm "${source_id}" "$(IFS='; '; echo "${checks[*]}")"
+
+    subnet_id="$(
+      aws ec2 describe-instances \
+        --region "${region}" \
+        --instance-ids "${source_id}" \
+        --query 'Reservations[0].Instances[0].NetworkInterfaces[?Attachment.DeviceIndex==`0`].SubnetId | [0]' \
+        --output text
+    )"
+    acl_json="$(
+      aws ec2 describe-network-acls \
+        --region "${region}" \
+        --filters "Name=association.subnet-id,Values=${subnet_id}" \
+        --output json
+    )"
+    if [[ "$(jq '.NetworkAcls | length' <<<"${acl_json}")" -ne 1 ]]; then
+      printf 'Expected one Network ACL for %s subnet %s\n' "${source_id}" "${subnet_id}" >&2
+      return 3
+    fi
+    for egress in true false; do
+      jq -e \
+        --argjson egress "${egress}" '
+          any(.NetworkAcls[0].Entries[];
+            .Egress == $egress
+            and .RuleNumber == 1000
+            and .RuleAction == "allow"
+            and .Protocol == "-1"
+            and .CidrBlock == "0.0.0.0/0")
+        ' <<<"${acl_json}" >/dev/null
+    done
+    for target_index in 0 1 2 3; do
+      if [[ "${source_index}" -eq "${target_index}" ]]; then
+        continue
+      fi
+      target_public="${public_ips[$target_index]}"
+      for egress in true false; do
+        if ! jq -e \
+          --arg cidr "${target_public}/32" \
+          --argjson egress "${egress}" '
+            any(.NetworkAcls[0].Entries[];
+              .Egress == $egress
+              and .RuleNumber < 1000
+              and .RuleAction == "deny"
+              and .Protocol == "-1"
+              and .CidrBlock == $cidr)
+          ' <<<"${acl_json}" >/dev/null; then
+          printf 'Network ACL on %s does not deny %s (egress=%s)\n' \
+            "${source_id}" "${target_public}" "${egress}" >&2
+          return 3
+        fi
+      done
+    done
+  done
+}
+
 nft_packet_count() {
   local snapshot="$1"
   local direction="$2"
@@ -139,7 +217,12 @@ mapfile -t service_ips < <(
   pulumi -C "${aws_root}" stack output servicePrivateIps --stack "${stack}" --json |
     jq -er '.[]'
 )
+mapfile -t service_public_ips < <(
+  pulumi -C "${aws_root}" stack output servicePublicAddresses --stack "${stack}" --json |
+    jq -er '.[]'
+)
 router_id="$(pulumi -C "${aws_root}" stack output routerInstanceId --stack "${stack}")"
+router_public_ip="$(pulumi -C "${aws_root}" stack output routerPublicAddress --stack "${stack}")"
 app_hostname="$(pulumi -C "${aws_root}" stack output appHostname --stack "${stack}")"
 release_id="$(pulumi -C "${aws_root}" config get releaseId --stack "${stack}")"
 service_ami_id="$(pulumi -C "${aws_root}" config get serviceAmiId --stack "${stack}")"
@@ -155,8 +238,9 @@ restore_router() {
 }
 trap restore_router EXIT
 
-if [[ "${#service_ids[@]}" -ne 3 || "${#service_ips[@]}" -ne 3 ]]; then
-  printf 'Pulumi stack must expose exactly three service nodes\n' >&2
+if [[ "${#service_ids[@]}" -ne 3 || "${#service_ips[@]}" -ne 3 \
+  || "${#service_public_ips[@]}" -ne 3 ]]; then
+  printf 'Pulumi stack must expose exactly three service nodes and Global IPs\n' >&2
   exit 3
 fi
 
@@ -208,6 +292,7 @@ for instance_id in "${service_ids[@]}"; do
 done
 run_ssm_retry "${router_id}" "cloud-init status --wait && sudo /usr/local/sbin/isureal-node-check"
 run_ssm "${router_id}" "curl -fsS --connect-timeout 3 -H 'Host: ${app_hostname}' http://127.0.0.1:8080/ >/dev/null"
+global_ip_isolation_all
 
 machine_ids=()
 ssh_host_keys=()
@@ -312,7 +397,9 @@ jq -n \
   --arg serviceArtifactId "${service_artifact_id}" \
   --arg routerArtifactId "${router_artifact_id}" \
   --argjson serviceInstanceIds "$(printf '%s\n' "${service_ids[@]}" | jq -R . | jq -s .)" \
+  --argjson servicePublicAddresses "$(printf '%s\n' "${service_public_ips[@]}" | jq -R . | jq -s .)" \
   --arg routerInstanceId "${router_id}" \
+  --arg routerPublicAddress "${router_public_ip}" \
   --argjson nftCounterDeltas "${nft_counter_deltas}" \
   --argjson trafficControlCounterDeltas "${tc_counter_deltas}" \
   '{
@@ -326,10 +413,14 @@ jq -n \
       router: {artifactId: $routerArtifactId, amiId: $routerAmiId}
     },
     serviceInstanceIds: $serviceInstanceIds,
+    servicePublicAddresses: $servicePublicAddresses,
     routerInstanceId: $routerInstanceId,
+    routerPublicAddress: $routerPublicAddress,
     checks: {
       nodeHealth: "pass",
       cloneIdentityUniqueness: "pass",
+      globalIpEgressIdentity: "pass",
+      globalIpPeerIsolation: "pass",
       sixDirectionPeerHTTP: "pass",
       routerForwardRulesObserved: true,
       routerTrafficControlObserved: true,
