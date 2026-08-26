@@ -10,13 +10,12 @@ from support import PROVISIONING_DIR, load_json
 
 
 class AWSProvisioningContractTest(unittest.TestCase):
-    def test_release_pins_reviewed_canonical_ami_and_amazon_plugin(self) -> None:
+    def test_release_pins_reviewed_canonical_ami(self) -> None:
         release = load_json(PROVISIONING_DIR / "config" / "release.json")
         image = release["ubuntu"]["cloudImages"]["amd64"]
         self.assertEqual("ap-northeast-1", image["region"])
         self.assertRegex(image["amiId"], r"^ami-[0-9a-f]+$")
         self.assertEqual("099720109477", image["ownerId"])
-        self.assertEqual("1.8.1", release["toolchain"]["packerPlugins"]["amazon"])
 
     def test_packer_builds_two_amis_from_shared_ansible_playbook(self) -> None:
         root = PROVISIONING_DIR / "packer" / "aws-images"
@@ -144,6 +143,7 @@ class AWSProvisioningContractTest(unittest.TestCase):
                 source_image_id = "ami-0e239f7f4b3226722"
                 build_name = "problem-server-amd64"
                 build_time = "2026-08-20T00:00:00Z"
+                source_revision = "0" * 40
                 replace = False
 
             manifest.record_ami(Args)
@@ -175,6 +175,7 @@ class AWSProvisioningContractTest(unittest.TestCase):
                 source_image_id = "ami-0e239f7f4b3226722"
                 build_name = "router-amd64"
                 build_time = "2026-08-20T00:00:00Z"
+                source_revision = "0" * 40
                 replace = False
 
             class TransitionArgs:
@@ -207,7 +208,7 @@ class AWSProvisioningContractTest(unittest.TestCase):
             "sourceImageId": release["ubuntu"]["cloudImages"]["amd64"]["amiId"],
             "buildName": "router-amd64",
             "buildTime": "2026-08-20T00:00:00Z",
-            "sourceRevision": release["sourceRevision"],
+            "sourceRevision": "0" * 40,
             "output": {
                 "kind": "ami",
                 "region": "ap-northeast-1",

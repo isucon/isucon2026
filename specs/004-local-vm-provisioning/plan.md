@@ -40,7 +40,7 @@ Linux x86_64で、Vagrant + VirtualBoxからUbuntu 24.04 amd64の4 VMを起動�
 - **Independently tunable bottlenecks — PASS**: provisioning自身は意図的な性能問題を導入しない。非公開課題はversioned application artifactとして受け取り、Ansible roleやbase imageへ不可分に埋め込まない。問題ID、強度、想定解はprivate ledgerだけで管理する。
 - **Private registry — PASS**: 初期はcontent-addressed local `file://` cache、共有時はversioningを有効にしたprivate S3 bucketをartifact contractとする。短期資格情報はhost/CIだけが持ち、guestやmanifestへ保存しない。公開artifactにはbox/AMIやspoilerを含めない。
 - **Workload/scoring — PASS**: 本サブ仕様はload、scoring、初期/目標score帯を定義しない。後続競技仕様がrelease ID、VM resource profile、topology、data、clock/randomnessを固定して定義する。local host上の数値を公式較正に使わないことをcontract化する。
-- **Reproducibility and calibration checkpoints — PASS**: ISO/AMI source、APT snapshot、exact packages、artifact digest、tool/plugin、role revision、arch、output IDをmanifest化する。static → image convergence → 4-node local conformance → future EC2 conformance → baseline/solution calibrationの順で同一artifactを昇格する。
+- **Reproducibility and calibration checkpoints — PASS**: ISO/AMI source、remote artifact digest、arch、output IDをmanifest化する。tool/pluginは実際に導入へ使う設定、Ubuntu packageはbuilt imageのID/checksumで固定し、static → image convergence → 4-node local conformance → future EC2 conformance → baseline/solution calibrationの順で同一artifactを昇格する。
 - **Trial solving — PASS**: local VMは作問者の機能検証・相対比較に利用可能とする。競技者同等情報、time box、resource、完了条件による正式なtrial solvingは後続競技仕様がversion-pinned imageを用いて実施する。
 - **Quality and information separation — PASS**: public contracts、generic roles、local workflowと、private application artifact、課題台帳、想定解、score結果を分離する。unit/static、image、service、network E2E、migration/idempotence、secret/distribution auditを別gateとして記録する。
 
@@ -149,7 +149,7 @@ isureal-api / isureal-worker / image-sanitizer
 - nginxを既存Envoy clusterのport `8080`へ合わせ、backendはloopbackへ移す。
 - PostgreSQLはloopbackと自身のdata addressだけで受け、`pg_hba.conf`はapplication roleとcompetition data CIDRへ限定し、bootstrap addressでは受けない。初期backendは`postgres://` URLでlocal DBを使うが、peer DBへの競技上の経路はRouter経由で到達可能にする。
 - backend release bundleはAPI、worker、image-sanitizer、migrate/reset/seed、frontend、schema compatibilityをcontent-addressed artifactとして提供する。
-- 現行backendのPostgreSQL URL、pgx、migrationを利用し、PostgreSQL major version・schema compatibility ID・migration revisionの不一致はpreflight/readinessで拒否する。
+- 現行backendのPostgreSQL URL、pgx、migrationを利用し、PostgreSQL major version・backend/database-migrations artifactのschema compatibility ID不一致はpreflight/readinessで拒否する。
 
 ### 6. Router、Portal Compose、Client entry layout
 
@@ -166,9 +166,9 @@ isureal-api / isureal-worker / image-sanitizer
 
 ### 7. Artifact and promotion flow
 
-1. `release.json`変更をreviewし、ISO/AMI owner/checksum、APT snapshot、package、app/Router/Portal sourceとbase-image digest、DB compatibility、host tool/pluginを固定する。開発用local app artifactにchecksumは設定しない。
+1. `release.json`変更をreviewし、ISO/AMI owner/checksum、app/Router artifact参照、DB compatibilityを確認する。開発用local artifactにchecksumは設定せず、remote artifactだけdigestを必須とする。
 2. Linux x86_64上でapp bundleとamd64 base/role imageをbuildする。Packer imageについては`packer-manifest.json`とSHA-256を生成する。
-3. built artifactそのものをbootし、同じsource revisionからPortal OCI imageをamd64 buildしてimage IDを記録し、idempotence、clone hygiene、secret scan、Portal/Clientを含む4-node conformanceを実行する。
+3. built artifactそのものをbootし、Portal OCI imageをamd64 buildしてimage IDを記録し、idempotence、clone hygiene、secret scan、Portal/Clientを含む4-node conformanceを実行する。
 4. 合格済みchecksumだけをprivate registry metadataへ昇格する。同じrelease IDの再build/上書きを禁止する。
 5. snapshot/security/tool更新は新release IDのPRとして全matrixを再実行する。
 
@@ -283,7 +283,7 @@ mise.toml                          # Packer/Python tool pins where supported
 
 - **Static CI**: HCL/YAML/JSON formatting、schema、Packer/Vagrant/Ansible validation、`docker compose config --quiet`、Portal bind/default config、template rendering、role argument specs、generated inventory snapshot。hosted `ubuntu-24.04`でVirtualBox起動は要求しない。
 - **Base image**: ISO checksum、Autoinstall schema、SSH、Guest Additions、OS/arch、machine-id/host-key cleanup、no secret。
-- **Role image**: exact package/artifact/release manifest、service disabled until runtime config、未初期化PostgreSQL cluster、Router/Envoy config validation。
+- **Role image**: required package/artifact/release manifest、service disabled until runtime config、未初期化PostgreSQL cluster、Router/Envoy config validation。
 - **Runtime/idempotence**: initial apply、second apply `changed=0`、targeted handler、failure retry、reboot recovery、sentinel DB row preservation、explicit reset target only。
 - **Service integration**: PostgreSQL 16 compatibility/migration、backend/worker、frontend/nginx、Router/Envoy xDS、Compose API/UI health、Portal desired/applied、health/readiness separation。
 - **Network E2E**: provider NIC/forward model、MAC mapping、route、nft ruleset hash、Client loopback forwardでのHost/country routing、6 ordered peer connectionsとRouter counter、peer MAC absence、Router停止失敗/復旧、未許可forward・bootstrap L3 bypass拒否、Portal API/UI bind境界、control/application cross-exposure拒否、IPv6 bypass不在。

@@ -9,17 +9,6 @@
       - isucon_effective_artifact_root | length > 0
     fail_msg: "ISUREAL_ARTIFACT_ROOT or isucon_artifact_root is required."
 
-- name: Install native Router dependencies
-  ansible.builtin.apt:
-    name:
-      - "iproute2={{ (isucon_release_manifest.packages | selectattr('name', 'equalto', 'iproute2') | first).version }}"
-      - "nftables={{ (isucon_release_manifest.packages | selectattr('name', 'equalto', 'nftables') | first).version }}"
-    state: present
-    update_cache: true
-    cache_valid_time: 3600
-    install_recommends: false
-    lock_timeout: 300
-
 - name: Create native Router account
   ansible.builtin.user:
     name: isureal-router

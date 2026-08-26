@@ -125,32 +125,25 @@ References:
 - [Vagrant remote Ansible provisioner](https://developer.hashicorp.com/vagrant/docs/provisioning/ansible)
 - [Vagrant Ansible Local](https://developer.hashicorp.com/vagrant/docs/provisioning/ansible_local)
 
-## Decision 6: versionとpackage sourceを完全に記録する
+## Decision 6: version制約は実際の導入箇所だけに置く
 
-**Decision**: Python `3.12.13`、ansible-core `2.21.2`、Packer `1.15.4`は`mise.toml`でリポジトリに固定する。Packer pluginsは`virtualbox = 1.1.5`、`vagrant = 1.1.7`、`ansible = 1.1.5`、PostgreSQL collectionは`community.postgresql = 4.2.0`をそれぞれHCLと`requirements.yml`で指定する。VagrantとVirtualBoxはhost providerとしてversionを固定せず、実際のvalidationで使用したversionのみrelease provenanceへ記録する。
+**Decision**: Python、ansible-core、Packerは`mise.toml`、Packer pluginsは各Packer HCL、PostgreSQL collectionは`requirements.yml`をそれぞれ正本とする。Vagrant、VirtualBox、Docker Engine、Docker Composeはexact versionを要求せず、コマンドの存在、daemon接続、resolved Compose config、specific-address publish contractの実動作で互換性を判定する。これらの値をrelease manifestへ重複させない。
 
-Portal用host toolの検証開始値はDocker Engine `29.7.1` + Docker Compose `5.4.0`とする。release manifestには実際のvalidationで使用したversionをprovenanceとして記録するが、hostのEngine/Compose版との完全一致は要求しない。互換性はDocker daemonへの接続、resolved Compose config、specific-address publish contractの実動作で判定する。Compose project名、Portal source revision、Dockerfile base image digest、amd64で生成したimage IDをValidationReportへ記録する。
+Ubuntu packageはpackage名だけをAnsible roleへ記述してNoble repositoryから取得する。PostgreSQLはruntime contractであるmajor `16`をpackage名`postgresql-16`で維持する。packageのminor versionや未適用のAPT snapshotをrelease入力へ置かず、build後のbox SHA-256またはAMI IDとconformance結果を昇格単位にする。
 
-Ubuntu packageはrelease manifestにUTCのUbuntu Snapshot IDとexact package versionを記録し、Nobleのdeb822 `ubuntu.sources`へ`Snapshot:`を設定する。release buildでは`latest`、無条件upgrade、floating third-party repositoryを使わない。security updateは新しいsnapshotへの明示的PRとして全適合性testを再実行する。
-
-**Rationale**: Ubuntu Snapshot Serviceは24.04で標準対応し、supersedeされたpackageを含むrepository stateを時刻で再利用できる。Packerの`required_plugins`とmanifest post-processorを組み合わせれば入力toolchainと出力artifactを追跡できる。
+**Rationale**: release manifestの重複versionはinstallerに使われず、更新箇所と認知負荷だけを増やす。個別packageの一部だけを固定しても、未固定packageとtransitive dependencyが残るためroot filesystemの再現にはならない。必要な不変性はsource ISO/AMIのidentity、runtime compatibility、生成machine imageのidentityで担保する。
 
 **Alternatives considered**:
 
-- package名だけ固定: build日で内容が変わり、再現不能。
-- snapshotを永久固定: 脆弱性修正を取り込めない。定期的な更新PRと再較正を必須にする。
-- `allow_downgrade`: Ansible moduleが非冪等になり得るため、version不一致は暗黙修復せず失敗させる。
+- release manifestにもtool版を複製: 正本が増える一方、build behaviorは変わらないため不採用。
+- 一部packageだけexact versionへ固定: live repositoryから削除された版でbuildが壊れ、完全な再現性も得られないため不採用。
+- dependency closureを含むAPT snapshotを実装: byte-for-byte再構築が必要になった場合の選択肢だが、現在のlocal development要件には過剰なため採用しない。
 
 References:
 
-- [Ubuntu Snapshot Service](https://documentation.ubuntu.com/server/how-to/software/snapshot-service/)
 - [Ansible apt module](https://docs.ansible.com/projects/ansible/latest/collections/ansible/builtin/apt_module.html)
 - [Packer required plugins](https://developer.hashicorp.com/packer/docs/templates/hcl_templates/blocks/packer)
 - [Packer manifest post-processor](https://developer.hashicorp.com/packer/docs/post-processors/manifest)
-- [Ansible `community.postgresql` 4.2.0 documentation](https://docs.ansible.com/projects/ansible/latest/collections/community/postgresql/index.html)
-- [Moby 29.7.1 release](https://github.com/moby/moby/releases/tag/docker-v29.7.1)
-- [Docker CLI 29.7.1 release](https://github.com/docker/cli/releases/tag/v29.7.1)
-- [Docker Compose 5.4.0 release](https://github.com/docker/compose/releases/tag/v5.4.0)
 - [Docker Compose port publishing](https://docs.docker.com/reference/compose-file/services/#ports)
 
 ## Decision 7: native systemd servicesとしてpayloadを配備する
@@ -181,7 +174,7 @@ References:
 
 ## Decision 8: 既存PostgreSQL application contractを再利用する
 
-**Decision**: 現行backendが要求する`postgres`/`postgresql` URL、`pgx/v5`、既存PostgreSQL migrationsをそのまま採用する。`release.json`へengine `postgresql`、major version `16`、schema compatibility ID、migration revision、reset/seed revisionを固定する。provisioningはapplication role/databaseを作成し、empty DBにだけ既存migration/seedを適用する。契約の欠落または不一致はpreflight/readiness failureにする。
+**Decision**: 現行backendが要求する`postgres`/`postgresql` URL、`pgx/v5`、既存PostgreSQL migrationsをそのまま採用する。`release.json`へengine `postgresql`、major version `16`、schema compatibility IDを置き、backendとdatabase-migrations artifactへ同じcompatibility IDを付ける。provisioningはapplication role/databaseを作成し、empty DBにだけ既存migration/seedを適用する。契約の欠落または不一致はpreflight/readiness failureにする。
 
 **Rationale**: `backend/internal/config/config.go`はPostgreSQL URLだけを受け入れ、`backend/go.mod`は`pgx/v5`を使用し、CIもPostgreSQL 16でmigrationとintegration testを実行している。ユーザー指定と既存アプリ契約が一致したため、DB移植用の別featureやfixture readinessは不要である。一方、engineが一致してもschema/migration driftは起こり得るため、compatibility gateは維持する。
 
@@ -193,11 +186,11 @@ References:
 
 ## Decision 9: 入力manifest、出力manifest、runtime stateを分離する
 
-**Decision**: version管理する`release.json`をbuild入力manifestとする。Ubuntu amd64 source/checksum、APT snapshot、package版、app/Router artifact URI、Portal source/base-image digest、DB compatibility、host/build tool/plugin版を持つ。開発用local app/Router artifactは頻繁に再buildされ、独立した信頼源もないためchecksum比較を行わない。将来remote artifactを配布する場合だけ入力manifestでSHA-256を必須とする。Packer生成物は`packer-manifest.json`へbuild名、時刻、artifact ID/path、role、provider、arch、source ID、git revisionを記録し、provider非依存の`image-artifact-index.json`へ正規化する。Portal Composeのproject、effective config hash、amd64 OCI image IDはenvironmentのValidationReportへ記録する。guest内`/etc/isucon/release.json`は入力releaseを保持し、node固有値は`/etc/isucon/runtime.json`へ分離する。
+**Decision**: version管理する`release.json`をbuild入力manifestとし、Ubuntu amd64 source/checksum、app/Router artifact URI、DB compatibilityだけを持つ。開発用local artifactは頻繁に再buildされ、独立した信頼源もないためchecksum比較を行わない。将来remote artifactを配布する場合だけ入力manifestでSHA-256を必須とする。Packer生成物はbuild名、時刻、artifact ID/path、role、provider、arch、source IDを記録し、Git revisionはbuild時にrepositoryから取得してprovider非依存の`image-artifact-index.json`へ正規化する。Portal Composeのproject、effective config hash、amd64 OCI image IDはenvironmentのValidationReportへ記録する。guest内`/etc/isucon/release.json`は入力releaseを保持し、node固有値は`/etc/isucon/runtime.json`へ分離する。
 
 private box/artifactは将来のversioned private S3 bucketへ置き、短期資格情報でhost/CIが取得してSHA-256検証後、Packer/Ansibleへlocal fileとして渡す。初期incrementは同じcontractの`file://` sourceを使えるようにする。
 
-**Rationale**: Packer標準manifestだけではpackage、application、schema、toolchainの互換な組を表せない。入力と出力を分ければ「testしたartifactそのもの」だけを昇格できる。
+**Rationale**: build入力と生成outputを分ければ、手動のversion転記を増やさず「testしたartifactそのもの」だけを昇格できる。
 
 **Alternatives considered**:
 
@@ -262,7 +255,7 @@ References:
 - role image: problem-serverとRouterの2種類。server identityはruntimeで与える。
 - provisioning方式: Packer build時とVagrant runtimeの双方から同じAnsible rolesを呼ぶhybrid。
 - network: Router 5 NIC、server 2 NIC、3 internal data + control host-only + per-VM NAT。ClientはRouter NATへのloopback-only forward。
-- package再現性: Ubuntu Snapshot ID、exact package version、artifact SHA-256、mise/HCL/requirementsで管理するtool/plugin版。
+- package管理: Noble repositoryからrole指定のpackageを取得し、生成boxのSHA-256またはAMI IDで配備物を固定する。tool/plugin版はmise/HCL/requirementsだけで管理する。
 - runtime形式: native systemd services。既存Router/Envoy契約とupstream port 8080を維持する。
 - Portal: 4 VM外のenvironment-scoped Docker Compose projectをexternal-Router modeで起動し、APIはcontrol IP、UIはloopbackだけへpublishする。imageへ含めない。
 - Database: 既存backendとPostgreSQL 16を直接組み合わせ、major version・schema・migrationの互換ID不一致は失敗させる。

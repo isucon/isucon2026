@@ -15,7 +15,7 @@
 - name: Validate the release architecture and database contract
   ansible.builtin.assert:
     that:
-      - isucon_release_manifest.schemaVersion == 3
+      - isucon_release_manifest.schemaVersion == 4
       - isucon_release_manifest.ubuntu.release == "24.04"
       - isucon_release_manifest.ubuntu.installImages.keys() | list == ["amd64"]
       - isucon_release_manifest.ubuntu.cloudImages.keys() | list == ["amd64"]
@@ -35,11 +35,11 @@
 - name: Install common runtime packages
   ansible.builtin.apt:
     name:
-      - "ca-certificates={{ (isucon_release_manifest.packages | selectattr('name', 'equalto', 'ca-certificates') | first).version }}"
+      - ca-certificates
       - curl
-      - "iproute2={{ (isucon_release_manifest.packages | selectattr('name', 'equalto', 'iproute2') | first).version }}"
+      - iproute2
       - jq
-      - "nftables={{ (isucon_release_manifest.packages | selectattr('name', 'equalto', 'nftables') | first).version }}"
+      - nftables
       - python3
       - python3-apt
       - rsync

@@ -20,6 +20,7 @@ class AnsibleContractTest(unittest.TestCase):
         tasks = self.read("roles/problem_server/tasks/main.yml")
         self.assertIn("postgresql-16", tasks)
         self.assertIn("community.postgresql", tasks)
+        self.assertNotIn("isucon_release_manifest.packages", tasks)
         self.assertIn("backend.tar", tasks)
         self.assertIn("frontend.tar", tasks)
         self.assertIn("database-migrations.tar", tasks)
@@ -50,6 +51,10 @@ class AnsibleContractTest(unittest.TestCase):
 
     def test_router_uses_native_router_and_envoy_units(self) -> None:
         tasks = self.read("roles/router/tasks/main.yml")
+        common_tasks = self.read("roles/common/tasks/main.yml")
+        self.assertIn("- iproute2", common_tasks)
+        self.assertIn("- nftables", common_tasks)
+        self.assertNotIn("isucon_release_manifest.packages", common_tasks)
         self.assertIn("router.tar", tasks)
         self.assertIn("envoy.tar", tasks)
         self.assertIn("isureal-router.service", tasks)

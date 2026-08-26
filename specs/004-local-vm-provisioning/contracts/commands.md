@@ -119,7 +119,7 @@ Output:
 - environment/release/provider/host profile。
 - 4 VMのprovider state、SSH到達性、runtime revision。
 - service health/readinessと最後のvalidation report。
-- Portal Compose project、source revision、effective config hash、OCI image IDs、API/UI publishとhealth/convergence。
+- Portal Compose project、effective config hash、OCI image IDs、API/UI publishとhealth/convergence。
 - Client/SSHのactual forward rules。
 - drift、partial resource、cleanup failureがあれば具体的に列挙。
 

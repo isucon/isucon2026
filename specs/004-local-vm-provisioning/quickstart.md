@@ -12,17 +12,7 @@
 |---|---|---|---|
 | Linux x86_64 | VirtualBox | Ubuntu 24.04 amd64 | Yes |
 
-開始時の検証基準toolchain:
-
-- Vagrant 2.4.9
-- VirtualBox 7.2.14 Base Package。Extension Packは不要。
-- Docker Engine 29.7.1 + Docker Compose 5.4.0
-
-preflightのhost tool検証は最小限に絞る。Vagrant・VirtualBox・Docker Engine・Docker Composeはコマンドの存在とDocker daemonへの接続だけを確認し、exact versionでは弾かない。互換性はresolved Compose configとspecific-address publish contractの実動作で判定する。Python/ansible-coreはリポジトリの`mise.toml`（`python`、`ansible-core`）で固定するため、preflightでは別途versionを検査しない。上記のversion値はrelease manifestが記録する検証基準であり、host側との完全一致要件ではない。
-- Packer 1.15.4（image build担当者のみ）
-- Python 3.12 + ansible-core 2.21.2
-- Packer plugins: virtualbox 1.1.5、vagrant 1.1.7、ansible 1.1.5
-- Ansible collection: community.postgresql 4.2.0
+host toolのversion方針は[Research Decision 6](research.md#decision-6-version制約は実際の導入箇所だけに置く)に従う。preflightはコマンドの存在、Docker daemon接続、resolved Compose config、specific-address publish contractを検査する。
 
 macOS、Linux arm64、その他のhost OS/architecture、VMware/QEMU系providerは今回のsupport・artifact・合格matrixに含めない。自動fallbackもしない。
 
@@ -38,7 +28,7 @@ default workflowはhost `/etc/hosts`を変更せず、Vagrant shared folderも�
 
 ### Application/database alignment
 
-現行`backend/`のPostgreSQL URL、pgx、PostgreSQL migrationsをそのまま利用する。release manifestはengine `postgresql`、major version `16`、schema compatibility ID、migration revisionを固定する。preflightはこれらがbackend artifactと一致しないreleaseを拒否し、4 node full readinessを成功扱いしない。
+現行`backend/`のPostgreSQL URL、pgx、PostgreSQL migrationsをそのまま利用する。release manifestはengine `postgresql`、major version `16`、schema compatibility IDを持ち、backendとdatabase-migrations artifactの互換性を検査する。preflightは不一致のreleaseを拒否し、4 node full readinessを成功扱いしない。
 
 ## 3. Static validation
 
@@ -52,7 +42,7 @@ make vm-preflight
 Expected:
 
 - host profileが`linux-amd64-virtualbox`として一意に解決される。
-- topology/release schema、ローカルartifactの存在、ISO checksum、architecture、DB/Router compatibilityがpassする。開発用にローカルbuildするapplication/Router artifactはchecksumを比較しない。
+- topology/release schema、ローカルartifactの存在、ISO checksum、architecture、DB compatibilityがpassする。開発用にローカルbuildするapplication/Router artifactはchecksumを比較しない。
 - 4 subnet、MAC、SSH port、Client/Portal port、VirtualBox network、host/VPN routeに衝突がない。
 - Docker daemonがreadyで、`portal-mock/compose.yaml`の解決済みconfigが有効かつwildcard publishを含まない。
 - node別resourceと合計が表示される。
@@ -147,7 +137,7 @@ Expected:
 
 - 4 VM、release ID、host profile、provider versionが表示される。
 - PostgreSQL/backend/worker/nginx、Router/EnvoyのhealthとRouter readinessがpass。
-- Portal Compose project、source revision、image ID、API/UI publish、healthとdesired/applied convergenceが表示される。
+- Portal Compose project、image ID、API/UI publish、healthとdesired/applied convergenceが表示される。
 - benchmark HTTP Client forwardが`127.0.0.1:18080`からRouter `8080`、local HTTPS Client forwardが`127.0.0.1:18443`からRouter `443`へのexact ruleとして表示される。
 - 最新ValidationReport pathと、driftがあれば再実行commandが表示される。
 

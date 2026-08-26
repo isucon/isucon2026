@@ -1,18 +1,13 @@
 from __future__ import annotations
 
-import copy
 import unittest
 from unittest import mock
 
 from provisioning.scripts import preflight
 
-from support import PROVISIONING_DIR, load_json
 
 
 class ToolPreflightTest(unittest.TestCase):
-    def setUp(self) -> None:
-        self.release = load_json(PROVISIONING_DIR / "config" / "release.json")
-
     @staticmethod
     def docker_output(command: list[str]) -> str:
         outputs = {
@@ -33,20 +28,9 @@ class ToolPreflightTest(unittest.TestCase):
         run: mock.Mock,
         _which: mock.Mock,
     ) -> None:
-        release = copy.deepcopy(self.release)
-        for key in (
-            "packer",
-            "vagrant",
-            "virtualBox",
-            "dockerEngine",
-            "dockerCompose",
-            "python",
-            "ansibleCore",
-        ):
-            release["toolchain"][key] = "9.9.9"
         run.side_effect = self.docker_output
 
-        self.assertEqual([], preflight.check_tools(release))
+        self.assertEqual([], preflight.check_tools())
         self.assertEqual(
             {
                 ("docker", "compose", "version", "--short"),
@@ -67,7 +51,7 @@ class ToolPreflightTest(unittest.TestCase):
     def test_missing_required_command_is_rejected(self, _which: mock.Mock) -> None:
         self.assertEqual(
             ["required command is missing: VBoxManage"],
-            preflight.check_tools(self.release),
+            preflight.check_tools(),
         )
 
 

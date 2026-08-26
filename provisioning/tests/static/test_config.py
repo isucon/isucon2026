@@ -61,21 +61,16 @@ class ConfigContractTest(unittest.TestCase):
         invalid["nodes"]["server2"]["interfaces"][0]["macAddress"] = invalid["nodes"]["server1"]["interfaces"][0]["macAddress"]
         self.assertTrue(any("mac" in error.lower() for error in preflight.validate_topology(invalid)))
 
-    def test_release_is_linux_amd64_and_records_tool_provenance(self) -> None:
+    def test_release_is_linux_amd64_without_duplicate_version_pins(self) -> None:
         self.assertEqual([], preflight.validate_release(self.release))
-        self.assertEqual("29.7.1", self.release["toolchain"]["dockerEngine"])
-        self.assertEqual("5.4.0", self.release["toolchain"]["dockerCompose"])
         self.assertEqual({"amd64"}, set(self.release["ubuntu"]["installImages"]))
         self.assertNotIn(
             "arm64",
             {artifact["architecture"] for artifact in self.release["artifacts"]},
         )
-
-    def test_repository_tools_are_pinned_by_mise(self) -> None:
+    def test_repository_tools_are_owned_by_mise(self) -> None:
         mise = tomllib.loads((PROVISIONING_DIR.parent / "mise.toml").read_text())
-        self.assertEqual("1.15.4", mise["tools"]["packer"])
-        self.assertEqual("3.12.13", mise["tools"]["python"])
-        self.assertEqual("2.21.2", mise["tools"]["ansible-core"])
+        self.assertTrue({"packer", "python", "ansible-core"} <= mise["tools"].keys())
 
     def test_autoinstall_uses_the_global_archive_without_geoip(self) -> None:
         user_data = load_yaml(PROVISIONING_DIR / "packer" / "local-base" / "http" / "user-data")
@@ -123,7 +118,6 @@ class ConfigContractTest(unittest.TestCase):
     def test_release_rejects_duplicate_or_incompatible_artifacts(self) -> None:
         duplicate = copy.deepcopy(self.release)
         duplicate["artifacts"].append(copy.deepcopy(duplicate["artifacts"][0]))
-        duplicate["artifacts"][-1]["id"] = "backend.duplicate"
         self.assertTrue(
             any("exactly once" in error for error in preflight.validate_release(duplicate))
         )
