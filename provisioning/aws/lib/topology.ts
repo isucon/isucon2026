@@ -49,3 +49,35 @@ export function routerMediatedIngressCidrs(
       .map((source) => source.vpcCidr),
   ];
 }
+
+export interface PublicIpIsolationRule {
+  protocol: "-1";
+  ruleNo: number;
+  action: "allow" | "deny";
+  cidrBlock: string;
+  fromPort: 0;
+  toPort: 0;
+}
+
+export function publicIpIsolationRules(
+  blockedPublicIps: readonly string[],
+): PublicIpIsolationRule[] {
+  return [
+    ...blockedPublicIps.map((address, index) => ({
+      protocol: "-1" as const,
+      ruleNo: 100 + index * 10,
+      action: "deny" as const,
+      cidrBlock: `${address}/32`,
+      fromPort: 0 as const,
+      toPort: 0 as const,
+    })),
+    {
+      protocol: "-1",
+      ruleNo: 1000,
+      action: "allow",
+      cidrBlock: "0.0.0.0/0",
+      fromPort: 0,
+      toPort: 0,
+    },
+  ];
+}

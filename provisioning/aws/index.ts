@@ -6,6 +6,7 @@ import * as pulumi from "@pulumi/pulumi";
 import {
   controlRouterIp,
   controlSubnetCidr,
+  publicIpIsolationRules,
   routerMediatedIngressCidrs,
   serverNetworks,
 } from "./lib/topology";
@@ -28,8 +29,9 @@ const routerAmiId = config.require("routerAmiId");
 const availabilityZone = config.get("availabilityZone") ?? "ap-northeast-1a";
 const serviceInstanceType = config.get("serviceInstanceType") ?? "t3.small";
 const routerInstanceType = config.get("routerInstanceType") ?? "c8in.large";
-const keyName = config.get("keyName");
+const sshPublicKey = config.get("sshPublicKey");
 const sshCidr = config.get("sshCidr");
+const enablePublicSsh = config.getBoolean("enablePublicSsh") ?? false;
 const clientCidr = config.get("clientCidr");
 const portalEndpoint = "http://127.0.0.1:18082";
 const publicDomain = config.get("publicDomain") ?? "127.0.0.1.nip.io";
@@ -52,9 +54,15 @@ if (!availabilityZone.startsWith(`${configuredRegion}`)) {
     `availabilityZone ${availabilityZone} is outside configured AWS region ${configuredRegion}`,
   );
 }
-if ((keyName === undefined) !== (sshCidr === undefined)) {
-  throw new pulumi.RunError("keyName and sshCidr must be configured together");
+if (
+  enablePublicSsh &&
+  (sshCidr === undefined || sshPublicKey === undefined)
+) {
+  throw new pulumi.RunError(
+    "enablePublicSsh requires both sshPublicKey and sshCidr",
+  );
 }
+const publicSshCidr = enablePublicSsh ? sshCidr : undefined;
 
 const tags = {
   Project: "isucon2026",
@@ -62,6 +70,14 @@ const tags = {
   ReleaseId: releaseId,
   ManagedBy: "pulumi",
 };
+const managedSshKeyPair = sshPublicKey !== undefined
+  ? new aws.ec2.KeyPair("admin-ssh-key", {
+      keyNamePrefix: "isucon2026-aws-validation-",
+      publicKey: sshPublicKey,
+      tags,
+    })
+  : undefined;
+const instanceKeyName = managedSshKeyPair?.keyName;
 
 const serviceVpcs = serverNetworks.map(
   (network) =>
@@ -81,9 +97,14 @@ const controlSubnet = new aws.ec2.Subnet("control-subnet", {
 const routerControlSecurityGroup = new aws.ec2.SecurityGroup("router-control-sg", {
   vpcId: serviceVpcs[0].id,
   description: "ISUCON Router control interface",
-  ingress: sshCidr
+  ingress: publicSshCidr
     ? [
-        { protocol: "tcp", fromPort: 22, toPort: 22, cidrBlocks: [sshCidr] },
+        {
+          protocol: "tcp",
+          fromPort: 22,
+          toPort: 22,
+          cidrBlocks: [publicSshCidr],
+        },
         ...(clientCidr
           ? [
               { protocol: "tcp", fromPort: 443, toPort: 443, cidrBlocks: [clientCidr] },
@@ -142,16 +163,22 @@ const routerControlEni = new aws.ec2.NetworkInterface("router-control-eni", {
   sourceDestCheck: false,
   tags: { ...tags, Name: "isucon2026-router-control" },
 });
-const internetGateway = new aws.ec2.InternetGateway("control-igw", {
-  vpcId: serviceVpcs[0].id,
-  tags,
-});
+const internetGateways = serviceVpcs.map(
+  (vpc, index) =>
+    new aws.ec2.InternetGateway(
+      index === 0 ? "control-igw" : `${serverNetworks[index].id}-igw`,
+      {
+        vpcId: vpc.id,
+        tags,
+      },
+    ),
+);
 const controlRouteTable = new aws.ec2.RouteTable("control-routes", {
   vpcId: serviceVpcs[0].id,
   routes: [
     {
       cidrBlock: "0.0.0.0/0",
-      gatewayId: internetGateway.id,
+      gatewayId: internetGateways[0].id,
     },
   ],
   tags,
@@ -171,8 +198,10 @@ type ServerResources = {
   vpc: aws.ec2.Vpc;
   serviceSubnet: aws.ec2.Subnet;
   routerSubnet: aws.ec2.Subnet;
+  serviceRouteTable: aws.ec2.RouteTable;
   serviceEni: aws.ec2.NetworkInterface;
   routerEni: aws.ec2.NetworkInterface;
+  publicIp: aws.ec2.Eip;
   instance: aws.ec2.Instance;
 };
 
@@ -219,6 +248,22 @@ const servers: ServerResources[] = serverNetworks.map((network, index) => {
     ],
     tags,
   });
+  const publicSshSecurityGroup = publicSshCidr
+    ? new aws.ec2.SecurityGroup(`${network.id}-public-ssh-sg`, {
+        vpcId: vpc.id,
+        description: `ISUCON ${network.id} public SSH`,
+        ingress: [
+          {
+            protocol: "tcp",
+            fromPort: 22,
+            toPort: 22,
+            cidrBlocks: [publicSshCidr],
+          },
+        ],
+        egress: [],
+        tags,
+      })
+    : undefined;
   const routerSecurityGroup = new aws.ec2.SecurityGroup(`${network.id}-router-sg`, {
     vpcId: vpc.id,
     description: `ISUCON Router data interface for ${network.id}`,
@@ -282,8 +327,15 @@ const servers: ServerResources[] = serverNetworks.map((network, index) => {
   const serviceEni = new aws.ec2.NetworkInterface(`${network.id}-service-eni`, {
     subnetId: serviceSubnet.id,
     privateIps: [network.serviceIp],
-    securityGroups: [serviceSecurityGroup.id],
+    securityGroups: [
+      serviceSecurityGroup.id,
+      ...(publicSshSecurityGroup ? [publicSshSecurityGroup.id] : []),
+    ],
     sourceDestCheck: true,
+    tags: { ...tags, Name: `isucon2026-${network.id}` },
+  });
+  const publicIp = new aws.ec2.Eip(`${network.id}-public-ip`, {
+    domain: "vpc",
     tags: { ...tags, Name: `isucon2026-${network.id}` },
   });
   const instance = new aws.ec2.Instance(`${network.id}-instance`, {
@@ -291,7 +343,7 @@ const servers: ServerResources[] = serverNetworks.map((network, index) => {
     availabilityZone,
     instanceType: serviceInstanceType,
     iamInstanceProfile: serviceInstanceProfile.name,
-    keyName,
+    keyName: instanceKeyName,
     primaryNetworkInterface: {
       networkInterfaceId: serviceEni.id,
     },
@@ -317,12 +369,83 @@ const servers: ServerResources[] = serverNetworks.map((network, index) => {
       networkInterfaceId: routerEni.id,
     });
   }
-  new aws.ec2.Route(`${network.id}-egress`, {
-    routeTableId: serviceRouteTable.id,
-    destinationCidrBlock: "0.0.0.0/0",
-    networkInterfaceId: routerEni.id,
+  return {
+    network,
+    vpc,
+    serviceSubnet,
+    routerSubnet,
+    serviceRouteTable,
+    serviceEni,
+    routerEni,
+    publicIp,
+    instance,
+  };
+});
+
+const servicePublicIsolationAcls = servers.map((server, index) => {
+  const blockedPublicIps = [
+    routerPublicIp.publicIp,
+    ...servers
+      .filter((_, peerIndex) => peerIndex !== index)
+      .map((peer) => peer.publicIp.publicIp),
+  ];
+  const rules = pulumi.all(blockedPublicIps).apply(publicIpIsolationRules);
+  return new aws.ec2.NetworkAcl(`${server.network.id}-public-isolation-acl`, {
+    vpcId: server.vpc.id,
+    subnetIds: [server.serviceSubnet.id],
+    ingress: rules,
+    egress: rules,
+    tags: { ...tags, Name: `isucon2026-${server.network.id}-public-isolation` },
   });
-  return { network, vpc, serviceSubnet, routerSubnet, serviceEni, routerEni, instance };
+});
+
+const controlPublicIsolationRules = pulumi
+  .all(servers.map((server) => server.publicIp.publicIp))
+  .apply(publicIpIsolationRules);
+const controlPublicIsolationAcl = new aws.ec2.NetworkAcl(
+  "control-public-isolation-acl",
+  {
+    vpcId: serviceVpcs[0].id,
+    subnetIds: [controlSubnet.id],
+    ingress: controlPublicIsolationRules,
+    egress: controlPublicIsolationRules,
+    tags: { ...tags, Name: "isucon2026-control-public-isolation" },
+  },
+);
+const publicIsolationAcls = [
+  controlPublicIsolationAcl,
+  ...servicePublicIsolationAcls,
+];
+
+const serviceInternetRoutes = servers.map(
+  (server, index) =>
+    new aws.ec2.Route(
+      `${server.network.id}-egress`,
+      {
+        routeTableId: server.serviceRouteTable.id,
+        destinationCidrBlock: "0.0.0.0/0",
+        gatewayId: internetGateways[index].id,
+      },
+      { dependsOn: publicIsolationAcls },
+    ),
+);
+
+servers.forEach((server, index) => {
+  new aws.ec2.EipAssociation(
+    `${server.network.id}-public-ip-association`,
+    {
+      allocationId: server.publicIp.id,
+      networkInterfaceId: server.serviceEni.id,
+      privateIpAddress: server.network.serviceIp,
+    },
+    {
+      dependsOn: [
+        internetGateways[index],
+        serviceInternetRoutes[index],
+        ...publicIsolationAcls,
+      ],
+    },
+  );
 });
 
 const router = new aws.ec2.Instance(
@@ -332,7 +455,7 @@ const router = new aws.ec2.Instance(
     availabilityZone,
     instanceType: routerInstanceType,
     iamInstanceProfile: routerInstanceProfile.name,
-    keyName,
+    keyName: instanceKeyName,
     primaryNetworkInterface: {
       networkInterfaceId: routerControlEni.id,
     },
@@ -381,4 +504,5 @@ export const routerPublicAddress = routerPublicIp.publicIp;
 export const appHostname = `app.team1-aws.${publicDomain}`;
 export const serviceInstanceIds = servers.map((server) => server.instance.id);
 export const servicePrivateIps = servers.map((server) => server.network.serviceIp);
+export const servicePublicAddresses = servers.map((server) => server.publicIp.publicIp);
 export const vpcIds = servers.map((server) => server.vpc.id);

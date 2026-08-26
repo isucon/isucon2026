@@ -63,6 +63,10 @@ class AWSProvisioningContractTest(unittest.TestCase):
         self.assertIn("tc_packet_count", script)
         self.assertIn("cloneIdentityUniqueness", script)
         self.assertEqual(3, script.count("peer_http_all"))
+        self.assertIn("global_ip_isolation_all", script)
+        self.assertIn("servicePublicAddresses", script)
+        self.assertIn("globalIpEgressIdentity", script)
+        self.assertIn("globalIpPeerIsolation", script)
         self.assertIn("--state validated", script)
 
     def test_pulumi_uses_three_vpcs_fixed_ips_and_cross_vpc_router_enis(self) -> None:
@@ -79,13 +83,45 @@ class AWSProvisioningContractTest(unittest.TestCase):
         self.assertIn('"c8in.large"', source)
         self.assertIn("cidrBlocks: [network.vpcCidr]", source)
         self.assertIn("routerMediatedIngressCidrs(network)", source)
+        self.assertIn(
+            'config.getBoolean("enablePublicSsh") ?? false',
+            source,
+        )
+        self.assertIn(
+            '"enablePublicSsh requires both sshPublicKey and sshCidr"',
+            source,
+        )
+        self.assertIn('config.get("sshPublicKey")', source)
+        self.assertNotIn('config.get("keyName")', source)
+        self.assertIn('new aws.ec2.KeyPair("admin-ssh-key"', source)
+        self.assertIn("publicKey: sshPublicKey", source)
+        self.assertEqual(2, source.count("keyName: instanceKeyName"))
+        router_control_sg = source[
+            source.index("const routerControlSecurityGroup"):
+            source.index("const routerRole")
+        ]
+        self.assertIn("ingress: publicSshCidr", router_control_sg)
+        self.assertNotIn("ingress: sshCidr", router_control_sg)
         service_sg = source[
             source.index("const serviceSecurityGroup"):
-            source.index("const routerSecurityGroup")
+            source.index("const publicSshSecurityGroup")
         ]
         self.assertIn('protocol: "-1"', service_sg)
         self.assertNotIn("fromPort: 8080", service_sg)
         self.assertNotIn("cidrBlocks: [sshCidr]", service_sg)
+        public_ssh_sg = source[
+            source.index("const publicSshSecurityGroup"):
+            source.index("const routerSecurityGroup")
+        ]
+        self.assertIn("const publicSshSecurityGroup = publicSshCidr", public_ssh_sg)
+        self.assertIn("cidrBlocks: [publicSshCidr]", public_ssh_sg)
+        self.assertNotIn("cidrBlocks: [sshCidr]", public_ssh_sg)
+        self.assertIn("new aws.ec2.Eip(`${network.id}-public-ip`", source)
+        self.assertIn("new aws.ec2.EipAssociation(", source)
+        self.assertIn("publicIpIsolationRules", source)
+        self.assertIn("control-public-isolation-acl", source)
+        self.assertIn("gatewayId: internetGateways[index].id", source)
+        self.assertIn("servicePublicAddresses", source)
         for cidr in ("192.168.60.0/24", "192.168.61.0/24", "192.168.62.0/24"):
             self.assertIn(cidr, topology)
         self.assertEqual(1, source.count("new aws.ec2.Vpc("))

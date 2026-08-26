@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { gzipSync } from "node:zlib";
 import {
+  publicIpIsolationRules,
   routerMediatedIngressCidrs,
   serverNetworks,
 } from "../lib/topology";
@@ -44,6 +45,35 @@ describe("AWS topology", () => {
         }
       }
     }
+  });
+
+  test("denies peer Global IPs before allowing other public traffic", () => {
+    expect(publicIpIsolationRules(["198.51.100.10", "198.51.100.20"])).toEqual([
+      {
+        protocol: "-1",
+        ruleNo: 100,
+        action: "deny",
+        cidrBlock: "198.51.100.10/32",
+        fromPort: 0,
+        toPort: 0,
+      },
+      {
+        protocol: "-1",
+        ruleNo: 110,
+        action: "deny",
+        cidrBlock: "198.51.100.20/32",
+        fromPort: 0,
+        toPort: 0,
+      },
+      {
+        protocol: "-1",
+        ruleNo: 1000,
+        action: "allow",
+        cidrBlock: "0.0.0.0/0",
+        fromPort: 0,
+        toPort: 0,
+      },
+    ]);
   });
 
   test("router user data preserves source IP network identities", () => {

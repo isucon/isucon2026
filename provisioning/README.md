@@ -122,12 +122,20 @@ server1 VPC内の専用control subnetに置くため、作成するVPCは合計3
 後続の競技環境仕様で上書きします。全VPC/ENIは同一Availability Zoneに作成し、Private IPは固定します。
 
 各Service subnetのroute tableは、他の2 Service VPC CIDRを自身のVPC内にあるRouter ENIへ向けます。
-VPC peering、Transit Gateway、Service VMのPublic IPは作りません。Router data ENIとRouter instanceの
-source/destination checkは無効化し、guest内ではIP forwardingを有効化します。Service VMの管理経路は
-各VPC内のSSM Interface Endpointへ閉じ、Routerのcontrol経路やインターネットを迂回路として使いません。
+VPC peeringとTransit Gatewayは作りません。Router data ENIとRouter instanceのsource/destination checkは
+無効化し、guest内ではIP forwardingを有効化します。Service VMの管理経路には各VPC内のSSM Interface
+Endpointも用意します。
 Service VMのSecurity Groupは、他の2 Service VPC CIDRと自身のRouter data IP `/32`からの全IPv4
 プロトコルを許可します。peer VPCからの通信は送信元Service IPを維持したまま必ずRouterを通過します。
 自身のVPC CIDR全体は許可しないため、control subnetからService VMへの直接バイパスは作りません。
+
+Routerと3台のService VMには固定Elastic IPを1個ずつ割り当てます。各Service VPCへInternet Gatewayを
+attachし、Service subnetの既定経路はInternet Gatewayへ向けますが、peerのPrivate CIDRにはより具体的な
+Router ENI経路が優先されます。各Service subnetとRouter control subnetのNetwork ACLは、他の全nodeの
+Elastic IP `/32`を送受信とも先行denyしてから、それ以外のIPv4通信を許可します。このためserver間通信は
+Global IPでは成立せず、Private IPとRouterを使用します。Public SSHは既定で無効です。
+`enablePublicSsh=true`に加えて`sshPublicKey`と`sshCidr`を設定した場合だけ、Routerと全Service VMのTCP/22を
+指定CIDRへ許可します。アプリ用ポートはService VMで公開しません。Elastic IPは利用時間に応じて課金されます。
 
 ```bash
 make aws-infra-install
@@ -150,9 +158,33 @@ make -C ../.. aws-infra-validate STACK=dev
 make -C ../.. aws-infra-destroy STACK=dev
 ```
 
+割り当てられたGlobal IPはstack outputで確認できます。
+
+```bash
+pulumi -C provisioning/aws stack output routerPublicAddress --stack dev
+pulumi -C provisioning/aws stack output servicePublicAddresses --stack dev
+```
+
+Public SSHを明示的に有効化する場合は、手元の公開鍵と接続元のGlobal CIDRを同時に指定します。
+`enablePublicSsh`を省略した場合は`false`です。秘密鍵はPulumiやAWSへ渡しません。
+
+```bash
+pulumi -C provisioning/aws config set enablePublicSsh true --stack dev
+pulumi -C provisioning/aws config set sshPublicKey "$(cat ~/.ssh/id_ed25519.pub)" --stack dev
+pulumi -C provisioning/aws config set sshCidr 203.0.113.10/32 --stack dev
+make aws-infra-up STACK=dev
+```
+
+無効化は`pulumi -C provisioning/aws config set enablePublicSsh false --stack dev`です。`sshCidr`には通常、
+管理端末のGlobal IP `/32`を指定し、`0.0.0.0/0`は使用しません。`sshPublicKey`はPulumi管理のEC2 Key Pair
+としてAWSへそのまま登録し、鍵の形式と種類はAWS EC2が検証します。AWSは起動時に公開鍵をVMへ配置する
+ため、既存stackへ初めて鍵を設定する場合や鍵を変更する場合は4台のinstanceが置換対象になります。必ず
+`aws-infra-preview`で確認してから適用します。
+
 検証用Portal APIはRouter AMIへ同梱し、Router VMのloopback `127.0.0.1:18082`だけで起動します。
 `clientCidr`を設定した場合だけRouterの443/8080を指定CIDRへ公開します。SSHを許可する場合だけ
-`keyName`と`sshCidr`を同時に設定します。通常は全4台のSSM managed-instance profileを使います。
+`enablePublicSsh=true`と`sshPublicKey`、`sshCidr`を同時に設定します。通常は全4台のSSM
+managed-instance profileを使います。
 Router AMIにPortalのブラウザUIは同梱しません。AWS上のPortal APIへはSSM port forwardingで接続し、
 ローカルのVite UIをそのトンネルへ向けます。Terminal Aで次を実行してsessionを維持します。
 
@@ -180,6 +212,7 @@ local port forwardingをSSHで作ることもできます。`portal-mock/compose
 検証環境はAMIから独立したPulumi stackなので、`aws-infra-destroy`はEC2、ENI、
 VPC、route、SGを削除しますがAMIを削除しません。
 
-AMIを昇格する前に、3台のservice health、6方向のpeer通信、Routerのnft/tc counter、Router停止中の
-新規peer通信失敗、復旧後の再接続、clone identityの一意性を確認します。合格レポートは
+AMIを昇格する前に、3台のservice health、4台それぞれのEIP送信元、Global IPによる12方向の通信禁止、
+6方向のPrivate peer通信、Routerのnft/tc counter、Router停止中の新規peer通信失敗、復旧後の再接続、
+clone identityの一意性を確認します。合格レポートは
 `provisioning/.state/aws/<stack>/reports/`へ保存され、検証した2つのAMI artifactを`validated`へ遷移させます。
