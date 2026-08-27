@@ -41,10 +41,30 @@ portal/
 │   ├── token/           # bypass / checker token
 │   ├── external/        # slack / discord / github / webpush / aws / ssh
 │   └── db/              # 接続と初期スキーマ（schema.rb の写し、CT-8）
+├── frontend/            # React SPA（isucon14-portal 由来。webpack + pnpm）
+│   ├── app/javascript/  # SPA 本体（audience / contestant / admin / broadcast_view の 4 バンドル）
+│   ├── sw/              # Service Worker（Web Push 受信、CT-4）
+│   ├── proto/           # buf 生成の TypeScript バインディング（bufbuild/es）
+│   └── public/          # 静的アセット + ビルド出力（packs/ は gitignore）
 ├── gen/pb/              # buf generate（Go）
 ├── proto/               # isucon14-portal から流用した proto 定義
 └── rspec/               # HTTP 化した受け入れテスト（93 examples）
 ```
+
+## フロントエンド
+
+isucon14-portal の React SPA を `frontend/` にそのまま取り込んだ（表示文字列の
+ISUCON14 → ISUCON2026 置換のみ。ロゴ画像は既存アセットを流用中）。
+
+```sh
+make frontend   # pnpm install + production ビルド → frontend/public/packs + manifest.json
+make server     # ビルド済みアセットを配信する状態で起動（http://localhost:8081/）
+```
+
+- シェルはパック名を `manifest.json` でハッシュ付きパスに解決し（CT-3）、
+  `/packs/*` は `public,max-age=31536000` で配信する
+- `sw.js`・アイコン・ロゴなど public 直下のファイルはルート未マッチ時のフォールバックで配信する
+- TS バインディングの再生成は `buf generate`（`frontend/proto` に出力）
 
 ## テスト
 

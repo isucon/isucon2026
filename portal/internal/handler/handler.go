@@ -3,6 +3,7 @@ package handler
 import (
 	"database/sql"
 	"net/http"
+	"path"
 	"strconv"
 	"sync"
 
@@ -44,28 +45,28 @@ func (h *Handler) Router() http.Handler {
 	r.Use(h.verifyCSRF)
 
 	// --- ページ（SPA シェル 26 + ERB 3 + リダイレクト） ---
-	for _, path := range []string{
+	for _, route := range []string{
 		"/", "/teams", "/registration", "/registration/env_check", "/auth/failure",
 	} {
-		r.Get(path, h.SPAShell("audience"))
+		r.Get(route, h.SPAShell("audience"))
 	}
-	for _, path := range []string{
+	for _, route := range []string{
 		"/contestant", "/contestant/benchmark_jobs", "/contestant/benchmark_jobs/{id}",
 		"/contestant/clarifications", "/contestant/contestant_instances", "/contestant/discord",
 	} {
-		r.Get(path, h.ContestantShell)
+		r.Get(route, h.ContestantShell)
 	}
-	for _, path := range []string{
+	for _, route := range []string{
 		"/admin", "/admin/teams", "/admin/teams/{id}", "/admin/teams/{id}/edit",
 		"/admin/benchmark_jobs", "/admin/benchmark_jobs/{id}",
 		"/admin/clarifications", "/admin/clarifications/{id}",
 		"/admin/last_validations", "/admin/last_validations/command_result/{id}",
 		"/admin/contestant_instances", "/admin/unprepared_stats",
 	} {
-		r.Get(path, h.AdminShell)
+		r.Get(route, h.AdminShell)
 	}
-	for _, path := range []string{"/broadcast_view/leaderboard", "/broadcast_view/score_changes", "/broadcast_view/clock"} {
-		r.Get(path, h.BroadcastShell)
+	for _, route := range []string{"/broadcast_view/leaderboard", "/broadcast_view/score_changes", "/broadcast_view/clock"} {
+		r.Get(route, h.BroadcastShell)
 	}
 
 	r.Get("/terms", h.redirectTo(h.cfg.TermsURL))
@@ -189,12 +190,27 @@ func (h *Handler) Router() http.Handler {
 
 	// 静的アセット（CT-3: /packs は長期キャッシュ）
 	if h.cfg.PublicDir != "" {
-		fs := http.FileServer(http.Dir(h.cfg.PublicDir))
+		dir := http.Dir(h.cfg.PublicDir)
+		fs := http.FileServer(dir)
 		r.Get("/packs/*", func(w http.ResponseWriter, req *http.Request) {
 			w.Header().Set("Cache-Control", "public,max-age=31536000")
 			fs.ServeHTTP(w, req)
 		})
-		r.Get("/favicon.ico", fs.ServeHTTP)
+		// アイコン・ロゴ・sw.js など public 直下のファイルはルート未マッチ時に配信する
+		r.NotFound(func(w http.ResponseWriter, req *http.Request) {
+			if req.Method == http.MethodGet || req.Method == http.MethodHead {
+				name := path.Clean(req.URL.Path)
+				if f, err := dir.Open(name); err == nil {
+					stat, statErr := f.Stat()
+					f.Close()
+					if statErr == nil && !stat.IsDir() {
+						fs.ServeHTTP(w, req)
+						return
+					}
+				}
+			}
+			http.NotFound(w, req)
+		})
 	}
 
 	return r

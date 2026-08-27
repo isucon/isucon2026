@@ -48,9 +48,17 @@ db-up:
 db-down:
 	docker compose down -v
 
+# React SPA（isucon14-portal 由来）のビルド。出力は frontend/public/packs + manifest.json（CT-3）
+.PHONY: frontend
+frontend:
+	cd frontend && pnpm install --frozen-lockfile && NODE_ENV=production pnpm run webpack
+
+FRONTEND_ENV := ISUXPORTAL_PUBLIC_DIR=frontend/public \
+	ISUXPORTAL_PACKS_MANIFEST=frontend/public/packs/manifest.json
+
 .PHONY: server
 server: db-up
-	$(GO_TEST_ENV) go run ./cmd/portal
+	$(GO_TEST_ENV) $(FRONTEND_ENV) go run ./cmd/portal
 
 .PHONY: rspec-image
 rspec-image:
