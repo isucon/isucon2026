@@ -7,6 +7,7 @@ import {
   controlRouterIp,
   controlSubnetCidr,
   publicIpIsolationRules,
+  requireIpv4HostCidr,
   routerMediatedIngressCidrs,
   serverNetworks,
 } from "./lib/topology";
@@ -30,9 +31,15 @@ const availabilityZone = config.get("availabilityZone") ?? "ap-northeast-1a";
 const serviceInstanceType = config.get("serviceInstanceType") ?? "t3.small";
 const routerInstanceType = config.get("routerInstanceType") ?? "c8in.large";
 const sshPublicKey = config.get("sshPublicKey");
-const sshCidr = config.get("sshCidr");
+const configuredSshCidr = config.get("sshCidr");
+const sshCidr = configuredSshCidr === undefined
+  ? undefined
+  : requireIpv4HostCidr("sshCidr", configuredSshCidr);
 const enablePublicSsh = config.getBoolean("enablePublicSsh") ?? false;
-const clientCidr = config.get("clientCidr");
+const configuredClientCidr = config.get("clientCidr");
+const clientCidr = configuredClientCidr === undefined
+  ? undefined
+  : requireIpv4HostCidr("clientCidr", configuredClientCidr);
 const portalEndpoint = "http://127.0.0.1:18082";
 const publicDomain = config.get("publicDomain") ?? "127.0.0.1.nip.io";
 const databasePassword = config.requireSecret("databasePassword");
@@ -440,6 +447,7 @@ servers.forEach((server, index) => {
     },
     {
       dependsOn: [
+        server.instance,
         internetGateways[index],
         serviceInternetRoutes[index],
         ...publicIsolationAcls,

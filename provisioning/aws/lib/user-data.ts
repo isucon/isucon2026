@@ -47,6 +47,7 @@ export function serviceUserData(
   const backendEnvironment = `ISUREAL_LISTEN_ADDRESS=127.0.0.1:8081
 ISUREAL_PUBLIC_ORIGIN=https://app.team1-aws.${domain}
 ISUREAL_DATABASE_URL=postgresql://isureal:${databasePassword}@127.0.0.1:5432/isureal?sslmode=disable
+ISUREAL_MIGRATIONS_DIR=/opt/isucon/share/migrations
 ISUREAL_IMAGE_ROOT=/var/lib/isureal/images
 ISUREAL_CURSOR_HMAC_KEY=${cursorKey}
 ISUREAL_OPENAPI_PATH=/opt/isucon/share/openapi.yaml
