@@ -48,10 +48,20 @@ portal/
 
 ## テスト
 
+backend/ と同じ構成（tests/{contract,integration,concurrency} + testkit）。
+CI は portal-unit-contract-build / portal-integration-migration / portal-concurrency / portal-rspec の 4 ジョブ。
+
 ```sh
-make test    # Go 単体テスト（timing / token / ContestPB）
-make rspec   # MySQL + Redis 起動 → Go サーバ起動 → HTTP 化 RSpec（93 examples）
+make test              # 単体 + 契約テスト（DB 不要）: internal/... + tests/contract
+make test-integration  # MySQL + Redis: HTTP 越しの結合（bench 一巡・envcheck 形式・スキーマ再適用）
+make test-concurrency  # MySQL + Redis: 並行不変条件（DM-4 重複 enqueue / NF-3 払い出し排他 / DM-3 確定競合）
+make rspec             # HTTP 化 RSpec 93 examples（受け入れの主戦力）
 ```
+
+- `tests/contract` は DB なしで守れる契約を固定する: token 形式（Ruby 生成のゴールデントークン込み、FR-AUTH-7）、
+  非 admin マスク（CT-6）、通知エンコード（CT-4）、CFn テンプレート（埋め込み token の検証まで）
+- `tests/integration` / `tests/concurrency` は接続先の環境変数
+  （`ISUXPORTAL_TEST_DB_DSN` / `ISUXPORTAL_TEST_REDIS_URL`）が未設定なら skip する（backend と同じ流儀）
 
 RSpec は計画 Phase 0 の方式で `contest_spec.rb` 465 行を HTTP 越しに転用したもの
 （原本の `history: false` 欠落バグを修正済み）に加え、登録フロー（fake OAuth で

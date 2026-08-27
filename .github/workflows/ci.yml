@@ -99,6 +99,169 @@ jobs:
       - run: go test ./tests/integration -run 'TestSanitizer|TestSubprocessSanitizer' -count=1
         working-directory: backend
 
+  portal-unit-contract-build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: portal/go.sum
+      - run: gofmt -l . | tee /tmp/gofmt-files && test ! -s /tmp/gofmt-files
+        working-directory: portal
+      - run: go vet ./...
+        working-directory: portal
+      - run: go test ./internal/... ./tests/contract -count=1
+        working-directory: portal
+      - run: |
+          mkdir -p build
+          for command in portal worker bot notifyloop; do
+            CGO_ENABLED=0 go build -trimpath -o "build/$command" "./cmd/$command"
+          done
+        working-directory: portal
+
+  portal-integration-migration:
+    runs-on: ubuntu-24.04
+    services:
+      mysql:
+        image: mysql:8.0@sha256:7dcddc01f13bab2f15cde676d44d01f61fc9f99fe7785e86196dfc07d358ae2b
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: isuxportal
+          MYSQL_USER: isuxportal
+          MYSQL_PASSWORD: isuxportal
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -uroot -proot"
+          --health-interval 2s --health-timeout 2s --health-retries 30
+      redis:
+        image: redis:7-alpine@sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 2s --health-timeout 2s --health-retries 30
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: portal/go.sum
+      - run: go test ./tests/integration -count=1
+        working-directory: portal
+        env:
+          ISUXPORTAL_TEST_DB_DSN: isuxportal:isuxportal@tcp(127.0.0.1:3306)/isuxportal
+          ISUXPORTAL_TEST_REDIS_URL: redis://127.0.0.1:6379/0
+
+  portal-concurrency:
+    runs-on: ubuntu-24.04
+    services:
+      mysql:
+        image: mysql:8.0@sha256:7dcddc01f13bab2f15cde676d44d01f61fc9f99fe7785e86196dfc07d358ae2b
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: isuxportal
+          MYSQL_USER: isuxportal
+          MYSQL_PASSWORD: isuxportal
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -uroot -proot"
+          --health-interval 2s --health-timeout 2s --health-retries 30
+      redis:
+        image: redis:7-alpine@sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 2s --health-timeout 2s --health-retries 30
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: portal/go.sum
+      - run: go test ./tests/concurrency -count=1
+        working-directory: portal
+        env:
+          ISUXPORTAL_TEST_DB_DSN: isuxportal:isuxportal@tcp(127.0.0.1:3306)/isuxportal
+          ISUXPORTAL_TEST_REDIS_URL: redis://127.0.0.1:6379/0
+
+  # HTTP 化した受け入れ RSpec（contest_spec の転用 + 登録/bench/envcheck/admin フロー）
+  portal-rspec:
+    runs-on: ubuntu-24.04
+    services:
+      mysql:
+        image: mysql:8.0@sha256:7dcddc01f13bab2f15cde676d44d01f61fc9f99fe7785e86196dfc07d358ae2b
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: isuxportal
+          MYSQL_USER: isuxportal
+          MYSQL_PASSWORD: isuxportal
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -uroot -proot"
+          --health-interval 2s --health-timeout 2s --health-retries 30
+      redis:
+        image: redis:7-alpine@sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 2s --health-timeout 2s --health-retries 30
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: portal/go.sum
+      - uses: ruby/setup-ruby@95ef2b042f9d7a56d8268cba8559e2842e2ad01b # v1.321.0
+        with:
+          ruby-version: '3.3'
+          bundler-cache: true
+          working-directory: portal/rspec
+      - name: Start portal server in test mode
+        run: |
+          go build -o bin/portal ./cmd/portal
+          ./bin/portal &
+          for _ in $(seq 1 50); do
+            curl -sf http://127.0.0.1:8081/site/sha >/dev/null && break
+            sleep 0.2
+          done
+        working-directory: portal
+        env:
+          PORTAL_TEST_MODE: '1'
+          PORTAL_AUTO_MIGRATE: '1'
+          PORTAL_LISTEN: ':8081'
+          ISUXPORTAL_DB_ADDR: 127.0.0.1:3306
+          REDIS_URL: redis://127.0.0.1:6379/0
+          DEFAULT_URL_HOST: 127.0.0.1:8081
+          AWS_ACCESS_KEY_ID: test-dummy
+          AWS_SECRET_ACCESS_KEY: test-dummy
+          AWS_EC2_METADATA_DISABLED: 'true'
+          ISUXPORTAL_AVATAR_BUCKET: isuxportal-avatars-test
+          ISUXPORTAL_TEST_AMI_ID: ami-test
+          ISUXPORTAL_ADMIN_LOGIN: admin
+          ISUXPORTAL_ADMIN_PASSWORD: adminpass
+          ISUXPORTAL_GITHUB_CLIENT_ID: gh-client
+          ISUXPORTAL_GITHUB_CLIENT_SECRET: gh-secret
+          ISUXPORTAL_GITHUB_AUTHORIZE_URL: http://127.0.0.1:8081/debug/oauth/github/authorize
+          ISUXPORTAL_GITHUB_TOKEN_URL: http://127.0.0.1:8081/debug/oauth/github/token
+          ISUXPORTAL_GITHUB_API_BASE_URL: http://127.0.0.1:8081/debug/oauth/github
+          ISUXPORTAL_DISCORD_CLIENT_ID: dc-client
+          ISUXPORTAL_DISCORD_CLIENT_SECRET: dc-secret
+          ISUXPORTAL_DISCORD_AUTHORIZE_URL: http://127.0.0.1:8081/debug/oauth/discord/authorize
+          ISUXPORTAL_DISCORD_TOKEN_URL: http://127.0.0.1:8081/debug/oauth/discord/token
+          ISUXPORTAL_DISCORD_API_BASE_URL: http://127.0.0.1:8081/debug/oauth/discord
+      - run: bundle exec rspec
+        working-directory: portal/rspec
+        env:
+          TARGET_BASE: http://127.0.0.1:8081
+          DB_HOST: 127.0.0.1
+          DB_PORT: '3306'
+
   frontend-unit-contract-build:
     runs-on: actions-runner-processor
     steps:

@@ -18,13 +18,27 @@ GO_TEST_ENV := PORTAL_TEST_MODE=1 PORTAL_AUTO_MIGRATE=1 PORTAL_LISTEN=:8081 \
 	ISUXPORTAL_DISCORD_TOKEN_URL=http://127.0.0.1:8081/debug/oauth/discord/token \
 	ISUXPORTAL_DISCORD_API_BASE_URL=http://127.0.0.1:8081/debug/oauth/discord
 
+TEST_DB_ENV := ISUXPORTAL_TEST_DB_DSN='isuxportal:isuxportal@tcp(127.0.0.1:13306)/isuxportal' \
+	ISUXPORTAL_TEST_REDIS_URL='redis://127.0.0.1:16379/1'
+
 .PHONY: build
 build:
 	go build ./...
 
+# 単体 + 契約テスト（DB 不要。CI の portal-unit-contract-build 相当）
 .PHONY: test
 test:
-	go test ./...
+	go test ./internal/... ./tests/contract -count=1
+
+# MySQL + Redis を使う結合テスト（CI の portal-integration-migration 相当）
+.PHONY: test-integration
+test-integration: db-up
+	$(TEST_DB_ENV) go test ./tests/integration -count=1
+
+# 並行時の不変条件（CI の portal-concurrency 相当）
+.PHONY: test-concurrency
+test-concurrency: db-up
+	$(TEST_DB_ENV) go test ./tests/concurrency -count=1
 
 .PHONY: db-up
 db-up:
