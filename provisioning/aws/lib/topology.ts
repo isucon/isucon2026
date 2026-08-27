@@ -39,6 +39,23 @@ export const serverNetworks: readonly ServerNetwork[] = [
   },
 ] as const;
 
+export function requireIpv4HostCidr(name: string, value: string): string {
+  const parts = value.split("/");
+  const octets = parts[0]?.split(".") ?? [];
+  const valid =
+    parts.length === 2 &&
+    parts[1] === "32" &&
+    octets.length === 4 &&
+    octets.every(
+      (octet) =>
+        /^(0|[1-9][0-9]{0,2})$/.test(octet) && Number(octet) <= 255,
+    );
+  if (!valid) {
+    throw new Error(`${name} must be one canonical IPv4 address with a /32 prefix`);
+  }
+  return value;
+}
+
 export function routerMediatedIngressCidrs(
   destination: ServerNetwork,
 ): string[] {

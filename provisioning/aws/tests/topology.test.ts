@@ -2,12 +2,30 @@ import { describe, expect, test } from "vitest";
 import { gzipSync } from "node:zlib";
 import {
   publicIpIsolationRules,
+  requireIpv4HostCidr,
   routerMediatedIngressCidrs,
   serverNetworks,
 } from "../lib/topology";
 import { routerUserData, serviceUserData } from "../lib/user-data";
 
 describe("AWS topology", () => {
+  test("accepts only canonical IPv4 host CIDRs for public ingress", () => {
+    expect(requireIpv4HostCidr("clientCidr", "203.0.113.47/32")).toBe(
+      "203.0.113.47/32",
+    );
+    for (const value of [
+      "0.0.0.0/0",
+      "203.0.113.0/24",
+      "203.0.113.047/32",
+      "256.180.142.47/32",
+      "::/0",
+    ]) {
+      expect(() => requireIpv4HostCidr("clientCidr", value)).toThrow(
+        "clientCidr must be one canonical IPv4 address with a /32 prefix",
+      );
+    }
+  });
+
   test("uses distinct VPCs, subnets, and fixed addresses", () => {
     expect(new Set(serverNetworks.map((item) => item.vpcCidr)).size).toBe(3);
     expect(new Set(serverNetworks.map((item) => item.serviceIp)).size).toBe(3);
@@ -30,6 +48,11 @@ describe("AWS topology", () => {
         ),
       ).toString();
       expect(rendered).not.toContain("ip route replace");
+      expect(rendered).toContain(
+        Buffer.from("ISUREAL_MIGRATIONS_DIR=/opt/isucon/share/migrations").toString(
+          "base64",
+        ),
+      );
     }
   });
 
