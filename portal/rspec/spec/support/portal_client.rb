@@ -133,7 +133,7 @@ module PortalClient
   end
 
   # BypassToken.create 相当（Ruby 実装との相互運用性の検証を兼ねる）。
-  BYPASS_SECRET = "5AQQyz/7oFnJYrxnq/HiLKYmh7QrdIrpCDpKlfvkYAg=".unpack1('m0')
+  BYPASS_SECRET = "5AQQyz/7oFnJYrxnq/HiLKYmh7QrdIrpCDpKlfvkYAg=".unpack1('m0') # gitleaks:allow isucon14 由来のダミー値
 
   def create_bypass_token(expiry:, usages:)
     payload = Isuxportal::Proto::Misc::BypassTokenPayload.new(

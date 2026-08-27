@@ -11,7 +11,7 @@ RSpec.describe 'envcheck API' do
     @timing = { contest_start: now - 3600, contest_freeze: now + 3600, contest_end: now + 7200 }
   end
 
-  CHECKER_SECRET = '2RHAlLoifERG1EEc/5dwyzcZGitfUn1k9YkHTwk7HiRO'.unpack1('m*')
+  CHECKER_SECRET = '2RHAlLoifERG1EEc/5dwyzcZGitfUn1k9YkHTwk7HiRO'.unpack1('m*') # gitleaks:allow isucon14 由来のダミー値
 
   # CheckerToken.create 相当（Ruby 生成 → Go 検証の相互運用チェック）
   def checker_token(team_id:, expiry: Time.now.to_i + 3600)
