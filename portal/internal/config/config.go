@@ -184,10 +184,10 @@ func Load() (*Config, error) {
 		},
 		BotToken:                os.Getenv("ISUXPORTAL_DISCORD_BOT_TOKEN"),
 		APIBaseURL:              getenv("ISUXPORTAL_DISCORD_API_BASE_URL", "https://discord.com/api/v10"),
-		ServerID:                getenv("ISUXPORTAL_DISCORD_SERVER_ID", "721578039779262486"),
-		ChannelID:               getenv("ISUXPORTAL_DISCORD_CHANNEL_ID", "729697803982602286"),
-		ContestantRoleID:        getenv("ISUXPORTAL_DISCORD_CONTESTANT_ROLE_ID", "721583193270255617"),
-		AdminRoleID:             getenv("ISUXPORTAL_DISCORD_ADMIN_ROLE_ID", "721583068724592640"),
+		ServerID:                getenv("ISUXPORTAL_DISCORD_SERVER_ID", "721578039779262486"),          //gitleaks:allow isucon14 の公開 snowflake
+		ChannelID:               getenv("ISUXPORTAL_DISCORD_CHANNEL_ID", "729697803982602286"),         //gitleaks:allow isucon14 の公開 snowflake
+		ContestantRoleID:        getenv("ISUXPORTAL_DISCORD_CONTESTANT_ROLE_ID", "721583193270255617"), //gitleaks:allow isucon14 の公開 snowflake
+		AdminRoleID:             getenv("ISUXPORTAL_DISCORD_ADMIN_ROLE_ID", "721583068724592640"),      //gitleaks:allow isucon14 の公開 snowflake
 		SupportCommChannelRoles: parsePairs(os.Getenv("ISUXPORTAL_DISCORD_SUPPORT_COMM_CHANNEL_ROLES")),
 	}
 
@@ -202,8 +202,8 @@ func Load() (*Config, error) {
 		fallback string
 		dst      *[]byte
 	}{
-		{"ISUXPORTAL_BYPASS_SECRET", "5AQQyz/7oFnJYrxnq/HiLKYmh7QrdIrpCDpKlfvkYAg=", &c.BypassTokenSecret},
-		{"ISUXPORTAL_CHECKER_SECRET", "2RHAlLoifERG1EEc/5dwyzcZGitfUn1k9YkHTwk7HiRO", &c.CheckerSecret},
+		{"ISUXPORTAL_BYPASS_SECRET", "5AQQyz/7oFnJYrxnq/HiLKYmh7QrdIrpCDpKlfvkYAg=", &c.BypassTokenSecret}, //gitleaks:allow isucon14 由来のダミー値
+		{"ISUXPORTAL_CHECKER_SECRET", "2RHAlLoifERG1EEc/5dwyzcZGitfUn1k9YkHTwk7HiRO", &c.CheckerSecret},    //gitleaks:allow isucon14 由来のダミー値
 	} {
 		raw, err := base64.StdEncoding.WithPadding(base64.StdPadding).DecodeString(padBase64(getenv(secret.key, secret.fallback)))
 		if err != nil {
