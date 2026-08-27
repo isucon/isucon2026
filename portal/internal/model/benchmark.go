@@ -81,12 +81,17 @@ func QueryJobs(ctx context.Context, db DBTX, query string, args ...any) ([]*Benc
 	return out, rows.Err()
 }
 
-// CreateJob は BenchmarkJob.create! 相当。重複 enqueue は DM-4 のとおり
-// SELECT ... FOR UPDATE で塞ぐ（Rails のアプリ層 COUNT より強い保証）。tx 内で呼ぶこと。
+// CreateJob は BenchmarkJob.create! 相当。重複 enqueue は DM-4 のとおり DB ロックで塞ぐ
+// （Rails のアプリ層 COUNT より強い保証）。tx 内で呼ぶこと。
+// benchmark_jobs のギャップロックはデッドロックを招くため、チーム行のロックで直列化する。
 func CreateJob(ctx context.Context, tx DBTX, teamID int64, instanceName string, targetID, enqueuedByID sql.NullInt64, postValidation bool) (*BenchmarkJob, error) {
+	var lockedTeamID int64
+	if err := tx.QueryRowContext(ctx, `SELECT id FROM teams WHERE id = ? FOR UPDATE`, teamID).Scan(&lockedTeamID); err != nil {
+		return nil, err
+	}
 	var n int
 	if err := tx.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM benchmark_jobs WHERE team_id = ? AND status IN (?, ?) FOR UPDATE`,
+		`SELECT COUNT(*) FROM benchmark_jobs WHERE team_id = ? AND status IN (?, ?)`,
 		teamID, JobPending, JobRunning).Scan(&n); err != nil {
 		return nil, err
 	}
