@@ -45,6 +45,8 @@ jobs:
           POSTGRES_DB: isureal
           POSTGRES_USER: isureal
           POSTGRES_PASSWORD: local-development-only
+        ports:
+          - 5432:5432
         options: >-
           --health-cmd "pg_isready -U isureal -d isureal"
           --health-interval 2s --health-timeout 2s --health-retries 20
@@ -68,6 +70,8 @@ jobs:
           POSTGRES_DB: isureal
           POSTGRES_USER: isureal
           POSTGRES_PASSWORD: local-development-only
+        ports:
+          - 5432:5432
         options: >-
           --health-cmd "pg_isready -U isureal -d isureal"
           --health-interval 2s --health-timeout 2s --health-retries 20
