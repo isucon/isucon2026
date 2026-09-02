@@ -161,6 +161,47 @@ RSpec.describe 'registration flow' do
     expect(registration_session.status).to eq(:NOT_LOGGED_IN)
   end
 
+  it 'logs out via SPA form (POST /session + _method=delete, Rails の MethodOverride 慣習)' do
+    oauth_login('github', github_user(50))
+    oauth_login('discord', discord_user(50))
+    csrf = fetch_csrf_token
+    # Navbar.tsx の onLogout が組み立てるフォームと同じ
+    res = portal_post('/session', {}, timing_headers, form: { 'authenticity_token' => csrf, '_method' => 'delete' })
+    expect(res.code).to eq('302')
+    expect(res['location']).to eq('/')
+    expect(registration_session.status).to eq(:NOT_LOGGED_IN)
+  end
+
+  it 'refuses invite URL of a withdrawn team (session → 404, join → 404)' do
+    oauth_login('github', github_user(7))
+    oauth_login('discord', discord_user(7))
+    create_team!(team_name: 'gone-team', name: 'Gone')
+    team = Team.find_by!(name: 'gone-team')
+    invite_token = team.invite_token
+
+    # 代表者が辞退 → withdrawn=true、invite_token は残る
+    csrf = fetch_csrf_token
+    expect(portal_delete('/api/registration', timing_headers('X-Csrf-Token' => csrf)).code).to eq('200')
+    expect(team.reload.withdrawn).to eq(true)
+
+    @cookies = {}
+    oauth_login('github', github_user(8))
+    oauth_login('discord', discord_user(8))
+    res = portal_get('/api/registration/session', { 'team_id' => team.id.to_s, 'invite_token' => invite_token }, timing_headers)
+    expect(res.code).to eq('404')
+    expect(Isuxportal::Proto::Error.decode(res.body).human_descriptions).to include('招待URLが無効です')
+
+    csrf = fetch_csrf_token
+    body = Isuxportal::Proto::Services::Registration::JoinTeamRequest.encode(
+      Isuxportal::Proto::Services::Registration::JoinTeamRequest.new(
+        team_id: team.id, invite_token: invite_token, name: 'Late',
+      )
+    )
+    res = portal_post('/api/registration/contestant', {}, timing_headers('X-Csrf-Token' => csrf), body: body)
+    expect(res.code).to eq('404')
+    expect(Contestant.where(team_id: team.id).count).to eq(0)
+  end
+
   it 'switches discord account for logged-in contestant (FR-AUTH-3)' do
     oauth_login('github', github_user(6))
     oauth_login('discord', discord_user(6))
