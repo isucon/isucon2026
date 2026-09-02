@@ -55,8 +55,12 @@ func FindTeam(ctx context.Context, db DBTX, id int64) (*Team, error) {
 	return scanTeam(db.QueryRowContext(ctx, `SELECT `+teamColumns+` FROM teams WHERE id = ?`, id))
 }
 
+// FindTeamByInviteToken は招待 URL の解決。辞退・失格したチームは招待を受け付けない
+// （isucon14 は withdrawn を見ておらず、辞退後のチームに参加してしまう経路があった）。
 func FindTeamByInviteToken(ctx context.Context, db DBTX, id int64, inviteToken string) (*Team, error) {
-	return scanTeam(db.QueryRowContext(ctx, `SELECT `+teamColumns+` FROM teams WHERE id = ? AND invite_token = ?`, id, inviteToken))
+	return scanTeam(db.QueryRowContext(ctx,
+		`SELECT `+teamColumns+` FROM teams WHERE id = ? AND invite_token = ? AND withdrawn = 0 AND disqualified = 0`,
+		id, inviteToken))
 }
 
 // ActiveVisibleTeamCount は Contest.team_count 相当（Team.active.visible.count）。

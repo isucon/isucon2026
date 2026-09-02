@@ -40,6 +40,7 @@ func New(cfg *config.Config, db *sql.DB, store *session.Store, c *cache.Cache, j
 
 func (h *Handler) Router() http.Handler {
 	r := chi.NewRouter()
+	r.Use(methodOverride)
 	r.Use(h.requestInfo)
 	r.Use(h.adminOnlySwitch)
 	r.Use(h.verifyCSRF)

@@ -238,6 +238,26 @@ func (h *Handler) requireStaffHTML(w http.ResponseWriter, r *http.Request) bool 
 	return true
 }
 
+// methodOverride は Rails の Rack::MethodOverride 相当。
+// SPA のログアウト（Navbar.tsx）は `POST /session` + hidden `_method=delete` のフォーム送信で、
+// これを DELETE として扱わないと 405 になる。フォーム本体はここで一度パースされ、
+// 後段の CSRF 検証（authenticity_token）はキャッシュされた PostForm を読む。
+func methodOverride(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost && isFormContentType(r.Header.Get("Content-Type")) {
+			switch override := strings.ToUpper(r.PostFormValue("_method")); override {
+			case http.MethodDelete, http.MethodPut, http.MethodPatch:
+				r.Method = override
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func isFormContentType(ct string) bool {
+	return strings.HasPrefix(ct, "application/x-www-form-urlencoded") || strings.HasPrefix(ct, "multipart/form-data")
+}
+
 // verifyCSRF は mutating リクエストの CSRF 検証（CT-2）。
 // bench / envcheck / debug / OAuth 系は対象外（共有トークン・署名で認証）。
 func (h *Handler) verifyCSRF(next http.Handler) http.Handler {

@@ -64,6 +64,7 @@ server: db-up
 rspec-image:
 	docker build -t isuxportal-rspec rspec
 
+# 例: make rspec RSPEC_ARGS='spec/bench_spec.rb'
 .PHONY: rspec
 rspec: db-up rspec-image
-	env $(GO_TEST_ENV) ./scripts/run_rspec.sh
+	env $(GO_TEST_ENV) ./scripts/run_rspec.sh $(RSPEC_ARGS)

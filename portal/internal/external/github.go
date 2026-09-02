@@ -17,7 +17,16 @@ type GitHub struct {
 	KeysBaseURL string
 }
 
-var loginSanitizer = regexp.MustCompile(`[^a-zA-Z0-9]`)
+// GitHub のユーザー名規則: 英数字とハイフン、ハイフンは先頭・末尾・連続不可、39 文字以内。
+// isucon14 は `gsub(/[^a-z0-9]/i, ”)` でハイフンを削っていたため `john-doe` の鍵取得に
+// 失敗すると別人 `johndoe` の鍵を取り込む経路があった。規則に合わないログインは取りにいかない。
+var githubLoginPattern = regexp.MustCompile(`^[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*$`)
+
+const githubLoginMaxLen = 39
+
+func validGitHubLogin(login string) bool {
+	return len(login) <= githubLoginMaxLen && githubLoginPattern.MatchString(login)
+}
 
 // FetchSSHKeys はユーザーの公開鍵一覧を返す。
 // まず API（ユーザー token）を試し、失敗したら github.com/<login>.keys にフォールバックする。
@@ -64,8 +73,10 @@ func (g *GitHub) fetchViaKeysURL(ctx context.Context, login string) ([]string, e
 	if base == "" {
 		base = "https://github.com"
 	}
-	sanitized := loginSanitizer.ReplaceAllString(login, "")
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"/"+sanitized+".keys", nil)
+	if !validGitHubLogin(login) {
+		return nil, fmt.Errorf("github keys: invalid login %q", login)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"/"+login+".keys", nil)
 	if err != nil {
 		return nil, err
 	}

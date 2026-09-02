@@ -116,6 +116,12 @@ bypass token の Ruby ⇔ Go 相互運用などを検証する。
   要件 FR-C-4 に従い投稿を受け付ける
 - **登録更新・辞退の競技開始後 403 を復活**（FR-REG-5/6。isucon14 はコメントアウトしていた）
 - **重複 enqueue 防止を DB ロックで実装**（DM-4。Rails はアプリ層 COUNT のみで競合に弱かった）
+- **辞退・失格チームの招待 URL を無効化**（isucon14 は withdrawn を見ておらず、辞退後のチームに参加して
+  どこにも登録できなくなる経路があった）
+- **GitHub の `.keys` フォールバックはユーザー名規則を検証**（isucon14 はハイフンを削っていたため
+  `john-doe` が別人 `johndoe` の鍵を取り込み得た）
+- **`POST /session` + `_method=delete` を受ける**（SPA のログアウトが Rails の MethodOverride 慣習で
+  送るため。Go 側に override ミドルウェアを置いた）
 - **ETag の値**は Rails とバイト一致しない（304 の挙動のみ互換）。差分テストでは ETag ヘッダを許容リストへ
 - `EnvCheck.status` は Rails 同様 DONE 固定（感想戦 FIXME の踏襲）。段階表示を戻す場合は
   `internal/model/envcheck.go` のコメント参照
