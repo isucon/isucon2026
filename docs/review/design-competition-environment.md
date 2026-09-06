@@ -15,6 +15,7 @@
 | [補助資料](design-competition-environment-appendix.md) | 所見の詳細、各提案（P-101〜P-112）の全文と根拠、未決事項の全リスト、採用時の影響。本文の P-1xx はそちらの節番号に対応する |
 | [参考資料: チューニング手法](design-competition-environment-tuning.md) | 提案した前提で参加者が取れる手法を層ごとに整理したもの |
 | [参考資料: 意図的に残す遅さ](design-competition-environment-detune.md) | 初期状態にさらに残す遅さ（detune）の候補と、LLM に直させるときの段階 |
+| [別案: 東京の DB を独立させた 4 台構成](design-competition-environment-topology-alt.md) | P-104 の別案。3 リージョンをそれぞれオンメモリにする解法への対抗策として、東京に DB の独立ホストを置く |
 
 ## 目次
 
