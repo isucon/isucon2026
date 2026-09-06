@@ -2,7 +2,7 @@
 
 **レビュアー**: fujiwara
 **日付**: 2026-09-05
-**位置づけ**: `design-competition-environment.md`（要点）の補助資料。結論と提案の一覧は要点
+**位置づけ**: [`design-competition-environment.md`](design-competition-environment.md)（要点）の補助資料。結論と提案の一覧は要点
 側にある。ここには所見の詳細、各提案の全文と根拠、ナラティブとの整合、想定される改善ステージ、
 未決事項、採用時の影響範囲を置く。決定事項ではなく、レビュアーの所見と提案である。*未決* は
 レビュアー自身が決めきれていない点。
@@ -657,7 +657,7 @@ DB を分散させないまま「海外サーバーに処理を逃がさず `asi
 - 仕様から「コスト係数 12 の bcrypt」と、それに付随するパスワード長・文字種の規則、
   72 バイト制限、未知ユーザーへのダミー比較を削除する。安全性要件は「平文を保存しない。
   正しいキーの照合だけが成立する」に書き換える。
-- `design-competition-environment-tuning.md` §1.6 から「bcrypt コスト引き下げ」を削除する。
+- [`design-competition-environment-tuning.md`](design-competition-environment-tuning.md) §1.6 から「bcrypt コスト引き下げ」を削除する。
 
 理由:
 
@@ -907,7 +907,7 @@ RealBrands 相当）を導入している以上、フォローに何の効果も
 ## 4. 想定される改善ステージ
 
 提案どおりの環境と負荷モデルにした場合に、参加者がたどると想定する改善の段階。各段階の
-具体的な手法とコード上の該当箇所は `design-competition-environment-tuning.md` にまとめた。
+具体的な手法とコード上の該当箇所は[`design-competition-environment-tuning.md`](design-competition-environment-tuning.md)にまとめた。
 
 | ステージ | 重要になる時期 | 参加者がやるべきこと | 動くもの |
 |---|---|---|---|

@@ -2,7 +2,7 @@
 
 **レビュアー**: fujiwara
 **日付**: 2026-09-05
-**位置づけ**: `design-competition-environment.md`（要点）と同 `-appendix.md`（補助資料）の
+**位置づけ**: [`design-competition-environment.md`](design-competition-environment.md)（要点）と同 [`-appendix.md`](design-competition-environment-appendix.md)（補助資料）の
 参考資料。提案 P-101〜P-112 の前提（3 リージョンサーバー、東京の中央 DB、管理外ルーター、
 リージョン間レイテンシ約 100 ms、リージョンごとの SLO、`client_region` ルール、同期移行）で、
 参加者が取れる手法を実装に即して整理したもの。想定解法の妥当性確認とキャリブレーションの
