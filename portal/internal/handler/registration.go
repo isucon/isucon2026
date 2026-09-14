@@ -179,22 +179,18 @@ func (h *Handler) RegistrationCreateTeam(w http.ResponseWriter, r *http.Request)
 	}
 
 	isHidden := h.currentBypassAllowed(r, "HIDDEN_TEAM")
-	res, err := tx.ExecContext(ctx, `
+	var teamID int64
+	if err := tx.QueryRowContext(ctx, `
 		INSERT INTO teams (name, email_address, invite_token, is_hidden, final_participation, student, created_at, updated_at)
-		VALUES (?, ?, ?, ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))`,
-		req.TeamName, req.EmailAddress, model.NewInviteToken(), isHidden)
-	if err != nil {
-		return err
-	}
-	teamID, err := res.LastInsertId()
-	if err != nil {
+		VALUES ($1, $2, $3, $4, true, false, now(), now()) RETURNING id`,
+		req.TeamName, req.EmailAddress, model.NewInviteToken(), isHidden).Scan(&teamID); err != nil {
 		return err
 	}
 
 	// AZ は id の剰余で割り当てる（FR-REG-3）
 	zones := h.cfg.AvailabilityZones
 	zone := zones[teamID%int64(len(zones))]
-	if _, err := tx.ExecContext(ctx, `UPDATE teams SET availability_zone = ? WHERE id = ?`, zone, teamID); err != nil {
+	if _, err := tx.ExecContext(ctx, `UPDATE teams SET availability_zone = $1 WHERE id = $2`, zone, teamID); err != nil {
 		return err
 	}
 
@@ -202,7 +198,7 @@ func (h *Handler) RegistrationCreateTeam(w http.ResponseWriter, r *http.Request)
 	if err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `UPDATE teams SET leader_id = ? WHERE id = ?`, contestantID, teamID); err != nil {
+	if _, err := tx.ExecContext(ctx, `UPDATE teams SET leader_id = $1 WHERE id = $2`, contestantID, teamID); err != nil {
 		return err
 	}
 	if err := model.UpdateTeamStudentStatus(ctx, tx, teamID); err != nil {
@@ -270,7 +266,7 @@ func (h *Handler) RegistrationJoinTeam(w http.ResponseWriter, r *http.Request) e
 
 	// チームを行ロックして上限 3 人を保証する
 	var memberCount int
-	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM contestants WHERE team_id = (SELECT id FROM teams WHERE id = ? FOR UPDATE)`, team.ID).Scan(&memberCount); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM contestants WHERE team_id = (SELECT id FROM teams WHERE id = $1 FOR UPDATE)`, team.ID).Scan(&memberCount); err != nil {
 		return err
 	}
 	if memberCount >= 3 {
@@ -335,7 +331,7 @@ func (h *Handler) RegistrationUpdate(w http.ResponseWriter, r *http.Request) err
 	}
 	defer tx.Rollback()
 	if _, err := tx.ExecContext(ctx, `
-		UPDATE contestants SET name = ?, student = ?, in_person = ?, avatar_url = ?, updated_at = UTC_TIMESTAMP(6) WHERE id = ?`,
+		UPDATE contestants SET name = $1, student = $2, in_person = $3, avatar_url = $4, updated_at = now() WHERE id = $5`,
 		req.Name, req.IsStudent, req.IsInPerson, req.AvatarUrl, c.ID); err != nil {
 		return err
 	}
@@ -344,7 +340,7 @@ func (h *Handler) RegistrationUpdate(w http.ResponseWriter, r *http.Request) err
 			return err
 		}
 		if _, err := tx.ExecContext(ctx, `
-			UPDATE teams SET name = ?, email_address = ?, updated_at = UTC_TIMESTAMP(6) WHERE id = ?`,
+			UPDATE teams SET name = $1, email_address = $2, updated_at = now() WHERE id = $3`,
 			req.TeamName, req.EmailAddress, team.ID); err != nil {
 			return err
 		}
@@ -392,7 +388,7 @@ func (h *Handler) RegistrationDelete(w http.ResponseWriter, r *http.Request) err
 	}
 	defer tx.Rollback()
 	if wasLeader {
-		if _, err := tx.ExecContext(ctx, `UPDATE teams SET withdrawn = 1, leader_id = NULL, updated_at = UTC_TIMESTAMP(6) WHERE id = ?`, team.ID); err != nil {
+		if _, err := tx.ExecContext(ctx, `UPDATE teams SET withdrawn = true, leader_id = NULL, updated_at = now() WHERE id = $1`, team.ID); err != nil {
 			return err
 		}
 		removed, err = model.TeamMembers(ctx, tx, team.ID)
@@ -404,10 +400,10 @@ func (h *Handler) RegistrationDelete(w http.ResponseWriter, r *http.Request) err
 	}
 	for _, m := range removed {
 		for _, q := range []string{
-			`DELETE FROM ssh_public_keys WHERE contestant_id = ?`,
-			`DELETE FROM notifications WHERE contestant_id = ?`,
-			`DELETE FROM push_subscriptions WHERE contestant_id = ?`,
-			`DELETE FROM contestants WHERE id = ?`,
+			`DELETE FROM ssh_public_keys WHERE contestant_id = $1`,
+			`DELETE FROM notifications WHERE contestant_id = $1`,
+			`DELETE FROM push_subscriptions WHERE contestant_id = $1`,
+			`DELETE FROM contestants WHERE id = $1`,
 		} {
 			if _, err := tx.ExecContext(ctx, q, m.ID); err != nil {
 				return err
@@ -493,7 +489,7 @@ func (h *Handler) RegistrationActivateCoupon(w http.ResponseWriter, r *http.Requ
 	if coupon == nil {
 		return &model.NotFoundError{}
 	}
-	if _, err := h.db.ExecContext(ctx, `UPDATE coupons SET activate = 1, updated_at = UTC_TIMESTAMP(6) WHERE id = ?`, coupon.ID); err != nil {
+	if _, err := h.db.ExecContext(ctx, `UPDATE coupons SET activate = true, updated_at = now() WHERE id = $1`, coupon.ID); err != nil {
 		return err
 	}
 	renderPB(w, http.StatusOK, &pbregistration.ActivateCouponResponse{})
@@ -536,7 +532,7 @@ func validateTeamInput(ctx context.Context, tx model.DBTX, name, email string, s
 	}
 	if name != "" {
 		var n int
-		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM teams WHERE name = ? AND id != ?`, name, selfID).Scan(&n); err != nil {
+		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM teams WHERE name = $1 AND id != $2`, name, selfID).Scan(&n); err != nil {
 			return err
 		}
 		if n > 0 {
@@ -555,13 +551,13 @@ func validateContestantInput(ctx context.Context, tx model.DBTX, name, githubID,
 		msgs = append(msgs, "Name can't be blank")
 	}
 	var n int
-	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM contestants WHERE github_id = ?`, githubID).Scan(&n); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM contestants WHERE github_id = $1`, githubID).Scan(&n); err != nil {
 		return err
 	}
 	if n > 0 {
 		msgs = append(msgs, "Github has already been taken")
 	}
-	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM contestants WHERE discord_id = ?`, discordID).Scan(&n); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM contestants WHERE discord_id = $1`, discordID).Scan(&n); err != nil {
 		return err
 	}
 	if n > 0 {
@@ -577,14 +573,12 @@ func insertContestant(ctx context.Context, tx model.DBTX, teamID int64, name str
 	if avatarURL == "" {
 		avatarURL = "https://avatars.githubusercontent.com/u/0"
 	}
-	res, err := tx.ExecContext(ctx, `
+	var id int64
+	err := tx.QueryRowContext(ctx, `
 		INSERT INTO contestants (team_id, name, github_login, github_id, discord_id, discord_tag, avatar_url, student, in_person, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))`,
-		teamID, name, githubLogin, githubID, discordID, discordTag, avatarURL, isStudent, isInPerson)
-	if err != nil {
-		return 0, err
-	}
-	return res.LastInsertId()
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now(), now()) RETURNING id`,
+		teamID, name, githubLogin, githubID, discordID, discordTag, avatarURL, isStudent, isInPerson).Scan(&id)
+	return id, err
 }
 
 func cloudFormationTestTemplate(h *Handler, team *model.Team, ri *reqInfo) (string, error) {

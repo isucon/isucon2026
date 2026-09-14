@@ -20,7 +20,7 @@
 | envcheck 3 本 | JSON / text/plain / 空ボディ、CheckerToken + HMAC 署名の 2 方式、インスタンス登録の副作用 |
 | ページ | SPA シェル（meta 8 個 + manifest.json 解決）、運営 3 画面、broadcast、/terms /rules /docs（競技中のみ）/site/sha |
 | ジョブ | BenchmarkCompletion / MaintainBest / UpdateContestantDashboard（Redis 事前生成）/ Clarification 系 / Web Push 配信（410 で購読削除）/ SSH 鍵同期 / Discord 同期・ロール / EC2 同期 / SSH 一括実行 / LongRunningCheck / ClearContestData |
-| 常駐 | `cmd/portal`（app）、`cmd/worker`（SQS）、`cmd/bot`（discordgo: ロール同期・readme リアクション・support comm）、`cmd/notifyloop` |
+| 常駐 | `cmd/portal`（app）、`cmd/worker`（PostgreSQL ジョブキューの消費）、`cmd/bot`（discordgo: ロール同期・readme リアクション・support comm）、`cmd/notifyloop` |
 | 観測性 | slog / Sentry / Prometheus `/metrics`（NF-6）、graceful shutdown（NF-5） |
 
 ## ディレクトリ
@@ -34,13 +34,13 @@ portal/
 │   ├── contest/         # 競技時刻判定・leaderboard エンジン ← 最重要
 │   ├── model/           # 行 + to_pb 変換（マスク CT-6、状態遷移、DM-3/4）
 │   ├── handler/         # 全ルート・ガード 4 種・CSRF・SPA シェル
-│   ├── job/             # ジョブ 20 本（SQS / in-process）
+│   ├── job/             # ジョブ 20 本（PostgreSQL キュー / in-process）
 │   ├── session/         # Redis セッション（Rails 非互換 = クリーンカットオーバー）
 │   ├── cache/           # dashboard-v2:* 事前生成キャッシュ（CT-5）
 │   ├── cloudformation/  # CFn テンプレート（ERB → text/template）
 │   ├── token/           # bypass / checker token
 │   ├── external/        # slack / discord / github / webpush / aws / ssh
-│   └── db/              # 接続と初期スキーマ（schema.rb の写し、CT-8）
+│   └── db/              # pgx 接続と初期スキーマ（schema.rb を PostgreSQL に移植、CT-8）
 ├── frontend/            # React SPA（isucon14-portal 由来。webpack + pnpm）
 │   ├── app/javascript/  # SPA 本体（audience / contestant / admin / broadcast_view の 4 バンドル）
 │   ├── sw/              # Service Worker（Web Push 受信、CT-4）
@@ -73,15 +73,15 @@ CI は portal-unit-contract-build / portal-integration-migration / portal-concur
 
 ```sh
 make test              # 単体 + 契約テスト（DB 不要）: internal/... + tests/contract
-make test-integration  # MySQL + Redis: HTTP 越しの結合（bench 一巡・envcheck 形式・スキーマ再適用）
-make test-concurrency  # MySQL + Redis: 並行不変条件（DM-4 重複 enqueue / NF-3 払い出し排他 / DM-3 確定競合）
-make rspec             # HTTP 化 RSpec 93 examples（受け入れの主戦力）
+make test-integration  # PostgreSQL + Redis: HTTP 越しの結合（bench 一巡・envcheck 形式・スキーマ再適用・ジョブキュー）
+make test-concurrency  # PostgreSQL + Redis: 並行不変条件（DM-4 重複 enqueue / NF-3 払い出し排他 / DM-3 確定競合 / キュー排他）
+make rspec             # HTTP 化 RSpec 95 examples（受け入れの主戦力）
 ```
 
 - `tests/contract` は DB なしで守れる契約を固定する: token 形式（Ruby 生成のゴールデントークン込み、FR-AUTH-7）、
   非 admin マスク（CT-6）、通知エンコード（CT-4）、CFn テンプレート（埋め込み token の検証まで）
 - `tests/integration` / `tests/concurrency` は接続先の環境変数
-  （`ISUXPORTAL_TEST_DB_DSN` / `ISUXPORTAL_TEST_REDIS_URL`）が未設定なら skip する（backend と同じ流儀）
+  （`ISUXPORTAL_TEST_DATABASE_URL` / `ISUXPORTAL_TEST_REDIS_URL`）が未設定なら skip する（backend と同じ流儀）
 
 RSpec は計画 Phase 0 の方式で `contest_spec.rb` 465 行を HTTP 越しに転用したもの
 （原本の `history: false` 欠落バグを修正済み）に加え、登録フロー（fake OAuth で
@@ -101,15 +101,25 @@ bypass token の Ruby ⇔ Go 相互運用などを検証する。
 
 ## 運用
 
-- 本番は `ISUXPORTAL_SQS_QUEUE_URL` を設定すると perform_later が SQS 経由になり、
-  `cmd/worker` が消費する。未設定ならプロセス内 goroutine で実行
+- DB は PostgreSQL（`ISUXPORTAL_DATABASE_URL`）。`PORTAL_AUTO_MIGRATE=1` で起動時に
+  `internal/db/schema.sql` を適用する（`IF NOT EXISTS` のみで冪等）
+- 非同期ジョブは PostgreSQL の `jobs` テーブルに積み、`cmd/worker` が
+  `FOR UPDATE SKIP LOCKED` で 1 件ずつ取り出して実行する。失敗は指数バックオフで 5 回まで再試行し、
+  それ以降は `status = 'dead'` に落として残す（`SELECT * FROM jobs WHERE status = 'dead'` で確認）。
+  テストモード（`PORTAL_TEST_MODE=1`）では投入時に同期実行する
+- 管理対象のマネージドサービスは PostgreSQL / Redis / S3 / EC2（+ GitHub・Discord・Slack の外部 API）。
+  SQS は使わない
 - セッションは Rails と互換しないため、切り替え時に全員のログインが切れる（計画書 §7）
-- Rails と並走する差分テスト期間は Redis の DB index を分けること（計画書 §3）
 - SPA アセットは `ISUXPORTAL_PUBLIC_DIR` / `ISUXPORTAL_PACKS_MANIFEST` を isucon14-portal の
   `public/` に向ける（manifest.json でハッシュ付きパス解決、`/packs` は長期キャッシュ）
 
 ## isucon14-portal からの意図的な差分
 
+- **MySQL → PostgreSQL、SQS → PostgreSQL キュー**: Rails へのロールバック余地を捨てる決定
+  （2026-09-14）に伴い、DB を backend と同じ PostgreSQL に統一し、SQS を `jobs` テーブルで置き換えた。
+  16 テーブルの列名・意味は isucon14 と同じ（`datetime(6)` → `timestamptz`、`tinyint(1)` → `boolean`、
+  `auto_increment` → `bigserial`）。加えて DM-4 の部分一意インデックス
+  （同一チームの pending/running は 1 件）と `survey_responses.team_id` の一意制約を DB 側でも持つ
 - **単一開催（P-3）**: `ISUXPORTAL_FINAL` / promoted 分岐 / qualify・final の 2 系統ロールは実装しない。
   Redis キーの round セグメントも落とす（`dashboard-v2:{visibility}[:team-{id}]`）
 - **clarification の投稿を復活**: isucon14 の最終ビルドは感想戦向けに投稿を 403 で封じていたが、
@@ -122,7 +132,7 @@ bypass token の Ruby ⇔ Go 相互運用などを検証する。
   `john-doe` が別人 `johndoe` の鍵を取り込み得た）
 - **`POST /session` + `_method=delete` を受ける**（SPA のログアウトが Rails の MethodOverride 慣習で
   送るため。Go 側に override ミドルウェアを置いた）
-- **ETag の値**は Rails とバイト一致しない（304 の挙動のみ互換）。差分テストでは ETag ヘッダを許容リストへ
+- **ETag の値**は Rails とバイト一致しない（304 の挙動のみ互換）
 - `EnvCheck.status` は Rails 同様 DONE 固定（感想戦 FIXME の踏襲）。段階表示を戻す場合は
   `internal/model/envcheck.go` のコメント参照
 - 空の pending 払い出しで target が無い場合、bench receive は 500 ではなく空 IP を返す

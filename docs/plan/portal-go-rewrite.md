@@ -6,6 +6,16 @@
 `isucon14-portal`（Rails 6.1.6）のバックエンドを Go で書き直し、
 フロントエンド・supervisor・envcheck・インフラはそのまま流用する。
 
+> **2026-09-14 追記（決定）**: Rails へのロールバック余地は持たない。
+> これに伴い基本方針 2・4 を改め、DB は **PostgreSQL**（backend と同じ）、
+> 非同期ジョブは **SQS ではなく PostgreSQL の `jobs` テーブル**で実装した。
+> Rails と同じ DB を見る前提の差分テスト（§6 層 2）と §7 のロールバック手順は廃止。
+> 受け入れは HTTP 化 RSpec（Go にのみ向ける）と Go のテスト 3 層で行う。
+> スキーマは 16 テーブルの列名・意味を維持したうえで PostgreSQL の型に移植し
+> （`datetime(6)` → `timestamptz`、`tinyint(1)` → `boolean`、`auto_increment` → `bigserial`）、
+> DM-4 の部分一意インデックスと `survey_responses.team_id` の一意制約を追加した。
+> 詳細は [`portal/README.md`](../../portal/README.md) の「運用」「意図的な差分」を参照。
+
 ## 0. 前提と方針
 
 ### 確定している前提
@@ -53,11 +63,11 @@
 | 領域 | 採用 | 理由 |
 |---|---|---|
 | ルータ | `go-chi/chi/v5` | ミドルウェアの合成が素直。変則ルート `/:request_id/:id/output` も書ける。標準 `ServeMux` でも可能だが、ガード 4 種の合成で chi のほうが読みやすい |
-| DB | `database/sql` + `go-sql-driver/mysql` | |
+| DB | `database/sql` + `jackc/pgx/v5/stdlib` | 2026-09-14 に MySQL から PostgreSQL へ変更（冒頭の追記参照） |
 | クエリ | `sqlc` + 一部手書き | 定型は sqlc で型付け生成。**leaderboard だけは `sql.Rows` を直接回す**（ストリーミングが必要） |
 | protobuf | `google.golang.org/protobuf` | `buf` で生成。既存の `buf.gen.yaml` に Go プラグインがすでにある |
 | セッション | Redis（`redis/go-redis/v9`）+ 署名付き Cookie | Rails 互換は狙わない（後述）。Cookie は `gorilla/securecookie` 相当で十分 |
-| 非同期ジョブ | SQS（`aws-sdk-go-v2/service/sqs`） | **インフラを変えない**のが目的。Terraform も taskdef もそのまま使える |
+| 非同期ジョブ | PostgreSQL の `jobs` テーブル（`FOR UPDATE SKIP LOCKED`） | 2026-09-14 に SQS から変更。マネージドサービスを 1 つ減らし、ローカル・CI で本番同等の経路をテストできる |
 | OAuth | `golang.org/x/oauth2` | GitHub は `oauth2/github`。Discord は endpoint を自前で定義 |
 | Discord bot | `bwmarrin/discordgo` | |
 | Web Push | `SherClockHolmes/webpush-go` | VAPID 対応。**実機検証を Phase 6 で必ず行う** |

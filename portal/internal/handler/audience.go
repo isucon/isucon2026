@@ -95,7 +95,7 @@ func (h *Handler) AudienceTeams(w http.ResponseWriter, r *http.Request) error {
 	rows, err := h.db.QueryContext(ctx, `
 		SELECT t.id, t.name, t.final_participation, t.student, c.name
 		FROM teams t LEFT JOIN contestants c ON c.team_id = t.id
-		WHERE t.withdrawn = 0 AND t.disqualified = 0 AND t.is_hidden = 0
+		WHERE t.withdrawn = false AND t.disqualified = false AND t.is_hidden = false
 		ORDER BY t.id ASC, c.id ASC`)
 	if err != nil {
 		return err

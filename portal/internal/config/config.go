@@ -17,10 +17,8 @@ type Config struct {
 	Listen        string
 	MetricsListen string
 
-	DBAddr     string
-	DBUser     string
-	DBPassword string
-	DBName     string
+	// DatabaseURL は PostgreSQL の接続 URL（ISUXPORTAL_DATABASE_URL）。
+	DatabaseURL string
 
 	RedisURL      string
 	SessionSecret string
@@ -71,8 +69,6 @@ type Config struct {
 	SentryDSN         string
 	SentryEnvironment string
 
-	SQSQueueURL string
-
 	// PacksManifest は public/packs/manifest.json のパス（CT-3）。PublicDir は静的ファイルの根。
 	PacksManifest string
 	PublicDir     string
@@ -119,10 +115,7 @@ func Load() (*Config, error) {
 	c := &Config{
 		Listen:        getenv("PORTAL_LISTEN", ":8081"),
 		MetricsListen: os.Getenv("PORTAL_METRICS_LISTEN"),
-		DBAddr:        getenv("ISUXPORTAL_DB_ADDR", "127.0.0.1:13306"),
-		DBUser:        getenv("ISUXPORTAL_DB_USER", "isuxportal"),
-		DBPassword:    getenv("ISUXPORTAL_DB_PASSWORD", "isuxportal"),
-		DBName:        getenv("ISUXPORTAL_DB_NAME", "isuxportal"),
+		DatabaseURL:   getenv("ISUXPORTAL_DATABASE_URL", "postgres://isuxportal:isuxportal@127.0.0.1:15432/isuxportal?sslmode=disable"),
 		RedisURL:      getenv("REDIS_URL", "redis://127.0.0.1:16379/0"),
 		SessionSecret: getenv("ISUXPORTAL_SESSION_SECRET", "insecure-development-secret"),
 		PublicURLHost: getenv("DEFAULT_URL_HOST", "localhost:8081"),
@@ -158,8 +151,6 @@ func Load() (*Config, error) {
 
 		SentryDSN:         os.Getenv("SENTRY_DSN"),
 		SentryEnvironment: getenv("MONITOR_ENV", "development"),
-
-		SQSQueueURL: os.Getenv("ISUXPORTAL_SQS_QUEUE_URL"),
 
 		PacksManifest: os.Getenv("ISUXPORTAL_PACKS_MANIFEST"),
 		PublicDir:     os.Getenv("ISUXPORTAL_PUBLIC_DIR"),
@@ -236,11 +227,6 @@ func Load() (*Config, error) {
 	}
 
 	return c, nil
-}
-
-func (c *Config) DSN() string {
-	return fmt.Sprintf("%s:%s@tcp(%s)/%s?parseTime=true&loc=UTC&multiStatements=true&charset=utf8mb4",
-		c.DBUser, c.DBPassword, c.DBAddr, c.DBName)
 }
 
 // VAPIDPrivateKeyPEM は ISUXPORTAL_VAPID_PRIVATE_KEY（JSON 文字列化した PEM、CT-10）を PEM に戻す。

@@ -36,7 +36,7 @@ func scanClar(row interface{ Scan(...any) error }) (*Clarification, error) {
 }
 
 func FindClarification(ctx context.Context, db DBTX, id int64) (*Clarification, error) {
-	return scanClar(db.QueryRowContext(ctx, `SELECT `+clarColumns+` FROM clarifications WHERE id = ?`, id))
+	return scanClar(db.QueryRowContext(ctx, `SELECT `+clarColumns+` FROM clarifications WHERE id = $1`, id))
 }
 
 func QueryClarifications(ctx context.Context, db DBTX, query string, args ...any) ([]*Clarification, error) {

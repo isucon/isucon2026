@@ -1,17 +1,17 @@
 services:
-  mysql:
-    image: mysql:8.0
-    container_name: isuxportal-mysql
+  postgres:
+    image: postgres:16-alpine
+    container_name: isuxportal-postgres
     environment:
-      MYSQL_ROOT_PASSWORD: root
-      MYSQL_DATABASE: isuxportal
-      MYSQL_USER: isuxportal
-      MYSQL_PASSWORD: isuxportal
-    command: --default-time-zone=+00:00
+      POSTGRES_DB: isuxportal
+      POSTGRES_USER: isuxportal
+      POSTGRES_PASSWORD: isuxportal
+      TZ: UTC
+      PGTZ: UTC
     ports:
-      - "13306:3306"
+      - "15432:5432"
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-proot"]
+      test: ["CMD-SHELL", "pg_isready -U isuxportal -d isuxportal"]
       interval: 2s
       timeout: 2s
       retries: 30

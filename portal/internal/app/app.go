@@ -31,7 +31,7 @@ func New(ctx context.Context) (*App, error) {
 		return nil, err
 	}
 
-	conn, err := db.Open(cfg.DSN())
+	conn, err := db.Open(cfg.DatabaseURL)
 	if err != nil {
 		return nil, err
 	}
@@ -79,11 +79,12 @@ func New(ctx context.Context) (*App, error) {
 		SSH:    &external.SSHExecutor{User: "isuadmin", PrivateKeyPath: cfg.IsuconAdminSSHKeyPath},
 	}
 
-	// キュー選択: SQS（本番）か in-process（開発・テスト。テストモードは同期実行）
-	if cfg.SQSQueueURL != "" && aws != nil {
-		jobs.SetQueue(&job.SQSQueue{AWS: aws, QueueURL: cfg.SQSQueueURL})
+	// キュー選択: テストモードは同期実行（perform_now 相当）、それ以外は
+	// PostgreSQL の jobs テーブル（cmd/worker が消費）。
+	if cfg.TestMode {
+		jobs.SetQueue(&job.InProcessQueue{Env: jobs, Sync: true})
 	} else {
-		jobs.SetQueue(&job.InProcessQueue{Env: jobs, Sync: cfg.TestMode})
+		jobs.SetQueue(&job.DBQueue{DB: conn})
 	}
 
 	return &App{

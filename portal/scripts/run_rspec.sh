@@ -7,7 +7,7 @@ cd "$(dirname "$0")/.."
 export PORTAL_TEST_MODE=${PORTAL_TEST_MODE:-1}
 export PORTAL_AUTO_MIGRATE=${PORTAL_AUTO_MIGRATE:-1}
 export PORTAL_LISTEN=${PORTAL_LISTEN:-:8081}
-export ISUXPORTAL_DB_ADDR=${ISUXPORTAL_DB_ADDR:-127.0.0.1:13306}
+export ISUXPORTAL_DATABASE_URL=${ISUXPORTAL_DATABASE_URL:-postgres://isuxportal:isuxportal@127.0.0.1:15432/isuxportal?sslmode=disable}
 export REDIS_URL=${REDIS_URL:-redis://127.0.0.1:16379/0}
 
 go build -o bin/portal ./cmd/portal
@@ -26,6 +26,6 @@ docker run --rm \
   -v "$PWD/rspec:/work" \
   -e TARGET_BASE=http://host.docker.internal:8081 \
   -e DB_HOST=host.docker.internal \
-  -e DB_PORT=13306 \
+  -e DB_PORT=15432 \
   isuxportal-rspec \
   bash -c 'bundle check >/dev/null 2>&1 || bundle install --quiet; bundle exec rspec "$@"' _ "$@"

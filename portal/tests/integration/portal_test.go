@@ -96,7 +96,7 @@ func TestBenchCycle(t *testing.T) {
 		t.Fatalf("progress report status = %d", res.StatusCode)
 	}
 	var score int64
-	if err := p.DB.QueryRow(`SELECT score FROM benchmark_results WHERE benchmark_job_id = ?`, enqueued.Job.Id).Scan(&score); err != nil {
+	if err := p.DB.QueryRow(`SELECT score FROM benchmark_results WHERE benchmark_job_id = $1`, enqueued.Job.Id).Scan(&score); err != nil {
 		t.Fatal(err)
 	}
 	if score != 90 {
@@ -123,14 +123,14 @@ func TestBenchCycle(t *testing.T) {
 
 	var status int32
 	var bestID *int64
-	if err := p.DB.QueryRow(`SELECT status FROM benchmark_jobs WHERE id = ?`, enqueued.Job.Id).Scan(&status); err != nil {
+	if err := p.DB.QueryRow(`SELECT status FROM benchmark_jobs WHERE id = $1`, enqueued.Job.Id).Scan(&status); err != nil {
 		t.Fatal(err)
 	}
 	if status != int32(pbresources.BenchmarkJob_FINISHED) {
 		t.Errorf("job status = %d, want FINISHED", status)
 	}
 	// BenchmarkCompletionJob（同期実行）が best カラムを更新している（DM-8）
-	if err := p.DB.QueryRow(`SELECT best_benchmark_result_id FROM teams WHERE id = ?`, teamID).Scan(&bestID); err != nil {
+	if err := p.DB.QueryRow(`SELECT best_benchmark_result_id FROM teams WHERE id = $1`, teamID).Scan(&bestID); err != nil {
 		t.Fatal(err)
 	}
 	if bestID == nil {
@@ -138,7 +138,7 @@ func TestBenchCycle(t *testing.T) {
 	}
 	// メンバーに通知が作られている
 	var notifications int
-	if err := p.DB.QueryRow(`SELECT COUNT(*) FROM notifications WHERE contestant_id = ?`, leaderID).Scan(&notifications); err != nil {
+	if err := p.DB.QueryRow(`SELECT COUNT(*) FROM notifications WHERE contestant_id = $1`, leaderID).Scan(&notifications); err != nil {
 		t.Fatal(err)
 	}
 	if notifications != 1 {
@@ -185,7 +185,7 @@ func TestEnvCheckEndpoints(t *testing.T) {
 		t.Errorf("env_check_info Content-Type = %q, want JSON", ct)
 	}
 
-	if _, err := p.DB.Exec(`INSERT INTO ssh_public_keys (contestant_id, public_key, created_at, updated_at) VALUES (?, 'ssh-ed25519 KEY', UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))`, leaderID); err != nil {
+	if _, err := p.DB.Exec(`INSERT INTO ssh_public_keys (contestant_id, public_key, created_at, updated_at) VALUES ($1, 'ssh-ed25519 KEY', now(), now())`, leaderID); err != nil {
 		t.Fatal(err)
 	}
 	res2, err := http.Get(p.Server.URL + "/api/ssh_public_keys?token=" + tokenParam)
@@ -218,7 +218,7 @@ func TestEnvCheckEndpoints(t *testing.T) {
 	}
 	// 副作用: ContestantInstance がダミー値で登録される（FR-E-5）
 	var cloudID, privateIP string
-	if err := p.DB.QueryRow(`SELECT cloud_id, private_ipv4_address FROM contestant_instances WHERE team_id = ? AND number = 1`, teamID).Scan(&cloudID, &privateIP); err != nil {
+	if err := p.DB.QueryRow(`SELECT cloud_id, private_ipv4_address FROM contestant_instances WHERE team_id = $1 AND number = 1`, teamID).Scan(&cloudID, &privateIP); err != nil {
 		t.Fatal(err)
 	}
 	if cloudID != fmt.Sprintf("contest-%d-1", teamID) || privateIP != "192.168.0.11" {

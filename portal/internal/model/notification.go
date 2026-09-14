@@ -34,18 +34,11 @@ func CreateNotification(ctx context.Context, db DBTX, contestantID int64, m *pbr
 	if err != nil {
 		return nil, err
 	}
-	res, err := db.ExecContext(ctx, `
-		INSERT INTO notifications (contestant_id, `+"`read`"+`, encoded_message, created_at, updated_at)
-		VALUES (?, 0, ?, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))`, contestantID, encoded)
+	n := &Notification{ContestantID: contestantID, EncodedMessage: encoded}
+	err = db.QueryRowContext(ctx, `
+		INSERT INTO notifications (contestant_id, "read", encoded_message, created_at, updated_at)
+		VALUES ($1, false, $2, now(), now()) RETURNING id, created_at`, contestantID, encoded).Scan(&n.ID, &n.CreatedAt)
 	if err != nil {
-		return nil, err
-	}
-	id, err := res.LastInsertId()
-	if err != nil {
-		return nil, err
-	}
-	n := &Notification{ID: id, ContestantID: contestantID, EncodedMessage: encoded}
-	if err := db.QueryRowContext(ctx, `SELECT created_at FROM notifications WHERE id = ?`, id).Scan(&n.CreatedAt); err != nil {
 		return nil, err
 	}
 	return n, nil
@@ -56,16 +49,11 @@ func InsertNotificationsBatch(ctx context.Context, db DBTX, contestantIDs []int6
 	const batchSize = 150
 	for start := 0; start < len(contestantIDs); start += batchSize {
 		end := min(start+batchSize, len(contestantIDs))
-		query := `INSERT INTO notifications (contestant_id, ` + "`read`" + `, encoded_message, created_at, updated_at) VALUES `
-		args := make([]any, 0, (end-start)*4)
-		for i, id := range contestantIDs[start:end] {
-			if i > 0 {
-				query += ","
-			}
-			query += "(?, 0, ?, ?, ?)"
-			args = append(args, id, encodedMessage, now.UTC(), now.UTC())
-		}
-		if _, err := db.ExecContext(ctx, query, args...); err != nil {
+		// unnest で 1 文にまとめる（プレースホルダ数が件数に依存しない）
+		ids := contestantIDs[start:end]
+		query := `INSERT INTO notifications (contestant_id, "read", encoded_message, created_at, updated_at)
+			SELECT id, false, $2, $3, $3 FROM unnest($1::bigint[]) AS id`
+		if _, err := db.ExecContext(ctx, query, ids, encodedMessage, now.UTC()); err != nil {
 			return err
 		}
 	}
@@ -89,16 +77,16 @@ func QueryNotifications(ctx context.Context, db DBTX, query string, args ...any)
 	return out, rows.Err()
 }
 
-const notificationColumns = "notifications.id, notifications.contestant_id, notifications.`read`, notifications.encoded_message, notifications.created_at"
+const notificationColumns = `notifications.id, notifications.contestant_id, notifications."read", notifications.encoded_message, notifications.created_at`
 
 func ListNotifications(ctx context.Context, db DBTX, contestantID int64, after sql.NullInt64) ([]*Notification, error) {
 	if after.Valid {
 		return QueryNotifications(ctx, db,
-			`SELECT `+notificationColumns+` FROM notifications WHERE contestant_id = ? AND id > ? ORDER BY id ASC`,
+			`SELECT `+notificationColumns+` FROM notifications WHERE contestant_id = $1 AND id > $2 ORDER BY id ASC`,
 			contestantID, after.Int64)
 	}
 	return QueryNotifications(ctx, db,
-		`SELECT `+notificationColumns+" FROM notifications WHERE contestant_id = ? AND `read` = 0 ORDER BY id ASC",
+		`SELECT `+notificationColumns+` FROM notifications WHERE contestant_id = $1 AND "read" = false ORDER BY id ASC`,
 		contestantID)
 }
 

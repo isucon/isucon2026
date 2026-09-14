@@ -44,7 +44,7 @@ func (h *Handler) AdminDashboard(w http.ResponseWriter, r *http.Request) error {
 	var clarCount int64
 	var latestClarAt sql.NullTime
 	if err := h.db.QueryRowContext(ctx,
-		`SELECT COUNT(*), MAX(created_at) FROM clarifications WHERE answered_at IS NULL AND admin = 0`,
+		`SELECT COUNT(*), MAX(created_at) FROM clarifications WHERE answered_at IS NULL AND admin = false`,
 	).Scan(&clarCount, &latestClarAt); err != nil {
 		return err
 	}
@@ -223,8 +223,8 @@ func (h *Handler) AdminTeamsUpdate(w http.ResponseWriter, r *http.Request) error
 	}
 
 	if _, err := tx.ExecContext(ctx, `
-		UPDATE teams SET name = ?, leader_id = ?, final_participation = ?, is_hidden = ?, withdrawn = ?, disqualified = ?, email_address = ?, updated_at = UTC_TIMESTAMP(6)
-		WHERE id = ?`,
+		UPDATE teams SET name = $1, leader_id = $2, final_participation = $3, is_hidden = $4, withdrawn = $5, disqualified = $6, email_address = $7, updated_at = now()
+		WHERE id = $8`,
 		req.Team.Name, sql.NullInt64{Int64: req.Team.LeaderId, Valid: req.Team.LeaderId != 0},
 		req.Team.FinalParticipation, req.Team.Hidden, req.Team.Withdrawn, req.Team.Disqualified,
 		req.Team.Detail.EmailAddress, id); err != nil {
@@ -232,8 +232,8 @@ func (h *Handler) AdminTeamsUpdate(w http.ResponseWriter, r *http.Request) error
 	}
 	for _, c := range req.Contestants {
 		if _, err := tx.ExecContext(ctx, `
-			UPDATE contestants SET name = ?, student = ?, in_person = ?, github_id = ?, github_login = ?, discord_id = ?, discord_tag = ?, updated_at = UTC_TIMESTAMP(6)
-			WHERE id = ?`,
+			UPDATE contestants SET name = $1, student = $2, in_person = $3, github_id = $4, github_login = $5, discord_id = $6, discord_tag = $7, updated_at = now()
+			WHERE id = $8`,
 			c.Name, c.Detail.IsStudent, c.Detail.IsInPerson, c.Detail.GithubId, c.Detail.GithubLogin,
 			c.Detail.DiscordId, c.Detail.DiscordTag, c.Id); err != nil {
 			return err
@@ -310,21 +310,21 @@ func (h *Handler) AdminJobsIndex(w http.ResponseWriter, r *http.Request) error {
 		if err != nil {
 			return errBadRequest("invalid team_id")
 		}
-		where += " AND benchmark_jobs.team_id = ?"
 		args = append(args, teamID)
+		where += fmt.Sprintf(" AND benchmark_jobs.team_id = $%d", len(args))
 	}
 	if v := q.Get("status"); v != "" {
 		st, err := parseJobStatus(v)
 		if err != nil {
 			return err
 		}
-		where += " AND benchmark_jobs.status = ?"
 		args = append(args, st)
+		where += fmt.Sprintf(" AND benchmark_jobs.status = $%d", len(args))
 	}
 	join := `LEFT JOIN benchmark_results ON benchmark_results.benchmark_job_id = benchmark_jobs.id`
 	if q.Get("failed_only") == "1" {
 		join = `JOIN benchmark_results ON benchmark_results.benchmark_job_id = benchmark_jobs.id`
-		where += " AND benchmark_results.passed = 0"
+		where += " AND benchmark_results.passed = false"
 	}
 
 	var count int64
@@ -482,7 +482,7 @@ func (h *Handler) AdminClarsIndex(w http.ResponseWriter, r *http.Request) error 
 		if err != nil {
 			return errBadRequest("invalid team_id")
 		}
-		query += ` AND team_id = ?`
+		query += ` AND team_id = $1`
 		args = append(args, teamID)
 	}
 	if q.Get("unanswered_only") == "1" {
@@ -546,15 +546,11 @@ func (h *Handler) AdminClarsCreate(w http.ResponseWriter, r *http.Request) error
 		}
 		teamID = sql.NullInt64{Int64: req.TeamId, Valid: true}
 	}
-	res, err := h.db.ExecContext(ctx, `
+	var id int64
+	if err := h.db.QueryRowContext(ctx, `
 		INSERT INTO clarifications (team_id, original_question, question, answer, answered_at, disclosed, admin, created_at, updated_at)
-		VALUES (?, ?, ?, ?, UTC_TIMESTAMP(6), ?, 1, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))`,
-		teamID, req.Question, req.Question, req.Answer, req.TeamId == 0)
-	if err != nil {
-		return err
-	}
-	id, err := res.LastInsertId()
-	if err != nil {
+		VALUES ($1, $2, $3, $4, now(), $5, true, now(), now()) RETURNING id`,
+		teamID, req.Question, req.Question, req.Answer, req.TeamId == 0).Scan(&id); err != nil {
 		return err
 	}
 	h.jobs.Enqueue(ctx, "clarification_response", job.ClarificationResponseArgs{ClarificationID: id, WasAnswered: false})
@@ -604,7 +600,7 @@ func (h *Handler) AdminClarsUpdate(w http.ResponseWriter, r *http.Request) error
 		answeredAt = sql.NullTime{Time: info(r).now, Valid: true}
 	}
 	if _, err := h.db.ExecContext(ctx, `
-		UPDATE clarifications SET disclosed = ?, answer = ?, question = ?, answered_at = ?, updated_at = UTC_TIMESTAMP(6) WHERE id = ?`,
+		UPDATE clarifications SET disclosed = $1, answer = $2, question = $3, answered_at = $4, updated_at = now() WHERE id = $5`,
 		req.Disclose, req.Answer, question, answeredAt, id); err != nil {
 		return err
 	}
@@ -729,7 +725,7 @@ func (h *Handler) triggerTargetTeams(r *http.Request) ([]int64, error) {
 }
 
 func (h *Handler) activeTeamIDs(r *http.Request) ([]int64, error) {
-	rows, err := h.db.QueryContext(r.Context(), `SELECT id FROM teams WHERE withdrawn = 0 AND disqualified = 0`)
+	rows, err := h.db.QueryContext(r.Context(), `SELECT id FROM teams WHERE withdrawn = false AND disqualified = false`)
 	if err != nil {
 		return nil, err
 	}
@@ -763,7 +759,7 @@ func (h *Handler) AdminTriggerBenchmarks(w http.ResponseWriter, r *http.Request)
 	}
 
 	for _, teamID := range teamIDs {
-		jobs, err := model.QueryJobs(ctx, h.db, `SELECT `+jobColumns+` FROM benchmark_jobs WHERE team_id = ? ORDER BY id DESC LIMIT 1`, teamID)
+		jobs, err := model.QueryJobs(ctx, h.db, `SELECT `+jobColumns+` FROM benchmark_jobs WHERE team_id = $1 ORDER BY id DESC LIMIT 1`, teamID)
 		if err != nil {
 			return err
 		}
@@ -859,7 +855,7 @@ func (h *Handler) AdminDumpLeaderboard(w http.ResponseWriter, r *http.Request) e
 			BestScore:   item.BestScore,
 			LatestScore: item.LatestScore,
 		}
-		jobs, err := model.QueryJobs(ctx, h.db, `SELECT `+jobColumns+` FROM benchmark_jobs WHERE team_id = ? AND post_validation = 0 ORDER BY id DESC LIMIT 1`, item.Team.Id)
+		jobs, err := model.QueryJobs(ctx, h.db, `SELECT `+jobColumns+` FROM benchmark_jobs WHERE team_id = $1 AND post_validation = false ORDER BY id DESC LIMIT 1`, item.Team.Id)
 		if err != nil {
 			return err
 		}
@@ -957,7 +953,7 @@ func (h *Handler) AdminEnvCheckStats(w http.ResponseWriter, r *http.Request) err
 	for _, team := range teams {
 		var n int
 		if err := h.db.QueryRowContext(ctx,
-			`SELECT COUNT(*) FROM env_checks WHERE team_id = ? AND name = 'test-ssh' AND passed = 1`, team.ID).Scan(&n); err != nil {
+			`SELECT COUNT(*) FROM env_checks WHERE team_id = $1 AND name = 'test-ssh' AND passed = true`, team.ID).Scan(&n); err != nil {
 			return err
 		}
 		if n == 0 {
@@ -971,7 +967,7 @@ func (h *Handler) AdminEnvCheckStats(w http.ResponseWriter, r *http.Request) err
 func (h *Handler) visibleActiveTeams(r *http.Request) ([]*model.Team, error) {
 	rows, err := h.db.QueryContext(r.Context(), `
 		SELECT teams.id, teams.name, teams.leader_id, teams.is_hidden, teams.final_participation, teams.email_address, teams.invite_token, teams.withdrawn, teams.disqualified, teams.student, teams.availability_zone
-		FROM teams WHERE withdrawn = 0 AND disqualified = 0 AND is_hidden = 0 ORDER BY id ASC`)
+		FROM teams WHERE withdrawn = false AND disqualified = false AND is_hidden = false ORDER BY id ASC`)
 	if err != nil {
 		return nil, err
 	}

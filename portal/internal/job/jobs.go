@@ -192,7 +192,7 @@ func (e *Env) UpdateContestantDashboard(ctx context.Context, a UpdateDashboardAr
 	if a.TeamID != 0 {
 		teamIDs = []int64{a.TeamID}
 	} else {
-		rows, err := e.DB.QueryContext(ctx, `SELECT id FROM teams WHERE withdrawn = 0 AND disqualified = 0 ORDER BY id ASC`)
+		rows, err := e.DB.QueryContext(ctx, `SELECT id FROM teams WHERE withdrawn = false AND disqualified = false ORDER BY id ASC`)
 		if err != nil {
 			return err
 		}
@@ -310,10 +310,10 @@ func (e *Env) ClarificationResponse(ctx context.Context, a ClarificationResponse
 		}
 
 		query := `SELECT contestants.id FROM contestants JOIN teams ON teams.id = contestants.team_id
-			WHERE teams.withdrawn = 0 AND teams.disqualified = 0`
+			WHERE teams.withdrawn = false AND teams.disqualified = false`
 		args := []any{}
 		if clar.TeamID.Valid {
-			query += ` AND contestants.team_id != ?`
+			query += ` AND contestants.team_id != $1`
 			args = append(args, clar.TeamID.Int64)
 		}
 		rows, err := e.DB.QueryContext(ctx, query, args...)
@@ -367,7 +367,7 @@ func (e *Env) ClarificationResponse(ctx context.Context, a ClarificationResponse
 // ペイロードは base64(Notification の protobuf バイナリ)（CT-4）。410/404 で購読を自動削除。
 func (e *Env) DeliverPushNotification(ctx context.Context, a DeliverPushArgs) error {
 	rows, err := model.QueryNotifications(ctx, e.DB,
-		"SELECT notifications.id, notifications.contestant_id, notifications.`read`, notifications.encoded_message, notifications.created_at FROM notifications WHERE id = ?", a.NotificationID)
+		`SELECT notifications.id, notifications.contestant_id, notifications."read", notifications.encoded_message, notifications.created_at FROM notifications WHERE id = $1`, a.NotificationID)
 	if err != nil || len(rows) == 0 {
 		return err
 	}
@@ -394,7 +394,7 @@ func (e *Env) DeliverPushNotification(ctx context.Context, a DeliverPushArgs) er
 	for _, sub := range subs {
 		err := e.Push.Send(ctx, sub.Endpoint, sub.P256dh, sub.Auth, payload)
 		if err == external.ErrSubscriptionGone {
-			if _, derr := e.DB.ExecContext(ctx, `DELETE FROM push_subscriptions WHERE id = ?`, sub.ID); derr != nil {
+			if _, derr := e.DB.ExecContext(ctx, `DELETE FROM push_subscriptions WHERE id = $1`, sub.ID); derr != nil {
 				return derr
 			}
 			continue
@@ -435,7 +435,7 @@ func (e *Env) SyncSSHKeysOfContestant(ctx context.Context, contestantID int64, a
 		return err
 	}
 
-	rows, err := e.DB.QueryContext(ctx, `SELECT id, public_key FROM ssh_public_keys WHERE contestant_id = ?`, c.ID)
+	rows, err := e.DB.QueryContext(ctx, `SELECT id, public_key FROM ssh_public_keys WHERE contestant_id = $1`, c.ID)
 	if err != nil {
 		return err
 	}
@@ -465,13 +465,13 @@ func (e *Env) SyncSSHKeysOfContestant(ctx context.Context, contestantID int64, a
 			continue
 		}
 		if _, err := tx.ExecContext(ctx,
-			`INSERT INTO ssh_public_keys (contestant_id, public_key, created_at, updated_at) VALUES (?, ?, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))`,
+			`INSERT INTO ssh_public_keys (contestant_id, public_key, created_at, updated_at) VALUES ($1, $2, now(), now())`,
 			c.ID, key); err != nil {
 			return err
 		}
 	}
 	for _, id := range existing {
-		if _, err := tx.ExecContext(ctx, `DELETE FROM ssh_public_keys WHERE id = ?`, id); err != nil {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM ssh_public_keys WHERE id = $1`, id); err != nil {
 			return err
 		}
 	}
@@ -518,7 +518,7 @@ func (e *Env) SyncDiscordMemberState(ctx context.Context, contestantID int64) er
 		return err
 	}
 	_, err = e.DB.ExecContext(ctx,
-		`UPDATE contestants SET is_discord_guild_member = ?, updated_at = UTC_TIMESTAMP(6) WHERE id = ?`, isMember, c.ID)
+		`UPDATE contestants SET is_discord_guild_member = $1, updated_at = now() WHERE id = $2`, isMember, c.ID)
 	return err
 }
 
@@ -555,7 +555,7 @@ func (e *Env) SyncDiscordMemberStateOfAll(ctx context.Context) error {
 		return err
 	}
 	for _, u := range updates {
-		if _, err := e.DB.ExecContext(ctx, `UPDATE contestants SET is_discord_guild_member = ? WHERE id = ?`, u.member, u.id); err != nil {
+		if _, err := e.DB.ExecContext(ctx, `UPDATE contestants SET is_discord_guild_member = $1 WHERE id = $2`, u.member, u.id); err != nil {
 			return err
 		}
 	}
@@ -686,35 +686,26 @@ func (e *Env) ExecuteOnContestantInstance(ctx context.Context, requestResultID i
 	}
 	_, err = e.DB.ExecContext(ctx, `
 		UPDATE instance_command_execute_request_results
-		SET output = ?, exit_code = ?, finished_at = UTC_TIMESTAMP(6), updated_at = UTC_TIMESTAMP(6) WHERE id = ?`,
+		SET output = $1, exit_code = $2, finished_at = now(), updated_at = now() WHERE id = $3`,
 		output, exitCode, result.ID)
 	return err
 }
 
 // ExecuteOnMultipleContestantInstances は一括実行のリクエスト作成と各台の実行投入。
 func (e *Env) ExecuteOnMultipleContestantInstances(ctx context.Context, teamIDs []int64, command string) error {
-	res, err := e.DB.ExecContext(ctx,
-		`INSERT INTO instance_command_execute_requests (command, created_at, updated_at) VALUES (?, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))`, command)
-	if err != nil {
-		return err
-	}
-	requestID, err := res.LastInsertId()
-	if err != nil {
+	var requestID int64
+	if err := e.DB.QueryRowContext(ctx,
+		`INSERT INTO instance_command_execute_requests (command, created_at, updated_at) VALUES ($1, now(), now()) RETURNING id`, command).Scan(&requestID); err != nil {
 		return err
 	}
 
 	if len(teamIDs) == 0 {
 		return nil
 	}
-	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(teamIDs)), ",")
-	args := make([]any, 0, len(teamIDs))
-	for _, id := range teamIDs {
-		args = append(args, id)
-	}
 	if _, err := e.DB.ExecContext(ctx, `
 		INSERT INTO instance_command_execute_request_results (instance_command_execute_request_id, contestant_instance_id, created_at, updated_at)
-		SELECT `+fmt.Sprint(requestID)+`, id, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6) FROM contestant_instances WHERE team_id IN (`+placeholders+`) ORDER BY team_id ASC`,
-		args...); err != nil {
+		SELECT $1, id, now(), now() FROM contestant_instances WHERE team_id = ANY($2) ORDER BY team_id ASC`,
+		requestID, teamIDs); err != nil {
 		return err
 	}
 
@@ -735,7 +726,7 @@ func (e *Env) LongRunningCheck(ctx context.Context) error {
 
 	clars, err := model.QueryClarifications(ctx, e.DB, `
 		SELECT clarifications.id, clarifications.team_id, clarifications.disclosed, clarifications.question, clarifications.answer, clarifications.original_question, clarifications.answered_at, clarifications.admin, clarifications.created_at, clarifications.updated_at
-		FROM clarifications WHERE answered_at IS NULL AND admin = 0 AND created_at <= ?`, now.Add(-2*time.Minute))
+		FROM clarifications WHERE answered_at IS NULL AND admin = false AND created_at <= $1`, now.Add(-2*time.Minute))
 	if err != nil {
 		return err
 	}
@@ -752,7 +743,7 @@ func (e *Env) LongRunningCheck(ctx context.Context) error {
 
 	jobs, err := model.QueryJobs(ctx, e.DB, `
 		SELECT `+"benchmark_jobs.id, benchmark_jobs.team_id, benchmark_jobs.status, benchmark_jobs.instance_name, benchmark_jobs.handle, benchmark_jobs.started_at, benchmark_jobs.finished_at, benchmark_jobs.created_at, benchmark_jobs.updated_at, benchmark_jobs.target_id, benchmark_jobs.enqueued_by_id, benchmark_jobs.post_validation"+`
-		FROM benchmark_jobs WHERE status IN (?, ?) AND created_at <= ?`,
+		FROM benchmark_jobs WHERE status IN ($1, $2) AND created_at <= $3`,
 		model.JobPending, model.JobRunning, now.Add(-150*time.Second))
 	if err != nil {
 		return err

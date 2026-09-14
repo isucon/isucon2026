@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"errors"
+	"strconv"
 	"time"
 
 	pbresources "github.com/isucon/isucon2026/portal/gen/pb/isuxportal/resources"
@@ -57,11 +58,11 @@ func (j *BenchmarkJob) Closed() bool {
 }
 
 func FindJob(ctx context.Context, db DBTX, id int64) (*BenchmarkJob, error) {
-	return scanJob(db.QueryRowContext(ctx, `SELECT `+jobColumns+` FROM benchmark_jobs WHERE id = ?`, id))
+	return scanJob(db.QueryRowContext(ctx, `SELECT `+jobColumns+` FROM benchmark_jobs WHERE id = $1`, id))
 }
 
 func FindJobByHandle(ctx context.Context, db DBTX, id int64, handle string) (*BenchmarkJob, error) {
-	return scanJob(db.QueryRowContext(ctx, `SELECT `+jobColumns+` FROM benchmark_jobs WHERE id = ? AND handle = ?`, id, handle))
+	return scanJob(db.QueryRowContext(ctx, `SELECT `+jobColumns+` FROM benchmark_jobs WHERE id = $1 AND handle = $2`, id, handle))
 }
 
 func QueryJobs(ctx context.Context, db DBTX, query string, args ...any) ([]*BenchmarkJob, error) {
@@ -86,12 +87,12 @@ func QueryJobs(ctx context.Context, db DBTX, query string, args ...any) ([]*Benc
 // benchmark_jobs のギャップロックはデッドロックを招くため、チーム行のロックで直列化する。
 func CreateJob(ctx context.Context, tx DBTX, teamID int64, instanceName string, targetID, enqueuedByID sql.NullInt64, postValidation bool) (*BenchmarkJob, error) {
 	var lockedTeamID int64
-	if err := tx.QueryRowContext(ctx, `SELECT id FROM teams WHERE id = ? FOR UPDATE`, teamID).Scan(&lockedTeamID); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT id FROM teams WHERE id = $1 FOR UPDATE`, teamID).Scan(&lockedTeamID); err != nil {
 		return nil, err
 	}
 	var n int
 	if err := tx.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM benchmark_jobs WHERE team_id = ? AND status IN (?, ?)`,
+		`SELECT COUNT(*) FROM benchmark_jobs WHERE team_id = $1 AND status IN ($2, $3)`,
 		teamID, JobPending, JobRunning).Scan(&n); err != nil {
 		return nil, err
 	}
@@ -103,15 +104,11 @@ func CreateJob(ctx context.Context, tx DBTX, teamID int64, instanceName string, 
 	if instanceName != "" {
 		handle = sql.NullString{String: NewHandle(), Valid: true}
 	}
-	res, err := tx.ExecContext(ctx, `
+	var id int64
+	if err := tx.QueryRowContext(ctx, `
 		INSERT INTO benchmark_jobs (team_id, status, instance_name, handle, target_id, enqueued_by_id, post_validation, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))`,
-		teamID, JobPending, sql.NullString{String: instanceName, Valid: instanceName != ""}, handle, targetID, enqueuedByID, postValidation)
-	if err != nil {
-		return nil, err
-	}
-	id, err := res.LastInsertId()
-	if err != nil {
+		VALUES ($1, $2, $3, $4, $5, $6, $7, now(), now()) RETURNING id`,
+		teamID, JobPending, sql.NullString{String: instanceName, Valid: instanceName != ""}, handle, targetID, enqueuedByID, postValidation).Scan(&id); err != nil {
 		return nil, err
 	}
 	return FindJob(ctx, tx, id)
@@ -128,7 +125,7 @@ func StartJob(ctx context.Context, tx DBTX, job *BenchmarkJob, instanceName stri
 	job.InstanceName = sql.NullString{String: instanceName, Valid: true}
 	job.Status = JobRunning
 	_, err := tx.ExecContext(ctx,
-		`UPDATE benchmark_jobs SET status = ?, instance_name = ?, handle = ?, updated_at = UTC_TIMESTAMP(6) WHERE id = ?`,
+		`UPDATE benchmark_jobs SET status = $1, instance_name = $2, handle = $3, updated_at = now() WHERE id = $4`,
 		job.Status, job.InstanceName, job.Handle, job.ID)
 	return err
 }
@@ -141,7 +138,7 @@ func CancelJob(ctx context.Context, db DBTX, job *BenchmarkJob, now time.Time) e
 	job.Status = JobCancelled
 	job.FinishedAt = sql.NullTime{Time: now.UTC(), Valid: true}
 	_, err := db.ExecContext(ctx,
-		`UPDATE benchmark_jobs SET status = ?, finished_at = ?, updated_at = UTC_TIMESTAMP(6) WHERE id = ?`,
+		`UPDATE benchmark_jobs SET status = $1, finished_at = $2, updated_at = now() WHERE id = $3`,
 		job.Status, job.FinishedAt, job.ID)
 	return err
 }
@@ -162,19 +159,19 @@ func ErrorJob(ctx context.Context, db DBTX, job *BenchmarkJob, now time.Time) er
 	if result == nil {
 		_, err = db.ExecContext(ctx, `
 			INSERT INTO benchmark_results (team_id, benchmark_job_id, score, score_raw, score_deduction, finished, passed, marked_at, reason, created_at, updated_at)
-			VALUES (?, ?, 0, 0, 0, 1, 0, ?, ?, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))`,
+			VALUES ($1, $2, 0, 0, 0, true, false, $3, $4, now(), now())`,
 			job.TeamID, job.ID, job.FinishedAt.Time, reason)
 	} else {
 		// set_score_zero_when_failed: finished && !passed → score 0
 		_, err = db.ExecContext(ctx, `
-			UPDATE benchmark_results SET finished = 1, passed = 0, score = 0, marked_at = ?, reason = ?, updated_at = UTC_TIMESTAMP(6) WHERE id = ?`,
+			UPDATE benchmark_results SET finished = true, passed = false, score = 0, marked_at = $1, reason = $2, updated_at = now() WHERE id = $3`,
 			job.FinishedAt.Time, reason, result.ID)
 	}
 	if err != nil {
 		return err
 	}
 	_, err = db.ExecContext(ctx,
-		`UPDATE benchmark_jobs SET status = ?, finished_at = ?, updated_at = UTC_TIMESTAMP(6) WHERE id = ?`,
+		`UPDATE benchmark_jobs SET status = $1, finished_at = $2, updated_at = now() WHERE id = $3`,
 		job.Status, job.FinishedAt, job.ID)
 	return err
 }
@@ -251,13 +248,13 @@ func SubmitResultFromPB(ctx context.Context, tx DBTX, job *BenchmarkJob, pb *pbr
 	if existing == nil {
 		_, err = tx.ExecContext(ctx, `
 			INSERT INTO benchmark_results (team_id, benchmark_job_id, score, score_raw, score_deduction, finished, passed, marked_at, reason, stdout, stderr, exit_status, exit_signal, created_at, updated_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))`,
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, now(), now())`,
 			job.TeamID, job.ID, score, pb.GetScoreBreakdown().GetRaw(), pb.GetScoreBreakdown().GetDeduction(),
 			pb.Finished, passed, markedAt.UTC(), reason, stdout, stderr, exitStatus, exitSignal)
 	} else {
 		_, err = tx.ExecContext(ctx, `
-			UPDATE benchmark_results SET score = ?, score_raw = ?, score_deduction = ?, finished = ?, passed = ?, marked_at = ?, reason = ?, stdout = ?, stderr = ?, exit_status = ?, exit_signal = ?, updated_at = UTC_TIMESTAMP(6)
-			WHERE id = ?`,
+			UPDATE benchmark_results SET score = $1, score_raw = $2, score_deduction = $3, finished = $4, passed = $5, marked_at = $6, reason = $7, stdout = $8, stderr = $9, exit_status = $10, exit_signal = $11, updated_at = now()
+			WHERE id = $12`,
 			score, pb.GetScoreBreakdown().GetRaw(), pb.GetScoreBreakdown().GetDeduction(),
 			pb.Finished, passed, markedAt.UTC(), reason, stdout, stderr, exitStatus, exitSignal, existing.ID)
 	}
@@ -266,13 +263,12 @@ func SubmitResultFromPB(ctx context.Context, tx DBTX, job *BenchmarkJob, pb *pbr
 	}
 
 	// ジョブ側の遷移
-	sets := `updated_at = UTC_TIMESTAMP(6)`
-	args := []any{}
+	// started_at は未設定のときだけ埋める（COALESCE で 1 文にまとめる）
 	if !job.StartedAt.Valid {
 		job.StartedAt = sql.NullTime{Time: now.UTC(), Valid: true}
-		sets += `, started_at = ?`
-		args = append(args, job.StartedAt)
 	}
+	sets := `updated_at = now(), started_at = COALESCE(started_at, $1)`
+	args := []any{job.StartedAt}
 	if pb.Finished {
 		// errored? = finished && (signaled? || exit_status != 0)
 		errored := pb.Execution != nil && (pb.Execution.Signaled || pb.Execution.ExitStatus != 0)
@@ -285,11 +281,11 @@ func SubmitResultFromPB(ctx context.Context, tx DBTX, job *BenchmarkJob, pb *pbr
 			job.Status = JobFinished
 		}
 		job.FinishedAt = sql.NullTime{Time: markedAt.UTC(), Valid: true}
-		sets += `, status = ?, finished_at = ?`
+		sets += `, status = $2, finished_at = $3`
 		args = append(args, job.Status, job.FinishedAt)
 	}
 	args = append(args, job.ID)
-	if _, err := tx.ExecContext(ctx, `UPDATE benchmark_jobs SET `+sets+` WHERE id = ?`, args...); err != nil {
+	if _, err := tx.ExecContext(ctx, `UPDATE benchmark_jobs SET `+sets+` WHERE id = $`+strconv.Itoa(len(args)), args...); err != nil {
 		return err
 	}
 
@@ -297,8 +293,8 @@ func SubmitResultFromPB(ctx context.Context, tx DBTX, job *BenchmarkJob, pb *pbr
 	if pb.SurveyResponse != nil {
 		if _, err := tx.ExecContext(ctx, `
 			INSERT INTO survey_responses (team_id, benchmark_job_id, language, created_at, updated_at)
-			VALUES (?, ?, ?, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
-			ON DUPLICATE KEY UPDATE benchmark_job_id = VALUES(benchmark_job_id), language = VALUES(language), updated_at = UTC_TIMESTAMP(6)`,
+			VALUES ($1, $2, $3, now(), now())
+			ON CONFLICT (team_id) DO UPDATE SET benchmark_job_id = EXCLUDED.benchmark_job_id, language = EXCLUDED.language, updated_at = now()`,
 			job.TeamID, job.ID, pb.SurveyResponse.Language); err != nil {
 			return err
 		}
@@ -340,7 +336,7 @@ func scanResult(row interface{ Scan(...any) error }) (*BenchmarkResult, error) {
 }
 
 func FindResultByJob(ctx context.Context, db DBTX, jobID int64) (*BenchmarkResult, error) {
-	return scanResult(db.QueryRowContext(ctx, `SELECT `+resultColumns+` FROM benchmark_results WHERE benchmark_job_id = ?`, jobID))
+	return scanResult(db.QueryRowContext(ctx, `SELECT `+resultColumns+` FROM benchmark_results WHERE benchmark_job_id = $1`, jobID))
 }
 
 func (r *BenchmarkResult) Signaled() bool {
