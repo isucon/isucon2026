@@ -3,7 +3,8 @@
 # ansible-vault で暗号化して書く:
 #   uv run ansible-vault encrypt_string --vault-password-file ./vault-pass.sh '<値>' --name '<name>'
 
-ansible_sudo_pass: thisisafirstpassword   # terraform の initial_password。init role 実行後は使われない
+# terraform の TF_VAR_initial_password と同じ値を環境変数で渡す。init role 実行後（admin ユーザ）は使われない
+ansible_sudo_pass: "{{ lookup('env', 'PORTAL_INITIAL_PASSWORD') }}"
 stage: production
 
 users:
