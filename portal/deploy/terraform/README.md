@@ -19,6 +19,12 @@ usacloud config create --name iqz41186_isucon
 
 - `00-main.tf` の `predefined.*.ssh_key_ids` に、コントロールパネル「公開鍵」に登録した鍵の ID を書く
   （初期ユーザ `ubuntu` に入るための鍵。ansible の init role 実行後は `admin` ユーザに切り替わる）
+- 初期ユーザの sudo パスワードは環境変数で渡す（リポジトリには置かない。ansible の初回実行でも同じ値を使う）
+
+```bash
+export TF_VAR_initial_password='<使い捨てのパスワード>'
+export PORTAL_INITIAL_PASSWORD="$TF_VAR_initial_password"
+```
 
 ## 使い方
 

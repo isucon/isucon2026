@@ -25,14 +25,21 @@ variable "predefined" {
   }
 }
 
+# 初期ユーザ ubuntu のパスワード。ansible の init role が admin ユーザを作って ubuntu を無効化するまでの
+# 一時的なもので、sudo にのみ使う。リポジトリには置かず TF_VAR_initial_password で渡す
+# （ansible 側は同じ値を PORTAL_INITIAL_PASSWORD で受ける）。
+variable "initial_password" {
+  type      = string
+  sensitive = true
+}
+
 # 構成するクラスタの設定
 variable "config" {
   default = {
     develop = {
-      profile          = "iqz41186_isucon"
-      default_tags     = ["isucon", "sys=2026-contest-portal", "env=develop"]
-      initial_password = "thisisafirstpassword" # sudo にのみ使用。ansible の init role が ubuntu ユーザを無効化する
-      dns_ttl          = 60
+      profile      = "iqz41186_isucon"
+      default_tags = ["isucon", "sys=2026-contest-portal", "env=develop"]
+      dns_ttl      = 60
       # ELB の "/*" を通す接続元。空なら全開放
       proxy_lb_allowed_source_ips = ""
       # SSH(22) を許可する接続元。空なら全開放
@@ -47,7 +54,6 @@ variable "config" {
     production = {
       profile                     = "iqz41186_isucon"
       default_tags                = ["isucon", "sys=2026-contest-portal", "env=production"]
-      initial_password            = "thisisafirstpassword"
       dns_ttl                     = 60
       proxy_lb_allowed_source_ips = ""
       ssh_allowed_source_networks = []
@@ -90,7 +96,7 @@ locals {
   app_fqdn    = var.predefined[local.stage].app_fqdn
 
   default_tags     = var.config[local.stage].default_tags
-  initial_password = var.config[local.stage].initial_password
+  initial_password = var.initial_password
   dns_ttl          = var.config[local.stage].dns_ttl
 
   proxy_lb_allowed_source_ips = var.config[local.stage].proxy_lb_allowed_source_ips

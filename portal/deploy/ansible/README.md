@@ -17,6 +17,12 @@ uv sync
 ./develop/inventory.sh                          # 動作確認（初回はプロファイル切替の確認に y）
 ```
 
+初回（`-u ubuntu`）の sudo パスワードは terraform に渡したものと同じ値を環境変数で渡す:
+
+```bash
+export PORTAL_INITIAL_PASSWORD='<TF_VAR_initial_password と同じ値>'
+```
+
 vault のパスワードは `vault-pass.sh` が返す。次のどちらかを設定する:
 
 ```bash
