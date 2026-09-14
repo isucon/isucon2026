@@ -60,6 +60,11 @@ FRONTEND_ENV := ISUXPORTAL_PUBLIC_DIR=frontend/public \
 server: db-up
 	$(GO_TEST_ENV) $(FRONTEND_ENV) go run ./cmd/portal
 
+# 本番イメージ（deploy/Dockerfile）のローカルビルド。push は GitHub Actions（portal-image.yml）が行う
+.PHONY: image
+image:
+	docker build -f deploy/Dockerfile --build-arg REVISION=$$(git rev-parse --short HEAD) -t isuxportal:local .
+
 .PHONY: rspec-image
 rspec-image:
 	docker build -t isuxportal-rspec rspec

@@ -1,0 +1,62 @@
+# ISUCON2026 競技ポータル（portal/internal/config/config.go が参照する環境変数）
+# ansible が生成。手で編集しない
+
+PORTAL_LISTEN=:8081
+DEFAULT_URL_HOST={{ app_fqdn }}
+MONITOR_ENV={{ stage }}
+
+ISUXPORTAL_DATABASE_URL=postgres://{{ postgres.user }}:{{ postgres.password }}@postgres:5432/{{ postgres.database }}?sslmode=disable
+REDIS_URL=redis://redis:6379/0
+
+ISUXPORTAL_SESSION_SECRET={{ portal.session_secret }}
+ISUXPORTAL_BYPASS_SECRET={{ portal.bypass_secret }}
+ISUXPORTAL_CHECKER_SECRET={{ portal.checker_secret }}
+ISUXPORTAL_BENCH_TOKEN={{ portal.bench_token }}
+ISUXPORTAL_SSH_KEY_API_SECRET={{ portal.ssh_key_api_secret }}
+
+ISUXPORTAL_ADMIN_LOGIN={{ portal.admin_login }}
+ISUXPORTAL_ADMIN_PASSWORD={{ portal.admin_password }}
+ISUXPORTAL_ADMIN_ONLY={{ '1' if portal.admin_only else '0' }}
+ISUXPORTAL_MAX_TEAMS={{ portal.max_teams }}
+
+# GitHub / Discord OAuth
+ISUXPORTAL_GITHUB_CLIENT_ID={{ portal.github.client_id }}
+ISUXPORTAL_GITHUB_CLIENT_SECRET={{ portal.github.client_secret }}
+ISUXPORTAL_DISCORD_CLIENT_ID={{ portal.discord.client_id }}
+ISUXPORTAL_DISCORD_CLIENT_SECRET={{ portal.discord.client_secret }}
+ISUXPORTAL_DISCORD_BOT_TOKEN={{ portal.discord.bot_token }}
+ISUXPORTAL_DISCORD_SERVER_ID={{ portal.discord.server_id }}
+ISUXPORTAL_DISCORD_CHANNEL_ID={{ portal.discord.channel_id }}
+ISUXPORTAL_DISCORD_CONTESTANT_ROLE_ID={{ portal.discord.contestant_role_id }}
+ISUXPORTAL_DISCORD_ADMIN_ROLE_ID={{ portal.discord.admin_role_id }}
+ISUXPORTAL_DISCORD_SUPPORT_COMM_CHANNEL_ROLES={{ portal.discord.support_comm_channel_roles }}
+
+# 通知
+ISUXPORTAL_SLACK_WEBHOOK_URL={{ portal.slack_webhook_url }}
+SENTRY_DSN={{ portal.sentry_dsn }}
+ISUXPORTAL_VAPID_PRIVATE_KEY={{ portal.vapid.private_key_json }}
+ISUXPORTAL_VAPID_SUBJECT={{ portal.vapid.subject }}
+
+# AWS（選手環境 EC2 / CloudFormation、アイコンの S3）
+AWS_REGION={{ portal.aws.region }}
+AWS_ACCESS_KEY_ID={{ portal.aws.access_key_id }}
+AWS_SECRET_ACCESS_KEY={{ portal.aws.secret_access_key }}
+AWS_EC2_METADATA_DISABLED=true
+ISUXPORTAL_AVATAR_BUCKET={{ portal.aws.avatar_bucket }}
+ISUXPORTAL_AVATAR_BASE_PATH={{ portal.aws.avatar_base_path }}
+ISUXPORTAL_TEST_AMI_ID={{ portal.aws.test_ami_id }}
+ISUXPORTAL_QUALIFY_AMI_ID={{ portal.aws.contest_ami_id }}
+ISUXPORTAL_CLOUDFORMATION_STAGING={{ '1' if portal.aws.cloudformation_staging else '0' }}
+
+# 競技時刻（RFC3339 UTC。空は未設定）
+ISUXPORTAL_TIMING_REGISTRATION_OPEN={{ portal.timing.registration_open }}
+ISUXPORTAL_TIMING_REGISTRATION_CLOSE={{ portal.timing.registration_close }}
+ISUXPORTAL_TIMING_REGISTRATION_INVITATION_CLOSE={{ portal.timing.registration_invitation_close }}
+ISUXPORTAL_TIMING_REGISTRATION_UPDATE_CLOSE={{ portal.timing.registration_update_close }}
+ISUXPORTAL_TIMING_CONTEST_START={{ portal.timing.contest_start }}
+ISUXPORTAL_TIMING_CONTEST_FREEZE={{ portal.timing.contest_freeze }}
+ISUXPORTAL_TIMING_CONTEST_END={{ portal.timing.contest_end }}
+
+ISUXPORTAL_TERMS_URL={{ portal.terms_url }}
+ISUXPORTAL_RULES_URL={{ portal.rules_url }}
+ISUXPORTAL_DOCS_URL={{ portal.docs_url }}

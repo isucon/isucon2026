@@ -50,9 +50,24 @@ func containsParam(s, needle string) bool {
 	return false
 }
 
+// migrateLockKey は Migrate を直列化する advisory lock のキー（任意の定数）。
+const migrateLockKey = 0x1543_0001
+
 // Migrate は初期スキーマを適用する。
 // すべて IF NOT EXISTS なので何度でも安全に呼べる（引数なしの Exec は simple protocol で複文を通す）。
+// PostgreSQL の DDL はトランザクション内で実行でき、複数プロセスが同時に起動しても
+// （ローリング更新の PORTAL_AUTO_MIGRATE）競合しないよう advisory lock で直列化する。
 func Migrate(ctx context.Context, conn *sql.DB) error {
-	_, err := conn.ExecContext(ctx, schema)
-	return err
+	tx, err := conn.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock($1)`, migrateLockKey); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, schema); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
