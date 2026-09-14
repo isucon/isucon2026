@@ -1,0 +1,12 @@
+- name: instal nginx
+  apt: name=nginx state=latest update_cache=yes
+  tags: nginx
+
+- name: nginx.conf
+  template: src=nginx.conf dest=/etc/nginx/nginx.conf owner=root group=root mode=0644
+  tags: nginx
+  notify: reload nginx
+
+- name: default
+  template: src=default dest=/etc/nginx/sites-enabled/default owner=root group=root mode=0644
+  tags: nginx

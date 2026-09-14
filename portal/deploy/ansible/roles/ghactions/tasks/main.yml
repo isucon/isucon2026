@@ -1,0 +1,42 @@
+
+- name: create github group
+  group: name=github state=present gid=2001
+  tags:
+    - github
+    - users
+
+- name: create github user
+  user: name=github shell=/bin/bash state=present uid=2001 group=github append=yes groups=github password="*"
+  tags:
+    - github
+    - users
+
+- name: change password
+  user: name=github password="*"
+  tags:
+    - github
+    - users
+
+- name: create /home/github/.ssh directory
+  file: path=/home/github/.ssh state=directory owner=github group=github mode=0700
+  tags:
+    - github
+    - users
+
+- name: create github authorized_keys
+  template: src=authorized_keys dest=/home/github/.ssh/authorized_keys owner=github group=github mode=0600
+  tags:
+    - github
+    - users
+
+- name: configure sudoers
+  template: src=01_github.sudo.j2 dest=/etc/sudoers.d/01_github owner=root group=root mode=0440
+  tags: github
+
+- name: create /opt/bin directory
+  file: path=/opt/bin state=directory owner=root group=root mode=0755
+  tags: github
+
+- name: create github.sh script
+  template: src=github.sh dest=/opt/bin/github.sh owner=root group=root mode=0755
+  tags: github

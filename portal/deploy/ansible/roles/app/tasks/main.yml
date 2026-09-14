@@ -1,0 +1,121 @@
+---
+################################################################################
+# 競技ポータル一式を docker swarm（各ホスト単一ノード）にデプロイする
+# - portal / worker / notifyloop / bot は同じイメージ、PostgreSQL / Redis は公式イメージ
+# - portal は update_config: order=start-first で新コンテナが healthy になってから旧を止める
+# - PostgreSQL / Redis はデータボリュームを持つので stop-first で入れ替える
+################################################################################
+
+- name: 'assert secrets are filled'
+  tags: ['app']
+  assert:
+    that:
+      - item.value is string
+      - item.value != 'CHANGEME'
+      - item.value | length > 0
+    fail_msg: "{{ item.name }} is not set (CHANGEME). Fill it in group_vars (ansible-vault)."
+    quiet: true
+  loop:
+    - { name: 'docker.registry.password', value: "{{ docker.registry.password }}" }
+    - { name: 'postgres.password', value: "{{ postgres.password }}" }
+    - { name: 'portal.session_secret', value: "{{ portal.session_secret }}" }
+    - { name: 'portal.bypass_secret', value: "{{ portal.bypass_secret }}" }
+    - { name: 'portal.checker_secret', value: "{{ portal.checker_secret }}" }
+    - { name: 'portal.bench_token', value: "{{ portal.bench_token }}" }
+    - { name: 'portal.ssh_key_api_secret', value: "{{ portal.ssh_key_api_secret }}" }
+    - { name: 'portal.admin_password', value: "{{ portal.admin_password }}" }
+    - { name: 'portal.github.client_id', value: "{{ portal.github.client_id }}" }
+    - { name: 'portal.github.client_secret', value: "{{ portal.github.client_secret }}" }
+    - { name: 'portal.discord.client_id', value: "{{ portal.discord.client_id }}" }
+    - { name: 'portal.discord.client_secret', value: "{{ portal.discord.client_secret }}" }
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: 'check swarm status'
+  tags: ['app', 'swarm']
+  command: 'docker node ls'
+  register: swarm_status
+  failed_when: false
+  changed_when: false
+  check_mode: false
+
+- name: 'init single node swarm'
+  tags: ['app', 'swarm']
+  command: 'docker swarm init --advertise-addr {{ ansible_default_ipv4.address }}'
+  when: swarm_status.rc != 0
+
+- name: 'prepare setting file directories'
+  tags: ['app']
+  file:
+    path: '/opt/portal'
+    state: 'directory'
+    owner: 'root'
+    group: 'root'
+    mode: '0755'
+
+- name: 'create env file'
+  tags: ['app']
+  template:
+    src: 'env'
+    dest: '/opt/portal/env'
+    owner: 'root'
+    group: 'root'
+    mode: '0600'
+  notify: 'deploy portal stack'
+
+- name: 'create docker-compose.yml'
+  tags: ['app']
+  template:
+    src: 'docker-compose.yml'
+    dest: '/opt/portal/docker-compose.yml'
+    owner: 'root'
+    group: 'root'
+    mode: '0644'
+  notify: 'deploy portal stack'
+
+# 初回のみここでデプロイする（設定変更時の反映は handler 経由）
+- name: 'check portal service exists'
+  tags: ['app']
+  command: 'docker service inspect {{ app.stack }}_portal'
+  register: portal_service_status
+  failed_when: false
+  changed_when: false
+  check_mode: false
+
+- name: 'deploy portal stack (first time)'
+  tags: ['app']
+  command: 'docker stack deploy --with-registry-auth --detach=false -c /opt/portal/docker-compose.yml {{ app.stack }}'
+  when: portal_service_status.rc != 0
+
+- name: 'nginx site'
+  tags: ['app', 'nginx']
+  template:
+    src: 'nginxsite.conf'
+    dest: '/etc/nginx/sites-enabled/portal'
+    owner: 'root'
+    group: 'root'
+    mode: '0644'
+  notify: 'reload nginx'
+
+# PostgreSQL の日次ダンプ（単一ノードなので最低限の保険。7 日分保持）
+- name: 'create backup directory'
+  tags: ['app', 'backup']
+  file:
+    path: '/var/backups/portal'
+    state: 'directory'
+    owner: 'root'
+    group: 'root'
+    mode: '0700'
+
+- name: 'daily postgres dump'
+  tags: ['app', 'backup']
+  ansible.builtin.cron:
+    name: portal pg_dump
+    minute: '30'
+    hour: '18'   # JST 03:30
+    job: >-
+      docker exec $(docker ps -q -f name={{ app.stack }}_postgres) pg_dump -U {{ postgres.user }} {{ postgres.database }}
+      | gzip > /var/backups/portal/isuxportal-$(date +\%F).sql.gz
+      && find /var/backups/portal -name '*.sql.gz' -mtime +7 -delete
+    user: root
+    cron_file: portal_pg_dump

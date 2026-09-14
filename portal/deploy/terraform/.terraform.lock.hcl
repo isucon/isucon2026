@@ -1,0 +1,27 @@
+# This file is maintained automatically by "terraform init".
+# Manual edits may be lost in future updates.
+
+provider "registry.terraform.io/sacloud/sakuracloud" {
+  version     = "2.31.2"
+  constraints = "2.31.2"
+  hashes = [
+    "h1:Hlunt6c8A0e8sTBAORi3e1Q9/XYg4QRcr2kXYUA8/dg=",
+    "zh:00562f5304fc197866ebc7f0ec3bdb4135d17b976274e195d28dded7164f796f",
+    "zh:025a4c3ef1503ad439d52c5ca172d50b63df271b32fcc8eefa1b628c4b01fc9d",
+    "zh:240a9825532b915f2fa7125e73eb149a2729149f7cfd6da7eab8a592faeb9ebd",
+    "zh:638e18f74a3f082ed25532eae313c5ac74f82626ec4e454f6b350112da572005",
+    "zh:6a047df00d070a7f32f6722f3c5fa2076e3d138dc76202b79e2b39f912c1e10b",
+    "zh:7e9134bb56d061c6facc9d4608964fac580c0a21d0e01a833dce589368af67d3",
+    "zh:856c61840767617fb384f9b621b0334ff308c0eb79f0c165acb75c7b40f513f3",
+    "zh:8ab12ec8abb30b719e997aa21cbfb8454e6ee84084fe6ed4e6dc543995a5241a",
+    "zh:975e3371cf4268d18ccc0051f1629b5363078a4b8aab8e74176b780729d455c8",
+    "zh:9f56e40f111c86f6aa3ec974f707b179a1174dbf6347cf7f94cf6e1181e487e4",
+    "zh:a4082c18d5588e1e864fffcc7ad67c1f5d8fa655274947447341c4d59884233f",
+    "zh:c380ce7f557875c51da20b6bbd978ab5bb5c0d44e1af10eb07ddb7963def9188",
+    "zh:ccb2ca8509cde1de9389756e501fd1f485871fe9a849c76c622b147c7d654db7",
+    "zh:cf37525ab8daf1d3f22a935a57095985bb2a5148e2822493208575edcd0834aa",
+    "zh:d2371c10cd85f48e20400e339931c12faf9b0cb1aec4cf81b080a7c88248a910",
+    "zh:d6c68372b23230e26c48bd1cc2e29580481c72293dca2d73adc124c3a243aacd",
+    "zh:e616f507be208eb77947619b2aeb404507993223ae3997fafac3fc1c19d71ac9",
+  ]
+}

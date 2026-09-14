@@ -41,6 +41,7 @@ portal/
 │   ├── token/           # bypass / checker token
 │   ├── external/        # slack / discord / github / webpush / aws / ssh
 │   └── db/              # pgx 接続と初期スキーマ（schema.rb を PostgreSQL に移植、CT-8）
+├── deploy/              # さくらのクラウド（is1c）へのデプロイ: Dockerfile / terraform / ansible（deploy/README.md）
 ├── frontend/            # React SPA（isucon14-portal 由来。webpack + pnpm）
 │   ├── app/javascript/  # SPA 本体（audience / contestant / admin / broadcast_view の 4 バンドル）
 │   ├── sw/              # Service Worker（Web Push 受信、CT-4）
@@ -101,6 +102,8 @@ bypass token の Ruby ⇔ Go 相互運用などを検証する。
 
 ## 運用
 
+- 本番はさくらのクラウド 石狩第 3 ゾーンに Docker Swarm で載せる。手順と構成は
+  [`deploy/README.md`](deploy/README.md)（isucon2026-portal-infra と同じ流儀）
 - DB は PostgreSQL（`ISUXPORTAL_DATABASE_URL`）。`PORTAL_AUTO_MIGRATE=1` で起動時に
   `internal/db/schema.sql` を適用する（`IF NOT EXISTS` のみで冪等）
 - 非同期ジョブは PostgreSQL の `jobs` テーブルに積み、`cmd/worker` が

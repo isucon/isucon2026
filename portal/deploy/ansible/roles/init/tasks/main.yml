@@ -1,0 +1,76 @@
+---
+################################################################################
+# ubuntu でセットアップされたさくらのクラウド VM 用の初期セットアップ
+# - admin ユーザを作り、非常用の sudo パスワードと公開鍵をセットする
+# - ubuntu ユーザを admin ユーザに入れ替えて停止する
+# - 最後に admin ユーザにスイッチして処理を続行する
+################################################################################
+
+- name: 'set hostname'
+  tags: ['init']
+  hostname:
+    name: "{{ inventory_hostname }}"
+
+- name: 'set nopasswd sudo to sudo group'
+  tags: ['init']
+  lineinfile:
+    path: '/etc/sudoers'
+    regexp: '^%sudo'
+    line: '%sudo ALL=(ALL) NOPASSWD: ALL'
+
+- name: 'create groups for admin user'
+  tags: ['init']
+  group:
+    name: "{{ item.username }}"
+    state: 'present'
+  with_items: "{{ users }}"
+
+- name: 'create admin user'
+  tags: ['init']
+  user:
+    name: "{{ item.username }}"
+    shell: '/bin/bash'
+    state: 'present'
+    group: "{{ item.username }}"
+    append: yes
+    groups: "{{ item.username }},adm,cdrom,sudo,dip,plugdev,lxd"
+  with_items: "{{ users }}"
+
+- name: 'set admin user password'
+  tags: ['init']
+  user:
+   name: "{{ item.username }}"
+   password: "*"
+  with_items: "{{ users }}"
+
+- name: 'create .ssh directory'
+  tags: ['init']
+  file:
+    path: "/home/{{ item.username }}/.ssh"
+    state: 'directory'
+    owner: "{{ item.username }}"
+    group: "{{ item.username }}"
+    mode: '0700'
+  with_items: "{{ users }}"
+
+- name: 'copy authorized_keys from initial user'
+  tags: ['init']
+  copy:
+    content: "{{ item.authorized_keys }}"
+    dest: "/home/{{ item.username }}/.ssh/authorized_keys"
+    owner: "{{ item.username }}"
+    group: "{{ item.username }}"
+    mode: '0600'
+  with_items: "{{ users }}"
+
+- name: 'change ansible access user'
+  tags: ['init']
+  set_fact:
+    ansible_ssh_user: "{{ ansible_user }}"
+    ansible_sudo_pass: ''
+
+- name: 'disable ubuntu user'
+  tags: ['init']
+  user:
+    name: 'ubuntu'
+    password: '!!'
