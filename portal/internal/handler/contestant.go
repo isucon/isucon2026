@@ -37,7 +37,7 @@ func (h *Handler) ContestantDashboard(w http.ResponseWriter, r *http.Request) er
 	// キャッシュミス時は自チーム最新結果の updated_at を etag にフォールバック
 	var latest sql.NullTime
 	if err := h.db.QueryRowContext(ctx,
-		`SELECT MAX(updated_at) FROM benchmark_results WHERE team_id = ?`, team.ID).Scan(&latest); err != nil {
+		`SELECT MAX(updated_at) FROM benchmark_results WHERE team_id = $1`, team.ID).Scan(&latest); err != nil {
 		return err
 	}
 	if latest.Valid {
@@ -67,14 +67,14 @@ func (h *Handler) ContestantJobsIndex(w http.ResponseWriter, r *http.Request) er
 
 	query := `SELECT ` + jobColumnsWithScore + `
 		FROM benchmark_jobs LEFT JOIN benchmark_results ON benchmark_results.benchmark_job_id = benchmark_jobs.id
-		WHERE benchmark_jobs.post_validation = 0 AND benchmark_jobs.team_id = ?`
+		WHERE benchmark_jobs.post_validation = false AND benchmark_jobs.team_id = $1`
 	args := []any{team.ID}
 	if status := q.Get("status"); status != "" {
 		st, err := parseJobStatus(status)
 		if err != nil {
 			return err
 		}
-		query += ` AND benchmark_jobs.status = ?`
+		query += ` AND benchmark_jobs.status = $2`
 		args = append(args, st)
 	}
 	query += ` ORDER BY benchmark_jobs.id DESC`
@@ -108,7 +108,7 @@ func (h *Handler) ContestantJobsShow(w http.ResponseWriter, r *http.Request) err
 	if !ok {
 		return &model.NotFoundError{}
 	}
-	jobs, err := model.QueryJobs(ctx, h.db, `SELECT `+jobColumns+` FROM benchmark_jobs WHERE id = ? AND team_id = ? AND post_validation = 0`, id, team.ID)
+	jobs, err := model.QueryJobs(ctx, h.db, `SELECT `+jobColumns+` FROM benchmark_jobs WHERE id = $1 AND team_id = $2 AND post_validation = false`, id, team.ID)
 	if err != nil {
 		return err
 	}
@@ -181,7 +181,7 @@ func (h *Handler) ContestantClarsIndex(w http.ResponseWriter, r *http.Request) e
 	}
 	clars, err := model.QueryClarifications(ctx, h.db, `
 		SELECT `+clarColumnsSQL+` FROM clarifications
-		WHERE team_id = ? OR (answered_at IS NOT NULL AND disclosed = 1)
+		WHERE team_id = $1 OR (answered_at IS NOT NULL AND disclosed = true)
 		ORDER BY created_at DESC`, team.ID)
 	if err != nil {
 		return err
@@ -214,14 +214,10 @@ func (h *Handler) ContestantClarsCreate(w http.ResponseWriter, r *http.Request) 
 	if req.Question == "" {
 		return &model.InvalidError{Messages: []string{"Question can't be blank"}}
 	}
-	res, err := h.db.ExecContext(ctx, `
+	var id int64
+	if err := h.db.QueryRowContext(ctx, `
 		INSERT INTO clarifications (team_id, question, original_question, admin, created_at, updated_at)
-		VALUES (?, ?, ?, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))`, team.ID, req.Question, req.Question)
-	if err != nil {
-		return err
-	}
-	id, err := res.LastInsertId()
-	if err != nil {
+		VALUES ($1, $2, $3, false, now(), now()) RETURNING id`, team.ID, req.Question, req.Question).Scan(&id); err != nil {
 		return err
 	}
 	h.jobs.Enqueue(ctx, "clarification_acceptance", job.ClarificationAcceptanceArgs{ClarificationID: id})
@@ -280,16 +276,11 @@ func (h *Handler) ContestantNotificationsIndex(w http.ResponseWriter, r *http.Re
 		res.Notifications = append(res.Notifications, pb)
 	}
 	if len(notifications) > 0 {
-		ids := make([]any, 0, len(notifications))
-		ph := ""
-		for i, n := range notifications {
-			if i > 0 {
-				ph += ","
-			}
-			ph += "?"
+		ids := make([]int64, 0, len(notifications))
+		for _, n := range notifications {
 			ids = append(ids, n.ID)
 		}
-		if _, err := tx.ExecContext(ctx, "UPDATE notifications SET `read` = 1 WHERE id IN ("+ph+")", ids...); err != nil {
+		if _, err := tx.ExecContext(ctx, `UPDATE notifications SET "read" = true WHERE id = ANY($1)`, ids); err != nil {
 			return err
 		}
 	}
@@ -297,7 +288,7 @@ func (h *Handler) ContestantNotificationsIndex(w http.ResponseWriter, r *http.Re
 	var lastClarID sql.NullInt64
 	if err := tx.QueryRowContext(ctx, `
 		SELECT MAX(id) FROM clarifications
-		WHERE answered_at IS NOT NULL AND (team_id = ? OR (answered_at IS NOT NULL AND disclosed = 1))`,
+		WHERE answered_at IS NOT NULL AND (team_id = $1 OR (answered_at IS NOT NULL AND disclosed = true))`,
 		team.ID).Scan(&lastClarID); err != nil {
 		return err
 	}
@@ -338,7 +329,7 @@ func (h *Handler) ContestantNotificationsDestroy(w http.ResponseWriter, r *http.
 		return &model.NotFoundError{}
 	}
 	if _, err := h.db.ExecContext(r.Context(),
-		"UPDATE notifications SET `read` = 1 WHERE id = ? AND contestant_id = ?", id, c.ID); err != nil {
+		`UPDATE notifications SET "read" = true WHERE id = $1 AND contestant_id = $2`, id, c.ID); err != nil {
 		return err
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -366,7 +357,7 @@ func (h *Handler) ContestantPushSubscribe(w http.ResponseWriter, r *http.Request
 	}
 	if _, err := h.db.ExecContext(r.Context(), `
 		INSERT INTO push_subscriptions (contestant_id, endpoint, p256dh, auth, created_at, updated_at)
-		VALUES (?, ?, ?, ?, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))`,
+		VALUES ($1, $2, $3, $4, now(), now())`,
 		c.ID, req.Endpoint, req.P256Dh, req.Auth); err != nil {
 		return err
 	}
@@ -388,7 +379,9 @@ func (h *Handler) ContestantPushUnsubscribe(w http.ResponseWriter, r *http.Reque
 		return err
 	}
 	if _, err := h.db.ExecContext(r.Context(),
-		`DELETE FROM push_subscriptions WHERE contestant_id = ? AND endpoint = ? LIMIT 1`,
+		`DELETE FROM push_subscriptions WHERE id = (
+			SELECT id FROM push_subscriptions WHERE contestant_id = $1 AND endpoint = $2 ORDER BY id ASC LIMIT 1
+		)`,
 		c.ID, req.Endpoint); err != nil {
 		return err
 	}

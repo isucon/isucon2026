@@ -123,17 +123,16 @@ jobs:
   portal-integration-migration:
     runs-on: ubuntu-24.04
     services:
-      mysql:
-        image: mysql:8.0@sha256:7dcddc01f13bab2f15cde676d44d01f61fc9f99fe7785e86196dfc07d358ae2b
+      postgres:
+        image: postgres:16.9-alpine@sha256:7c688148e5e156d0e86df7ba8ae5a05a2386aaec1e2ad8e6d11bdf10504b1fb7
         env:
-          MYSQL_ROOT_PASSWORD: root
-          MYSQL_DATABASE: isuxportal
-          MYSQL_USER: isuxportal
-          MYSQL_PASSWORD: isuxportal
+          POSTGRES_DB: isuxportal
+          POSTGRES_USER: isuxportal
+          POSTGRES_PASSWORD: isuxportal
         ports:
-          - 3306:3306
+          - 5432:5432
         options: >-
-          --health-cmd "mysqladmin ping -h 127.0.0.1 -uroot -proot"
+          --health-cmd "pg_isready -U isuxportal -d isuxportal"
           --health-interval 2s --health-timeout 2s --health-retries 30
       redis:
         image: redis:7-alpine@sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf
@@ -151,23 +150,22 @@ jobs:
       - run: go test ./tests/integration -count=1
         working-directory: portal
         env:
-          ISUXPORTAL_TEST_DB_DSN: isuxportal:isuxportal@tcp(127.0.0.1:3306)/isuxportal
+          ISUXPORTAL_TEST_DATABASE_URL: postgres://isuxportal:isuxportal@127.0.0.1:5432/isuxportal?sslmode=disable
           ISUXPORTAL_TEST_REDIS_URL: redis://127.0.0.1:6379/0
 
   portal-concurrency:
     runs-on: ubuntu-24.04
     services:
-      mysql:
-        image: mysql:8.0@sha256:7dcddc01f13bab2f15cde676d44d01f61fc9f99fe7785e86196dfc07d358ae2b
+      postgres:
+        image: postgres:16.9-alpine@sha256:7c688148e5e156d0e86df7ba8ae5a05a2386aaec1e2ad8e6d11bdf10504b1fb7
         env:
-          MYSQL_ROOT_PASSWORD: root
-          MYSQL_DATABASE: isuxportal
-          MYSQL_USER: isuxportal
-          MYSQL_PASSWORD: isuxportal
+          POSTGRES_DB: isuxportal
+          POSTGRES_USER: isuxportal
+          POSTGRES_PASSWORD: isuxportal
         ports:
-          - 3306:3306
+          - 5432:5432
         options: >-
-          --health-cmd "mysqladmin ping -h 127.0.0.1 -uroot -proot"
+          --health-cmd "pg_isready -U isuxportal -d isuxportal"
           --health-interval 2s --health-timeout 2s --health-retries 30
       redis:
         image: redis:7-alpine@sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf
@@ -185,7 +183,7 @@ jobs:
       - run: go test ./tests/concurrency -count=1
         working-directory: portal
         env:
-          ISUXPORTAL_TEST_DB_DSN: isuxportal:isuxportal@tcp(127.0.0.1:3306)/isuxportal
+          ISUXPORTAL_TEST_DATABASE_URL: postgres://isuxportal:isuxportal@127.0.0.1:5432/isuxportal?sslmode=disable
           ISUXPORTAL_TEST_REDIS_URL: redis://127.0.0.1:6379/0
 
   portal-frontend-build:
@@ -211,17 +209,16 @@ jobs:
   portal-rspec:
     runs-on: ubuntu-24.04
     services:
-      mysql:
-        image: mysql:8.0@sha256:7dcddc01f13bab2f15cde676d44d01f61fc9f99fe7785e86196dfc07d358ae2b
+      postgres:
+        image: postgres:16.9-alpine@sha256:7c688148e5e156d0e86df7ba8ae5a05a2386aaec1e2ad8e6d11bdf10504b1fb7
         env:
-          MYSQL_ROOT_PASSWORD: root
-          MYSQL_DATABASE: isuxportal
-          MYSQL_USER: isuxportal
-          MYSQL_PASSWORD: isuxportal
+          POSTGRES_DB: isuxportal
+          POSTGRES_USER: isuxportal
+          POSTGRES_PASSWORD: isuxportal
         ports:
-          - 3306:3306
+          - 5432:5432
         options: >-
-          --health-cmd "mysqladmin ping -h 127.0.0.1 -uroot -proot"
+          --health-cmd "pg_isready -U isuxportal -d isuxportal"
           --health-interval 2s --health-timeout 2s --health-retries 30
       redis:
         image: redis:7-alpine@sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf
@@ -254,7 +251,7 @@ jobs:
           PORTAL_TEST_MODE: '1'
           PORTAL_AUTO_MIGRATE: '1'
           PORTAL_LISTEN: ':8081'
-          ISUXPORTAL_DB_ADDR: 127.0.0.1:3306
+          ISUXPORTAL_DATABASE_URL: postgres://isuxportal:isuxportal@127.0.0.1:5432/isuxportal?sslmode=disable
           REDIS_URL: redis://127.0.0.1:6379/0
           DEFAULT_URL_HOST: 127.0.0.1:8081
           AWS_ACCESS_KEY_ID: test-dummy
@@ -279,7 +276,7 @@ jobs:
         env:
           TARGET_BASE: http://127.0.0.1:8081
           DB_HOST: 127.0.0.1
-          DB_PORT: '3306'
+          DB_PORT: '5432'
 
   frontend-unit-contract-build:
     runs-on: actions-runner-processor

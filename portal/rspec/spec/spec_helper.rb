@@ -1,7 +1,7 @@
 # Go 実装向けの HTTP 越し受け入れテストのハーネス。
 #
 # isucon14-portal の contest_spec.rb（465 行）を転用する（計画書 §6）。
-# - テストデータ作成: factory_bot + ActiveRecord（Go と同じ MySQL に直接書く）
+# - テストデータ作成: factory_bot + ActiveRecord（Go と同じ PostgreSQL に直接書く）
 # - subject の取得: Rails の Contest.leaderboard 呼び出しの代わりに
 #   TARGET_BASE のサーバへ HTTP リクエストし protobuf をデコードする
 # - 競技時刻・セッション: Go サーバのテストモードヘッダ（X-Isux-*）で渡す
@@ -48,9 +48,9 @@ require 'isuxportal/services/bench/reporting_pb'
 Time.zone = 'UTC'
 
 ActiveRecord::Base.establish_connection(
-  adapter: 'mysql2',
+  adapter: 'postgresql',
   host: ENV.fetch('DB_HOST', '127.0.0.1'),
-  port: Integer(ENV.fetch('DB_PORT', '13306')),
+  port: Integer(ENV.fetch('DB_PORT', '15432')),
   username: ENV.fetch('DB_USER', 'isuxportal'),
   password: ENV.fetch('DB_PASSWORD', 'isuxportal'),
   database: ENV.fetch('DB_NAME', 'isuxportal'),
@@ -64,13 +64,11 @@ TABLES_TO_CLEAN = %w[
   coupons env_checks extra_time_assignments notifications push_subscriptions
   ssh_public_keys survey_responses teams
   instance_command_execute_requests instance_command_execute_request_results
+  jobs
 ].freeze
 
 def clean_database!
-  conn = ActiveRecord::Base.connection
-  conn.execute('SET FOREIGN_KEY_CHECKS = 0')
-  TABLES_TO_CLEAN.each { |t| conn.execute("TRUNCATE TABLE #{t}") }
-  conn.execute('SET FOREIGN_KEY_CHECKS = 1')
+  ActiveRecord::Base.connection.execute("TRUNCATE TABLE #{TABLES_TO_CLEAN.join(', ')} RESTART IDENTITY CASCADE")
 end
 
 RSpec.configure do |config|

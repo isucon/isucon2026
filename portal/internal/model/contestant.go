@@ -39,7 +39,7 @@ func scanContestant(row interface{ Scan(...any) error }) (*Contestant, error) {
 }
 
 func FindContestant(ctx context.Context, db DBTX, id int64) (*Contestant, error) {
-	return scanContestant(db.QueryRowContext(ctx, `SELECT `+contestantColumns+` FROM contestants WHERE id = ?`, id))
+	return scanContestant(db.QueryRowContext(ctx, `SELECT `+contestantColumns+` FROM contestants WHERE id = $1`, id))
 }
 
 // FindActiveContestant は Contestant.active（withdrawn でも disqualified でもないチーム所属）相当。
@@ -47,7 +47,7 @@ func FindActiveContestant(ctx context.Context, db DBTX, id int64) (*Contestant, 
 	return scanContestant(db.QueryRowContext(ctx, `
 		SELECT `+contestantColumns+` FROM contestants
 		JOIN teams ON teams.id = contestants.team_id
-		WHERE contestants.id = ? AND teams.withdrawn = 0 AND teams.disqualified = 0`, id))
+		WHERE contestants.id = $1 AND teams.withdrawn = false AND teams.disqualified = false`, id))
 }
 
 // FindContestantIncludeDisqualified は Contestant.include_disqualified（withdrawn だけ除外）相当。
@@ -55,7 +55,7 @@ func FindContestantIncludeDisqualified(ctx context.Context, db DBTX, id int64) (
 	return scanContestant(db.QueryRowContext(ctx, `
 		SELECT `+contestantColumns+` FROM contestants
 		JOIN teams ON teams.id = contestants.team_id
-		WHERE contestants.id = ? AND teams.withdrawn = 0`, id))
+		WHERE contestants.id = $1 AND teams.withdrawn = false`, id))
 }
 
 func FindContestantIncludeDisqualifiedBy(ctx context.Context, db DBTX, column, value string) (*Contestant, error) {
@@ -65,11 +65,11 @@ func FindContestantIncludeDisqualifiedBy(ctx context.Context, db DBTX, column, v
 	return scanContestant(db.QueryRowContext(ctx, `
 		SELECT `+contestantColumns+` FROM contestants
 		JOIN teams ON teams.id = contestants.team_id
-		WHERE contestants.`+column+` = ? AND teams.withdrawn = 0`, value))
+		WHERE contestants.`+column+` = $1 AND teams.withdrawn = false`, value))
 }
 
 func TeamMembers(ctx context.Context, db DBTX, teamID int64) ([]*Contestant, error) {
-	rows, err := db.QueryContext(ctx, `SELECT `+contestantColumns+` FROM contestants WHERE team_id = ? ORDER BY id ASC`, teamID)
+	rows, err := db.QueryContext(ctx, `SELECT `+contestantColumns+` FROM contestants WHERE team_id = $1 ORDER BY id ASC`, teamID)
 	if err != nil {
 		return nil, err
 	}
@@ -91,18 +91,12 @@ func fillSSHKeyRegistered(ctx context.Context, db DBTX, members []*Contestant) e
 		return nil
 	}
 	byID := make(map[int64]*Contestant, len(members))
-	query := `SELECT DISTINCT contestant_id FROM ssh_public_keys WHERE contestant_id IN (`
-	args := make([]any, 0, len(members))
-	for i, m := range members {
+	ids := make([]int64, 0, len(members))
+	for _, m := range members {
 		byID[m.ID] = m
-		if i > 0 {
-			query += ","
-		}
-		query += "?"
-		args = append(args, m.ID)
+		ids = append(ids, m.ID)
 	}
-	query += ")"
-	rows, err := db.QueryContext(ctx, query, args...)
+	rows, err := db.QueryContext(ctx, `SELECT DISTINCT contestant_id FROM ssh_public_keys WHERE contestant_id = ANY($1)`, ids)
 	if err != nil {
 		return err
 	}

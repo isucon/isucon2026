@@ -1,8 +1,8 @@
 # ポータル Go rewrite の開発用タスク。
-# `make rspec` で MySQL/Redis 起動 → Go サーバ起動 → HTTP 化 RSpec 実行まで一気に行う。
+# `make rspec` で PostgreSQL/Redis 起動 → Go サーバ起動 → HTTP 化 RSpec 実行まで一気に行う。
 
 GO_TEST_ENV := PORTAL_TEST_MODE=1 PORTAL_AUTO_MIGRATE=1 PORTAL_LISTEN=:8081 \
-	ISUXPORTAL_DB_ADDR=127.0.0.1:13306 \
+	ISUXPORTAL_DATABASE_URL='postgres://isuxportal:isuxportal@127.0.0.1:15432/isuxportal?sslmode=disable' \
 	REDIS_URL=redis://127.0.0.1:16379/0 \
 	DEFAULT_URL_HOST=127.0.0.1:8081 \
 	AWS_ACCESS_KEY_ID=test-dummy AWS_SECRET_ACCESS_KEY=test-dummy \
@@ -18,7 +18,7 @@ GO_TEST_ENV := PORTAL_TEST_MODE=1 PORTAL_AUTO_MIGRATE=1 PORTAL_LISTEN=:8081 \
 	ISUXPORTAL_DISCORD_TOKEN_URL=http://127.0.0.1:8081/debug/oauth/discord/token \
 	ISUXPORTAL_DISCORD_API_BASE_URL=http://127.0.0.1:8081/debug/oauth/discord
 
-TEST_DB_ENV := ISUXPORTAL_TEST_DB_DSN='isuxportal:isuxportal@tcp(127.0.0.1:13306)/isuxportal' \
+TEST_DB_ENV := ISUXPORTAL_TEST_DATABASE_URL='postgres://isuxportal:isuxportal@127.0.0.1:15432/isuxportal?sslmode=disable' \
 	ISUXPORTAL_TEST_REDIS_URL='redis://127.0.0.1:16379/1'
 
 .PHONY: build
@@ -30,7 +30,7 @@ build:
 test:
 	go test ./internal/... ./tests/contract -count=1
 
-# MySQL + Redis を使う結合テスト（CI の portal-integration-migration 相当）
+# PostgreSQL + Redis を使う結合テスト（CI の portal-integration-migration 相当）
 .PHONY: test-integration
 test-integration: db-up
 	$(TEST_DB_ENV) go test ./tests/integration -count=1
@@ -42,7 +42,7 @@ test-concurrency: db-up
 
 .PHONY: db-up
 db-up:
-	docker compose up -d --wait mysql redis
+	docker compose up -d --wait postgres redis
 
 .PHONY: db-down
 db-down:

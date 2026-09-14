@@ -117,7 +117,7 @@ func (h *Handler) EnvCheckSSHPublicKeys(w http.ResponseWriter, r *http.Request) 
 	rows, err := h.db.QueryContext(r.Context(), `
 		SELECT k.public_key, c.id, c.github_login
 		FROM ssh_public_keys k JOIN contestants c ON c.id = k.contestant_id
-		WHERE c.team_id = ?
+		WHERE c.team_id = $1
 		ORDER BY k.contestant_id ASC, k.id ASC`, teamID)
 	if err != nil {
 		renderInternalError(w, err)

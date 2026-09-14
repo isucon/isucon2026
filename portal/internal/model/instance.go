@@ -32,19 +32,19 @@ func scanInstance(row interface{ Scan(...any) error }) (*ContestantInstance, err
 }
 
 func FindInstance(ctx context.Context, db DBTX, id int64) (*ContestantInstance, error) {
-	return scanInstance(db.QueryRowContext(ctx, `SELECT `+instanceColumns+` FROM contestant_instances WHERE id = ?`, id))
+	return scanInstance(db.QueryRowContext(ctx, `SELECT `+instanceColumns+` FROM contestant_instances WHERE id = $1`, id))
 }
 
 func FindInstanceByTeamAndID(ctx context.Context, db DBTX, teamID, id int64) (*ContestantInstance, error) {
-	return scanInstance(db.QueryRowContext(ctx, `SELECT `+instanceColumns+` FROM contestant_instances WHERE team_id = ? AND id = ?`, teamID, id))
+	return scanInstance(db.QueryRowContext(ctx, `SELECT `+instanceColumns+` FROM contestant_instances WHERE team_id = $1 AND id = $2`, teamID, id))
 }
 
 func FindInstanceByTeamAndNumber(ctx context.Context, db DBTX, teamID, number int64) (*ContestantInstance, error) {
-	return scanInstance(db.QueryRowContext(ctx, `SELECT `+instanceColumns+` FROM contestant_instances WHERE team_id = ? AND number = ?`, teamID, number))
+	return scanInstance(db.QueryRowContext(ctx, `SELECT `+instanceColumns+` FROM contestant_instances WHERE team_id = $1 AND number = $2`, teamID, number))
 }
 
 func TeamInstances(ctx context.Context, db DBTX, teamID int64) ([]*ContestantInstance, error) {
-	return queryInstances(ctx, db, `SELECT `+instanceColumns+` FROM contestant_instances WHERE team_id = ? ORDER BY number ASC`, teamID)
+	return queryInstances(ctx, db, `SELECT `+instanceColumns+` FROM contestant_instances WHERE team_id = $1 ORDER BY number ASC`, teamID)
 }
 
 func AllInstancesOrderByCloudID(ctx context.Context, db DBTX) ([]*ContestantInstance, error) {
@@ -72,10 +72,10 @@ func queryInstances(ctx context.Context, db DBTX, query string, args ...any) ([]
 func UpsertInstance(ctx context.Context, db DBTX, teamID, number int64, cloudID string, status pbresources.ContestantInstance_Status, privateIP string, publicIP sql.NullString) error {
 	_, err := db.ExecContext(ctx, `
 		INSERT INTO contestant_instances (team_id, number, cloud_id, status, private_ipv4_address, public_ipv4_address, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
-		ON DUPLICATE KEY UPDATE cloud_id = VALUES(cloud_id), status = VALUES(status),
-			private_ipv4_address = VALUES(private_ipv4_address), public_ipv4_address = VALUES(public_ipv4_address),
-			updated_at = UTC_TIMESTAMP(6)`,
+		VALUES ($1, $2, $3, $4, $5, $6, now(), now())
+		ON CONFLICT (team_id, number) DO UPDATE SET cloud_id = EXCLUDED.cloud_id, status = EXCLUDED.status,
+			private_ipv4_address = EXCLUDED.private_ipv4_address, public_ipv4_address = EXCLUDED.public_ipv4_address,
+			updated_at = now()`,
 		teamID, number, cloudID, int32(status), privateIP, publicIP)
 	return err
 }

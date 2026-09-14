@@ -63,7 +63,7 @@ func ContestOpenForTeam(ctx context.Context, db *sql.DB, t config.Timing, teamID
 
 	var seconds int64
 	err := db.QueryRowContext(ctx,
-		`SELECT seconds FROM extra_time_assignments WHERE team_id = ? AND final = 0 LIMIT 1`, teamID,
+		`SELECT seconds FROM extra_time_assignments WHERE team_id = $1 AND final = false LIMIT 1`, teamID,
 	).Scan(&seconds)
 	if err == sql.ErrNoRows {
 		return false, nil

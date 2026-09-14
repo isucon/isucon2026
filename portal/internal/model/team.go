@@ -47,26 +47,26 @@ func (t *Team) Joinable(ctx context.Context, db DBTX) (bool, error) {
 
 func countMembers(ctx context.Context, db DBTX, teamID int64) (int, error) {
 	var n int
-	err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM contestants WHERE team_id = ?`, teamID).Scan(&n)
+	err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM contestants WHERE team_id = $1`, teamID).Scan(&n)
 	return n, err
 }
 
 func FindTeam(ctx context.Context, db DBTX, id int64) (*Team, error) {
-	return scanTeam(db.QueryRowContext(ctx, `SELECT `+teamColumns+` FROM teams WHERE id = ?`, id))
+	return scanTeam(db.QueryRowContext(ctx, `SELECT `+teamColumns+` FROM teams WHERE id = $1`, id))
 }
 
 // FindTeamByInviteToken は招待 URL の解決。辞退・失格したチームは招待を受け付けない
 // （isucon14 は withdrawn を見ておらず、辞退後のチームに参加してしまう経路があった）。
 func FindTeamByInviteToken(ctx context.Context, db DBTX, id int64, inviteToken string) (*Team, error) {
 	return scanTeam(db.QueryRowContext(ctx,
-		`SELECT `+teamColumns+` FROM teams WHERE id = ? AND invite_token = ? AND withdrawn = 0 AND disqualified = 0`,
+		`SELECT `+teamColumns+` FROM teams WHERE id = $1 AND invite_token = $2 AND withdrawn = false AND disqualified = false`,
 		id, inviteToken))
 }
 
 // ActiveVisibleTeamCount は Contest.team_count 相当（Team.active.visible.count）。
 func ActiveVisibleTeamCount(ctx context.Context, db DBTX) (int, error) {
 	var n int
-	err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM teams WHERE withdrawn = 0 AND disqualified = 0 AND is_hidden = 0`).Scan(&n)
+	err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM teams WHERE withdrawn = false AND disqualified = false AND is_hidden = false`).Scan(&n)
 	return n, err
 }
 
@@ -124,8 +124,8 @@ func TeamToPBWithMembers(ctx context.Context, db DBTX, t *Team, detail, memberDe
 func UpdateTeamStudentStatus(ctx context.Context, db DBTX, teamID int64) error {
 	_, err := db.ExecContext(ctx, `
 		UPDATE teams SET student = (
-			SELECT COUNT(*) > 0 AND COUNT(*) = SUM(student) FROM contestants WHERE team_id = teams.id
-		), updated_at = UTC_TIMESTAMP(6) WHERE id = ?`, teamID)
+			SELECT COUNT(*) > 0 AND COUNT(*) = COUNT(*) FILTER (WHERE student) FROM contestants WHERE team_id = teams.id
+		), updated_at = now() WHERE id = $1`, teamID)
 	return err
 }
 

@@ -1,5 +1,5 @@
 // Package job は非同期ジョブ 20 本（FR-J）を実装する。
-// 本番は SQS（cmd/worker が消費）、テストモードでは同期実行（perform_now 相当）。
+// 本番は PostgreSQL の jobs テーブル（cmd/worker が消費）、テストモードでは同期実行（perform_now 相当）。
 package job
 
 import (
@@ -49,12 +49,6 @@ func (e *Env) Enqueue(ctx context.Context, name string, args any) {
 
 func (e *Env) timing(ctx context.Context) config.Timing {
 	return contest.TimingFromContext(ctx, e.Cfg.Timing)
-}
-
-// Payload は SQS に載る 1 メッセージ。
-type Payload struct {
-	Name string          `json:"name"`
-	Args json.RawMessage `json:"args"`
 }
 
 // Perform はジョブ名でディスパッチする（cmd/worker と同期キューの共通経路）。
@@ -173,7 +167,7 @@ func (e *Env) Perform(ctx context.Context, name string, rawArgs json.RawMessage)
 	}
 }
 
-// InProcessQueue は SQS を使わないキュー。
+// InProcessQueue は DB を使わないキュー。
 // Sync=true（テストモード）では同一コンテキストで即時実行し、
 // それ以外はバックグラウンド goroutine で実行する。
 type InProcessQueue struct {
@@ -207,22 +201,4 @@ func (q *InProcessQueue) Enqueue(ctx context.Context, name string, args any) err
 		}
 	}()
 	return nil
-}
-
-// SQSQueue はジョブを SQS に積む（本番構成、計画書 §1）。
-type SQSQueue struct {
-	AWS      *external.AWS
-	QueueURL string
-}
-
-func (q *SQSQueue) Enqueue(ctx context.Context, name string, args any) error {
-	raw, err := json.Marshal(args)
-	if err != nil {
-		return err
-	}
-	body, err := json.Marshal(Payload{Name: name, Args: raw})
-	if err != nil {
-		return err
-	}
-	return q.AWS.SendSQSMessage(ctx, q.QueueURL, string(body))
 }

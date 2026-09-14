@@ -37,11 +37,11 @@ func scanEnvCheck(row interface{ Scan(...any) error }) (*EnvCheck, error) {
 
 func LastEnvCheck(ctx context.Context, db DBTX, teamID int64, name string) (*EnvCheck, error) {
 	return scanEnvCheck(db.QueryRowContext(ctx,
-		`SELECT `+envCheckColumns+` FROM env_checks WHERE team_id = ? AND name = ? ORDER BY id DESC LIMIT 1`, teamID, name))
+		`SELECT `+envCheckColumns+` FROM env_checks WHERE team_id = $1 AND name = $2 ORDER BY id DESC LIMIT 1`, teamID, name))
 }
 
 func TeamEnvChecks(ctx context.Context, db DBTX, teamID int64) ([]*EnvCheck, error) {
-	rows, err := db.QueryContext(ctx, `SELECT `+envCheckColumns+` FROM env_checks WHERE team_id = ? ORDER BY id DESC`, teamID)
+	rows, err := db.QueryContext(ctx, `SELECT `+envCheckColumns+` FROM env_checks WHERE team_id = $1 ORDER BY id DESC`, teamID)
 	if err != nil {
 		return nil, err
 	}
@@ -58,15 +58,10 @@ func TeamEnvChecks(ctx context.Context, db DBTX, teamID int64) ([]*EnvCheck, err
 }
 
 func CreateEnvCheck(ctx context.Context, db DBTX, e *EnvCheck) error {
-	res, err := db.ExecContext(ctx, `
+	return db.QueryRowContext(ctx, `
 		INSERT INTO env_checks (team_id, name, ip_address, passed, message, admin_message, raw_data, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))`,
-		e.TeamID, e.Name, e.IPAddress, e.Passed, e.Message, e.AdminMessage, e.RawData)
-	if err != nil {
-		return err
-	}
-	e.ID, err = res.LastInsertId()
-	return err
+		VALUES ($1, $2, $3, $4, $5, $6, $7, now(), now()) RETURNING id`,
+		e.TeamID, e.Name, e.IPAddress, e.Passed, e.Message, e.AdminMessage, e.RawData).Scan(&e.ID)
 }
 
 // EnvCheckStatus は EnvCheck.status 相当。

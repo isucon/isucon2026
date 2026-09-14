@@ -235,7 +235,7 @@ func (h *Handler) GitHubCallback(w http.ResponseWriter, r *http.Request) {
 		ri.sess.ContestantID = c.ID
 		h.redirectAfterAuth(w, r, "/registration")
 	case c != nil:
-		if _, err := h.db.ExecContext(ctx, `UPDATE contestants SET github_login = ?, updated_at = UTC_TIMESTAMP(6) WHERE id = ?`, user.Login, c.ID); err != nil {
+		if _, err := h.db.ExecContext(ctx, `UPDATE contestants SET github_login = $1, updated_at = now() WHERE id = $2`, user.Login, c.ID); err != nil {
 			renderInternalError(w, err)
 			return
 		}
@@ -298,7 +298,7 @@ func (h *Handler) DiscordCallback(w http.ResponseWriter, r *http.Request) {
 		h.redirectAfterAuth(w, r, "/registration")
 	case c != nil:
 		// discord_id 一致のアカウントに切り替え（FR-AUTH-3a）
-		if _, err := h.db.ExecContext(ctx, `UPDATE contestants SET discord_tag = ?, updated_at = UTC_TIMESTAMP(6) WHERE id = ?`, tag, c.ID); err != nil {
+		if _, err := h.db.ExecContext(ctx, `UPDATE contestants SET discord_tag = $1, updated_at = now() WHERE id = $2`, tag, c.ID); err != nil {
 			renderInternalError(w, err)
 			return
 		}
@@ -323,7 +323,7 @@ func (h *Handler) DiscordCallback(w http.ResponseWriter, r *http.Request) {
 			current.ID, current.DiscordTag, current.DiscordID, tag, user.ID)})
 		h.jobs.Enqueue(ctx, "maintain_discord_contestant_roles", job.MaintainRolesArgs{ForceDiscordID: current.DiscordID})
 		h.jobs.Enqueue(ctx, "sync_discord_member_state_of_contestant", job.ContestantArgs{ContestantID: current.ID})
-		if _, err := h.db.ExecContext(ctx, `UPDATE contestants SET discord_id = ?, discord_tag = ?, updated_at = UTC_TIMESTAMP(6) WHERE id = ?`, user.ID, tag, current.ID); err != nil {
+		if _, err := h.db.ExecContext(ctx, `UPDATE contestants SET discord_id = $1, discord_tag = $2, updated_at = now() WHERE id = $3`, user.ID, tag, current.ID); err != nil {
 			renderInternalError(w, err)
 			return
 		}

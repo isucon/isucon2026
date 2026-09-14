@@ -3,23 +3,21 @@ package external
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"time"
 
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
-	"github.com/aws/aws-sdk-go-v2/service/sqs"
 )
 
-// AWS は S3 presign（FR-REG-7）・EC2 同期（FR-J）・SQS を束ねる。
+// AWS は S3 presign（FR-REG-7）・EC2 同期（FR-J）を束ねる。
+// ジョブキューは SQS ではなく PostgreSQL（internal/job.DBQueue）。
 type AWS struct {
 	Region string
 
 	s3Presigner *s3.PresignClient
 	ec2Client   *ec2.Client
-	sqsClient   *sqs.Client
 }
 
 func NewAWS(ctx context.Context, region string) (*AWS, error) {
@@ -31,7 +29,6 @@ func NewAWS(ctx context.Context, region string) (*AWS, error) {
 		Region:      region,
 		s3Presigner: s3.NewPresignClient(s3.NewFromConfig(cfg)),
 		ec2Client:   ec2.NewFromConfig(cfg),
-		sqsClient:   sqs.NewFromConfig(cfg),
 	}, nil
 }
 
@@ -104,55 +101,6 @@ func (a *AWS) ListContestantInstances(ctx context.Context, project string) ([]EC
 		}
 	}
 	return out, nil
-}
-
-// SendSQSMessage はジョブペイロードを SQS に送る。
-func (a *AWS) SendSQSMessage(ctx context.Context, queueURL, body string) error {
-	_, err := a.sqsClient.SendMessage(ctx, &sqs.SendMessageInput{
-		QueueUrl:    &queueURL,
-		MessageBody: &body,
-	})
-	return err
-}
-
-// ReceiveSQSMessages はロングポーリングでメッセージを受ける（cmd/worker 用）。
-func (a *AWS) ReceiveSQSMessages(ctx context.Context, queueURL string) ([]SQSMessage, error) {
-	out, err := a.sqsClient.ReceiveMessage(ctx, &sqs.ReceiveMessageInput{
-		QueueUrl:            &queueURL,
-		MaxNumberOfMessages: 10,
-		WaitTimeSeconds:     20,
-	})
-	if err != nil {
-		return nil, err
-	}
-	msgs := make([]SQSMessage, 0, len(out.Messages))
-	for _, m := range out.Messages {
-		msg := SQSMessage{}
-		if m.Body != nil {
-			msg.Body = *m.Body
-		}
-		if m.ReceiptHandle != nil {
-			msg.ReceiptHandle = *m.ReceiptHandle
-		}
-		msgs = append(msgs, msg)
-	}
-	return msgs, nil
-}
-
-func (a *AWS) DeleteSQSMessage(ctx context.Context, queueURL, receiptHandle string) error {
-	_, err := a.sqsClient.DeleteMessage(ctx, &sqs.DeleteMessageInput{
-		QueueUrl:      &queueURL,
-		ReceiptHandle: &receiptHandle,
-	})
-	if err != nil {
-		slog.Error("sqs delete failed", "error", err)
-	}
-	return err
-}
-
-type SQSMessage struct {
-	Body          string
-	ReceiptHandle string
 }
 
 func strPtr(s string) *string { return &s }

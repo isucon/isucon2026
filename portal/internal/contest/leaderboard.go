@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -69,27 +70,41 @@ type teamRow struct {
 	bestMarkedAt       sql.NullTime
 }
 
-// visibilityConds は BenchmarkResult.of_visibility 相当の WHERE 句を返す。
+// condBuilder は $n プレースホルダを採番しながら WHERE 句を組み立てる。
+type condBuilder struct {
+	conds []string
+	args  []any
+}
+
+// add は cond 中の "?" を順に $n へ置き換えて追加する。
+func (b *condBuilder) add(cond string, args ...any) {
+	for _, a := range args {
+		b.args = append(b.args, a)
+		cond = strings.Replace(cond, "?", "$"+strconv.Itoa(len(b.args)), 1)
+	}
+	b.conds = append(b.conds, cond)
+}
+
+func (b *condBuilder) where() string { return strings.Join(b.conds, " AND ") }
+
+// addVisibility は BenchmarkResult.of_visibility 相当の WHERE 句を追加する。
 // successfully_finished は呼び出し側で必ず併用する。
-func visibilityConds(vis Visibility, t config.Timing, teamID int64) (conds []string, args []any) {
+func (b *condBuilder) addVisibility(vis Visibility, t config.Timing, teamID int64) {
 	switch vis {
 	case VisibilityAdmin:
-		return nil, nil
+		return
 	case VisibilityAudience:
 		teamID = 0 // visible_not_frozen(nil): team_id = NULL は決してマッチしない
 	}
 	if t.ContestEnd != nil {
-		conds = append(conds, "benchmark_results.marked_at < ?")
-		args = append(args, t.ContestEnd.UTC())
+		b.add("benchmark_results.marked_at < ?", t.ContestEnd.UTC())
 	}
 	if t.ContestFreeze != nil {
-		conds = append(conds, "(benchmark_results.team_id = ? OR benchmark_results.marked_at < ?)")
-		args = append(args, teamID, t.ContestFreeze.UTC())
+		b.add("(benchmark_results.team_id = ? OR benchmark_results.marked_at < ?)", teamID, t.ContestFreeze.UTC())
 	}
-	return conds, args
 }
 
-const successfullyFinished = "benchmark_results.finished = 1 AND benchmark_results.exit_status = 0 AND benchmark_results.exit_signal IS NULL"
+const successfullyFinished = "benchmark_results.finished = true AND benchmark_results.exit_status = 0 AND benchmark_results.exit_signal IS NULL"
 
 // BuildLeaderboard は Contest.leaderboard 相当。
 // SoloItem 指定時は LeaderboardItem を、それ以外は Leaderboard を返す。
@@ -216,19 +231,16 @@ func BuildLeaderboard(ctx context.Context, db *sql.DB, t config.Timing, now time
 }
 
 func fetchScores(ctx context.Context, db *sql.DB, t config.Timing, p LeaderboardParams, vis Visibility, history bool) (map[int64][]scoreRow, []int64, error) {
-	conds := []string{successfullyFinished}
-	visConds, visArgs := visibilityConds(vis, t, p.TeamID)
-	conds = append(conds, visConds...)
-	args := visArgs
+	b := &condBuilder{}
+	b.add(successfullyFinished)
+	b.addVisibility(vis, t, p.TeamID)
 	if p.Now != nil {
-		conds = append(conds, "benchmark_results.marked_at <= ?")
-		args = append(args, p.Now.UTC())
+		b.add("benchmark_results.marked_at <= ?", p.Now.UTC())
 	}
 	if p.Solo {
-		conds = append(conds, "benchmark_results.team_id = ?")
-		args = append(args, p.TeamID)
+		b.add("benchmark_results.team_id = ?", p.TeamID)
 	}
-	where := strings.Join(conds, " AND ")
+	where, args := b.where(), b.args
 
 	var query string
 	if history {
@@ -264,6 +276,7 @@ func fetchScores(ctx context.Context, db *sql.DB, t config.Timing, p Leaderboard
 
 func fetchTeams(ctx context.Context, db *sql.DB, vis Visibility, p LeaderboardParams) ([]teamRow, error) {
 	var bestCol string
+	var args []any
 	switch vis {
 	case VisibilityAdmin:
 		bestCol = "t.best_benchmark_result_for_admin_id"
@@ -271,21 +284,18 @@ func fetchTeams(ctx context.Context, db *sql.DB, vis Visibility, p LeaderboardPa
 		bestCol = "t.best_benchmark_result_for_audience_id"
 	case VisibilityContestant:
 		// 自チームだけ凍結後も見える best カラムを使う
-		bestCol = "IF(t.id = ?, t.best_benchmark_result_id, t.best_benchmark_result_for_audience_id)"
+		bestCol = "CASE WHEN t.id = $1 THEN t.best_benchmark_result_id ELSE t.best_benchmark_result_for_audience_id END"
+		args = append(args, p.TeamID)
 	}
 
 	query := `SELECT t.id, t.name, t.leader_id, t.final_participation, t.is_hidden, t.withdrawn, t.disqualified, t.student,
 		b.id, b.score, b.created_at, b.marked_at
 		FROM teams t LEFT JOIN benchmark_results b ON b.id = ` + bestCol
-	var args []any
-	if vis == VisibilityContestant {
-		args = append(args, p.TeamID)
-	}
 	if p.Solo {
-		query += ` WHERE t.id = ?`
 		args = append(args, p.TeamID)
+		query += ` WHERE t.id = $` + strconv.Itoa(len(args))
 	} else {
-		query += ` WHERE t.withdrawn = 0 AND t.disqualified = 0 ORDER BY t.id ASC`
+		query += ` WHERE t.withdrawn = false AND t.disqualified = false ORDER BY t.id ASC`
 	}
 
 	rows, err := db.QueryContext(ctx, query, args...)
@@ -353,26 +363,24 @@ func MaintainBestBenchmarkResults(ctx context.Context, db *sql.DB, t config.Timi
 func MaintainBestForTeam(ctx context.Context, db *sql.DB, t config.Timing, teamID int64, now *time.Time) error {
 	best := map[Visibility]sql.NullInt64{}
 	for _, vis := range []Visibility{VisibilityContestant, VisibilityAudience, VisibilityAdmin} {
-		conds := []string{successfullyFinished, "benchmark_results.team_id = ?"}
-		args := []any{teamID}
-		visConds, visArgs := visibilityConds(vis, t, teamID)
-		conds = append(conds, visConds...)
-		args = append(args, visArgs...)
+		b := &condBuilder{}
+		b.add(successfullyFinished)
+		b.add("benchmark_results.team_id = ?", teamID)
+		b.addVisibility(vis, t, teamID)
 		if now != nil {
-			conds = append(conds, "benchmark_results.marked_at <= ?")
-			args = append(args, now.UTC())
+			b.add("benchmark_results.marked_at <= ?", now.UTC())
 		}
 		var id sql.NullInt64
 		err := db.QueryRowContext(ctx,
-			`SELECT id FROM benchmark_results WHERE `+strings.Join(conds, " AND ")+` ORDER BY score DESC LIMIT 1`,
-			args...).Scan(&id)
+			`SELECT id FROM benchmark_results WHERE `+b.where()+` ORDER BY score DESC LIMIT 1`,
+			b.args...).Scan(&id)
 		if err != nil && err != sql.ErrNoRows {
 			return err
 		}
 		best[vis] = id
 	}
 	_, err := db.ExecContext(ctx,
-		`UPDATE teams SET best_benchmark_result_id = ?, best_benchmark_result_for_audience_id = ?, best_benchmark_result_for_admin_id = ?, updated_at = UTC_TIMESTAMP(6) WHERE id = ?`,
+		`UPDATE teams SET best_benchmark_result_id = $1, best_benchmark_result_for_audience_id = $2, best_benchmark_result_for_admin_id = $3, updated_at = now() WHERE id = $4`,
 		best[VisibilityContestant], best[VisibilityAudience], best[VisibilityAdmin], teamID)
 	return err
 }

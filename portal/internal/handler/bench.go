@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"fmt"
 	"net/http"
 
 	pbbench "github.com/isucon/isucon2026/portal/gen/pb/isuxportal/services/bench"
@@ -26,15 +27,15 @@ func (h *Handler) BenchReceive(w http.ResponseWriter, r *http.Request) error {
 			return err
 		}
 
-		query := `SELECT ` + jobColumns + ` FROM benchmark_jobs WHERE status = ?`
+		query := `SELECT ` + jobColumns + ` FROM benchmark_jobs WHERE status = $1`
 		args := []any{model.JobPending}
 		if req.TeamId > 0 {
-			query += ` AND team_id = ?`
 			args = append(args, req.TeamId)
+			query += fmt.Sprintf(` AND team_id = $%d`, len(args))
 		}
 		if req.InstanceName != "" {
-			query += ` AND instance_name = ?`
 			args = append(args, req.InstanceName)
+			query += fmt.Sprintf(` AND instance_name = $%d`, len(args))
 		}
 		query += ` ORDER BY id ASC LIMIT 1 FOR UPDATE`
 
@@ -117,7 +118,7 @@ func (h *Handler) BenchCancelOwned(w http.ResponseWriter, r *http.Request) error
 	}
 
 	jobs, err := model.QueryJobs(ctx, h.db,
-		`SELECT `+jobColumns+` FROM benchmark_jobs WHERE status = ? AND instance_name = ?`,
+		`SELECT `+jobColumns+` FROM benchmark_jobs WHERE status = $1 AND instance_name = $2`,
 		model.JobRunning, req.InstanceName)
 	if err != nil {
 		return err

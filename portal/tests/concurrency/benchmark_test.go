@@ -67,7 +67,7 @@ func TestConcurrentEnqueueLeavesOneJob(t *testing.T) {
 		t.Errorf("successful enqueues = %d, want exactly 1", success)
 	}
 	var jobs int
-	if err := p.DB.QueryRow(`SELECT COUNT(*) FROM benchmark_jobs WHERE team_id = ?`, teamID).Scan(&jobs); err != nil {
+	if err := p.DB.QueryRow(`SELECT COUNT(*) FROM benchmark_jobs WHERE team_id = $1`, teamID).Scan(&jobs); err != nil {
 		t.Fatal(err)
 	}
 	if jobs != 1 {
@@ -86,15 +86,11 @@ func TestBenchReceiveHandsOutEachJobExactlyOnce(t *testing.T) {
 	for i := range jobCount {
 		teamID, _ := p.CreateTeam(t, fmt.Sprintf("receive-race-%d", i))
 		instanceID := p.CreateInstance(t, teamID, 1)
-		res, err := p.DB.Exec(`
+		var id int64
+		if err := p.DB.QueryRow(`
 			INSERT INTO benchmark_jobs (team_id, status, instance_name, handle, target_id, post_validation, created_at, updated_at)
-			VALUES (?, 0, 'bench-az', 'handle-seed', ?, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))`,
-			teamID, instanceID)
-		if err != nil {
-			t.Fatal(err)
-		}
-		id, err := res.LastInsertId()
-		if err != nil {
+			VALUES ($1, 0, 'bench-az', 'handle-seed', $2, false, now(), now()) RETURNING id`,
+			teamID, instanceID).Scan(&id); err != nil {
 			t.Fatal(err)
 		}
 		pending[id] = true
@@ -229,13 +225,13 @@ func TestConcurrentCompletionClosesJobExactlyOnce(t *testing.T) {
 	}
 	var jobStatus int32
 	var resultCount int
-	if err := p.DB.QueryRow(`SELECT status FROM benchmark_jobs WHERE id = ?`, received.JobHandle.JobId).Scan(&jobStatus); err != nil {
+	if err := p.DB.QueryRow(`SELECT status FROM benchmark_jobs WHERE id = $1`, received.JobHandle.JobId).Scan(&jobStatus); err != nil {
 		t.Fatal(err)
 	}
 	if jobStatus != int32(pbresources.BenchmarkJob_FINISHED) {
 		t.Errorf("job status = %d, want FINISHED", jobStatus)
 	}
-	if err := p.DB.QueryRow(`SELECT COUNT(*) FROM benchmark_results WHERE benchmark_job_id = ?`, received.JobHandle.JobId).Scan(&resultCount); err != nil {
+	if err := p.DB.QueryRow(`SELECT COUNT(*) FROM benchmark_results WHERE benchmark_job_id = $1`, received.JobHandle.JobId).Scan(&resultCount); err != nil {
 		t.Fatal(err)
 	}
 	if resultCount != 1 {

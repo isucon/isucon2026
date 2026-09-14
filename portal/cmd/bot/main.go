@@ -242,15 +242,14 @@ func (b *bot) supportOpen(s *discordgo.Session, e *discordgo.MessageCreate, team
 
 	question := "Discord Support Channel Log\nLog will be posted after channel has closed"
 	answer := "Support channel has been opened. Check discord for the details\nサポートチャンネルが Discord 上に作成されました。Discordを確認してください。"
-	res, err := b.app.DB.ExecContext(ctx, `
+	var clarID int64
+	if err := b.app.DB.QueryRowContext(ctx, `
 		INSERT INTO clarifications (team_id, disclosed, original_question, question, answer, answered_at, admin, created_at, updated_at)
-		VALUES (?, 0, ?, ?, ?, ?, 1, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))`,
-		team.ID, question, question, answer, time.Now().UTC())
-	if err != nil {
+		VALUES ($1, false, $2, $3, $4, $5, true, now(), now()) RETURNING id`,
+		team.ID, question, question, answer, time.Now().UTC()).Scan(&clarID); err != nil {
 		reply("something went wrong")
 		return
 	}
-	clarID, _ := res.LastInsertId()
 
 	info.Usage = &pbbot.SupportCommInfo_Usage{
 		MessageIdSince:  parseUint(e.ID),
@@ -327,7 +326,7 @@ func (b *bot) supportClose(s *discordgo.Session, e *discordgo.MessageCreate, rep
 	}
 	if _, err := b.app.DB.ExecContext(ctx, `
 		UPDATE clarifications SET original_question = 'Discord Support Channel Log', question = 'Discord Support Channel Log',
-			answer = ?, answered_at = ?, updated_at = UTC_TIMESTAMP(6) WHERE id = ?`,
+			answer = $1, answered_at = $2, updated_at = now() WHERE id = $3`,
 		log, time.Now().UTC(), info.Usage.ClarificationId); err != nil {
 		reply("something went wrong")
 		return

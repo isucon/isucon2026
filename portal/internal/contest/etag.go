@@ -3,7 +3,6 @@ package contest
 import (
 	"context"
 	"database/sql"
-	"strings"
 
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -18,27 +17,25 @@ func LeaderboardEtag(ctx context.Context, db *sql.DB, t config.Timing, admin boo
 	var teamCount int64
 	var teamLastUpdated sql.NullTime
 	if err := db.QueryRowContext(ctx,
-		`SELECT COUNT(*), MAX(updated_at) FROM teams WHERE withdrawn = 0 AND disqualified = 0`,
+		`SELECT COUNT(*), MAX(updated_at) FROM teams WHERE withdrawn = false AND disqualified = false`,
 	).Scan(&teamCount, &teamLastUpdated); err != nil {
 		return nil, err
 	}
 
-	conds := []string{successfullyFinished}
-	var args []any
+	b := &condBuilder{}
+	b.add(successfullyFinished)
 	if !admin {
 		vis := VisibilityAudience
 		if teamID != 0 {
 			vis = VisibilityContestant
 		}
-		visConds, visArgs := visibilityConds(vis, t, teamID)
-		conds = append(conds, visConds...)
-		args = append(args, visArgs...)
+		b.addVisibility(vis, t, teamID)
 	}
 	var latestID sql.NullInt64
 	var latestAt sql.NullTime
 	err := db.QueryRowContext(ctx,
-		`SELECT id, marked_at FROM benchmark_results WHERE `+strings.Join(conds, " AND ")+` ORDER BY updated_at DESC LIMIT 1`,
-		args...).Scan(&latestID, &latestAt)
+		`SELECT id, marked_at FROM benchmark_results WHERE `+b.where()+` ORDER BY updated_at DESC LIMIT 1`,
+		b.args...).Scan(&latestID, &latestAt)
 	if err != nil && err != sql.ErrNoRows {
 		return nil, err
 	}
