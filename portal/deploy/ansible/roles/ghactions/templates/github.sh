@@ -1,4 +1,5 @@
-#!/bin/bash -xe
+#!/bin/bash
+set -euo pipefail
 # GitHub Actions（portal-deploy.yml）から `sudo.ws /opt/bin/github.sh <service>` で呼ばれる
 
 service=$1

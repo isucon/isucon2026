@@ -5,11 +5,11 @@ services:
     environment:
       POSTGRES_DB: {{ postgres.database }}
       POSTGRES_USER: {{ postgres.user }}
-      POSTGRES_PASSWORD: "{{ postgres.password }}"
+      POSTGRES_PASSWORD: {{ postgres.password | to_json }}
       TZ: UTC
       PGTZ: UTC
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - pgdata18:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U {{ postgres.user }} -d {{ postgres.database }}"]
       interval: 10s
@@ -27,7 +27,7 @@ services:
     image: {{ redis.image }}
     command: ["redis-server", "--appendonly", "yes"]
     volumes:
-      - redisdata:/data
+      - redisdata82:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -42,7 +42,7 @@ services:
         delay: 5s
 
   portal:
-    image: {{ app.image }}
+    image: {{ portal_image }}
     command: ["portal"]
     env_file:
       - /opt/portal/env
@@ -76,8 +76,12 @@ services:
         delay: 10s
 
   worker:
-    image: {{ app.image }}
+    image: {{ portal_image }}
     command: ["worker"]
+{% if portal.admin_ssh_private_key | length > 0 %}
+    volumes:
+      - /opt/portal/isucon_admin.key:/run/portal/isucon_admin.key:ro
+{% endif %}
     env_file:
       - /opt/portal/env
     stop_grace_period: 45s
@@ -92,7 +96,7 @@ services:
         delay: 10s
 
   notifyloop:
-    image: {{ app.image }}
+    image: {{ portal_image }}
     command: ["notifyloop"]
     environment:
       PORTAL_NOTIFYLOOP_TARGET: http://portal:8081/admin/long_running_check
@@ -104,7 +108,7 @@ services:
 {% if portal.discord.bot_token | length > 0 %}
 
   bot:
-    image: {{ app.image }}
+    image: {{ portal_image }}
     command: ["bot"]
     env_file:
       - /opt/portal/env
@@ -118,5 +122,5 @@ services:
 {% endif %}
 
 volumes:
-  pgdata:
-  redisdata:
+  pgdata18:
+  redisdata82:

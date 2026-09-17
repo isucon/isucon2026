@@ -1,121 +1,184 @@
 ---
-################################################################################
-# 競技ポータル一式を docker swarm（各ホスト単一ノード）にデプロイする
-# - portal / worker / notifyloop / bot は同じイメージ、PostgreSQL / Redis は公式イメージ
-# - portal は update_config: order=start-first で新コンテナが healthy になってから旧を止める
-# - PostgreSQL / Redis はデータボリュームを持つので stop-first で入れ替える
-################################################################################
-
-- name: 'assert secrets are filled'
-  tags: ['app']
-  assert:
-    that:
-      - item.value is string
-      - item.value != 'CHANGEME'
-      - item.value | length > 0
-    fail_msg: "{{ item.name }} is not set (CHANGEME). Fill it in group_vars (ansible-vault)."
-    quiet: true
-  loop:
-    - { name: 'docker.registry.password', value: "{{ docker.registry.password }}" }
-    - { name: 'postgres.password', value: "{{ postgres.password }}" }
-    - { name: 'portal.session_secret', value: "{{ portal.session_secret }}" }
-    - { name: 'portal.bypass_secret', value: "{{ portal.bypass_secret }}" }
-    - { name: 'portal.checker_secret', value: "{{ portal.checker_secret }}" }
-    - { name: 'portal.bench_token', value: "{{ portal.bench_token }}" }
-    - { name: 'portal.ssh_key_api_secret', value: "{{ portal.ssh_key_api_secret }}" }
-    - { name: 'portal.admin_password', value: "{{ portal.admin_password }}" }
-    - { name: 'portal.github.client_id', value: "{{ portal.github.client_id }}" }
-    - { name: 'portal.github.client_secret', value: "{{ portal.github.client_secret }}" }
-    - { name: 'portal.discord.client_id', value: "{{ portal.discord.client_id }}" }
-    - { name: 'portal.discord.client_secret', value: "{{ portal.discord.client_secret }}" }
-  loop_control:
-    label: "{{ item.name }}"
-
-- name: 'check swarm status'
-  tags: ['app', 'swarm']
-  command: 'docker node ls'
+- name: Check swarm status
+  command: docker node ls
   register: swarm_status
   failed_when: false
   changed_when: false
   check_mode: false
 
-- name: 'init single node swarm'
-  tags: ['app', 'swarm']
-  command: 'docker swarm init --advertise-addr {{ ansible_default_ipv4.address }}'
+- name: Initialize single node swarm
+  command: "docker swarm init --advertise-addr {{ ansible_facts['default_ipv4']['address'] }}"
   when: swarm_status.rc != 0
 
-- name: 'prepare setting file directories'
-  tags: ['app']
-  file:
-    path: '/opt/portal'
-    state: 'directory'
-    owner: 'root'
-    group: 'root'
-    mode: '0755'
-
-- name: 'create env file'
-  tags: ['app']
-  template:
-    src: 'env'
-    dest: '/opt/portal/env'
-    owner: 'root'
-    group: 'root'
-    mode: '0600'
-  notify: 'deploy portal stack'
-
-- name: 'create docker-compose.yml'
-  tags: ['app']
-  template:
-    src: 'docker-compose.yml'
-    dest: '/opt/portal/docker-compose.yml'
-    owner: 'root'
-    group: 'root'
-    mode: '0644'
-  notify: 'deploy portal stack'
-
-# 初回のみここでデプロイする（設定変更時の反映は handler 経由）
-- name: 'check portal service exists'
-  tags: ['app']
-  command: 'docker service inspect {{ app.stack }}_portal'
-  register: portal_service_status
+# Never silently attach an empty PG18 volume to an older database deployment.
+- name: Inspect existing database service
+  command: 'docker service inspect {{ app.stack }}_postgres'
+  register: old_database
   failed_when: false
   changed_when: false
   check_mode: false
 
-- name: 'deploy portal stack (first time)'
-  tags: ['app']
-  command: 'docker stack deploy --with-registry-auth --detach=false -c /opt/portal/docker-compose.yml {{ app.stack }}'
-  when: portal_service_status.rc != 0
+- name: Require explicit migration from older PostgreSQL volumes
+  assert:
+    that:
+      - database_spec.Image is match('postgres:18\\.')
+      - "(app.stack + '_pgdata18') in (database_spec.Mounts | map(attribute='Source') | list)"
+    fail_msg: Existing PostgreSQL requires a reviewed dump/restore migration; see README.md.
+  vars:
+    database_spec: "{{ (old_database.stdout | from_json)[0].Spec.TaskTemplate.ContainerSpec }}"
+  when: old_database.rc == 0
 
-- name: 'nginx site'
-  tags: ['app', 'nginx']
+- name: Build committed source on the host
+  when: app.mode == 'local'
+  block:
+    - name: Resolve source revision on controller
+      command:
+        argv: [git, rev-parse, '{{ app.revision }}^{commit}']
+        chdir: '{{ playbook_dir }}/../../..'
+      delegate_to: localhost
+      become: false
+      changed_when: false
+      check_mode: false
+      register: source_revision
+
+    - name: Select immutable local image
+      set_fact:
+        portal_image: 'isuxportal:{{ source_revision.stdout }}'
+
+    - name: Check whether this image is already built
+      command: 'docker image inspect {{ portal_image }}'
+      register: local_image
+      failed_when: false
+      changed_when: false
+      check_mode: false
+
+    - name: Prepare and build source archive
+      when: local_image.rc != 0 and not ansible_check_mode
+      block:
+        - name: Allocate controller archive
+          tempfile:
+            suffix: .tar
+          delegate_to: localhost
+          become: false
+          register: source_archive
+
+        - name: Archive committed portal source
+          command:
+            argv: [git, archive, '--output={{ source_archive.path }}', '{{ source_revision.stdout }}:portal']
+            chdir: '{{ playbook_dir }}/../../..'
+          delegate_to: localhost
+          become: false
+          changed_when: false
+
+        - name: Create source directory
+          file:
+            path: '/opt/portal/source/{{ source_revision.stdout }}'
+            state: directory
+            mode: '0700'
+
+        - name: Upload source
+          unarchive:
+            src: '{{ source_archive.path }}'
+            dest: '/opt/portal/source/{{ source_revision.stdout }}'
+
+        - name: Build portal and frontend
+          command:
+            argv:
+              - docker
+              - build
+              - --build-arg
+              - 'REVISION={{ source_revision.stdout }}'
+              - -f
+              - deploy/Dockerfile
+              - -t
+              - '{{ portal_image }}'
+              - .
+            chdir: '/opt/portal/source/{{ source_revision.stdout }}'
+          environment:
+            DOCKER_BUILDKIT: '1'
+          async: 3600
+          poll: 15
+      always:
+        - name: Remove controller archive
+          file:
+            path: '{{ source_archive.path }}'
+            state: absent
+          delegate_to: localhost
+          become: false
+          when: source_archive.path is defined
+
+- name: Select registry image
+  set_fact:
+    portal_image: '{{ app.image }}'
+  when: app.mode == 'registry'
+
+- name: Install optional competition SSH key
+  copy:
+    content: "{{ portal.admin_ssh_private_key }}"
+    dest: /opt/portal/isucon_admin.key
+    owner: '1000'
+    group: '1000'
+    mode: '0400'
+  when: portal.admin_ssh_private_key | length > 0
+  no_log: true
+
+- name: Write private deployment files
   template:
-    src: 'nginxsite.conf'
-    dest: '/etc/nginx/sites-enabled/portal'
-    owner: 'root'
-    group: 'root'
-    mode: '0644'
-  notify: 'reload nginx'
+    src: '{{ item }}'
+    dest: '/opt/portal/{{ item }}'
+    mode: '0600'
+  loop: [env, docker-compose.yml]
+  no_log: true
+  notify: deploy portal stack
 
-# PostgreSQL の日次ダンプ（単一ノードなので最低限の保険。7 日分保持）
-- name: 'create backup directory'
-  tags: ['app', 'backup']
+- name: Ensure stack exists
+  command: 'docker service inspect {{ app.stack }}_portal'
+  register: portal_service
+  changed_when: portal_service.rc != 0
+  failed_when: false
+  check_mode: false
+  notify: deploy portal stack
+
+- name: Install nginx site
+  template:
+    src: nginxsite.conf
+    dest: /etc/nginx/conf.d/portal.conf
+    mode: '0644'
+  notify: reload nginx
+
+- name: Create backup directory
   file:
-    path: '/var/backups/portal'
-    state: 'directory'
-    owner: 'root'
-    group: 'root'
+    path: /var/backups/portal
+    state: directory
     mode: '0700'
 
-- name: 'daily postgres dump'
-  tags: ['app', 'backup']
-  ansible.builtin.cron:
+- name: Install atomic backup script
+  template:
+    src: backup.sh
+    dest: /opt/portal/backup.sh
+    mode: '0700'
+
+- name: Schedule daily backup at 03:30 JST (host uses UTC)
+  cron:
     name: portal pg_dump
     minute: '30'
-    hour: '18'   # JST 03:30
-    job: >-
-      docker exec $(docker ps -q -f name={{ app.stack }}_postgres) pg_dump -U {{ postgres.user }} {{ postgres.database }}
-      | gzip > /var/backups/portal/isuxportal-$(date +\%F).sql.gz
-      && find /var/backups/portal -name '*.sql.gz' -mtime +7 -delete
+    hour: '18'
+    job: /opt/portal/backup.sh
     user: root
     cron_file: portal_pg_dump
+
+- name: Apply pending handlers
+  meta: flush_handlers
+
+- name: Verify HTTP health through nginx
+  uri:
+    url: http://127.0.0.1/site/sha
+    method: HEAD
+    headers:
+      Host: '{{ app_fqdn }}'
+    status_code: 200
+  register: portal_health
+  until: portal_health is succeeded
+  retries: 30
+  delay: 5
+  when: not ansible_check_mode

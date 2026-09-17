@@ -2,21 +2,14 @@
 ################################################################################
 # baselines
 ################################################################################
-- name: 'set hostname'
-  tags: ['common', 'common_baseline']
-  hostname:
-    name: "{{ inventory_hostname }}"
-
-- name: 'upgrade all packages to the latest'
-  tags: ['common', 'common_baseline']
-  apt:
-    update_cache: 'true'
-    upgrade: 'dist'
+- name: Set UTC host timezone
+  community.general.timezone:
+    name: Etc/UTC
 
 - name: 'install basic packages'
   tags: ['common', 'common_baseline']
   apt:
-    state: 'latest'
+    state: 'present'
     update_cache: 'yes'
     name:
       - 'curl'
@@ -27,6 +20,8 @@
       - 'python3-pip'
       - 'python-is-python3'
       - 'fail2ban'
+      - 'unattended-upgrades'
+      - 'cron'
 
 - name: configure bash profile
   template: src=bash_profile.j2 dest=/home/{{ item.username }}/.bash_profile owner={{ item.username }} group={{ item.username }} mode=0644
@@ -56,7 +51,7 @@
             dhcp4: no
             addresses:
               - {{ sacloud_interfaces[1].UserIPAddress }}/24
-  when: sacloud_interfaces | length >= 2
+  when: sacloud_interfaces is defined and sacloud_interfaces | length >= 2
   tags: ['common', 'netplan']
   notify: netplan apply
 
@@ -64,7 +59,7 @@
   file:
     path: /etc/netplan/01-eth1.yaml
     state: absent
-  when: sacloud_interfaces | length <= 1
+  when: sacloud_interfaces is defined and sacloud_interfaces | length <= 1
   tags: ['common', 'netplan']
   notify: netplan apply
 

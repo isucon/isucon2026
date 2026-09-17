@@ -19,7 +19,9 @@ WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o /out/ ./cmd/portal ./cmd/worker ./cmd/bot ./cmd/notifyloop
+ARG GO_BUILD_PROCS=1
+ARG GO_BUILD_MEMORY=1GiB
+RUN CGO_ENABLED=0 GOMEMLIMIT=${GO_BUILD_MEMORY} GOGC=50 go build -p ${GO_BUILD_PROCS} -trimpath -ldflags='-s -w' -o /out/ ./cmd/portal ./cmd/worker ./cmd/bot ./cmd/notifyloop
 
 # --- 実行イメージ
 FROM debian:bookworm-slim

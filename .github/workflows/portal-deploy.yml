@@ -29,29 +29,32 @@ jobs:
   deploy:
     name: Rolling update portal services
     runs-on: ubuntu-24.04
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    if: vars.PORTAL_DEPLOY_ENABLED == 'true' && (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success')
     env:
       STAGE: ${{ github.event.inputs.stage || 'develop' }}
+      DEVELOP_HOST: ${{ vars.PORTAL_DEPLOY_HOST_DEVELOP }}
+      PRODUCTION_HOST: ${{ vars.PORTAL_DEPLOY_HOST_PRODUCTION }}
     steps:
       - name: Install SSH key
         uses: shimataro/ssh-key-action@87a8f067114a8ce263df83e9ed5c849953548bc3 # v2.8.1
         with:
           key: ${{ secrets.PORTAL_DEPLOY_SSH_KEY }}
           name: id_ed25519
-          known_hosts: unnecessary
-          config: |
-            Host *
-              StrictHostKeyChecking no
+          known_hosts: ${{ secrets.PORTAL_DEPLOY_KNOWN_HOSTS }}
 
       - name: Resolve target host
         id: target
         run: |
           case "${STAGE}" in
-            production) echo "host=app-001.contest.isucon.net" >> "$GITHUB_OUTPUT" ;;
-            develop)    echo "host=app-001.contest-dev.isucon.net" >> "$GITHUB_OUTPUT" ;;
+            production) host="$PRODUCTION_HOST" ;;
+            develop)    host="$DEVELOP_HOST" ;;
             *) echo "unknown stage: ${STAGE}" >&2; exit 1 ;;
           esac
+          [[ "$host" =~ ^[a-zA-Z0-9][a-zA-Z0-9.-]*$ ]] || { echo "invalid deployment host" >&2; exit 1; }
+          echo "host=$host" >> "$GITHUB_OUTPUT"
 
       # Ubuntu 26.04 のデフォルト sudo は sudo-rs のため従来 sudo の sudo.ws を使う
       - name: Rolling update
-        run: ssh github@${{ steps.target.outputs.host }} sudo.ws /opt/bin/github.sh app
+        env:
+          DEPLOY_HOST: ${{ steps.target.outputs.host }}
+        run: ssh "github@$DEPLOY_HOST" sudo.ws /opt/bin/github.sh app
