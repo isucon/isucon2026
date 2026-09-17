@@ -5,7 +5,7 @@ PORTAL_LISTEN=:8081
 DEFAULT_URL_HOST={{ app_fqdn }}
 MONITOR_ENV={{ stage }}
 
-ISUXPORTAL_DATABASE_URL=postgres://{{ postgres.user }}:{{ postgres.password }}@postgres:5432/{{ postgres.database }}?sslmode=disable
+ISUXPORTAL_DATABASE_URL=postgres://{{ postgres.user }}:{{ postgres.password | urlencode }}@postgres:5432/{{ postgres.database }}?sslmode=disable
 REDIS_URL=redis://redis:6379/0
 
 ISUXPORTAL_SESSION_SECRET={{ portal.session_secret }}
@@ -60,3 +60,5 @@ ISUXPORTAL_TIMING_CONTEST_END={{ portal.timing.contest_end }}
 ISUXPORTAL_TERMS_URL={{ portal.terms_url }}
 ISUXPORTAL_RULES_URL={{ portal.rules_url }}
 ISUXPORTAL_DOCS_URL={{ portal.docs_url }}
+
+ISUXPORTAL_ISUCON_ADMIN_SSH_PRIVATE_KEY_PATH={{ "/run/portal/isucon_admin.key" if portal.admin_ssh_private_key else "" }}

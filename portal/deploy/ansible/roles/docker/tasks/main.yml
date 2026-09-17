@@ -1,79 +1,26 @@
 ---
-################################################################################
-# install docker
-################################################################################
-
-- name: 'install curl'
-  tags: ['docker']
+- name: Install Ubuntu LTS container packages
   apt:
-    name: 'curl'
-    state: 'latest'
+    name: [docker.io, docker-compose-v2, docker-buildx, python3-requests]
+    state: present
+    update_cache: true
 
-- name: 'check docker version'
-  tags: ['docker']
-  command: 'docker version -f \{\{.Server.Version\}\}'
-  changed_when: 'false'
-  ignore_errors: 'true'
-  check_mode: 'false'
-  register: docker_installed
-
-- name: 'install docker'
-  tags: ['docker']
-  shell: 'curl -sSL https://get.docker.com/ | sudo sh'
-  when: docker_installed.rc != 0
-
-- name: 'update docker if older than docker_min_version'
-  tags: ['docker']
-  apt:
-    name: 'docker-engine'
-    state: 'latest'
-  when: docker_installed.rc == 0 and docker_installed.stdout is version(docker.docker_min_version,  '<')
-
-- name: 'add admin user to docker group'
-  tags: ['docker']
-  user:
-    name: 'admin'
-    groups: 'docker'
-    append: 'true'
-
-- name: 'set docker defaults'
-  tags: ['docker']
-  template:
-    src: 'docker'
-    dest: '/etc/default/docker'
-    owner: 'root'
-    group: 'root'
-    mode: '0644'
-  notify: 'restart_docker'
-
-- name: 'enable systemd service'
-  tags: ['docker']
+- name: Enable Docker
   systemd_service:
-    daemon_reload: 'true'
-    name: 'docker'
-    enabled: 'true'
-  notify: 'restart_docker'
+    name: docker
+    state: started
+    enabled: true
 
-- name: 'install docker compose plugin'
-  tags: ['docker']
-  apt:
-    name: 'docker-compose-plugin'
-    state: 'latest'
-
-- name: Prune unused Docker image
-  ansible.builtin.cron:
+- name: Preserve images needed for rollback
+  cron:
     name: docker system prune
-    weekday: 2
-    minute: 0
-    hour: 23
-    job: docker system prune -af --filter "until=168h" >> /var/log/systemprune_cron.log
-    user: root
     cron_file: docker_system_prune
-  tags: ['docker']
+    state: absent
 
-- name: 'log into private registry'
-  tags: ['docker']
-  docker_login:
-    registry: "{{ docker.registry.host }}"
-    username: "{{ docker.registry.username }}"
-    password: "{{ docker.registry.password }}"
+- name: Authenticate to the optional registry
+  community.docker.docker_login:
+    registry_url: '{{ registry.host }}'
+    username: '{{ registry.username }}'
+    password: '{{ registry.password }}'
+  when: app.mode == 'registry' and registry is defined
+  no_log: true

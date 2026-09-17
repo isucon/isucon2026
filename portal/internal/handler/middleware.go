@@ -212,7 +212,8 @@ func (h *Handler) adminOnlySwitch(next http.Handler) http.Handler {
 
 func adminOnlyExempt(path string) bool {
 	switch {
-	case path == "/admin/session/new" || path == "/admin/session",
+	case path == "/site/sha" || path == "/admin/long_running_check",
+		path == "/admin/session/new" || path == "/admin/session",
 		path == "/api/session",
 		path == "/api/env_check_info" || path == "/api/ssh_public_keys" || path == "/api/env_checks",
 		strings.HasPrefix(path, "/api/bench/"),

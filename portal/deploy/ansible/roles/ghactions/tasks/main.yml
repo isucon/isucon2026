@@ -30,7 +30,7 @@
     - users
 
 - name: configure sudoers
-  template: src=01_github.sudo.j2 dest=/etc/sudoers.d/01_github owner=root group=root mode=0440
+  template: src=01_github.sudo.j2 dest=/etc/sudoers.d/01_github owner=root group=root mode=0440 validate="/usr/sbin/visudo -cf %s"
   tags: github
 
 - name: create /opt/bin directory
