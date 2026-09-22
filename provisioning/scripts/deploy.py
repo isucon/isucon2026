@@ -97,7 +97,7 @@ def deploy_locked(component: str, state: Path, env: dict[str, str]) -> int:
     report_dir = state / "deploy" / datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ")
     report_dir.mkdir(parents=True)
     report = {"environment": state.name, "component": component, "outcome": "failed", "seconds": {}, "artifacts": {}}
-    variables = {"deploy_migrations": files_digest(ROOT / "backend/migrations")}
+    variables = {"deploy_schema_sha256": hashlib.sha256((ROOT / "backend/schema/schema.sql").read_bytes()).hexdigest()}
     variables_file = report_dir / "vars.json"
     inventory = state / "inventory.yml"
 

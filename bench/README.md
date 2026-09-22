@@ -84,12 +84,12 @@ $ export ISUREAL_DATABASE_URL='postgres://isureal:local-development-only@localho
 $ export ISUREAL_CURSOR_HMAC_KEY='local-e2e-cursor-key-0123456789abcdef'
 $ export ISUREAL_IMAGE_ROOT=/tmp/isureal/images
 $ export ISUREAL_IMAGE_SANITIZER_PATH=/tmp/isureal/image-sanitizer
-$ export ISUREAL_MIGRATIONS_DIR=$PWD/backend/migrations
+$ export ISUREAL_SCHEMA_PATH=$PWD/backend/schema/schema.sql
 $ export ISUREAL_OPENAPI_PATH=$PWD/specs/001-isureal-social-app/contracts/openapi.yaml
 $ /tmp/isureal/api & /tmp/isureal/worker &
 
 $ go -C bench run . -target http://localhost:8080
 ```
 
-`ISUREAL_MIGRATIONS_DIR` は `POST /api/v1/initialize` がスキーマリセットに使う
-マイグレーションディレクトリ（未設定時はカレントディレクトリ相対の `migrations`）。
+`ISUREAL_SCHEMA_PATH` は `POST /api/v1/initialize` がスキーマリセットに使う
+`schema.sql`（未設定時はカレントディレクトリ相対の `schema/schema.sql`）。

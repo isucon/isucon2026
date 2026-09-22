@@ -6,24 +6,23 @@
   any_errors_fatal: true
   tags: [precheck]
   tasks:
-    - name: Read deployed migration hashes without changing the database
+    - name: Read deployed schema hash without changing the database
       ansible.builtin.command:
         argv:
           - /usr/bin/python3
           - -c
           - |
-            import hashlib, json
+            import hashlib
             from pathlib import Path
-            root = Path('/opt/isucon/share/migrations')
-            print(json.dumps({str(p.relative_to(root)): hashlib.sha256(p.read_bytes()).hexdigest()
-                              for p in sorted(root.rglob('*')) if p.is_file()}))
-      register: deployed_migrations
+            schema = Path('/opt/isucon/share/schema.sql')
+            print(hashlib.sha256(schema.read_bytes()).hexdigest())
+      register: deployed_schema
       changed_when: false
 
-    - name: Require matching migration files
+    - name: Require matching schema file
       ansible.builtin.assert:
-        that: (deployed_migrations.stdout | from_json) == deploy_migrations
-        fail_msg: "Migration files differ. Run make provisioning-artifacts and make vm-provision before vm-deploy."
+        that: deployed_schema.stdout == deploy_schema_sha256
+        fail_msg: "Schema file differs. Run make provisioning-artifacts and make vm-provision before vm-deploy."
 
     - name: Require a healthy provisioned service node
       ansible.builtin.command: /usr/local/sbin/isureal-node-check
@@ -57,7 +56,7 @@
             owner: root
             group: root
             mode: "0755"
-          loop: [api, worker, image-sanitizer, migrate, reset, seed]
+          loop: [api, worker, image-sanitizer, reset, seed]
           register: backend_copy
 
         - name: Copy API contract

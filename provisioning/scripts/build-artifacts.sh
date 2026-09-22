@@ -24,10 +24,10 @@ bundle_dir="${artifact_root}/bundles"
 mkdir -p "${repo_root}/provisioning/.state"
 exec 9>"${repo_root}/provisioning/.state/artifact-build.lock"
 flock 9
-mkdir -p "${bin_dir}" "${frontend_dir}" "${share_dir}/migrations" "${bundle_dir}"
+mkdir -p "${bin_dir}" "${frontend_dir}" "${share_dir}" "${bundle_dir}"
 
 if [[ "${component}" != frontend ]]; then
-  for command in api worker image-sanitizer migrate reset seed; do
+  for command in api worker image-sanitizer reset seed; do
     CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
       go -C "${repo_root}/backend" build -buildvcs=false -trimpath -ldflags='-buildid=' \
       -o "${bin_dir}/${command}" "./cmd/${command}"
@@ -57,7 +57,7 @@ if [[ "${component}" != backend ]]; then
   rsync -a --delete "${repo_root}/frontend/dist/" "${frontend_dir}/"
 fi
 if [[ "${component}" != frontend ]]; then
-  rsync -a --delete "${repo_root}/backend/migrations/" "${share_dir}/migrations/"
+  install -m 0644 "${repo_root}/backend/schema/schema.sql" "${share_dir}/schema.sql"
   install -m 0644 "${repo_root}/specs/001-isureal-social-app/contracts/openapi.yaml" "${share_dir}/openapi.yaml"
 fi
 
@@ -78,7 +78,7 @@ fi
 tar_flags=(--sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner)
 if [[ "${component}" != frontend ]]; then
   tar "${tar_flags[@]}" -cf "${bundle_dir}/backend.tar" -C "${artifact_root}" \
-    bin/api bin/worker bin/image-sanitizer bin/migrate bin/reset bin/seed share/openapi.yaml
+    bin/api bin/worker bin/image-sanitizer bin/reset bin/seed share/openapi.yaml
 fi
 if [[ "${component}" != backend ]]; then
   tar "${tar_flags[@]}" -cf "${bundle_dir}/frontend.tar" -C "${artifact_root}" frontend
@@ -87,7 +87,7 @@ if [[ "${component}" == all ]]; then
   tar "${tar_flags[@]}" -cf "${bundle_dir}/router.tar" -C "${artifact_root}" \
     bin/isureal-router bin/isureal-portal
   tar "${tar_flags[@]}" -cf "${bundle_dir}/envoy.tar" -C "${artifact_root}" bin/envoy
-  tar "${tar_flags[@]}" -cf "${bundle_dir}/database-migrations.tar" -C "${artifact_root}" share/migrations
+  tar "${tar_flags[@]}" -cf "${bundle_dir}/database-schema.tar" -C "${artifact_root}" share/schema.sql
 
   rm -f "${artifact_root}/manifest.json" "${artifact_root}/release.json"
 

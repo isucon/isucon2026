@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/isucon/isucon2026/backend/internal/migrate"
+	"github.com/isucon/isucon2026/backend/internal/schema"
 	"github.com/isucon/isucon2026/backend/internal/service"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -25,8 +25,8 @@ var users = []fixtureUser{
 	{"00000000-0000-0000-0000-000000000104", "dave", "Dave", "europe"},
 }
 
-func Minimal(ctx context.Context, pool *pgxpool.Pool, migrationDirectory string) error {
-	if err := migrate.Reset(ctx, pool, migrationDirectory); err != nil {
+func Minimal(ctx context.Context, pool *pgxpool.Pool, schemaPath string) error {
+	if err := schema.Reset(ctx, pool, schemaPath); err != nil {
 		return err
 	}
 	return pgx.BeginFunc(ctx, pool, func(tx pgx.Tx) error {
@@ -34,11 +34,12 @@ func Minimal(ctx context.Context, pool *pgxpool.Pool, migrationDirectory string)
 	})
 }
 
-// MinimalIfEmpty migrates the database and installs the deterministic local
-// fixture only when no application data exists. It is safe to run on every
-// Docker Compose startup without erasing data from an existing environment.
-func MinimalIfEmpty(ctx context.Context, pool *pgxpool.Pool, migrationDirectory string) error {
-	if err := migrate.Up(ctx, pool, migrationDirectory); err != nil {
+// MinimalIfEmpty applies schema.sql when the tables are absent and installs
+// the deterministic local fixture only when no application data exists. It is
+// safe to run on every Docker Compose startup without erasing data from an
+// existing environment.
+func MinimalIfEmpty(ctx context.Context, pool *pgxpool.Pool, schemaPath string) error {
+	if err := schema.Ensure(ctx, pool, schemaPath); err != nil {
 		return err
 	}
 	return pgx.BeginFunc(ctx, pool, func(tx pgx.Tx) error {

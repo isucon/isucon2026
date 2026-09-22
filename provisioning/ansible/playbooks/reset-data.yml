@@ -17,8 +17,8 @@
           ansible.builtin.command:
             argv:
               - /opt/isucon/bin/seed
-              - --dir
-              - /opt/isucon/share/migrations
+              - --schema
+              - /opt/isucon/share/schema.sql
           environment:
             ISUREAL_DATABASE_URL: "postgresql://isureal:{{ isucon_database_password }}@127.0.0.1:5432/isureal?sslmode=disable"
           no_log: true

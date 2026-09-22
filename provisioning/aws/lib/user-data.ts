@@ -48,7 +48,7 @@ export function serviceUserData(
   const backendEnvironment = `ISUREAL_LISTEN_ADDRESS=127.0.0.1:8081
 ISUREAL_PUBLIC_ORIGIN=https://app.team1-aws.${domain}
 ISUREAL_DATABASE_URL=postgresql://isureal:${databasePassword}@${databaseIp}:5432/isureal?sslmode=disable
-ISUREAL_MIGRATIONS_DIR=/opt/isucon/share/migrations
+ISUREAL_SCHEMA_PATH=/opt/isucon/share/schema.sql
 ISUREAL_IMAGE_ROOT=/var/lib/isureal/images
 ISUREAL_CURSOR_HMAC_KEY=${cursorKey}
 ISUREAL_OPENAPI_PATH=/opt/isucon/share/openapi.yaml
@@ -92,7 +92,7 @@ SELECT 'CREATE DATABASE isureal OWNER isureal'
 WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'isureal')\\gexec
 SQL
 ISUREAL_DATABASE_URL="postgresql://isureal:${databasePassword}@127.0.0.1:5432/isureal?sslmode=disable" \\
-  /opt/isucon/bin/seed --if-empty --dir /opt/isucon/share/migrations
+  /opt/isucon/bin/seed --if-empty --schema /opt/isucon/share/schema.sql
 cat >/usr/local/sbin/isureal-node-check <<'CHECK'
 #!/bin/sh
 set -eu

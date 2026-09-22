@@ -251,7 +251,7 @@ Memories上の日付は投稿期間開始日時を地域オフセットで表し
 
 #### アプリ側の実装方針（競技仕様承認後の作業）
 
-- `backend/internal/httpapi`へハンドラーを追加し、`backend/internal/migrate`の`Reset`と
+- `backend/internal/httpapi`へハンドラーを追加し、`backend/internal/schema`の`Reset`と
   競技用fixtureの投入処理を再利用する。`backend/cmd/reset`および`backend/cmd/seed`と共通の
   内部関数を経由させ、CLIとHTTPで初期化結果が一致することを保証する。
 - 画像ファイル領域（`ISUREAL_IMAGE_ROOT`）のクリアと初期データセット由来の画像配置を、

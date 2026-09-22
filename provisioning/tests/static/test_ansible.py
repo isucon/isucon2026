@@ -17,7 +17,7 @@ class AnsibleContractTest(unittest.TestCase):
                 "Initialize PostgreSQL 16 cluster at runtime",
                 "Create application PostgreSQL role",
                 "Create application PostgreSQL database",
-                "Run migrations and seed only an empty database",
+                "Apply schema and seed only an empty database",
             ):
                 self.assertIn("isucon_node_id == 'db1'", task["when"])
         environment = self.read("roles/problem_server/templates/backend.env.j2")
@@ -45,7 +45,7 @@ class AnsibleContractTest(unittest.TestCase):
         self.assertNotIn("isucon_release_manifest.packages", tasks)
         self.assertIn("backend.tar", tasks)
         self.assertIn("frontend.tar", tasks)
-        self.assertIn("database-migrations.tar", tasks)
+        self.assertIn("database-schema.tar", tasks)
         for unit in ("isureal-api.service", "isureal-worker.service", "nginx.service"):
             self.assertIn(unit, tasks)
         self.assertRegex(
@@ -66,10 +66,10 @@ class AnsibleContractTest(unittest.TestCase):
             self.assertIn("isucon_topology.portal.teamHash", content)
             self.assertNotIn("app.{{ isucon_environment_id }}", content)
 
-    def test_problem_server_initialize_uses_deployed_migrations(self) -> None:
+    def test_problem_server_initialize_uses_deployed_schema(self) -> None:
         environment = self.read("roles/problem_server/templates/backend.env.j2")
         self.assertIn(
-            "ISUREAL_MIGRATIONS_DIR=/opt/isucon/share/migrations",
+            "ISUREAL_SCHEMA_PATH=/opt/isucon/share/schema.sql",
             environment,
         )
 
