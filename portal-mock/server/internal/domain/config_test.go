@@ -38,9 +38,11 @@ func TestConfigValidation(t *testing.T) {
 		t.Fatal(err)
 	}
 	invalid := []Config{
-		{Server1Region: 99, Server2Region: RegionAP, Server3Region: RegionAP, MainServer: Server1, DefaultCountry: "JP"},
-		{Server1Region: RegionAP, Server2Region: RegionAP, Server3Region: RegionAP, MainServer: 99, DefaultCountry: "JP"},
-		{Server1Region: RegionAP, Server2Region: RegionAP, Server3Region: RegionAP, MainServer: Server1, DefaultCountry: "XX"},
+		{Server1Region: 99, Server2Region: RegionEU, Server3Region: RegionUS, MainServer: Server1, DefaultCountry: "JP"},
+		{Server1Region: RegionAP, Server2Region: RegionEU, Server3Region: RegionUS, MainServer: 99, DefaultCountry: "JP"},
+		{Server1Region: RegionAP, Server2Region: RegionEU, Server3Region: RegionUS, MainServer: Server1, DefaultCountry: "XX"},
+		{Server1Region: RegionAP, Server2Region: RegionAP, Server3Region: RegionAP, MainServer: Server1, DefaultCountry: "JP"},
+		{Server1Region: RegionAP, Server2Region: RegionUS, Server3Region: RegionEU, MainServer: Server1, DefaultCountry: "JP"},
 	}
 	for _, cfg := range invalid {
 		if cfg.Validate() == nil {

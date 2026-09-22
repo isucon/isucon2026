@@ -58,22 +58,16 @@ type Config struct {
 func InitialConfig() Config {
 	return Config{
 		Server1Region:  RegionAP,
-		Server2Region:  RegionAP,
-		Server3Region:  RegionAP,
+		Server2Region:  RegionEU,
+		Server3Region:  RegionUS,
 		MainServer:     Server1,
 		DefaultCountry: "JP",
 	}
 }
 
 func (c Config) Validate() error {
-	if !ValidRegion(c.Server1Region) {
-		return fmt.Errorf("server1 region is invalid")
-	}
-	if !ValidRegion(c.Server2Region) {
-		return fmt.Errorf("server2 region is invalid")
-	}
-	if !ValidRegion(c.Server3Region) {
-		return fmt.Errorf("server3 region is invalid")
+	if c.Server1Region != RegionAP || c.Server2Region != RegionEU || c.Server3Region != RegionUS {
+		return errors.New("server regions are fixed: server1=AP, server2=EU, server3=US")
 	}
 	if !ValidServer(c.MainServer) {
 		return errors.New("main server is invalid")

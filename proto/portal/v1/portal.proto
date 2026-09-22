@@ -33,12 +33,14 @@ message TeamKey {
 }
 
 message ServerRegions {
+  // 固定配置: server1=AP、server2=EU、server3=US。ユーザーは変更できない。
   Region server1 = 1;
   Region server2 = 2;
   Region server3 = 3;
 }
 
 message Config {
+  // 固定配置の確認用。固定値に一致しない snapshot/report は拒否する。
   ServerRegions server_regions = 1;
   ServerId main_server = 2;
   // ISO 3166-1 alpha-2。

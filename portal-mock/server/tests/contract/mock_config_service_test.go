@@ -50,3 +50,44 @@ func assertCode(t *testing.T, err error, code connect.Code) {
 		t.Fatalf("got error %v, want code %s", err, code)
 	}
 }
+
+func TestFixedRegionsRejectUserConfiguration(t *testing.T) {
+	server := testkit.NewServer(t, nil)
+	ctx := context.Background()
+	initial, err := server.Mock.GetState(ctx, connect.NewRequest(&portalmockv1.GetStateRequest{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := initial.Msg.State.Portal.Desired
+	regions := want.Config.ServerRegions
+	if regions.Server1 != portalv1.Region_REGION_AP || regions.Server2 != portalv1.Region_REGION_EU || regions.Server3 != portalv1.Region_REGION_US {
+		t.Fatalf("unexpected fixed regions: %v", regions)
+	}
+	for _, region := range []portalv1.Region{portalv1.Region_REGION_UNSPECIFIED, portalv1.Region_REGION_AP, portalv1.Region_REGION_EU, portalv1.Region_REGION_US, 99} {
+		for _, patch := range []*portalmockv1.DesiredPatch{
+			{Server1Region: region.Enum()},
+			{Server2Region: region.Enum()},
+			{Server3Region: region.Enum()},
+		} {
+			// A rejected region must also prevent other fields from changing.
+			patch.MainServer = portalv1.ServerId_SERVER_ID_SERVER3.Enum()
+			_, err := server.Mock.UpdateDesired(ctx, connect.NewRequest(&portalmockv1.UpdateDesiredRequest{Patch: patch}))
+			assertCode(t, err, connect.CodeInvalidArgument)
+		}
+	}
+	after, err := server.Mock.GetState(ctx, connect.NewRequest(&portalmockv1.GetStateRequest{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.Msg.State.Portal.Desired.SnapshotId != want.SnapshotId || after.Msg.State.Portal.Desired.Config.MainServer != want.Config.MainServer {
+		t.Fatal("rejected region update changed desired state")
+	}
+	reset, err := server.Mock.Reset(ctx, connect.NewRequest(&portalmockv1.ResetRequest{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resetRegions := reset.Msg.State.Portal.Desired.Config.ServerRegions
+	if resetRegions.Server1 != regions.Server1 || resetRegions.Server2 != regions.Server2 || resetRegions.Server3 != regions.Server3 {
+		t.Fatalf("reset changed fixed regions: %v", resetRegions)
+	}
+}

@@ -158,12 +158,11 @@ desired stream:
 router_rpc StreamDesired '{"team":{"teamNumber":1}}'
 ```
 
-設定変更:
+設定変更（配置は server1=AP、server2=EU、server3=US に固定。リージョン更新は同値でも `invalid_argument`）:
 
 ```bash
 mock_rpc UpdateDesired '{
   "patch": {
-    "server2Region": "REGION_EU",
     "mainServer": "SERVER_ID_SERVER3",
     "defaultCountry": "US"
   }
@@ -182,7 +181,7 @@ cat >/tmp/report-applied.json <<'JSON'
       "serverRegions": {
         "server1": "REGION_AP",
         "server2": "REGION_EU",
-        "server3": "REGION_AP"
+        "server3": "REGION_US"
       },
       "mainServer": "SERVER_ID_SERVER3",
       "defaultCountry": "US"

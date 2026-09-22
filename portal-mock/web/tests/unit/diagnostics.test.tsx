@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { Region, ServerId } from '@isucon/portal-proto/portal/v1/portal_pb';
+import { ServerId } from '@isucon/portal-proto/portal/v1/portal_pb';
 import {
   ApplyState,
   BenchmarkStatus,
@@ -65,7 +65,7 @@ describe('反映診断の全状態表示', () => {
 
   it('desired と applied の比較表に snapshot と項目差分を含む', () => {
     renderPortal(
-      makeController(makeState({ desiredServer2: Region.EU, converged: false })),
+      makeController(makeState({ desiredMain: ServerId.SERVER2, converged: false })),
     );
     // snapshot ID は短縮表示され、フル値は title 属性に保持される
     expect(
@@ -74,36 +74,28 @@ describe('反映診断の全状態表示', () => {
     const table = screen.getByRole('table', {
       name: 'desired と applied の設定比較',
     });
-    // server2 行は desired=EU / applied=AP の差分がある
+    // 固定配置は desired/applied で一致する
     const rows = within(table).getAllByRole('row');
     const server2Row = rows.find((r) => r.textContent?.startsWith('server2'));
     expect(server2Row).toBeDefined();
     expect(server2Row).toHaveTextContent('EU');
-    expect(server2Row).toHaveTextContent('AP');
+    expect(server2Row).not.toHaveTextContent('AP');
   });
 });
 
 describe('設定パッチ送信形式', () => {
-  it('server1/2/3 リージョン・メイン・国の各操作を生成パッチ形式で送る', async () => {
+  it('メイン・国のみを生成パッチ形式で送る', async () => {
     const user = userEvent.setup();
     const updateDesired = vi.fn(async () => true);
     renderPortal(makeController(makeState(), { updateDesired }));
 
-    await user.selectOptions(
-      screen.getByLabelText('server1 の desired リージョン'),
-      String(Region.US),
-    );
-    await user.selectOptions(
-      screen.getByLabelText('server3 の desired リージョン'),
-      String(Region.EU),
-    );
+    expect(screen.queryByLabelText(/desired リージョン/)).not.toBeInTheDocument();
     await user.click(screen.getByRole('radio', { name: /server2/ }));
     await user.selectOptions(screen.getByLabelText('望ましい設定'), 'GB');
 
-    expect(updateDesired).toHaveBeenNthCalledWith(1, { server1Region: Region.US });
-    expect(updateDesired).toHaveBeenNthCalledWith(2, { server3Region: Region.EU });
-    expect(updateDesired).toHaveBeenNthCalledWith(3, { mainServer: ServerId.SERVER2 });
-    expect(updateDesired).toHaveBeenNthCalledWith(4, { defaultCountry: 'GB' });
+    expect(updateDesired).toHaveBeenCalledTimes(2);
+    expect(updateDesired).toHaveBeenNthCalledWith(1, { mainServer: ServerId.SERVER2 });
+    expect(updateDesired).toHaveBeenNthCalledWith(2, { defaultCountry: 'GB' });
   });
 
   it('ベンチ実行中は全設定コントロールをロックする', () => {
@@ -116,9 +108,7 @@ describe('設定パッチ送信形式', () => {
         }),
       ),
     );
-    expect(screen.getByLabelText('server1 の desired リージョン')).toBeDisabled();
-    expect(screen.getByLabelText('server2 の desired リージョン')).toBeDisabled();
-    expect(screen.getByLabelText('server3 の desired リージョン')).toBeDisabled();
+    expect(screen.queryByLabelText(/desired リージョン/)).not.toBeInTheDocument();
     expect(screen.getByLabelText('望ましい設定')).toBeDisabled();
     screen.getAllByRole('radio').forEach((radio) => expect(radio).toBeDisabled());
   });

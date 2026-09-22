@@ -36,6 +36,8 @@ export const TeamKeySchema: GenMessage<TeamKey> = /*@__PURE__*/
  */
 export type ServerRegions = Message<"portal.v1.ServerRegions"> & {
   /**
+   * 固定配置: server1=AP、server2=EU、server3=US。ユーザーは変更できない。
+   *
    * @generated from field: portal.v1.Region server1 = 1;
    */
   server1: Region;
@@ -63,6 +65,8 @@ export const ServerRegionsSchema: GenMessage<ServerRegions> = /*@__PURE__*/
  */
 export type Config = Message<"portal.v1.Config"> & {
   /**
+   * 固定配置の確認用。固定値に一致しない snapshot/report は拒否する。
+   *
    * @generated from field: portal.v1.ServerRegions server_regions = 1;
    */
   serverRegions?: ServerRegions | undefined;

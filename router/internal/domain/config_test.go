@@ -62,8 +62,8 @@ func TestConfigFromProtoRejectsInvalidValues(t *testing.T) {
 		return &portalv1.Config{
 			ServerRegions: &portalv1.ServerRegions{
 				Server1: portalv1.Region_REGION_AP,
-				Server2: portalv1.Region_REGION_AP,
-				Server3: portalv1.Region_REGION_AP,
+				Server2: portalv1.Region_REGION_EU,
+				Server3: portalv1.Region_REGION_US,
 			},
 			MainServer: portalv1.ServerId_SERVER_ID_SERVER1, DefaultCountry: "JP",
 		}
@@ -76,7 +76,13 @@ func TestConfigFromProtoRejectsInvalidValues(t *testing.T) {
 			c.ServerRegions.Server2 = portalv1.Region_REGION_UNSPECIFIED
 			return c
 		},
-		"unknown region":  func() *portalv1.Config { c := valid(); c.ServerRegions.Server2 = portalv1.Region(99); return c },
+		"unknown region": func() *portalv1.Config { c := valid(); c.ServerRegions.Server2 = portalv1.Region(99); return c },
+		"same region":    func() *portalv1.Config { c := valid(); c.ServerRegions.Server2 = portalv1.Region_REGION_AP; return c },
+		"swapped regions": func() *portalv1.Config {
+			c := valid()
+			c.ServerRegions.Server2, c.ServerRegions.Server3 = c.ServerRegions.Server3, c.ServerRegions.Server2
+			return c
+		},
 		"unknown server":  func() *portalv1.Config { c := valid(); c.MainServer = portalv1.ServerId(99); return c },
 		"unknown country": func() *portalv1.Config { c := valid(); c.DefaultCountry = "XX"; return c },
 	}
@@ -109,8 +115,8 @@ func validProtoConfig() *portalv1.Config {
 	return &portalv1.Config{
 		ServerRegions: &portalv1.ServerRegions{
 			Server1: portalv1.Region_REGION_AP,
-			Server2: portalv1.Region_REGION_AP,
-			Server3: portalv1.Region_REGION_AP,
+			Server2: portalv1.Region_REGION_EU,
+			Server3: portalv1.Region_REGION_US,
 		},
 		MainServer: portalv1.ServerId_SERVER_ID_SERVER1, DefaultCountry: "JP",
 	}

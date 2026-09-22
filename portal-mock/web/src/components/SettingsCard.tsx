@@ -9,8 +9,6 @@ const SERVERS = [
   { id: ServerId.SERVER3, key: 'server3' as const },
 ];
 
-const REGIONS = [Region.US, Region.AP, Region.EU];
-
 export interface SettingsCardProps {
   desired?: Config;
   applied?: Config;
@@ -20,7 +18,6 @@ export interface SettingsCardProps {
   busy: boolean;
   lockReason?: string;
   onMainServerChange: (server: ServerId) => void;
-  onRegionChange: (server: 'server1' | 'server2' | 'server3', region: Region) => void;
 }
 
 function getRegion(config: Config | undefined, key: 'server1' | 'server2' | 'server3') {
@@ -40,7 +37,6 @@ export function SettingsCard({
   busy,
   lockReason,
   onMainServerChange,
-  onRegionChange,
 }: SettingsCardProps) {
   const [copied, setCopied] = useState<string | null>(null);
   const disabled = locked || busy || !desired;
@@ -112,8 +108,8 @@ export function SettingsCard({
       <section className="card settings-card settings-card--servers" aria-labelledby="server-regions-heading">
         <div className="settings-card__heading">
           <div>
-            <h2 id="server-regions-heading">サーバー個別設定</h2>
-            <p>各サーバーを配置するリージョンを選択します</p>
+            <h2 id="server-regions-heading">サーバー配置</h2>
+            <p>server1=AP、server2=EU、server3=US に固定されています</p>
           </div>
         </div>
         <div className="server-settings">
@@ -145,22 +141,7 @@ export function SettingsCard({
                   {hostname}
                 </div>
                 <div className="server-setting__controls">
-                  <label htmlFor={`${key}-region`}>{serverLabel(id)} の desired リージョン</label>
-                  <select
-                    id={`${key}-region`}
-                    className={pending ? 'control control--pending' : 'control'}
-                    value={desiredRegion}
-                    disabled={disabled}
-                    onChange={(event) =>
-                      onRegionChange(key, Number(event.target.value) as Region)
-                    }
-                  >
-                    {REGIONS.map((region) => (
-                      <option key={region} value={region}>
-                        {regionLabel(region)}
-                      </option>
-                    ))}
-                  </select>
+                  <span aria-label={`${key} の固定リージョン`}>{regionLabel(desiredRegion)}</span>
                   <span className="applied-value">
                     applied: <strong>{regionLabel(appliedRegion)}</strong>
                   </span>

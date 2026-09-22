@@ -1,8 +1,12 @@
 # 擬似地理分散 Router 設計
 
-Router は、単一ホスト上の3台のアプリケーションサーバーを US・AP・EU のいずれかへ配置したものとして扱い、
+Router は、単一ホスト上の3台のアプリケーションサーバーを server1=AP、server2=EU、server3=US に配置したものとして扱い、
 HTTP 通信とサーバー間通信の両方へ同じリージョン判定を適用する支援インフラである。Portal の desired config を
 唯一の入力とし、Linux network data plane と Envoy data plane が同じ snapshot へ収束した後だけ applied として報告する。
+
+3台は必ず別々のリージョンに固定され、ユーザーは配置を変更できない。Portal では配置を表示するだけとし、
+リージョン更新要求は `invalid_argument` で拒否する。snapshot の `server_regions` は固定配置の確認用に維持し、
+Portal と Router は固定値に一致しない設定を拒否する。変更可能なのは `mainServer` と `defaultCountry` である。
 
 実装は `router/` の独立 Go module にあり、公開制御契約は既存の `portal.v1.PortalRouterService` を再利用する。
 本設計は開発・検証基盤を対象とし、TLS、VPN、複数チーム、本番 HA、採点は範囲外である。
@@ -79,8 +83,8 @@ Router は namespaced `net.ipv4.ip_forward=1` を確認し、専用 `inet isurea
 forward allow に含めない。
 
 各 destination interface の egress には HTB root を置き、US・AP・EU の class と netem leaf を作る。source server IP
-の u32 filter で source region class を選び、destination server region との同異から delay/rate を決める。このため
-server 配置変更は、アプリを再起動せず全 interface の class/filter 再生成だけで反映できる。
+の u32 filter で source region class を選び、destination server region との同異から delay/rate を決める。
+3台の配置は固定されているため、異なるサーバー間の6方向はすべて cross profile を使う。
 
 既存 child を持つ HTB root は in-place replace できないため、更新 transaction ごとに Router 専用 root qdisc を
 削除して完全な tree を再構築する。途中失敗時は直前の candidate について同じ処理を行い、last-known-good を戻す。
@@ -148,8 +152,8 @@ report の送信成功で消さず、次の apply 開始または active commit 
 1. Portal desired/applied と Router readiness の初期収束。
 2. 4 Host、10か国、default、invalid/duplicate、unknown Host と upstream header。
 3. HTTP same/cross delay と 1 Mbps cross rate の実測。
-4. main/default/server region の無停止動的変更と変更後100要求。
-5. 6方向すべての peer route、same/cross peer transfer と rate。
+4. main/default の無停止動的変更と変更後100要求、server region 変更の拒否。
+5. 6方向すべての peer route と cross-region peer transfer の rate。
 6. Portal 再起動、Router/Envoy 再起動後の自動再収束。
 7. Router namespace 停止中に6方向すべての新規 peer 接続が失敗し、復旧後に再度成功すること。
 
