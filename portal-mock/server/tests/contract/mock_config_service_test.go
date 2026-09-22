@@ -60,14 +60,14 @@ func TestFixedRegionsRejectUserConfiguration(t *testing.T) {
 	}
 	want := initial.Msg.State.Portal.Desired
 	regions := want.Config.ServerRegions
-	if regions.Server1 != portalv1.Region_REGION_AP || regions.Server2 != portalv1.Region_REGION_EU || regions.Server3 != portalv1.Region_REGION_US {
+	if regions.App1 != portalv1.Region_REGION_AP || regions.App2 != portalv1.Region_REGION_EU || regions.App3 != portalv1.Region_REGION_US {
 		t.Fatalf("unexpected fixed regions: %v", regions)
 	}
 	for _, region := range []portalv1.Region{portalv1.Region_REGION_UNSPECIFIED, portalv1.Region_REGION_AP, portalv1.Region_REGION_EU, portalv1.Region_REGION_US, 99} {
 		for _, patch := range []*portalmockv1.DesiredPatch{
-			{Server1Region: region.Enum()},
-			{Server2Region: region.Enum()},
-			{Server3Region: region.Enum()},
+			{App1Region: region.Enum()},
+			{App2Region: region.Enum()},
+			{App3Region: region.Enum()},
 		} {
 			// A rejected region must also prevent other fields from changing.
 			country := "US"
@@ -88,7 +88,7 @@ func TestFixedRegionsRejectUserConfiguration(t *testing.T) {
 		t.Fatal(err)
 	}
 	resetRegions := reset.Msg.State.Portal.Desired.Config.ServerRegions
-	if resetRegions.Server1 != regions.Server1 || resetRegions.Server2 != regions.Server2 || resetRegions.Server3 != regions.Server3 {
+	if resetRegions.App1 != regions.App1 || resetRegions.App2 != regions.App2 || resetRegions.App3 != regions.App3 {
 		t.Fatalf("reset changed fixed regions: %v", resetRegions)
 	}
 }

@@ -18,9 +18,10 @@ describe('地理分散設定', () => {
     const user = userEvent.setup();
     renderPortal();
     expect(screen.getByRole('heading', { name: '国別自動ルーティング' })).toBeInTheDocument();
-    expect(screen.getByLabelText('server1 の固定リージョン')).toHaveTextContent('AP');
-    expect(screen.getByLabelText('server2 の固定リージョン')).toHaveTextContent('EU');
-    expect(screen.getByLabelText('server3 の固定リージョン')).toHaveTextContent('US');
+    expect(screen.getByLabelText('app1 の固定リージョン')).toHaveTextContent('AP');
+    expect(screen.getByLabelText('app2 の固定リージョン')).toHaveTextContent('EU');
+    expect(screen.getByLabelText('app3 の固定リージョン')).toHaveTextContent('US');
+    expect(screen.getByLabelText('db1 の固定リージョン')).toHaveTextContent('AP');
     expect(screen.queryByLabelText(/desired リージョン/)).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /対応国/ }));
     expect(screen.getByText('アメリカ合衆国')).toBeInTheDocument();

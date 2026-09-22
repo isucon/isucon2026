@@ -73,12 +73,14 @@ run_ssm_retry() {
   return 3
 }
 
-peer_http_all() {
-  for source_index in 0 1 2; do
+peer_connect_all() {
+  for source_index in 0 1 2 3; do
     local targets=()
-    for target_index in 0 1 2; do
+    for target_index in 0 1 2 3; do
       if [[ "${source_index}" -ne "${target_index}" ]]; then
-        targets+=("curl -fsS --connect-timeout 3 -H 'Host: ${app_hostname}' http://${service_ips[$target_index]}:8080/ >/dev/null")
+        local port=8080
+        [[ "${target_index}" -ne 3 ]] || port=5432
+        targets+=("timeout 3 bash -c 'exec 3<>/dev/tcp/${service_ips[$target_index]}/${port}' || exit 1")
       fi
     done
     run_ssm "${service_ids[$source_index]}" "$(IFS='; '; echo "${targets[*]}")"
@@ -91,14 +93,14 @@ global_ip_isolation_all() {
   local -a checks
   local source_index target_index source_id source_public target_public
   local subnet_id acl_json egress
-  for source_index in 0 1 2 3; do
+  for source_index in 0 1 2 3 4; do
     source_id="${node_ids[$source_index]}"
     source_public="${public_ips[$source_index]}"
     checks=(
       "observed_public=\$(curl -4fsS --connect-timeout 5 https://checkip.amazonaws.com | tr -d '[:space:]')"
       "[ \"\$observed_public\" = '${source_public}' ] || { echo 'unexpected public egress identity' >&2; exit 1; }"
     )
-    for target_index in 0 1 2 3; do
+    for target_index in 0 1 2 3 4; do
       if [[ "${source_index}" -eq "${target_index}" ]]; then
         continue
       fi
@@ -138,7 +140,7 @@ global_ip_isolation_all() {
             and .CidrBlock == "0.0.0.0/0")
         ' <<<"${acl_json}" >/dev/null
     done
-    for target_index in 0 1 2 3; do
+    for target_index in 0 1 2 3 4; do
       if [[ "${source_index}" -eq "${target_index}" ]]; then
         continue
       fi
@@ -238,9 +240,9 @@ restore_router() {
 }
 trap restore_router EXIT
 
-if [[ "${#service_ids[@]}" -ne 3 || "${#service_ips[@]}" -ne 3 \
-  || "${#service_public_ips[@]}" -ne 3 ]]; then
-  printf 'Pulumi stack must expose exactly three service nodes and Global IPs\n' >&2
+if [[ "${#service_ids[@]}" -ne 4 || "${#service_ips[@]}" -ne 4 \
+  || "${#service_public_ips[@]}" -ne 4 ]]; then
+  printf 'Pulumi stack must expose exactly four service nodes and Global IPs\n' >&2
   exit 3
 fi
 
@@ -309,20 +311,20 @@ for instance_id in "${service_ids[@]}" "${router_id}"; do
   machine_ids+=("${machine_id}")
   ssh_host_keys+=("${ssh_host_key}")
 done
-if [[ "$(printf '%s\n' "${machine_ids[@]}" | sort -u | wc -l)" -ne 4 ]] \
-  || [[ "$(printf '%s\n' "${ssh_host_keys[@]}" | sort -u | wc -l)" -ne 4 ]]; then
+if [[ "$(printf '%s\n' "${machine_ids[@]}" | sort -u | wc -l)" -ne 5 ]] \
+  || [[ "$(printf '%s\n' "${ssh_host_keys[@]}" | sort -u | wc -l)" -ne 5 ]]; then
   printf 'Cloned instances did not generate unique machine IDs and SSH host keys\n' >&2
   exit 3
 fi
 
 before="$(run_ssm "${router_id}" "sudo nft -a list chain inet isureal_router forward")"
 tc_before="$(run_ssm "${router_id}" "sudo tc -s -j qdisc show")"
-peer_http_all
+peer_connect_all
 after="$(run_ssm "${router_id}" "sudo nft -a list chain inet isureal_router forward")"
 tc_after="$(run_ssm "${router_id}" "sudo tc -s -j qdisc show")"
 nft_counter_deltas='{}'
-for source in server1 server2 server3; do
-  for destination in server1 server2 server3; do
+for source in app1 app2 app3 db1; do
+  for destination in app1 app2 app3 db1; do
     if [[ "${source}" == "${destination}" ]]; then
       continue
     fi
@@ -345,7 +347,7 @@ for source in server1 server2 server3; do
   done
 done
 tc_counter_deltas='{}'
-for device in server1 server2 server3; do
+for device in app1 app2 app3 db1; do
   before_packets="$(tc_packet_count "${tc_before}" "${device}")"
   after_packets="$(tc_packet_count "${tc_after}" "${device}")"
   if [[ "${after_packets}" -le "${before_packets}" ]]; then
@@ -366,11 +368,13 @@ done
 aws ec2 stop-instances --region "${region}" --instance-ids "${router_id}" >/dev/null
 router_stopped=1
 aws ec2 wait instance-stopped --region "${region}" --instance-ids "${router_id}"
-for source_index in 0 1 2; do
+for source_index in 0 1 2 3; do
   checks=()
-  for target_index in 0 1 2; do
+  for target_index in 0 1 2 3; do
     if [[ "${source_index}" -ne "${target_index}" ]]; then
-      checks+=("if curl -fsS --connect-timeout 2 -H 'Host: ${app_hostname}' http://${service_ips[$target_index]}:8080/ >/dev/null; then echo 'peer path bypassed stopped Router' >&2; exit 1; fi")
+      port=8080
+      [[ "${target_index}" -ne 3 ]] || port=5432
+      checks+=("if timeout 2 bash -c 'exec 3<>/dev/tcp/${service_ips[$target_index]}/${port}'; then echo 'peer path bypassed stopped Router' >&2; exit 1; fi")
     fi
   done
   run_ssm "${service_ids[$source_index]}" "$(IFS='; '; echo "${checks[*]}")"
@@ -380,7 +384,7 @@ router_stopped=0
 aws ec2 wait instance-running --region "${region}" --instance-ids "${router_id}"
 aws ec2 wait instance-status-ok --region "${region}" --instance-ids "${router_id}"
 run_ssm_retry "${router_id}" "sudo systemctl restart isureal-aws-initialize.service && sudo /usr/local/sbin/isureal-node-check"
-peer_http_all
+peer_connect_all
 
 mkdir -p "${report_dir}"
 validated_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -421,7 +425,7 @@ jq -n \
       cloneIdentityUniqueness: "pass",
       globalIpEgressIdentity: "pass",
       globalIpPeerIsolation: "pass",
-      sixDirectionPeerHTTP: "pass",
+      twelveDirectionPeerConnectivity: "pass",
       routerForwardRulesObserved: true,
       routerTrafficControlObserved: true,
       routerStopIsolationAndRecovery: "pass"

@@ -31,13 +31,14 @@ class ConfigContractTest(unittest.TestCase):
     def test_default_topology_has_exact_nodes_segments_and_forwards(self) -> None:
         self.assertEqual([], preflight.validate_topology(self.topology))
         self.assertEqual(
-            {"server1", "server2", "server3", "router"},
+            {"app1", "app2", "app3", "db1", "router"},
             set(self.topology["nodes"]),
         )
-        self.assertEqual(2, len(self.topology["nodes"]["server1"]["interfaces"]))
-        self.assertEqual(2, len(self.topology["nodes"]["server2"]["interfaces"]))
-        self.assertEqual(2, len(self.topology["nodes"]["server3"]["interfaces"]))
-        self.assertEqual(5, len(self.topology["nodes"]["router"]["interfaces"]))
+        self.assertEqual(2, len(self.topology["nodes"]["app1"]["interfaces"]))
+        self.assertEqual(2, len(self.topology["nodes"]["app2"]["interfaces"]))
+        self.assertEqual(2, len(self.topology["nodes"]["app3"]["interfaces"]))
+        self.assertEqual(2, len(self.topology["nodes"]["db1"]["interfaces"]))
+        self.assertEqual(6, len(self.topology["nodes"]["router"]["interfaces"]))
         self.assertEqual("127.0.0.1", self.topology["clientForward"]["hostAddress"])
         self.assertEqual(18080, self.topology["clientForward"]["hostPort"])
         self.assertFalse(self.topology["clientForward"]["autoCorrect"])
@@ -53,12 +54,12 @@ class ConfigContractTest(unittest.TestCase):
 
     def test_overlapping_segments_are_rejected(self) -> None:
         invalid = copy.deepcopy(self.topology)
-        invalid["networks"]["server2Data"]["cidr"] = invalid["networks"]["server1Data"]["cidr"]
+        invalid["networks"]["app2Data"]["cidr"] = invalid["networks"]["app1Data"]["cidr"]
         self.assertTrue(any("overlap" in error.lower() for error in preflight.validate_topology(invalid)))
 
     def test_duplicate_macs_are_rejected(self) -> None:
         invalid = copy.deepcopy(self.topology)
-        invalid["nodes"]["server2"]["interfaces"][0]["macAddress"] = invalid["nodes"]["server1"]["interfaces"][0]["macAddress"]
+        invalid["nodes"]["app2"]["interfaces"][0]["macAddress"] = invalid["nodes"]["app1"]["interfaces"][0]["macAddress"]
         self.assertTrue(any("mac" in error.lower() for error in preflight.validate_topology(invalid)))
 
     def test_release_is_linux_amd64_without_duplicate_version_pins(self) -> None:
@@ -183,9 +184,9 @@ class ConfigContractTest(unittest.TestCase):
             {
                 "app": "app.team1-local.127.0.0.1.nip.io",
                 "servers": {
-                    "server1": "server1.team1-local.127.0.0.1.nip.io",
-                    "server2": "server2.team1-local.127.0.0.1.nip.io",
-                    "server3": "server3.team1-local.127.0.0.1.nip.io",
+                    "app1": "app1.team1-local.127.0.0.1.nip.io",
+                    "app2": "app2.team1-local.127.0.0.1.nip.io",
+                    "app3": "app3.team1-local.127.0.0.1.nip.io",
                 },
             },
             preflight.portal_hostnames(self.topology),
@@ -214,7 +215,7 @@ class ConfigContractTest(unittest.TestCase):
         ).read_text()
         self.assertIn("isucon_topology.portal.teamNumber", router_env)
         self.assertIn("isucon_topology.portal.teamHash", router_env)
-        for prefix in ("APP", "SERVER1", "SERVER2", "SERVER3"):
+        for prefix in ("APP", "APP1", "APP2", "APP3"):
             hostname_line = next(
                 line for line in router_env.splitlines()
                 if line.startswith(f"ROUTER_{prefix}_HOST=")

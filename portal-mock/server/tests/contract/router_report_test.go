@@ -51,7 +51,7 @@ func TestRouterReportContractAndTeamSemantics(t *testing.T) {
 	}
 
 	invalid := testkit.ConfigProto(cfg)
-	invalid.ServerRegions.Server1 = 99
+	invalid.ServerRegions.App1 = 99
 	_, err = server.Router.ReportApplied(ctx, connect.NewRequest(&portalv1.ReportAppliedRequest{
 		Team: &portalv1.TeamKey{TeamNumber: 1},
 		Result: &portalv1.ReportAppliedRequest_Success{Success: &portalv1.ApplySuccess{

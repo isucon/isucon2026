@@ -1,17 +1,18 @@
 # Local VM provisioning
 
-Linux x86_64 上に Ubuntu 24.04 amd64 の problem server 3 台と Router 1 台を構築する、Packer・Ansible・Vagrant・VirtualBox 統合環境です。macOS と arm64 は対象外で、別 provider への自動 fallback はしません。
+Linux x86_64 上に Ubuntu 24.04 amd64 の app1〜3 と db1 の4台、および Router 1 台を構築する、Packer・Ansible・Vagrant・VirtualBox 統合環境です。macOS と arm64 は対象外で、別 provider への自動 fallback はしません。
 
 ## 構成
 
 | Node | data address | 配備内容 |
 |---|---:|---|
-| `server1` | `192.168.60.6/28` | PostgreSQL 16、backend、worker、frontend、nginx |
-| `server2` | `192.168.60.22/28` | PostgreSQL 16、backend、worker、frontend、nginx |
-| `server3` | `192.168.60.38/28` | PostgreSQL 16、backend、worker、frontend、nginx |
-| `router` | `.5` / `.21` / `.37`、control `.69` | Router、Envoy 1.32.2 |
+| `app1` | `192.168.60.6/28` | backend、worker、frontend、nginx（DB は db1 を共有） |
+| `app2` | `192.168.60.22/28` | backend、worker、frontend、nginx（DB は db1 を共有） |
+| `app3` | `192.168.60.38/28` | backend、worker、frontend、nginx（DB は db1 を共有） |
+| `db1` | `192.168.60.54/28` | PostgreSQL 16（AP 固定、全 app 共有） |
+| `router` | `.5` / `.21` / `.37` / `.53`、control `.69` | Router、Envoy 1.32.2 |
 
-3 台の server は別々の VirtualBox internal network に接続し、相互向け route は各 segment の Router だけを next hop にします。Portal は VM に含めず、host の Docker Compose project `isureal-isureal-local-portal` で起動します。
+4 台の server は別々の VirtualBox internal network に接続し、相互向け route は各 segment の Router だけを next hop にします。Portal は VM に含めず、host の Docker Compose project `isureal-isureal-local-portal` で起動します。
 
 host の入口は次の 3 つです。
 
@@ -20,7 +21,7 @@ host の入口は次の 3 つです。
 - Portal UI: `127.0.0.1:15174`
 
 Portal API は Router 専用 control path `192.168.60.65:18082` にだけ publish されます。problem server の application/database port は host へ forward しません。
-Portalの`teamNumber=1`、`teamHash=local`、`domain=127.0.0.1.nip.io`が公開hostnameの正本で、Router/Envoyも`app.team1-local.127.0.0.1.nip.io`と`server1..3.team1-local.127.0.0.1.nip.io`を受理します。既定domainは`nip.io`なので、これらのhostnameはDNSで自動的に`127.0.0.1`へ解決され、`/etc/hosts`を編集せずローカルからアクセスできます。environment IDはVM・Compose・生成stateの名前空間にだけ使います。
+Portalの`teamNumber=1`、`teamHash=local`、`domain=127.0.0.1.nip.io`が公開hostnameの正本で、Router/Envoyも`app.team1-local.127.0.0.1.nip.io`と`app1..3.team1-local.127.0.0.1.nip.io`を受理します。既定domainは`nip.io`なので、これらのhostnameはDNSで自動的に`127.0.0.1`へ解決され、`/etc/hosts`を編集せずローカルからアクセスできます。environment IDはVM・Compose・生成stateの名前空間にだけ使います。
 
 ## 前提と確認
 
@@ -32,6 +33,10 @@ make image-validate
 ```
 
 preflight は VM を変更せず、host/architecture、hardware virtualization、driver、CPU/RAM/disk、必要コマンドの存在、Docker daemon/Compose 接続、schema、CIDR/port、ローカル artifact の存在、Portal の specific-address publish を検査します。
+
+app1=AP、app2=EU、app3=US、db1=AP は固定です。db1 は公開 HTTP の対象外で、PostgreSQL は private address で app1〜3 からのみ認証接続を受け付けます。初期化は db1 で一度だけ行い、reset 時は全 app の API/worker を停止してから共有 DB を初期化し、成功・失敗にかかわらずサービスを復旧します。
+
+旧 server1〜3 構成の既存データは自動移行しません。新しい `VM_ENV_ID` と再ビルドした role image を使用してください。
 
 ## 起動と確認
 
@@ -105,7 +110,7 @@ box は release ID、role、provider、architecture、SHA-256 とともに `prov
 AWSではVirtualBox boxを変換せず、release manifestへ固定したCanonical Ubuntu 24.04 amd64 AMIから、同じ
 `provisioning/ansible/playbooks/image.yml`を使って次の2種類を作ります。
 
-- `problem-server`: 3台のService VMで共用
+- `problem-server`: 4台のService VMで共用
 - `router`: 中央Router VM
 
 ```bash
@@ -128,8 +133,8 @@ runtime secret、Portal endpointはAMIへ保存しません。
 
 `provisioning/aws`はPulumi TypeScriptで一時的な検証環境を作ります。3つのService VPCへ各1台の
 problem serverを置き、中央Router EC2へ各VPCのdata ENIをattachします。Routerのprimary ENIは
-server1 VPC内の専用control subnetに置くため、作成するVPCは合計3つです。既定Router instance typeは
-4 ENIを収容できる`c8in.large`、Service VMは検証用の`t3.small`です。競技用の正式なinstance typeは
+app1 VPC内の専用control subnetに置くため、作成するVPCは合計3つです。既定Router instance typeは
+5 ENI（control 1 + data 4）を収容できる`c8in.4xlarge`、Service VMは検証用の`t3.small`です。競技用の正式なinstance typeは
 後続の競技環境仕様で上書きします。全VPC/ENIは同一Availability Zoneに作成し、Private IPは固定します。
 
 各Service subnetのroute tableは、他の2 Service VPC CIDRを自身のVPC内にあるRouter ENIへ向けます。
@@ -140,7 +145,7 @@ Service VMのSecurity Groupは、他の2 Service VPC CIDRと自身のRouter data
 プロトコルを許可します。peer VPCからの通信は送信元Service IPを維持したまま必ずRouterを通過します。
 自身のVPC CIDR全体は許可しないため、control subnetからService VMへの直接バイパスは作りません。
 
-Routerと3台のService VMには固定Elastic IPを1個ずつ割り当てます。各Service VPCへInternet Gatewayを
+Routerと4台のService VMには固定Elastic IPを1個ずつ割り当てます。各Service VPCへInternet Gatewayを
 attachし、Service subnetの既定経路はInternet Gatewayへ向けますが、peerのPrivate CIDRにはより具体的な
 Router ENI経路が優先されます。各Service subnetとRouter control subnetのNetwork ACLは、他の全nodeの
 Elastic IP `/32`を送受信とも先行denyしてから、それ以外のIPv4通信を許可します。このためserver間通信は
@@ -189,12 +194,12 @@ make aws-infra-up STACK=dev
 無効化は`pulumi -C provisioning/aws config set enablePublicSsh false --stack dev`です。`sshCidr`には通常、
 管理端末のGlobal IP `/32`を指定し、`0.0.0.0/0`は使用しません。`sshPublicKey`はPulumi管理のEC2 Key Pair
 としてAWSへそのまま登録し、鍵の形式と種類はAWS EC2が検証します。AWSは起動時に公開鍵をVMへ配置する
-ため、既存stackへ初めて鍵を設定する場合や鍵を変更する場合は4台のinstanceが置換対象になります。必ず
+ため、既存stackへ初めて鍵を設定する場合や鍵を変更する場合は5台のinstanceが置換対象になります。必ず
 `aws-infra-preview`で確認してから適用します。
 
 検証用Portal APIはRouter AMIへ同梱し、Router VMのloopback `127.0.0.1:18082`だけで起動します。
 `clientCidr`を設定した場合だけRouterの443/8080を指定CIDRへ公開します。SSHを許可する場合だけ
-`enablePublicSsh=true`と`sshPublicKey`、`sshCidr`を同時に設定します。通常は全4台のSSM
+`enablePublicSsh=true`と`sshPublicKey`、`sshCidr`を同時に設定します。通常は全5台のSSM
 managed-instance profileを使います。
 Router AMIにPortalのブラウザUIは同梱しません。AWS上のPortal APIへはSSM port forwardingで接続し、
 ローカルのVite UIをそのトンネルへ向けます。Terminal Aで次を実行してsessionを維持します。
@@ -223,7 +228,7 @@ local port forwardingをSSHで作ることもできます。`portal-mock/compose
 検証環境はAMIから独立したPulumi stackなので、`aws-infra-destroy`はEC2、ENI、
 VPC、route、SGを削除しますがAMIを削除しません。
 
-AMIを昇格する前に、3台のservice health、4台それぞれのEIP送信元、Global IPによる12方向の通信禁止、
-6方向のPrivate peer通信、Routerのnft/tc counter、Router停止中の新規peer通信失敗、復旧後の再接続、
+AMIを昇格する前に、4台のservice health、5台それぞれのEIP送信元、Global IPによる20方向の通信禁止、
+12方向のPrivate peer通信、Routerのnft/tc counter、Router停止中の新規peer通信失敗、復旧後の再接続、
 clone identityの一意性を確認します。合格レポートは
 `provisioning/.state/aws/<stack>/reports/`へ保存され、検証した2つのAMI artifactを`validated`へ遷移させます。

@@ -44,9 +44,10 @@ export function serviceUserData(
   );
   requireSafeSecret("cursorHmacKey", cursorKey, /^[A-Za-z0-9_-]{32,256}$/);
   const topology = buildRuntimeTopology("https://portal.invalid", domain);
+  const databaseIp = serverNetworks.find((item) => item.id === "db1")!.serviceIp;
   const backendEnvironment = `ISUREAL_LISTEN_ADDRESS=127.0.0.1:8081
 ISUREAL_PUBLIC_ORIGIN=https://app.team1-aws.${domain}
-ISUREAL_DATABASE_URL=postgresql://isureal:${databasePassword}@127.0.0.1:5432/isureal?sslmode=disable
+ISUREAL_DATABASE_URL=postgresql://isureal:${databasePassword}@${databaseIp}:5432/isureal?sslmode=disable
 ISUREAL_MIGRATIONS_DIR=/opt/isucon/share/migrations
 ISUREAL_IMAGE_ROOT=/var/lib/isureal/images
 ISUREAL_CURSOR_HMAC_KEY=${cursorKey}
@@ -72,7 +73,11 @@ ISUREAL_IMAGE_SANITIZER_PATH=/opt/isucon/bin/image-sanitizer
   const initialize = `#!/bin/sh
 set -eu
 test "$(cat /etc/isucon/aws-release-id)" = "${releaseId}"
+if [ "${network.id}" = db1 ]; then
 pg_createcluster 16 main --start || test -e /var/lib/postgresql/16/main/PG_VERSION
+sed -i "s/^#*listen_addresses.*/listen_addresses = '127.0.0.1,${databaseIp}'/" /etc/postgresql/16/main/postgresql.conf
+${serverNetworks.filter((item) => item.id !== "db1").map((item) => `grep -Fq "${item.serviceIp}/32" /etc/postgresql/16/main/pg_hba.conf || echo "host isureal isureal ${item.serviceIp}/32 scram-sha-256" >>/etc/postgresql/16/main/pg_hba.conf`).join("\n")}
+systemctl restart postgresql@16-main.service
 systemctl enable --now postgresql.service
 runuser -u postgres -- psql -v ON_ERROR_STOP=1 --set=password="$(printf %s "${databasePassword}" | sed "s/'/''/g")" <<'SQL'
 DO $$
@@ -88,18 +93,28 @@ WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'isureal')\\gexec
 SQL
 ISUREAL_DATABASE_URL="postgresql://isureal:${databasePassword}@127.0.0.1:5432/isureal?sslmode=disable" \\
   /opt/isucon/bin/seed --if-empty --dir /opt/isucon/share/migrations
+cat >/usr/local/sbin/isureal-node-check <<'CHECK'
+#!/bin/sh
+set -eu
+pg_isready -q -h ${databaseIp}
+CHECK
+chmod 0755 /usr/local/sbin/isureal-node-check
+else
+systemctl disable --now postgresql.service
+until pg_isready -q -h ${databaseIp} -U isureal -d isureal; do sleep 2; done
 ln -sfn /etc/nginx/sites-available/isureal /etc/nginx/sites-enabled/isureal
 rm -f /etc/nginx/sites-enabled/default
 cat >/usr/local/sbin/isureal-node-check <<'CHECK'
 #!/bin/sh
 set -eu
-pg_isready -q
+pg_isready -q -h ${databaseIp}
 curl -fsS http://127.0.0.1:8081/health/ready >/dev/null
 curl -fsS -H 'Host: app.team1-aws.${domain}' http://${network.serviceIp}:8080/ >/dev/null
 CHECK
 chmod 0755 /usr/local/sbin/isureal-node-check
 systemctl daemon-reload
 systemctl enable --now isureal-api.service isureal-worker.service nginx.service
+fi
 `;
   const initializeUnit = `[Unit]
 Description=Initialize ISUReal AWS problem server runtime
@@ -278,6 +293,7 @@ static_resources:
                   address:
                     socket_address: { address: 127.0.0.1, port_value: 18000 }
 ${serverNetworks
+  .filter((network) => network.id !== "db1")
   .map(
     (network) => `    - name: ${network.id}
       type: STATIC

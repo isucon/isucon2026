@@ -64,7 +64,7 @@ def portal_hostnames(topology: dict[str, Any]) -> dict[str, Any]:
         "app": f"app.{base}",
         "servers": {
             server: f"{server}.{base}"
-            for server in ("server1", "server2", "server3")
+            for server in ("app1", "app2", "app3")
         },
     }
 
@@ -114,19 +114,21 @@ def validate_topology(topology: dict[str, Any]) -> list[str]:
                 errors.append(f"network {name} {address_key} is not a usable member")
 
     expected_segments = {
-        "server1": [("bootstrap0", "nat", None), ("data0", "intnet", "server1Data")],
-        "server2": [("bootstrap0", "nat", None), ("data0", "intnet", "server2Data")],
-        "server3": [("bootstrap0", "nat", None), ("data0", "intnet", "server3Data")],
+        "app1": [("bootstrap0", "nat", None), ("data0", "intnet", "app1Data")],
+        "app2": [("bootstrap0", "nat", None), ("data0", "intnet", "app2Data")],
+        "app3": [("bootstrap0", "nat", None), ("data0", "intnet", "app3Data")],
+        "db1": [("bootstrap0", "nat", None), ("data0", "intnet", "db1Data")],
         "router": [
             ("bootstrap0", "nat", None),
-            ("data1", "intnet", "server1Data"),
-            ("data2", "intnet", "server2Data"),
-            ("data3", "intnet", "server3Data"),
+            ("data1", "intnet", "app1Data"),
+            ("data2", "intnet", "app2Data"),
+            ("data3", "intnet", "app3Data"),
+            ("data4", "intnet", "db1Data"),
             ("control0", "hostonly", "control"),
         ],
     }
     if set(topology.get("nodes", {})) != set(expected_segments):
-        errors.append("nodes must be exactly server1, server2, server3, and router")
+        errors.append("nodes must be exactly app1, app2, app3, db1, and router")
     for node_id, expected in expected_segments.items():
         actual = topology.get("nodes", {}).get(node_id, {}).get("interfaces", [])
         normalized = [(item.get("role"), item.get("mode"), item.get("segment")) for item in actual]
@@ -277,14 +279,14 @@ def check_virtualization_and_capacity(topology: dict[str, Any]) -> list[str]:
         errors.append(f"resource profile is undefined: {profile_name}")
         return errors
     profile = profiles[profile_name]
-    required_cpus = profile["problemServer"]["cpus"] * 3 + profile["router"]["cpus"]
+    required_cpus = profile["problemServer"]["cpus"] * 4 + profile["router"]["cpus"]
     available_cpus = os.cpu_count() or 0
     if available_cpus < required_cpus:
         errors.append(f"host has {available_cpus} CPUs; profile requires {required_cpus}")
     page_size = os.sysconf("SC_PAGE_SIZE")
     pages = os.sysconf("SC_PHYS_PAGES")
     available_memory_mib = page_size * pages // (1024 * 1024)
-    required_memory_mib = profile["problemServer"]["memoryMiB"] * 3 + profile["router"]["memoryMiB"] + 2048
+    required_memory_mib = profile["problemServer"]["memoryMiB"] * 4 + profile["router"]["memoryMiB"] + 2048
     if available_memory_mib < required_memory_mib:
         errors.append(
             f"host has {available_memory_mib} MiB RAM; VM profile plus Portal requires {required_memory_mib} MiB"
@@ -492,8 +494,8 @@ def main() -> int:
             print(f"- {error}", file=sys.stderr)
     else:
         profile = topology["resourceProfiles"][os.environ.get("VM_PROFILE", topology["defaultResourceProfile"])]
-        total_memory = profile["problemServer"]["memoryMiB"] * 3 + profile["router"]["memoryMiB"]
-        total_cpus = profile["problemServer"]["cpus"] * 3 + profile["router"]["cpus"]
+        total_memory = profile["problemServer"]["memoryMiB"] * 4 + profile["router"]["memoryMiB"]
+        total_cpus = profile["problemServer"]["cpus"] * 4 + profile["router"]["cpus"]
         print(
             f"local-vm preflight: PASS\n"
             f"environment={topology['environmentId']} release={release['releaseId']} "

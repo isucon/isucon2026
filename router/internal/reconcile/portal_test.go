@@ -134,7 +134,7 @@ func newPortalTestServer(t *testing.T, handler portalv1connect.PortalRouterServi
 
 func testProtoSnapshot(id string, country string) *portalv1.ConfigSnapshot {
 	return &portalv1.ConfigSnapshot{SnapshotId: id, Config: &portalv1.Config{
-		ServerRegions:  &portalv1.ServerRegions{Server1: portalv1.Region_REGION_AP, Server2: portalv1.Region_REGION_EU, Server3: portalv1.Region_REGION_US},
+		ServerRegions:  &portalv1.ServerRegions{App1: portalv1.Region_REGION_AP, App2: portalv1.Region_REGION_EU, App3: portalv1.Region_REGION_US, Db1: portalv1.Region_REGION_AP},
 		DefaultCountry: country,
 	}}
 }

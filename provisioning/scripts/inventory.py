@@ -39,10 +39,13 @@ def ssh_config(node: str) -> dict[str, str]:
 
 def load_secret(path: Path) -> dict[str, Any]:
     if path.exists():
-        return yaml.safe_load(path.read_text())
+        value = yaml.safe_load(path.read_text())
+        if "db1" not in value.get("databasePasswords", {}):
+            raise ValueError("Existing per-app database secrets require explicit migration; use a new environment for the shared db1 topology")
+        return value
     value = {
         "schemaVersion": 1,
-        "databasePasswords": {node: secrets.token_hex(24) for node in ("server1", "server2", "server3")},
+        "databasePasswords": {node: secrets.token_hex(24) for node in ("db1",)},
         "cursorHMACKey": secrets.token_hex(48),
     }
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -88,7 +91,7 @@ def main() -> int:
             segment = node["interfaces"][1]["segment"]
             variables["isucon_data_address"] = topology["networks"][segment]["peerAddress"]
             variables["isucon_router_address"] = topology["networks"][segment]["routerAddress"]
-            variables["isucon_database_password"] = secret["databasePasswords"][node_id]
+            variables["isucon_database_password"] = secret["databasePasswords"]["db1"]
         host_vars[node_id] = variables
 
     inventory = {
@@ -107,7 +110,9 @@ def main() -> int:
                 "isucon_image_build": False,
             },
             "children": {
-                "problem_servers": {"hosts": {name: host_vars[name] for name in ("server1", "server2", "server3")}},
+                "problem_servers": {"hosts": {name: host_vars[name] for name in ("app1", "app2", "app3", "db1")}},
+                "app_servers": {"hosts": {name: host_vars[name] for name in ("app1", "app2", "app3")}},
+                "db_servers": {"hosts": {"db1": host_vars["db1"]}},
                 "routers": {"hosts": {"router": host_vars["router"]}},
             },
         }

@@ -1,10 +1,10 @@
 # 擬似地理分散 Router 設計
 
-Router は、単一ホスト上の3台のアプリケーションサーバーを server1=AP、server2=EU、server3=US に配置したものとして扱い、
+Router は、単一ホスト上の4台のサーバーを app1=AP、app2=EU、app3=US、db1=AP に配置したものとして扱い、
 HTTP 通信とサーバー間通信の両方へ同じリージョン判定を適用する支援インフラである。Portal の desired config を
 唯一の入力とし、Linux network data plane と Envoy data plane が同じ snapshot へ収束した後だけ applied として報告する。
 
-3台は必ず別々のリージョンに固定され、ユーザーは配置を変更できない。Portal では配置を表示するだけとし、
+アプリ3台は別々のリージョン、共有 PostgreSQL 専用の db1 は AP に固定され、ユーザーは配置を変更できない。Portal では配置を表示するだけとし、
 リージョン更新要求は `invalid_argument` で拒否する。snapshot の `server_regions` は固定配置の確認用に維持し、
 Portal と Router は固定値に一致しない設定を拒否する。変更可能なのは `defaultCountry` のみである。
 メインサーバーは設けず、初回設定の適用時から3台すべてが国別ルーティングの対象になる。
@@ -33,15 +33,16 @@ Portal と Router は固定値に一致しない設定を拒否する。変更�
                                                      |
                  +--------------------+--------------------+--------------------+
                  |                    |                    |
-          server1_net          server2_net          server3_net
+          app1_net          app2_net          app3_net
           172.31.1/24          172.31.2/24          172.31.3/24
                  |                    |                    |
-             server1              server2              server3
+             app1              app2              app3
             .1.10/24             .2.10/24             .3.10/24
           Router .1.2          Router .2.2          Router .3.2
 ```
 
-`server1_net`〜`server3_net` は相互に L2 を共有しない。各 server は peer subnet への route の next hop を自身の
+図のアプリ用 segment に加え、`db1_net`（172.31.4.0/24、db1=.4.10、Router=.4.2）を接続する。
+`app1_net`〜`app3_net` と `db1_net` は相互に L2 を共有しない。各 server は peer subnet への route の next hop を自身の
 segment にある Router IP とする。Envoy は別 container だが `network_mode: service:router` で Router の network
 namespace を共有するため、固定 backend cluster への通信も Router namespace から出る。
 
@@ -55,7 +56,8 @@ Compose の interface 名には依存しない。Controller は `172.31.1.2` な
 | Portal | desired snapshot 配信、applied/failure 受理 | control network のみ |
 | Router Controller | 検証、latest-wins reconcile、nft/tc、xDS、診断 | `NET_ADMIN`。Docker socket と host network は持たない |
 | Envoy | Host/国別 routing、HTTP delay/rate | 非 root、追加 capability なし。Router namespace を共有 |
-| server1〜3 | アプリを表す E2E fixture | 各専用 segment のみ。E2E では static route 設定用 `NET_ADMIN` のみ |
+| app1〜3 | アプリを表す E2E fixture | 各専用 segment のみ。E2E では static route 設定用 `NET_ADMIN` のみ |
+| db1 | DB ネットワーク検証用 fixture（E2E のみ HTTP を使用。本配備は PostgreSQL 16） | 専用 segment のみ。公開 HTTP cluster/Host は持たない |
 | E2E runner | Connect/HTTP の外部観測と自動判定 | control/edge のみ。server segment と Docker socket へ接続しない |
 
 全 Compose network は `internal: true` で、host port を公開しない。Router と fixture は `privileged` を使わず、
@@ -63,11 +65,11 @@ Compose の interface 名には依存しない。Controller は `172.31.1.2` な
 
 ## HTTP data plane
 
-Envoy bootstrap は listener、xDS cluster、server1〜3 cluster だけを固定する。Controller は次の RDS route matrix を
+Envoy bootstrap は listener、xDS cluster、app1〜3 cluster だけを固定する。Controller は次の RDS route matrix を
 snapshot ごとに生成する。
 
-- app Host はクライアントの国に対応するリージョンへ送る。JP/KR/CN/AU は server1 (AP)、GB/DE/FR は server2 (EU)、US/CA/MX は server3 (US) を使う。
-- server1〜3 Host は各固定 server cluster へ送る。
+- app Host はクライアントの国に対応するリージョンへ送る。JP/KR/CN/AU は app1 (AP)、GB/DE/FR は app2 (EU)、US/CA/MX は app3 (US) を使う。
+- app1〜3 Host は各固定 server cluster へ送る。db1 は HTTP routing の対象にせず、db1 Host は 404 とする。
 - `X-Country-Code` は US/CA/MX、JP/KR/CN/AU、GB/DE/FR の10値だけを exact match する。
 - header がない場合だけ Portal の `defaultCountry` を1値挿入する。
 - 空値、未知値、小文字、複数値は `400`、未知 Host は `404` を Envoy が直接返す。
@@ -81,12 +83,12 @@ readiness と E2E probe で別途確認する。暗黙の upstream failover は�
 ## サーバー間 data plane
 
 Router は namespaced `net.ipv4.ip_forward=1` を確認し、専用 `inet isureal_router` table の forward chain を管理する。
-許可するのは異なる3つの server interface 間の6方向と established/related reply だけで、edge/control interface は
+許可するのは異なる4つの server interface 間の12方向と established/related reply だけで、edge/control interface は
 forward allow に含めない。
 
 各 destination interface の egress には HTB root を置き、US・AP・EU の class と netem leaf を作る。source server IP
 の u32 filter で source region class を選び、destination server region との同異から delay/rate を決める。
-3台の配置は固定されているため、異なるサーバー間の6方向はすべて cross profile を使う。
+app1↔db1 の2方向は same profile、それ以外の10方向は cross profile を使う。
 
 既存 child を持つ HTB root は in-place replace できないため、更新 transaction ごとに Router 専用 root qdisc を
 削除して完全な tree を再構築する。途中失敗時は直前の candidate について同じ処理を行い、last-known-good を戻す。
@@ -155,9 +157,9 @@ report の送信成功で消さず、次の apply 開始または active commit 
 2. 4 Host、10か国、default、invalid/duplicate、unknown Host と upstream header。
 3. HTTP same/cross delay と 1 Mbps cross rate の実測。
 4. defaultCountry の無停止動的変更と変更後100要求、明示された国がデフォルト国に優先すること、server region 変更の拒否。
-5. 6方向すべての peer route と cross-region peer transfer の rate。
+5. 12方向すべての peer route と cross-region peer transfer の rate。
 6. Portal 再起動、Router/Envoy 再起動後の自動再収束。
-7. Router namespace 停止中に6方向すべての新規 peer 接続が失敗し、復旧後に再度成功すること。
+7. Router namespace 停止中に12方向すべての新規 peer 接続が失敗し、復旧後に再度成功すること。
 
 失敗時は `router/.e2e-artifacts/compose.log` を保存し、通常は success/failure/interrupt のいずれでも専用 volume/network/
 container を cleanup する。`ROUTER_E2E_KEEP_ON_FAILURE=1` のときだけ失敗後の専用資源を調査用に保持する。

@@ -13,12 +13,12 @@ import (
 
 func TestRenderTCClassifiesSourcesByRegion(t *testing.T) {
 	t.Parallel()
-	interfaces := map[domain.ServerID]string{domain.Server1: "s1", domain.Server2: "s2", domain.Server3: "s3"}
+	interfaces := map[domain.ServerID]string{domain.App1: "s1", domain.App2: "s2", domain.App3: "s3", domain.DB1: "s4"}
 	networks := testNetworks()
 	cfg := domain.Config{
-		Server1Region:  domain.RegionAP,
-		Server2Region:  domain.RegionEU,
-		Server3Region:  domain.RegionUS,
+		App1Region:     domain.RegionAP,
+		App2Region:     domain.RegionEU,
+		App3Region:     domain.RegionUS,
 		DefaultCountry: "JP",
 	}
 	profile := domain.TrafficProfile{
@@ -29,7 +29,7 @@ func TestRenderTCClassifiesSourcesByRegion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	server1 := batches[domain.Server1]
+	app1 := batches[domain.App1]
 	for _, required := range []string{
 		"qdisc replace dev s1 root handle 1: htb default 10",
 		"class replace dev s1 parent 1: classid 1:12 htb rate 100000kbit ceil 100000kbit",
@@ -40,8 +40,8 @@ func TestRenderTCClassifiesSourcesByRegion(t *testing.T) {
 		"filter replace dev s1 protocol ip parent 1: prio 12 u32 match ip src 172.31.2.10/32 flowid 1:13",
 		"filter replace dev s1 protocol ip parent 1: prio 13 u32 match ip src 172.31.3.10/32 flowid 1:11",
 	} {
-		if !strings.Contains(server1, required) {
-			t.Errorf("server1 batch missing %q\n%s", required, server1)
+		if !strings.Contains(app1, required) {
+			t.Errorf("app1 batch missing %q\n%s", required, app1)
 		}
 	}
 	again, err := RenderTC(interfaces, networks, cfg, profile)
@@ -55,9 +55,9 @@ func TestRenderTCClassifiesSourcesByRegion(t *testing.T) {
 
 func TestRenderTCAllRegionCombinations(t *testing.T) {
 	t.Parallel()
-	interfaces := map[domain.ServerID]string{domain.Server1: "s1", domain.Server2: "s2", domain.Server3: "s3"}
+	interfaces := map[domain.ServerID]string{domain.App1: "s1", domain.App2: "s2", domain.App3: "s3", domain.DB1: "s4"}
 	profile := domain.TrafficProfile{SameRegionBandwidthBPS: 10_000, CrossRegionBandwidthBPS: 1_000, CrossRegionDelay: time.Millisecond}
-	cfg := domain.Config{Server1Region: domain.RegionAP, Server2Region: domain.RegionEU, Server3Region: domain.RegionUS, DefaultCountry: "JP"}
+	cfg := domain.Config{App1Region: domain.RegionAP, App2Region: domain.RegionEU, App3Region: domain.RegionUS, DefaultCountry: "JP"}
 	for _, destinationServer := range domain.ServerIDs() {
 		for _, sourceServer := range domain.ServerIDs() {
 			destination, source := cfg.RegionFor(destinationServer), cfg.RegionFor(sourceServer)
@@ -82,8 +82,9 @@ func TestRenderTCAllRegionCombinations(t *testing.T) {
 
 func testNetworks() map[domain.ServerID]config.ServerNetwork {
 	return map[domain.ServerID]config.ServerNetwork{
-		domain.Server1: {Subnet: netip.MustParsePrefix("172.31.1.0/24"), RouterIP: netip.MustParseAddr("172.31.1.2"), ServerIP: netip.MustParseAddr("172.31.1.10")},
-		domain.Server2: {Subnet: netip.MustParsePrefix("172.31.2.0/24"), RouterIP: netip.MustParseAddr("172.31.2.2"), ServerIP: netip.MustParseAddr("172.31.2.10")},
-		domain.Server3: {Subnet: netip.MustParsePrefix("172.31.3.0/24"), RouterIP: netip.MustParseAddr("172.31.3.2"), ServerIP: netip.MustParseAddr("172.31.3.10")},
+		domain.App1: {Subnet: netip.MustParsePrefix("172.31.1.0/24"), RouterIP: netip.MustParseAddr("172.31.1.2"), ServerIP: netip.MustParseAddr("172.31.1.10")},
+		domain.App2: {Subnet: netip.MustParsePrefix("172.31.2.0/24"), RouterIP: netip.MustParseAddr("172.31.2.2"), ServerIP: netip.MustParseAddr("172.31.2.10")},
+		domain.App3: {Subnet: netip.MustParsePrefix("172.31.3.0/24"), RouterIP: netip.MustParseAddr("172.31.3.2"), ServerIP: netip.MustParseAddr("172.31.3.10")},
+		domain.DB1:  {Subnet: netip.MustParsePrefix("172.31.4.0/24"), RouterIP: netip.MustParseAddr("172.31.4.2"), ServerIP: netip.MustParseAddr("172.31.4.10")},
 	}
 }

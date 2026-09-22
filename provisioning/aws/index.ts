@@ -29,7 +29,8 @@ const serviceAmiId = config.require("serviceAmiId");
 const routerAmiId = config.require("routerAmiId");
 const availabilityZone = config.get("availabilityZone") ?? "ap-northeast-1a";
 const serviceInstanceType = config.get("serviceInstanceType") ?? "t3.small";
-const routerInstanceType = config.get("routerInstanceType") ?? "c8in.large";
+// Four data ENIs plus the control ENI require at least five interfaces.
+const routerInstanceType = config.get("routerInstanceType") ?? "c8in.4xlarge";
 const sshPublicKey = config.get("sshPublicKey");
 const configuredSshCidr = config.get("sshCidr");
 const sshCidr = configuredSshCidr === undefined

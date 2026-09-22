@@ -22,19 +22,24 @@ export interface ApplyStatusProps {
 function configRows(desired?: Config, applied?: Config) {
   return [
     {
-      label: 'server1',
-      desired: desired?.serverRegions ? regionLabel(desired.serverRegions.server1) : '—',
-      applied: applied?.serverRegions ? regionLabel(applied.serverRegions.server1) : '不明',
+      label: 'app1',
+      desired: desired?.serverRegions ? regionLabel(desired.serverRegions.app1) : '—',
+      applied: applied?.serverRegions ? regionLabel(applied.serverRegions.app1) : '不明',
     },
     {
-      label: 'server2',
-      desired: desired?.serverRegions ? regionLabel(desired.serverRegions.server2) : '—',
-      applied: applied?.serverRegions ? regionLabel(applied.serverRegions.server2) : '不明',
+      label: 'app2',
+      desired: desired?.serverRegions ? regionLabel(desired.serverRegions.app2) : '—',
+      applied: applied?.serverRegions ? regionLabel(applied.serverRegions.app2) : '不明',
     },
     {
-      label: 'server3',
-      desired: desired?.serverRegions ? regionLabel(desired.serverRegions.server3) : '—',
-      applied: applied?.serverRegions ? regionLabel(applied.serverRegions.server3) : '不明',
+      label: 'app3',
+      desired: desired?.serverRegions ? regionLabel(desired.serverRegions.app3) : '—',
+      applied: applied?.serverRegions ? regionLabel(applied.serverRegions.app3) : '不明',
+    },
+    {
+      label: 'db1',
+      desired: desired?.serverRegions ? regionLabel(desired.serverRegions.db1) : '—',
+      applied: applied?.serverRegions ? regionLabel(applied.serverRegions.db1) : '不明',
     },
     {
       label: 'デフォルト国',

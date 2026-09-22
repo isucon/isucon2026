@@ -12,4 +12,4 @@
     - isureal-api.service
     - isureal-worker.service
     - nginx.service
-  when: not (isucon_image_build | bool)
+  when: not (isucon_image_build | bool) and isucon_node_id != 'db1'

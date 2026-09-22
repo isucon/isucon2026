@@ -29,7 +29,11 @@ table inet isureal_guard {
     ip protocol icmp accept
     iifname "${bootstrap_iface}" tcp dport 22 accept
 {% if isucon_node.role == 'problem-server' %}
+{% if isucon_node_id == "db1" %}
+    iifname "${iface_data0}" ip saddr { {{ isucon_topology.networks.app1Data.peerAddress }}, {{ isucon_topology.networks.app2Data.peerAddress }}, {{ isucon_topology.networks.app3Data.peerAddress }} } tcp dport 5432 accept
+{% else %}
     iifname "${iface_data0}" tcp dport 8080 accept
+{% endif %}
 {% else %}
     iifname "${bootstrap_iface}" tcp dport 8080 accept
     iifname "${bootstrap_iface}" tcp dport 443 accept
@@ -41,8 +45,8 @@ table inet isureal_guard {
     type filter hook forward priority -10; policy drop;
     ct state established,related accept
 {% if isucon_node.role == 'router' %}
-{% for source in ['data1', 'data2', 'data3'] %}
-{% for destination in ['data1', 'data2', 'data3'] if source != destination %}
+{% for source in ['data1', 'data2', 'data3', 'data4'] %}
+{% for destination in ['data1', 'data2', 'data3', 'data4'] if source != destination %}
     iifname "${iface_{{ source }}}" oifname "${iface_{{ destination }}}" accept
 {% endfor %}
 {% endfor %}

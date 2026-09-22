@@ -4,9 +4,9 @@ import { useState } from 'react';
 import { regionLabel, serverLabel } from '../app/format';
 
 const SERVERS = [
-  { id: ServerId.SERVER1, key: 'server1' as const },
-  { id: ServerId.SERVER2, key: 'server2' as const },
-  { id: ServerId.SERVER3, key: 'server3' as const },
+  { id: ServerId.APP1, key: 'app1' as const },
+  { id: ServerId.APP2, key: 'app2' as const },
+  { id: ServerId.APP3, key: 'app3' as const },
 ];
 
 export interface SettingsCardProps {
@@ -16,11 +16,11 @@ export interface SettingsCardProps {
   appliedCalculated?: CalculatedConfig;
 }
 
-function getRegion(config: Config | undefined, key: 'server1' | 'server2' | 'server3') {
+function getRegion(config: Config | undefined, key: 'app1' | 'app2' | 'app3' | 'db1') {
   return config?.serverRegions?.[key] ?? Region.UNSPECIFIED;
 }
 
-function hostnameFor(calculated: CalculatedConfig | undefined, key: 'server1' | 'server2' | 'server3') {
+function hostnameFor(calculated: CalculatedConfig | undefined, key: 'app1' | 'app2' | 'app3') {
   return calculated?.hostnames?.servers?.[key] ?? '—';
 }
 
@@ -66,7 +66,7 @@ export function SettingsCard({
         <div className="settings-card__heading">
           <div>
             <h2 id="server-regions-heading">サーバー配置</h2>
-            <p>server1=AP、server2=EU、server3=US に固定されています</p>
+            <p>app1=AP、app2=EU、app3=US、db1=AP に固定されています</p>
           </div>
         </div>
         <div className="server-settings">
@@ -106,6 +106,11 @@ export function SettingsCard({
               </div>
             );
           })}
+          <div className="server-setting">
+            <span className="mono server-name">db1</span>
+            <span aria-label="db1 の固定リージョン">{regionLabel(getRegion(desired, 'db1'))}</span>
+            <p>データベース専用（HTTP ルーティング対象外）</p>
+          </div>
         </div>
       </section>
     </>

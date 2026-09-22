@@ -1,11 +1,33 @@
 from __future__ import annotations
 
 import unittest
+import yaml
 
 from support import PROVISIONING_DIR
 
 
 class AnsibleContractTest(unittest.TestCase):
+    def test_shared_database_is_initialized_only_on_db1(self) -> None:
+        runtime = yaml.safe_load(self.read("playbooks/runtime.yml"))
+        groups = [play["hosts"] for play in runtime]
+        self.assertLess(groups.index("db_servers"), groups.index("app_servers"))
+        tasks = yaml.safe_load(self.read("roles/problem_server/tasks/main.yml"))
+        for task in tasks:
+            if task["name"] in (
+                "Initialize PostgreSQL 16 cluster at runtime",
+                "Create application PostgreSQL role",
+                "Create application PostgreSQL database",
+                "Run migrations and seed only an empty database",
+            ):
+                self.assertIn("isucon_node_id == 'db1'", task["when"])
+        environment = self.read("roles/problem_server/templates/backend.env.j2")
+        self.assertIn("isucon_topology.networks.db1Data.peerAddress", environment)
+        reset = yaml.safe_load(self.read("playbooks/reset-data.yml"))[0]
+        self.assertEqual("db_servers", reset["hosts"])
+        block = reset["tasks"][0]
+        self.assertIn("groups['app_servers']", block["block"][0]["loop"])
+        self.assertIn("groups['app_servers']", block["always"][0]["loop"])
+
     def read(self, relative: str) -> str:
         return (PROVISIONING_DIR / "ansible" / relative).read_text()
 

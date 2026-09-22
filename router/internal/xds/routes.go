@@ -34,7 +34,7 @@ func BuildRoutes(name string, hosts config.Hostnames, routerConfig domain.Config
 	if err := profile.Validate(); err != nil {
 		return nil, fmt.Errorf("traffic profile: %w", err)
 	}
-	hostValues := []string{hosts.App, hosts.Server1, hosts.Server2, hosts.Server3}
+	hostValues := []string{hosts.App, hosts.App1, hosts.App2, hosts.App3}
 	seen := make(map[string]struct{}, len(hostValues))
 	for _, host := range hostValues {
 		if host == "" {
@@ -52,9 +52,9 @@ func BuildRoutes(name string, hosts config.Hostnames, routerConfig domain.Config
 		server domain.ServerID
 	}{
 		{name: "app", host: hosts.App},
-		{name: string(domain.Server1), host: hosts.Server1, server: domain.Server1},
-		{name: string(domain.Server2), host: hosts.Server2, server: domain.Server2},
-		{name: string(domain.Server3), host: hosts.Server3, server: domain.Server3},
+		{name: string(domain.App1), host: hosts.App1, server: domain.App1},
+		{name: string(domain.App2), host: hosts.App2, server: domain.App2},
+		{name: string(domain.App3), host: hosts.App3, server: domain.App3},
 	}
 
 	virtualHosts := make([]*routev3.VirtualHost, 0, len(targets)+1)

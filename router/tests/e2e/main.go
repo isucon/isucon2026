@@ -25,23 +25,23 @@ const (
 	routerEndpoint = "http://router:8080"
 	statusEndpoint = "http://router:18081"
 
-	appHost     = "app.team1-abc123.isucon2026.westens.tokyo"
-	server1Host = "server1.team1-abc123.isucon2026.westens.tokyo"
-	server2Host = "server2.team1-abc123.isucon2026.westens.tokyo"
-	server3Host = "server3.team1-abc123.isucon2026.westens.tokyo"
+	appHost  = "app.team1-abc123.isucon2026.westens.tokyo"
+	app1Host = "app1.team1-abc123.isucon2026.westens.tokyo"
+	app2Host = "app2.team1-abc123.isucon2026.westens.tokyo"
+	app3Host = "app3.team1-abc123.isucon2026.westens.tokyo"
 )
 
 var initialConfig = expectedConfig{
-	server1: portalv1.Region_REGION_AP,
-	server2: portalv1.Region_REGION_EU,
-	server3: portalv1.Region_REGION_US,
+	app1:    portalv1.Region_REGION_AP,
+	app2:    portalv1.Region_REGION_EU,
+	app3:    portalv1.Region_REGION_US,
 	country: "JP",
 }
 
 type expectedConfig struct {
-	server1 portalv1.Region
-	server2 portalv1.Region
-	server3 portalv1.Region
+	app1    portalv1.Region
+	app2    portalv1.Region
+	app3    portalv1.Region
 	country string
 }
 
@@ -124,9 +124,9 @@ func (r *runner) full(ctx context.Context) error {
 	}
 
 	distinct := expectedConfig{
-		server1: portalv1.Region_REGION_AP,
-		server2: portalv1.Region_REGION_EU,
-		server3: portalv1.Region_REGION_US,
+		app1:    portalv1.Region_REGION_AP,
+		app2:    portalv1.Region_REGION_EU,
+		app3:    portalv1.Region_REGION_US,
 		country: "US",
 	}
 	updateStarted := time.Now()
@@ -145,7 +145,7 @@ func (r *runner) full(ctx context.Context) error {
 	if err := r.assertSixPeerRoutes(ctx); err != nil {
 		return err
 	}
-	crossDuration, err := r.peerFetch(ctx, server1Host, "JP", "172.31.2.10", 256<<10)
+	crossDuration, err := r.peerFetch(ctx, app1Host, "JP", "172.31.2.10", 256<<10)
 	if err != nil {
 		return fmt.Errorf("cross-region peer transfer: %w", err)
 	}
@@ -158,7 +158,7 @@ func (r *runner) full(ctx context.Context) error {
 	log.Printf("PASS peer-transfer cross=%s rate=%.0fbps", crossDuration, bitsPerSecond(256<<10, crossDuration))
 
 	_, err = r.portal.UpdateDesired(ctx, connect.NewRequest(&portalmockv1.UpdateDesiredRequest{
-		Patch: &portalmockv1.DesiredPatch{Server2Region: portalv1.Region_REGION_AP.Enum()},
+		Patch: &portalmockv1.DesiredPatch{App2Region: portalv1.Region_REGION_AP.Enum()},
 	}))
 	if connect.CodeOf(err) != connect.CodeInvalidArgument {
 		return fmt.Errorf("region update must be rejected: %v", err)
@@ -166,6 +166,21 @@ func (r *runner) full(ctx context.Context) error {
 	if err := r.waitStable(ctx, distinct); err != nil {
 		return err
 	}
+	sameDB, err := r.peerFetch(ctx, app1Host, "JP", "172.31.4.10", 256<<10)
+	if err != nil {
+		return fmt.Errorf("same-region DB transfer: %w", err)
+	}
+	crossDB, err := r.peerFetch(ctx, app2Host, "DE", "172.31.4.10", 256<<10)
+	if err != nil {
+		return fmt.Errorf("cross-region DB transfer: %w", err)
+	}
+	if sameDB+750*time.Millisecond >= crossDB || crossDB < 1500*time.Millisecond {
+		return fmt.Errorf("DB shaping: same=%s cross=%s", sameDB, crossDB)
+	}
+	if err := r.assertHTTPStatus(ctx, "db1.team1-abc123.isucon2026.westens.tokyo", []string{"JP"}, "/identity", http.StatusNotFound); err != nil {
+		return fmt.Errorf("DB must not be an HTTP target: %w", err)
+	}
+	log.Printf("PASS db1 AP placement: same=%s cross=%s; DB excluded from HTTP routing", sameDB, crossDB)
 	log.Printf("PASS fixed server regions reject updates")
 	return nil
 }
@@ -174,10 +189,10 @@ func (r *runner) verifyInitial(ctx context.Context) error {
 	if err := r.waitStable(ctx, initialConfig); err != nil {
 		return err
 	}
-	if err := r.assertIdentity(ctx, appHost, nil, "server1", []string{"JP"}); err != nil {
+	if err := r.assertIdentity(ctx, appHost, nil, "app1", []string{"JP"}); err != nil {
 		return fmt.Errorf("initial app route: %w", err)
 	}
-	if _, err := r.peerFetch(ctx, server1Host, "JP", "172.31.2.10", 32<<10); err != nil {
+	if _, err := r.peerFetch(ctx, app1Host, "JP", "172.31.2.10", 32<<10); err != nil {
 		return fmt.Errorf("peer path after recovery: %w", err)
 	}
 	log.Printf("PASS initial configuration and peer path recovered")
@@ -239,11 +254,11 @@ func (c expectedConfig) matches(actual *portalv1.Config) error {
 		return errors.New("desired config is incomplete")
 	}
 	regions := actual.GetServerRegions()
-	if regions.GetServer1() != c.server1 || regions.GetServer2() != c.server2 || regions.GetServer3() != c.server3 ||
-		actual.GetDefaultCountry() != c.country {
+	if regions.GetApp1() != c.app1 || regions.GetApp2() != c.app2 || regions.GetApp3() != c.app3 ||
+		regions.GetDb1() != portalv1.Region_REGION_AP || actual.GetDefaultCountry() != c.country {
 		return fmt.Errorf("desired config differs: got=(%s,%s,%s,%s) want=(%s,%s,%s,%s)",
-			regions.GetServer1(), regions.GetServer2(), regions.GetServer3(), actual.GetDefaultCountry(),
-			c.server1, c.server2, c.server3, c.country)
+			regions.GetApp1(), regions.GetApp2(), regions.GetApp3(), actual.GetDefaultCountry(),
+			c.app1, c.app2, c.app3, c.country)
 	}
 	return nil
 }
@@ -267,25 +282,25 @@ func (r *runner) updateDesired(ctx context.Context, config expectedConfig) error
 func nearestServer(country string) string {
 	switch country {
 	case "US", "CA", "MX":
-		return "server3"
+		return "app3"
 	case "GB", "DE", "FR":
-		return "server2"
+		return "app2"
 	default:
-		return "server1"
+		return "app1"
 	}
 }
 
 func (r *runner) assertInitialHTTP(ctx context.Context) error {
-	if err := r.assertIdentity(ctx, appHost, nil, "server1", []string{"JP"}); err != nil {
+	if err := r.assertIdentity(ctx, appHost, nil, "app1", []string{"JP"}); err != nil {
 		return fmt.Errorf("default country/main route: %w", err)
 	}
 	for _, test := range []struct {
 		host   string
 		server string
 	}{
-		{server1Host, "server1"},
-		{server2Host, "server2"},
-		{server3Host, "server3"},
+		{app1Host, "app1"},
+		{app2Host, "app2"},
+		{app3Host, "app3"},
 	} {
 		if err := r.assertIdentity(ctx, test.host, nil, test.server, []string{"JP"}); err != nil {
 			return fmt.Errorf("individual host %s: %w", test.server, err)
@@ -311,17 +326,17 @@ func (r *runner) assertInitialHTTP(ctx context.Context) error {
 }
 
 func (r *runner) assertDynamicHTTP(ctx context.Context) error {
-	if err := r.assertIdentity(ctx, appHost, nil, "server3", []string{"US"}); err != nil {
+	if err := r.assertIdentity(ctx, appHost, nil, "app3", []string{"US"}); err != nil {
 		return fmt.Errorf("dynamic default-country route: %w", err)
 	}
-	if err := r.assertIdentity(ctx, appHost, []string{"JP"}, "server1", []string{"JP"}); err != nil {
+	if err := r.assertIdentity(ctx, appHost, []string{"JP"}, "app1", []string{"JP"}); err != nil {
 		return fmt.Errorf("dynamic main explicit country: %w", err)
 	}
-	if err := r.assertIdentity(ctx, server2Host, []string{"DE"}, "server2", []string{"DE"}); err != nil {
+	if err := r.assertIdentity(ctx, app2Host, []string{"DE"}, "app2", []string{"DE"}); err != nil {
 		return fmt.Errorf("fixed server region route: %w", err)
 	}
 	for requestNumber := 1; requestNumber <= 100; requestNumber++ {
-		if err := r.assertIdentity(ctx, appHost, nil, "server3", []string{"US"}); err != nil {
+		if err := r.assertIdentity(ctx, appHost, nil, "app3", []string{"US"}); err != nil {
 			return fmt.Errorf("post-update request %d/100: %w", requestNumber, err)
 		}
 	}
@@ -333,11 +348,11 @@ func (r *runner) assertHTTPTrafficProfile(ctx context.Context) error {
 	sameSamples := make([]time.Duration, 0, 3)
 	crossSamples := make([]time.Duration, 0, 3)
 	for range 3 {
-		same, err := r.identityDuration(ctx, server1Host, "JP")
+		same, err := r.identityDuration(ctx, app1Host, "JP")
 		if err != nil {
 			return err
 		}
-		cross, err := r.identityDuration(ctx, server1Host, "US")
+		cross, err := r.identityDuration(ctx, app1Host, "US")
 		if err != nil {
 			return err
 		}
@@ -352,11 +367,11 @@ func (r *runner) assertHTTPTrafficProfile(ctx context.Context) error {
 	}
 
 	const blobBytes = 384 << 10
-	sameBandwidth, err := r.blobDuration(ctx, server1Host, "JP", blobBytes)
+	sameBandwidth, err := r.blobDuration(ctx, app1Host, "JP", blobBytes)
 	if err != nil {
 		return err
 	}
-	crossBandwidth, err := r.blobDuration(ctx, server1Host, "US", blobBytes)
+	crossBandwidth, err := r.blobDuration(ctx, app1Host, "US", blobBytes)
 	if err != nil {
 		return err
 	}
@@ -430,9 +445,9 @@ func (r *runner) assertSixPeerRoutes(ctx context.Context) error {
 		address  string
 		routerIP string
 	}{
-		{server1Host, "JP", "172.31.1.10", "172.31.1.2"},
-		{server2Host, "DE", "172.31.2.10", "172.31.2.2"},
-		{server3Host, "US", "172.31.3.10", "172.31.3.2"},
+		{app1Host, "JP", "172.31.1.10", "172.31.1.2"},
+		{app2Host, "DE", "172.31.2.10", "172.31.2.2"},
+		{app3Host, "US", "172.31.3.10", "172.31.3.2"},
 	}
 	for sourceIndex, source := range servers {
 		for targetIndex, target := range servers {

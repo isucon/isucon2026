@@ -74,11 +74,11 @@ static_resources:
                     socket_address:
                       address: 127.0.0.1
                       port_value: 18000
-    - name: server1
+    - name: app1
       type: STATIC
       connect_timeout: 2s
       load_assignment:
-        cluster_name: server1
+        cluster_name: app1
         endpoints:
           - lb_endpoints:
               - endpoint:
@@ -86,11 +86,11 @@ static_resources:
                     socket_address:
                       address: 172.31.1.10
                       port_value: 8080
-    - name: server2
+    - name: app2
       type: STATIC
       connect_timeout: 2s
       load_assignment:
-        cluster_name: server2
+        cluster_name: app2
         endpoints:
           - lb_endpoints:
               - endpoint:
@@ -98,11 +98,11 @@ static_resources:
                     socket_address:
                       address: 172.31.2.10
                       port_value: 8080
-    - name: server3
+    - name: app3
       type: STATIC
       connect_timeout: 2s
       load_assignment:
-        cluster_name: server3
+        cluster_name: app3
         endpoints:
           - lb_endpoints:
               - endpoint:

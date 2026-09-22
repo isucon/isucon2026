@@ -24,19 +24,20 @@ func (r Region) Valid() bool {
 type ServerID string
 
 const (
-	Server1 ServerID = "server1"
-	Server2 ServerID = "server2"
-	Server3 ServerID = "server3"
+	App1 ServerID = "app1"
+	App2 ServerID = "app2"
+	App3 ServerID = "app3"
+	DB1  ServerID = "db1"
 )
 
-var serverIDs = []ServerID{Server1, Server2, Server3}
+var serverIDs = []ServerID{App1, App2, App3, DB1}
 
 func ServerIDs() []ServerID {
 	return slices.Clone(serverIDs)
 }
 
 func (s ServerID) Valid() bool {
-	return s == Server1 || s == Server2 || s == Server3
+	return s == App1 || s == App2 || s == App3 || s == DB1
 }
 
 var countryRegions = map[string]Region{
@@ -67,15 +68,15 @@ func CountryRegion(code string) (Region, bool) {
 }
 
 type Config struct {
-	Server1Region  Region
-	Server2Region  Region
-	Server3Region  Region
+	App1Region     Region
+	App2Region     Region
+	App3Region     Region
 	DefaultCountry string
 }
 
 func (c Config) Validate() error {
-	if c.Server1Region != RegionAP || c.Server2Region != RegionEU || c.Server3Region != RegionUS {
-		return errors.New("server regions are fixed: server1=AP, server2=EU, server3=US")
+	if c.App1Region != RegionAP || c.App2Region != RegionEU || c.App3Region != RegionUS {
+		return errors.New("server regions are fixed: app1=AP, app2=EU, app3=US")
 	}
 	if _, ok := CountryRegion(c.DefaultCountry); !ok {
 		return errors.New("default country is unsupported")
@@ -85,12 +86,14 @@ func (c Config) Validate() error {
 
 func (c Config) RegionFor(server ServerID) Region {
 	switch server {
-	case Server1:
-		return c.Server1Region
-	case Server2:
-		return c.Server2Region
-	case Server3:
-		return c.Server3Region
+	case App1:
+		return c.App1Region
+	case App2:
+		return c.App2Region
+	case App3:
+		return c.App3Region
+	case DB1:
+		return RegionAP
 	default:
 		return ""
 	}
@@ -100,11 +103,11 @@ func (c Config) RegionFor(server ServerID) Region {
 func ServerForRegion(region Region) ServerID {
 	switch region {
 	case RegionAP:
-		return Server1
+		return App1
 	case RegionEU:
-		return Server2
+		return App2
 	case RegionUS:
-		return Server3
+		return App3
 	default:
 		return ""
 	}
@@ -113,9 +116,10 @@ func ServerForRegion(region Region) ServerID {
 func (c Config) Proto() *portalv1.Config {
 	return &portalv1.Config{
 		ServerRegions: &portalv1.ServerRegions{
-			Server1: regionToProto(c.Server1Region),
-			Server2: regionToProto(c.Server2Region),
-			Server3: regionToProto(c.Server3Region),
+			App1: regionToProto(c.App1Region),
+			App2: regionToProto(c.App2Region),
+			App3: regionToProto(c.App3Region),
+			Db1:  portalv1.Region_REGION_AP,
 		},
 		DefaultCountry: c.DefaultCountry,
 	}
@@ -128,22 +132,25 @@ func ConfigFromProto(value *portalv1.Config) (Config, error) {
 	if value.ServerRegions == nil {
 		return Config{}, errors.New("server regions are required")
 	}
-	server1, err := regionFromProto(value.ServerRegions.Server1)
-	if err != nil {
-		return Config{}, fmt.Errorf("server1: %w", err)
+	if value.ServerRegions.Db1 != portalv1.Region_REGION_AP {
+		return Config{}, errors.New("db1 region is fixed: AP")
 	}
-	server2, err := regionFromProto(value.ServerRegions.Server2)
+	app1, err := regionFromProto(value.ServerRegions.App1)
 	if err != nil {
-		return Config{}, fmt.Errorf("server2: %w", err)
+		return Config{}, fmt.Errorf("app1: %w", err)
 	}
-	server3, err := regionFromProto(value.ServerRegions.Server3)
+	app2, err := regionFromProto(value.ServerRegions.App2)
 	if err != nil {
-		return Config{}, fmt.Errorf("server3: %w", err)
+		return Config{}, fmt.Errorf("app2: %w", err)
+	}
+	app3, err := regionFromProto(value.ServerRegions.App3)
+	if err != nil {
+		return Config{}, fmt.Errorf("app3: %w", err)
 	}
 	config := Config{
-		Server1Region:  server1,
-		Server2Region:  server2,
-		Server3Region:  server3,
+		App1Region:     app1,
+		App2Region:     app2,
+		App3Region:     app3,
 		DefaultCountry: value.DefaultCountry,
 	}
 	if err := config.Validate(); err != nil {

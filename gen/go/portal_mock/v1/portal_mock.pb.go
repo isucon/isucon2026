@@ -288,9 +288,9 @@ func (ApplyState) EnumDescriptor() ([]byte, []int) {
 
 type ServerHostnames struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Server1       string                 `protobuf:"bytes,1,opt,name=server1,proto3" json:"server1,omitempty"`
-	Server2       string                 `protobuf:"bytes,2,opt,name=server2,proto3" json:"server2,omitempty"`
-	Server3       string                 `protobuf:"bytes,3,opt,name=server3,proto3" json:"server3,omitempty"`
+	App1          string                 `protobuf:"bytes,1,opt,name=app1,proto3" json:"app1,omitempty"`
+	App2          string                 `protobuf:"bytes,2,opt,name=app2,proto3" json:"app2,omitempty"`
+	App3          string                 `protobuf:"bytes,3,opt,name=app3,proto3" json:"app3,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -325,23 +325,23 @@ func (*ServerHostnames) Descriptor() ([]byte, []int) {
 	return file_portal_mock_v1_portal_mock_proto_rawDescGZIP(), []int{0}
 }
 
-func (x *ServerHostnames) GetServer1() string {
+func (x *ServerHostnames) GetApp1() string {
 	if x != nil {
-		return x.Server1
+		return x.App1
 	}
 	return ""
 }
 
-func (x *ServerHostnames) GetServer2() string {
+func (x *ServerHostnames) GetApp2() string {
 	if x != nil {
-		return x.Server2
+		return x.App2
 	}
 	return ""
 }
 
-func (x *ServerHostnames) GetServer3() string {
+func (x *ServerHostnames) GetApp3() string {
 	if x != nil {
-		return x.Server3
+		return x.App3
 	}
 	return ""
 }
@@ -1462,10 +1462,10 @@ func (x *ListSupportedCountriesResponse) GetCountries() []*SupportedCountry {
 type DesiredPatch struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// 互換性のためフィールドを保持するが、リージョンの指定は同値でも invalid_argument。
-	// 固定配置: server1=AP、server2=EU、server3=US。
-	Server1Region  *v1.Region `protobuf:"varint,1,opt,name=server1_region,json=server1Region,proto3,enum=portal.v1.Region,oneof" json:"server1_region,omitempty"`
-	Server2Region  *v1.Region `protobuf:"varint,2,opt,name=server2_region,json=server2Region,proto3,enum=portal.v1.Region,oneof" json:"server2_region,omitempty"`
-	Server3Region  *v1.Region `protobuf:"varint,3,opt,name=server3_region,json=server3Region,proto3,enum=portal.v1.Region,oneof" json:"server3_region,omitempty"`
+	// 固定配置: app1=AP、app2=EU、app3=US。
+	App1Region     *v1.Region `protobuf:"varint,1,opt,name=app1_region,json=app1Region,proto3,enum=portal.v1.Region,oneof" json:"app1_region,omitempty"`
+	App2Region     *v1.Region `protobuf:"varint,2,opt,name=app2_region,json=app2Region,proto3,enum=portal.v1.Region,oneof" json:"app2_region,omitempty"`
+	App3Region     *v1.Region `protobuf:"varint,3,opt,name=app3_region,json=app3Region,proto3,enum=portal.v1.Region,oneof" json:"app3_region,omitempty"`
 	DefaultCountry *string    `protobuf:"bytes,5,opt,name=default_country,json=defaultCountry,proto3,oneof" json:"default_country,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
@@ -1501,23 +1501,23 @@ func (*DesiredPatch) Descriptor() ([]byte, []int) {
 	return file_portal_mock_v1_portal_mock_proto_rawDescGZIP(), []int{19}
 }
 
-func (x *DesiredPatch) GetServer1Region() v1.Region {
-	if x != nil && x.Server1Region != nil {
-		return *x.Server1Region
+func (x *DesiredPatch) GetApp1Region() v1.Region {
+	if x != nil && x.App1Region != nil {
+		return *x.App1Region
 	}
 	return v1.Region(0)
 }
 
-func (x *DesiredPatch) GetServer2Region() v1.Region {
-	if x != nil && x.Server2Region != nil {
-		return *x.Server2Region
+func (x *DesiredPatch) GetApp2Region() v1.Region {
+	if x != nil && x.App2Region != nil {
+		return *x.App2Region
 	}
 	return v1.Region(0)
 }
 
-func (x *DesiredPatch) GetServer3Region() v1.Region {
-	if x != nil && x.Server3Region != nil {
-		return *x.Server3Region
+func (x *DesiredPatch) GetApp3Region() v1.Region {
+	if x != nil && x.App3Region != nil {
+		return *x.App3Region
 	}
 	return v1.Region(0)
 }
@@ -1797,11 +1797,11 @@ var File_portal_mock_v1_portal_mock_proto protoreflect.FileDescriptor
 
 const file_portal_mock_v1_portal_mock_proto_rawDesc = "" +
 	"\n" +
-	" portal_mock/v1/portal_mock.proto\x12\x0eportal_mock.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x16portal/v1/portal.proto\"_\n" +
-	"\x0fServerHostnames\x12\x18\n" +
-	"\aserver1\x18\x01 \x01(\tR\aserver1\x12\x18\n" +
-	"\aserver2\x18\x02 \x01(\tR\aserver2\x12\x18\n" +
-	"\aserver3\x18\x03 \x01(\tR\aserver3\"p\n" +
+	" portal_mock/v1/portal_mock.proto\x12\x0eportal_mock.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x16portal/v1/portal.proto\"M\n" +
+	"\x0fServerHostnames\x12\x12\n" +
+	"\x04app1\x18\x01 \x01(\tR\x04app1\x12\x12\n" +
+	"\x04app2\x18\x02 \x01(\tR\x04app2\x12\x12\n" +
+	"\x04app3\x18\x03 \x01(\tR\x04app3\"p\n" +
 	"\tHostnames\x12\x10\n" +
 	"\x03app\x18\x01 \x01(\tR\x03app\x129\n" +
 	"\aservers\x18\x02 \x01(\v2\x1f.portal_mock.v1.ServerHostnamesR\aservers\x12\x16\n" +
@@ -1893,15 +1893,18 @@ const file_portal_mock_v1_portal_mock_proto_rawDesc = "" +
 	"\x05state\x18\x01 \x01(\v2\x1f.portal_mock.v1.MockPortalStateR\x05state\"\x1f\n" +
 	"\x1dListSupportedCountriesRequest\"`\n" +
 	"\x1eListSupportedCountriesResponse\x12>\n" +
-	"\tcountries\x18\x01 \x03(\v2 .portal_mock.v1.SupportedCountryR\tcountries\"\xd9\x02\n" +
-	"\fDesiredPatch\x12=\n" +
-	"\x0eserver1_region\x18\x01 \x01(\x0e2\x11.portal.v1.RegionH\x00R\rserver1Region\x88\x01\x01\x12=\n" +
-	"\x0eserver2_region\x18\x02 \x01(\x0e2\x11.portal.v1.RegionH\x01R\rserver2Region\x88\x01\x01\x12=\n" +
-	"\x0eserver3_region\x18\x03 \x01(\x0e2\x11.portal.v1.RegionH\x02R\rserver3Region\x88\x01\x01\x12,\n" +
-	"\x0fdefault_country\x18\x05 \x01(\tH\x03R\x0edefaultCountry\x88\x01\x01B\x11\n" +
-	"\x0f_server1_regionB\x11\n" +
-	"\x0f_server2_regionB\x11\n" +
-	"\x0f_server3_regionB\x12\n" +
+	"\tcountries\x18\x01 \x03(\v2 .portal_mock.v1.SupportedCountryR\tcountries\"\xbe\x02\n" +
+	"\fDesiredPatch\x127\n" +
+	"\vapp1_region\x18\x01 \x01(\x0e2\x11.portal.v1.RegionH\x00R\n" +
+	"app1Region\x88\x01\x01\x127\n" +
+	"\vapp2_region\x18\x02 \x01(\x0e2\x11.portal.v1.RegionH\x01R\n" +
+	"app2Region\x88\x01\x01\x127\n" +
+	"\vapp3_region\x18\x03 \x01(\x0e2\x11.portal.v1.RegionH\x02R\n" +
+	"app3Region\x88\x01\x01\x12,\n" +
+	"\x0fdefault_country\x18\x05 \x01(\tH\x03R\x0edefaultCountry\x88\x01\x01B\x0e\n" +
+	"\f_app1_regionB\x0e\n" +
+	"\f_app2_regionB\x0e\n" +
+	"\f_app3_regionB\x12\n" +
 	"\x10_default_countryJ\x04\b\x04\x10\x05R\vmain_server\"J\n" +
 	"\x14UpdateDesiredRequest\x122\n" +
 	"\x05patch\x18\x01 \x01(\v2\x1c.portal_mock.v1.DesiredPatchR\x05patch\"\xa2\x01\n" +
@@ -2037,9 +2040,9 @@ var file_portal_mock_v1_portal_mock_proto_depIdxs = []int32{
 	17, // 30: portal_mock.v1.GetStateResponse.state:type_name -> portal_mock.v1.MockPortalState
 	17, // 31: portal_mock.v1.StreamStateResponse.state:type_name -> portal_mock.v1.MockPortalState
 	11, // 32: portal_mock.v1.ListSupportedCountriesResponse.countries:type_name -> portal_mock.v1.SupportedCountry
-	31, // 33: portal_mock.v1.DesiredPatch.server1_region:type_name -> portal.v1.Region
-	31, // 34: portal_mock.v1.DesiredPatch.server2_region:type_name -> portal.v1.Region
-	31, // 35: portal_mock.v1.DesiredPatch.server3_region:type_name -> portal.v1.Region
+	31, // 33: portal_mock.v1.DesiredPatch.app1_region:type_name -> portal.v1.Region
+	31, // 34: portal_mock.v1.DesiredPatch.app2_region:type_name -> portal.v1.Region
+	31, // 35: portal_mock.v1.DesiredPatch.app3_region:type_name -> portal.v1.Region
 	24, // 36: portal_mock.v1.UpdateDesiredRequest.patch:type_name -> portal_mock.v1.DesiredPatch
 	8,  // 37: portal_mock.v1.UpdateDesiredResponse.desired:type_name -> portal_mock.v1.ConfigSnapshot
 	10, // 38: portal_mock.v1.UpdateDesiredResponse.apply:type_name -> portal_mock.v1.ApplyDiagnostic
