@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+interface_for_mac() {
+  local wanted="${1,,}"
+  local address_file
+  for address_file in /sys/class/net/*/address; do
+    if [[ "$(<"${address_file}")" == "${wanted}" ]]; then
+      basename "$(dirname "${address_file}")"
+      return 0
+    fi
+  done
+  return 1
+}
+
+{% set bootstrap_mac = isucon_node.interfaces[0].macAddress | lower %}
+bootstrap_iface="$(interface_for_mac '{{ bootstrap_mac[0:2] }}:{{ bootstrap_mac[2:4] }}:{{ bootstrap_mac[4:6] }}:{{ bootstrap_mac[6:8] }}:{{ bootstrap_mac[8:10] }}:{{ bootstrap_mac[10:12] }}')"
+{% for interface in isucon_network_interfaces %}
+{% set mac = interface.macAddress | lower %}
+iface_{{ interface.role }}="$(interface_for_mac '{{ mac[0:2] }}:{{ mac[2:4] }}:{{ mac[4:6] }}:{{ mac[6:8] }}:{{ mac[8:10] }}:{{ mac[10:12] }}')"
+{% endfor %}
+nft delete table inet isureal_guard >/dev/null 2>&1 || true
+nft -f - <<NFT
+table inet isureal_guard {
+  chain input {
+    type filter hook input priority -10; policy drop;
+    iifname "lo" accept
+    ct state established,related accept
+    ip protocol icmp accept
+    iifname "${bootstrap_iface}" tcp dport 22 accept
+{% if isucon_node.role == 'problem-server' %}
+    iifname "${iface_data0}" tcp dport 8080 accept
+{% else %}
+    iifname "${bootstrap_iface}" tcp dport 8080 accept
+    iifname "${bootstrap_iface}" tcp dport 443 accept
+    iifname "${iface_control0}" tcp dport 18081 accept
+{% endif %}
+  }
+
+  chain forward {
+    type filter hook forward priority -10; policy drop;
+    ct state established,related accept
+{% if isucon_node.role == 'router' %}
+{% for source in ['data1', 'data2', 'data3'] %}
+{% for destination in ['data1', 'data2', 'data3'] if source != destination %}
+    iifname "${iface_{{ source }}}" oifname "${iface_{{ destination }}}" accept
+{% endfor %}
+{% endfor %}
+{% endif %}
+  }
+
+  chain output {
+    type filter hook output priority -10; policy accept;
+    ct state established,related accept
+    # Keep the NAT-forwarded SSH management path alive even while this ruleset
+    # is being (re)applied.  A connection that predates conntrack tracking is
+    # not seen as "established", so its reply packets to the NAT gateway
+    # (inside 10.0.0.0/8) would otherwise hit the private-range drops below and
+    # freeze the running provisioning session.
+    oifname "${bootstrap_iface}" tcp sport 22 accept
+    oifname "${bootstrap_iface}" meta nfproto ipv6 drop
+{% if isucon_node.role == 'problem-server' %}
+    oifname "${bootstrap_iface}" ip daddr 10.0.2.3 udp dport 53 accept
+    oifname "${bootstrap_iface}" ip daddr 10.0.2.3 tcp dport 53 accept
+    oifname "${bootstrap_iface}" ip daddr 10.0.0.0/8 drop
+    oifname "${bootstrap_iface}" ip daddr 172.16.0.0/12 drop
+    oifname "${bootstrap_iface}" ip daddr 192.168.0.0/16 drop
+    oifname "${bootstrap_iface}" ip daddr 169.254.0.0/16 drop
+{% endif %}
+  }
+}
+NFT

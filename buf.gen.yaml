@@ -1,0 +1,28 @@
+version: v2
+
+# Protobuf の言語別 package option は source に書かず、Buf managed mode で統一する。
+# コード生成プラグインは mise.toml で固定したローカル実行ファイルだけを使用する。
+# BSR remote plugin / remote module は使用しない。
+managed:
+  enabled: true
+  override:
+    - file_option: go_package_prefix
+      value: github.com/isucon/isucon2026/gen/go
+
+# `gen/go/go.mod` と `gen/ts/package.json` は生成コードを共有モジュールとして
+# 利用するための手書きメタデータなので、出力ディレクトリ全体は削除しない。
+# protoc-gen-* は対象ファイルを決定的に上書きする。
+clean: false
+plugins:
+  - local: protoc-gen-go
+    out: gen/go
+    opt:
+      - paths=source_relative
+  - local: protoc-gen-connect-go
+    out: gen/go
+    opt:
+      - paths=source_relative
+  - local: protoc-gen-es
+    out: gen/ts
+    opt:
+      - target=ts

@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+set -euo pipefail
+systemctl is-active --quiet isureal-router.service
+systemctl is-active --quiet isureal-envoy.service
+curl --fail --silent --show-error http://{{ isucon_topology.networks.control.routerAddress }}:18081/healthz >/dev/null
+curl --fail --silent --show-error http://{{ isucon_topology.networks.control.routerAddress }}:18081/readyz >/dev/null
+curl --fail --silent --show-error \
+  --cacert /etc/isucon/envoy/tls/local-ca.crt \
+  --resolve app.team{{ isucon_topology.portal.teamNumber }}-{{ isucon_topology.portal.teamHash }}.{{ isucon_topology.domain }}:443:127.0.0.1 \
+  https://app.team{{ isucon_topology.portal.teamNumber }}-{{ isucon_topology.portal.teamHash }}.{{ isucon_topology.domain }}/ >/dev/null
+printf '%s\n' 'router: ready'

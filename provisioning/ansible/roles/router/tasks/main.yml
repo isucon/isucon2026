@@ -1,0 +1,158 @@
+---
+- name: Resolve Router artifact input
+  ansible.builtin.set_fact:
+    isucon_effective_artifact_root: "{{ isucon_artifact_root | default(lookup('ansible.builtin.env', 'ISUREAL_ARTIFACT_ROOT'), true) }}"
+
+- name: Require controller artifact directory for Router
+  ansible.builtin.assert:
+    that:
+      - isucon_effective_artifact_root | length > 0
+    fail_msg: "ISUREAL_ARTIFACT_ROOT or isucon_artifact_root is required."
+
+- name: Create native Router account
+  ansible.builtin.user:
+    name: isureal-router
+    system: true
+    home: /var/lib/isureal-router
+    shell: /usr/sbin/nologin
+
+- name: Create Router directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - /opt/isucon/bin
+    - /etc/isucon/envoy
+
+- name: Create Envoy TLS directory
+  ansible.builtin.file:
+    path: /etc/isucon/envoy/tls
+    state: directory
+    owner: root
+    group: isureal-router
+    mode: "0750"
+
+- name: Extract router.tar
+  ansible.builtin.unarchive:
+    src: "{{ isucon_effective_artifact_root }}/router.tar"
+    dest: /opt/isucon
+    owner: root
+    group: root
+  notify: Restart Router stack
+
+- name: Extract envoy.tar
+  ansible.builtin.unarchive:
+    src: "{{ isucon_effective_artifact_root }}/envoy.tar"
+    dest: /opt/isucon
+    owner: root
+    group: root
+  notify: Restart Router stack
+
+- name: Install native Router systemd units
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - isureal-router.service
+    - isureal-envoy.service
+  notify: Reload systemd for Router
+
+- name: Keep Router services disabled in reusable image
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    state: stopped
+    enabled: false
+    daemon_reload: true
+  loop:
+    - isureal-router.service
+    - isureal-envoy.service
+  when: isucon_image_build | bool
+
+- name: Install Router runtime environment
+  ansible.builtin.template:
+    src: router.env.j2
+    dest: /etc/isucon/router.env
+    owner: root
+    group: isureal-router
+    mode: "0640"
+  notify: Restart Router stack
+  when: not (isucon_image_build | bool)
+
+- name: Install Envoy bootstrap
+  ansible.builtin.template:
+    src: envoy-bootstrap.yaml.j2
+    dest: /etc/isucon/envoy/bootstrap.yaml
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart Router stack
+  when: not (isucon_image_build | bool)
+
+- name: Install local TLS certificates
+  ansible.builtin.copy:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: root
+    group: isureal-router
+    mode: "{{ item.mode }}"
+  loop:
+    - {src: "{{ isucon_tls_ca_path }}", dest: /etc/isucon/envoy/tls/local-ca.crt, mode: "0644"}
+    - {src: "{{ isucon_tls_certificate_path }}", dest: /etc/isucon/envoy/tls/server.crt, mode: "0644"}
+    - {src: "{{ isucon_tls_private_key_path }}", dest: /etc/isucon/envoy/tls/server.key, mode: "0640"}
+  notify: Restart Router stack
+  when: not (isucon_image_build | bool)
+
+- name: Validate Envoy bootstrap
+  ansible.builtin.command: /opt/isucon/bin/envoy --mode validate -c /etc/isucon/envoy/bootstrap.yaml
+  changed_when: false
+  when: not (isucon_image_build | bool)
+
+- name: Install Router local health command
+  ansible.builtin.template:
+    src: node-check.sh.j2
+    dest: /usr/local/sbin/isureal-node-check
+    owner: root
+    group: root
+    mode: "0755"
+  when: not (isucon_image_build | bool)
+
+- name: Flush Router handlers before readiness
+  ansible.builtin.meta: flush_handlers
+  when: not (isucon_image_build | bool)
+
+- name: Enable and start native Router stack
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    enabled: true
+    state: started
+    daemon_reload: true
+  loop:
+    - isureal-router.service
+    - isureal-envoy.service
+  when: not (isucon_image_build | bool)
+
+- name: Wait for Router process health
+  ansible.builtin.uri:
+    url: "http://{{ isucon_topology.networks.control.routerAddress }}:18081/healthz"
+    status_code: 200
+  register: isucon_router_health
+  retries: 30
+  delay: 2
+  until: isucon_router_health.status == 200
+  when: not (isucon_image_build | bool)
+
+- name: Wait for Portal and Envoy convergence
+  ansible.builtin.uri:
+    url: "http://{{ isucon_topology.networks.control.routerAddress }}:18081/readyz"
+    status_code: 200
+  register: isucon_router_ready
+  retries: 60
+  delay: 2
+  until: isucon_router_ready.status == 200
+  when: not (isucon_image_build | bool)

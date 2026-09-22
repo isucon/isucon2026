@@ -1,4 +1,5 @@
 import { jsonRequest } from './client';
+import { randomUUID } from './ids';
 
 export type Visibility = 'friends' | 'friends_of_friends' | 'public';
 export type FeedKind = 'friends' | 'friends-of-friends' | 'public' | 'following';
@@ -22,7 +23,7 @@ export interface Post {
 
 export interface PostPage { items: Post[]; nextCursor: string | null }
 
-const mutationHeaders = (): HeadersInit => ({ 'Idempotency-Key': crypto.randomUUID() });
+const mutationHeaders = (): HeadersInit => ({ 'Idempotency-Key': randomUUID() });
 
 export function createPost(input: { image: File; caption: string; visibility: Visibility; location: Location }): Promise<Post> {
   const body = new FormData();

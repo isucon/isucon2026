@@ -57,7 +57,10 @@ var reactionTypes = []string{"like", "heart", "laugh", "smile", "surprise", "ins
 
 type Config struct {
 	Target string
-	Users  int
+	// Host overrides the HTTP Host header while Target remains the connection
+	// endpoint. It is used by environments whose ingress routes by hostname.
+	Host  string
+	Users int
 	// MaxCycles > 0 runs exactly that many posting cycles instead of the
 	// fixed 60-second load duration, so repeated runs score identically.
 	MaxCycles int
@@ -101,7 +104,7 @@ func NewRunner(cfg Config) (*Runner, error) {
 	}
 	return &Runner{
 		cfg:       cfg,
-		api:       client.New(cfg.Target),
+		api:       client.NewWithHost(cfg.Target, cfg.Host),
 		clock:     vt.NewClock(),
 		board:     score.NewBoard(),
 		postImage: postImage,

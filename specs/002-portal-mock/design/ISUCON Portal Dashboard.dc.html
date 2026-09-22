@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0}
+@keyframes pulseDot{0%,100%{opacity:1}50%{opacity:.35}}
+a{color:oklch(0.72 0.13 200);text-decoration:none}
+a:hover{color:oklch(0.8 0.13 200);text-decoration:underline}
+</style>
+</helmet>
+<div style="min-height:100vh;background:oklch(0.15 0.02 250);color:oklch(0.95 0.01 250);font-family:'Noto Sans JP',sans-serif;font-size:14px">
+
+<div style="position:sticky;top:0;z-index:10;display:flex;align-items:center;justify-content:space-between;padding:0 32px;height:64px;border-bottom:1px solid oklch(1 0 0 / 0.09);background:oklch(0.15 0.02 250 / 0.92);backdrop-filter:blur(8px)">
+  <div style="display:flex;align-items:center;gap:14px">
+    <span style="font-family:'IBM Plex Mono',monospace;font-weight:700;font-size:18px;letter-spacing:0.01em">ISUCON2026</span>
+    <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:600;letter-spacing:0.08em;padding:3px 8px;border-radius:4px;background:oklch(0.72 0.13 200 / 0.15);color:oklch(0.72 0.13 200)">PORTAL</span>
+  </div>
+  <div style="display:flex;align-items:center;gap:20px">
+    <span style="font-family:'IBM Plex Mono',monospace;font-size:13px;padding:6px 12px;border-radius:6px;background:oklch(0.23 0.02 250);border:1px solid oklch(1 0 0 / 0.09)">Team {{ teamNumber }}</span>
+  </div>
+</div>
+
+<div style="max-width:1440px;margin:0 auto;padding:32px;display:flex;flex-direction:column;gap:28px">
+
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px">
+    <div style="background:oklch(0.19 0.02 250);border:1px solid oklch(1 0 0 / 0.09);border-radius:10px;padding:18px 22px;display:flex;flex-direction:column;gap:6px">
+      <span style="font-size:11px;font-weight:600;letter-spacing:0.06em;color:oklch(0.5 0.02 250);text-transform:uppercase">最高スコア</span>
+      <span style="font-family:'IBM Plex Mono',monospace;font-size:28px;font-weight:700">{{ bestScore }}</span>
+    </div>
+    <div style="background:oklch(0.19 0.02 250);border:1px solid oklch(1 0 0 / 0.09);border-radius:10px;padding:18px 22px;display:flex;flex-direction:column;gap:6px">
+      <span style="font-size:11px;font-weight:600;letter-spacing:0.06em;color:oklch(0.5 0.02 250);text-transform:uppercase">直近スコア</span>
+      <span style="font-family:'IBM Plex Mono',monospace;font-size:28px;font-weight:700">{{ latestScore }}</span>
+    </div>
+    <div style="background:oklch(0.19 0.02 250);border:1px solid oklch(1 0 0 / 0.09);border-radius:10px;padding:18px 22px;display:flex;flex-direction:column;gap:6px">
+      <span style="font-size:11px;font-weight:600;letter-spacing:0.06em;color:oklch(0.5 0.02 250);text-transform:uppercase">実行回数</span>
+      <span style="font-family:'IBM Plex Mono',monospace;font-size:28px;font-weight:700">{{ runsCount }}<span style="font-size:14px;font-weight:500;color:oklch(0.68 0.02 250)"> 回</span></span>
+    </div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 400px;gap:24px;align-items:start">
+
+    <div style="display:flex;flex-direction:column;gap:24px">
+
+      <div style="background:oklch(0.19 0.02 250);border:1px solid oklch(1 0 0 / 0.09);border-radius:12px;padding:24px;display:flex;flex-direction:column;gap:16px">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <span style="font-size:16px;font-weight:700">ベンチマーク実行</span>
+          <span style="display:inline-flex;align-items:center;gap:7px;padding:4px 12px;border-radius:999px;font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:600;background:{{ statusPill.bg }};color:{{ statusPill.fg }}">
+            <span style="width:7px;height:7px;border-radius:999px;background:{{ statusPill.fg }};animation:{{ statusPill.anim }}"></span>{{ statusLabel }}
+          </span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;font-size:13px;color:oklch(0.68 0.02 250)">
+          <span>実行対象:</span>
+          <span style="font-family:'IBM Plex Mono',monospace;color:oklch(0.95 0.01 250);font-weight:600">{{ mainServerLabel }} ({{ mainServerRegion }})</span>
+        </div>
+        <sc-if value="{{ blockReason }}" hint-placeholder-val="{{ false }}">
+          <div style="font-size:12.5px;padding:10px 14px;border-radius:8px;background:oklch(0.78 0.15 85 / 0.13);color:oklch(0.78 0.15 85);border:1px solid oklch(0.78 0.15 85 / 0.25)">{{ blockReason }}</div>
+        </sc-if>
+        <sc-if value="{{ showProgress }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;align-items:center;gap:10px">
+            <div style="flex:1;height:8px;border-radius:999px;background:oklch(0.23 0.02 250);overflow:hidden">
+              <div style="height:100%;border-radius:999px;background:oklch(0.72 0.13 200);width:{{ progressPct }}%;transition:width 0.2s linear"></div>
+            </div>
+            <span style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:oklch(0.68 0.02 250);width:36px;text-align:right">{{ progressPct }}%</span>
+          </div>
+        </sc-if>
+        <button onClick="{{ runBenchmark }}" disabled="{{ runButtonDisabled }}" style="align-self:flex-start;padding:12px 22px;border-radius:8px;border:none;font-family:'Noto Sans JP',sans-serif;font-weight:700;font-size:14px;cursor:pointer;background:{{ runButtonBg }};color:{{ runButtonFg }}">{{ runButtonLabel }}</button>
+      </div>
+
+      <div style="background:oklch(0.19 0.02 250);border:1px solid oklch(1 0 0 / 0.09);border-radius:12px;padding:24px">
+        <div style="font-size:16px;font-weight:700;margin-bottom:16px">実行履歴</div>
+        <table style="width:100%;border-collapse:collapse">
+          <thead>
+            <tr style="text-align:left;font-size:11px;font-weight:600;letter-spacing:0.05em;color:oklch(0.5 0.02 250);text-transform:uppercase">
+              <th style="padding:0 8px 10px 0;font-weight:600">#</th>
+              <th style="padding:0 8px 10px 0;font-weight:600">日時</th>
+              <th style="padding:0 8px 10px 0;font-weight:600">対象</th>
+              <th style="padding:0 8px 10px 0;font-weight:600">スコア</th>
+              <th style="padding:0 8px 10px 0;font-weight:600">結果</th>
+              <th style="padding:0 0 10px 0;font-weight:600"></th>
+            </tr>
+          </thead>
+          <sc-for list="{{ historyList }}" as="run" hint-placeholder-count="4">
+            <tbody style="display:table-row-group">
+              <tr onClick="{{ run.onToggle }}" style="cursor:pointer;border-top:1px solid oklch(1 0 0 / 0.07)">
+                <td style="padding:10px 8px 10px 0;font-family:'IBM Plex Mono',monospace;color:oklch(0.5 0.02 250)">{{ run.id }}</td>
+                <td style="padding:10px 8px 10px 0;font-family:'IBM Plex Mono',monospace;font-size:13px">{{ run.time }}</td>
+                <td style="padding:10px 8px 10px 0;font-family:'IBM Plex Mono',monospace;font-size:13px;color:oklch(0.68 0.02 250)">{{ run.mainServer }}</td>
+                <td style="padding:10px 8px 10px 0;font-family:'IBM Plex Mono',monospace;font-weight:700">{{ run.scoreLabel }}</td>
+                <td style="padding:10px 8px 10px 0">
+                  <span style="display:inline-flex;padding:2px 9px;border-radius:999px;font-family:'IBM Plex Mono',monospace;font-size:11.5px;font-weight:700;background:{{ run.resultColor.bg }};color:{{ run.resultColor.fg }}">{{ run.result }}</span>
+                </td>
+                <td style="padding:10px 0 10px 0;text-align:right;color:oklch(0.5 0.02 250);font-size:11px">{{ run.chevron }}</td>
+              </tr>
+              <sc-if value="{{ run.expanded }}" hint-placeholder-val="{{ false }}">
+                <tr>
+                  <td colSpan="6" style="padding:0 0 14px 0;background:oklch(0.13 0.02 250)">
+                    <div style="padding:12px 16px;display:flex;flex-direction:column;gap:4px;font-family:'IBM Plex Mono',monospace;font-size:12px;color:oklch(0.68 0.02 250)">
+                      <sc-for list="{{ run.log }}" as="line" hint-placeholder-count="3">
+                        <div>{{ line }}</div>
+                      </sc-for>
+                    </div>
+                  </td>
+                </tr>
+              </sc-if>
+            </tbody>
+          </sc-for>
+        </table>
+      </div>
+
+    </div>
+
+    <div style="position:sticky;top:88px;display:flex;flex-direction:column;gap:20px">
+
+      <div style="opacity:{{ controlsOpacity }};display:flex;flex-direction:column;gap:20px">
+
+        <sc-if value="{{ hasPendingChanges }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;align-items:center;gap:8px;padding:9px 14px;border-radius:8px;background:oklch(0.78 0.15 85 / 0.13);border:1px solid oklch(0.78 0.15 85 / 0.25);font-size:12px;color:oklch(0.78 0.15 85)">
+            <span style="width:6px;height:6px;border-radius:999px;background:oklch(0.78 0.15 85);animation:pulseDot 1.1s ease-in-out infinite"></span>設定を反映中です…
+          </div>
+        </sc-if>
+
+        <div style="background:oklch(0.19 0.02 250);border:1px solid oklch(1 0 0 / 0.09);border-radius:12px;padding:20px">
+          <div style="font-size:13px;font-weight:700;margin-bottom:14px">メイン接続先</div>
+          <div style="display:flex;gap:8px;margin-bottom:14px">
+            <sc-for list="{{ serverList }}" as="srv" hint-placeholder-count="3">
+              <div onClick="{{ srv.onSetMain }}" style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 0;border-radius:8px;cursor:pointer;font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:13px;border:{{ srv.mainBorder }};background:{{ srv.mainBg }};color:{{ srv.mainFg }}">
+                <span>{{ srv.label }}</span>
+                <sc-if value="{{ srv.mainPending }}" hint-placeholder-val="{{ false }}">
+                  <span style="font-size:9px;font-weight:600">反映待ち</span>
+                </sc-if>
+              </div>
+            </sc-for>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:oklch(0.68 0.02 250);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ mainHostname }}</span>
+            <button onClick="{{ copyMain }}" style="flex-shrink:0;padding:4px 10px;border-radius:6px;border:1px solid oklch(1 0 0 / 0.12);background:oklch(0.23 0.02 250);color:oklch(0.85 0.01 250);font-size:11px;cursor:pointer;font-family:'Noto Sans JP',sans-serif">{{ mainCopyLabel }}</button>
+          </div>
+        </div>
+
+        <div style="background:oklch(0.19 0.02 250);border:1px solid oklch(1 0 0 / 0.09);border-radius:12px;padding:20px 20px 6px">
+          <div style="font-size:13px;font-weight:700;margin-bottom:6px">サーバー個別設定</div>
+          <sc-for list="{{ serverList }}" as="srv" hint-placeholder-count="3">
+            <div style="padding:14px 0;border-bottom:1px solid oklch(1 0 0 / 0.07);display:flex;flex-direction:column;gap:8px">
+              <div style="display:flex;align-items:center;justify-content:space-between">
+                <div style="display:flex;align-items:center;gap:8px">
+                  <span style="font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:13px">{{ srv.label }}</span>
+                  <span style="font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:999px;background:{{ srv.regionColor.bg }};color:{{ srv.regionColor.fg }}">{{ srv.region }}</span>
+                  <sc-if value="{{ srv.regionPending }}" hint-placeholder-val="{{ false }}">
+                    <span style="font-size:10px;font-weight:600;color:oklch(0.78 0.15 85)">反映待ち</span>
+                  </sc-if>
+                </div>
+                <button onClick="{{ srv.onCopy }}" style="padding:3px 9px;border-radius:6px;border:1px solid oklch(1 0 0 / 0.12);background:oklch(0.23 0.02 250);color:oklch(0.68 0.02 250);font-size:10.5px;cursor:pointer;font-family:'Noto Sans JP',sans-serif">{{ srv.copyLabel }}</button>
+              </div>
+              <div style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:oklch(0.5 0.02 250);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ srv.hostname }}</div>
+              <select value="{{ srv.region }}" onChange="{{ srv.onRegionChange }}" disabled="{{ locked }}" style="font-family:'IBM Plex Mono',monospace;font-size:12px;padding:5px 8px;border-radius:6px;background:oklch(0.23 0.02 250);color:oklch(0.95 0.01 250);border:{{ srv.selectBorder }};align-self:flex-start">
+                <option value="US">US</option>
+                <option value="AP">AP</option>
+                <option value="EU">EU</option>
+              </select>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="background:oklch(0.19 0.02 250);border:1px solid oklch(1 0 0 / 0.09);border-radius:12px;padding:20px">
+          <div style="font-size:13px;font-weight:700;margin-bottom:6px">デフォルト国 (X-Country-Code)</div>
+          <div style="font-size:11.5px;color:oklch(0.5 0.02 250);margin-bottom:12px">X-Country-Codeヘッダーが無い場合に採用されるクライアントの国</div>
+          <select value="{{ defaultCountry }}" onChange="{{ onDefaultCountryChange }}" disabled="{{ locked }}" style="font-family:'IBM Plex Mono',monospace;font-size:13px;padding:7px 10px;border-radius:6px;background:oklch(0.23 0.02 250);color:oklch(0.95 0.01 250);border:{{ countrySelectBorder }};width:100%">
+            <option value="US">US</option>
+            <option value="AP">AP</option>
+            <option value="EU">EU</option>
+          </select>
+          <sc-if value="{{ countryPending }}" hint-placeholder-val="{{ false }}">
+            <div style="font-size:10.5px;font-weight:600;color:oklch(0.78 0.15 85);margin-top:6px">反映待ち</div>
+          </sc-if>
+        </div>
+
+      </div>
+
+    </div>
+
+  </div>
+
+  <div style="text-align:center;font-size:11.5px;color:oklch(0.4 0.02 250);padding:12px 0 4px">ISUCON2026 作問用ポータルモック — 本画面はモックであり実際の通信制御は行われません</div>
+
+</div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{
+  &quot;teamNumber&quot;: { &quot;editor&quot;: &quot;int&quot;, &quot;default&quot;: 42, &quot;tsType&quot;: &quot;number&quot;, &quot;min&quot;: 1, &quot;max&quot;: 999 },
+  &quot;forceLocked&quot;: { &quot;editor&quot;: &quot;boolean&quot;, &quot;default&quot;: false, &quot;tsType&quot;: &quot;boolean&quot;, &quot;section&quot;: &quot;デモ用&quot; },
+  &quot;benchmarkTick&quot;: { &quot;editor&quot;: &quot;range&quot;, &quot;default&quot;: 300, &quot;tsType&quot;: &quot;number&quot;, &quot;min&quot;: 100, &quot;max&quot;: 1000, &quot;step&quot;: 50, &quot;unit&quot;: &quot;ms/tick&quot;, &quot;section&quot;: &quot;デモ用&quot; },
+  &quot;applyDelayMs&quot;: { &quot;editor&quot;: &quot;range&quot;, &quot;default&quot;: 2200, &quot;tsType&quot;: &quot;number&quot;, &quot;min&quot;: 500, &quot;max&quot;: 5000, &quot;step&quot;: 100, &quot;unit&quot;: &quot;ms&quot;, &quot;section&quot;: &quot;デモ用&quot; }
+}">
+const REGION_COLOR = {
+  US: { bg: 'oklch(0.72 0.13 235 / 0.16)', fg: 'oklch(0.72 0.13 235)' },
+  AP: { bg: 'oklch(0.75 0.13 165 / 0.16)', fg: 'oklch(0.75 0.13 165)' },
+  EU: { bg: 'oklch(0.72 0.13 300 / 0.16)', fg: 'oklch(0.72 0.13 300)' },
+};
+const RESULT_COLOR = {
+  PASS: { bg: 'oklch(0.74 0.16 145 / 0.16)', fg: 'oklch(0.74 0.16 145)' },
+  FAIL: { bg: 'oklch(0.68 0.19 25 / 0.16)', fg: 'oklch(0.68 0.19 25)' },
+};
+const HOSTNAME_SUFFIX = 'a1b2c3.isucon2026.westens.tokyo';
+
+function passLog(score) {
+  return [
+    '[INFO] scenario: normal load ... ok',
+    '[INFO] POST /api/orders x 1,204 (avg 42ms)',
+    '[INFO] GET /api/items x 8,431 (avg 18ms)',
+    `[INFO] final score: ${score}`,
+  ];
+}
+const failLog = [
+  '[ERROR] GET /api/items: expected 200, got 500 (14 times)',
+  '[ERROR] integrity check failed, score invalidated',
+  '[WARN] region: server2=AP, injected latency +200ms',
+];
+
+class Component extends DCLogic {
+  _timers = {};
+  _mainTimer = null;
+  _countryTimer = null;
+  state = {
+    regions: { server1: 'US', server2: 'AP', server3: 'EU' },
+    mainServer: 'server1',
+    defaultCountry: 'US',
+    pendingRegions: {},
+    pendingMain: null,
+    pendingCountry: null,
+    status: 'idle',
+    progress: 0,
+    showRules: true,
+    expandedId: null,
+    copiedKey: null,
+    nextId: 5,
+    history: [
+      { id: 4, time: '07/18 13:15', mainServer: 'server1', score: 11200, result: 'PASS', log: passLog(11200) },
+      { id: 3, time: '07/18 11:30', mainServer: 'server2', score: 0, result: 'FAIL', log: failLog },
+      { id: 2, time: '07/18 10:04', mainServer: 'server1', score: 9750, result: 'PASS', log: passLog(9750) },
+      { id: 1, time: '07/18 09:12', mainServer: 'server1', score: 8620, result: 'PASS', log: passLog(8620) },
+    ],
+  };
+
+  componentWillUnmount() {
+    clearInterval(this._timer);
+    clearTimeout(this._pendingTimer);
+    clearTimeout(this._copyTimer);
+    clearTimeout(this._mainTimer);
+    clearTimeout(this._countryTimer);
+    Object.values(this._timers).forEach(clearTimeout);
+  }
+
+  isLocked() {
+    return this.state.status === 'running' || this.state.status === 'pending' || !!this.props.forceLocked;
+  }
+
+  applyDelay() {
+    return this.props.applyDelayMs ?? 2200;
+  }
+
+  setRegion(key, value) {
+    if (this.isLocked()) return;
+    const applied = this.state.regions[key];
+    clearTimeout(this._timers[key]);
+    if (value === applied) {
+      this.setState((s) => {
+        const p = { ...s.pendingRegions };
+        delete p[key];
+        return { pendingRegions: p };
+      });
+      return;
+    }
+    this.setState((s) => ({ pendingRegions: { ...s.pendingRegions, [key]: value } }));
+    this._timers[key] = setTimeout(() => {
+      this.setState((s) => {
+        const p = { ...s.pendingRegions };
+        delete p[key];
+        return { regions: { ...s.regions, [key]: value }, pendingRegions: p };
+      });
+    }, this.applyDelay());
+  }
+
+  setMainServer(key) {
+    if (this.isLocked()) return;
+    clearTimeout(this._mainTimer);
+    if (key === this.state.mainServer) {
+      this.setState({ pendingMain: null });
+      return;
+    }
+    this.setState({ pendingMain: key });
+    this._mainTimer = setTimeout(() => {
+      this.setState({ mainServer: key, pendingMain: null });
+    }, this.applyDelay());
+  }
+
+  setDefaultCountry(value) {
+    if (this.isLocked()) return;
+    clearTimeout(this._countryTimer);
+    if (value === this.state.defaultCountry) {
+      this.setState({ pendingCountry: null });
+      return;
+    }
+    this.setState({ pendingCountry: value });
+    this._countryTimer = setTimeout(() => {
+      this.setState({ defaultCountry: value, pendingCountry: null });
+    }, this.applyDelay());
+  }
+
+  toggleExpand(id) {
+    this.setState((s) => ({ expandedId: s.expandedId === id ? null : id }));
+  }
+
+  toggleRules() {
+    this.setState((s) => ({ showRules: !s.showRules }));
+  }
+
+  copy(key, text) {
+    if (navigator.clipboard) navigator.clipboard.writeText(text).catch(() => {});
+    clearTimeout(this._copyTimer);
+    this.setState({ copiedKey: key });
+    this._copyTimer = setTimeout(() => this.setState({ copiedKey: null }), 1500);
+  }
+
+  runBenchmark() {
+    if (this.isLocked()) return;
+    const tick = this.props.benchmarkTick ?? 300;
+    this.setState({ status: 'pending', progress: 0 });
+    this._pendingTimer = setTimeout(() => {
+      this.setState({ status: 'running' });
+      this._startRunLoop(tick);
+    }, tick * 3);
+  }
+
+  _startRunLoop(tick) {
+    this._timer = setInterval(() => {
+      this.setState((s) => {
+        const p = s.progress + (8 + Math.random() * 10);
+        if (p >= 100) {
+          clearInterval(this._timer);
+          const now = new Date();
+          const pad = (n) => String(n).padStart(2, '0');
+          const time = `07/21 ${pad(now.getHours())}:${pad(now.getMinutes())}`;
+          const isFail = Math.random() < 0.15;
+          const score = isFail ? 0 : Math.round(9500 + Math.random() * 3500);
+          const result = isFail ? 'FAIL' : 'PASS';
+          const log = isFail ? failLog : passLog(score);
+          const newRun = { id: s.nextId, time, mainServer: s.mainServer, score, result, log };
+          return { status: 'idle', progress: 0, history: [newRun, ...s.history], nextId: s.nextId + 1, expandedId: newRun.id };
+        }
+        return { progress: p };
+      });
+    }, tick);
+  }
+
+  renderVals() {
+    const teamNumber = this.props.teamNumber ?? 42;
+    const locked = this.isLocked();
+    const controlsOpacity = locked ? 0.55 : 1;
+    const mainHostname = `app.team${teamNumber}-${HOSTNAME_SUFFIX}`;
+
+    const amber = 'oklch(0.78 0.15 85)';
+    const serverList = ['server1', 'server2', 'server3'].map((key) => {
+      const appliedRegion = this.state.regions[key];
+      const pendingRegionVal = this.state.pendingRegions[key];
+      const regionPending = pendingRegionVal !== undefined;
+      const region = regionPending ? pendingRegionVal : appliedRegion;
+      const isMain = this.state.mainServer === key;
+      const mainPending = this.state.pendingMain === key;
+      return {
+        key,
+        label: key,
+        hostname: `${key}.team${teamNumber}-${HOSTNAME_SUFFIX}`,
+        region,
+        appliedRegion,
+        regionPending,
+        regionColor: REGION_COLOR[region],
+        selectBorder: regionPending ? `1px dashed ${amber}` : '1px solid oklch(1 0 0 / 0.12)',
+        isMain,
+        mainPending,
+        mainBg: isMain ? 'oklch(0.72 0.13 200 / 0.16)' : mainPending ? `${amber.replace(')', ' / 0.13)')}` : 'oklch(0.23 0.02 250)',
+        mainFg: isMain ? 'oklch(0.72 0.13 200)' : mainPending ? amber : 'oklch(0.68 0.02 250)',
+        mainBorder: isMain ? '1px solid oklch(0.72 0.13 200 / 0.4)' : mainPending ? `1px dashed ${amber}` : '1px solid oklch(1 0 0 / 0.1)',
+        copyLabel: this.state.copiedKey === key ? 'コピー済' : 'コピー',
+        onRegionChange: (e) => this.setRegion(key, e.target.value),
+        onSetMain: () => this.setMainServer(key),
+        onCopy: () => this.copy(key, `${key}.team${teamNumber}-${HOSTNAME_SUFFIX}`),
+      };
+    });
+    const mainSrv = serverList.find((s) => s.isMain);
+    const countryPending = this.state.pendingCountry != null;
+    const displayedCountry = countryPending ? this.state.pendingCountry : this.state.defaultCountry;
+    const hasPendingChanges = Object.keys(this.state.pendingRegions).length > 0 || this.state.pendingMain != null || countryPending;
+
+    const history = this.state.history;
+    const historyList = history.map((h) => ({
+      ...h,
+      scoreLabel: h.result === 'FAIL' ? '—' : h.score,
+      resultColor: RESULT_COLOR[h.result],
+      expanded: this.state.expandedId === h.id,
+      chevron: this.state.expandedId === h.id ? '▾' : '▸',
+      onToggle: () => this.toggleExpand(h.id),
+    }));
+
+    const statusRunning = this.state.status === 'running';
+    const statusPending = this.state.status === 'pending';
+    const statusPill = statusRunning
+      ? { bg: 'oklch(0.72 0.13 200 / 0.16)', fg: 'oklch(0.72 0.13 200)', anim: 'pulseDot 1.1s ease-in-out infinite' }
+      : statusPending
+      ? { bg: `${amber.replace(')', ' / 0.16)')}`, fg: amber, anim: 'pulseDot 1.1s ease-in-out infinite' }
+      : { bg: 'oklch(0.5 0.02 250 / 0.16)', fg: 'oklch(0.68 0.02 250)', anim: 'none' };
+    const runButtonDisabled = locked || hasPendingChanges;
+    const blockReason = statusPending
+      ? 'ベンチマークの開始を待っています'
+      : this.state.status === 'running'
+      ? 'ベンチマーク実行中は設定を変更できません'
+      : this.props.forceLocked
+      ? 'ベンチマーク実行中は設定を変更できません'
+      : hasPendingChanges
+      ? '設定の反映を待っています。反映後にベンチマークを実行できます'
+      : null;
+
+    return {
+      teamNumber,
+      locked,
+      controlsOpacity,
+      mainHostname,
+      mainCopyLabel: this.state.copiedKey === 'main' ? 'コピー済' : 'コピー',
+      copyMain: () => this.copy('main', mainHostname),
+      serverList,
+      mainServerLabel: mainSrv ? mainSrv.label : '',
+      mainServerRegion: mainSrv ? mainSrv.appliedRegion : '',
+      defaultCountry: displayedCountry,
+      countryPending,
+      countrySelectBorder: countryPending ? `1px dashed ${amber}` : '1px solid oklch(1 0 0 / 0.12)',
+      hasPendingChanges,
+      blockReason,
+      onDefaultCountryChange: (e) => this.setDefaultCountry(e.target.value),
+      statusPill,
+      statusLabel: statusPending ? '実行待ち' : this.state.status === 'running' || this.props.forceLocked ? '実行中' : '待機中',
+      showProgress: statusRunning,
+      progressPct: Math.min(100, Math.round(this.state.progress)),
+      runBenchmark: () => this.runBenchmark(),
+      runButtonDisabled,
+      runButtonLabel: statusPending ? '実行待ち...' : statusRunning ? '実行中...' : 'ベンチマークを実行',
+      runButtonBg: runButtonDisabled ? 'oklch(0.3 0.02 250)' : 'oklch(0.72 0.13 200)',
+      runButtonFg: runButtonDisabled ? 'oklch(0.5 0.02 250)' : 'oklch(0.15 0.02 250)',
+      bestScore: Math.max(0, ...history.map((h) => h.score)),
+      latestScore: history[0] ? history[0].score : 0,
+      runsCount: history.length,
+      historyList,
+      showRules: this.state.showRules,
+      rulesChevron: this.state.showRules ? '▾' : '▸',
+      toggleRules: () => this.toggleRules(),
+      ruleRows: [
+        { type: '同一リージョンのクライアントからの通信', bw: '1 Gbps', lat: '+0 ms' },
+        { type: '異なるリージョンのクライアントからの通信', bw: '200 Mbps / リージョン', lat: '+200 ms' },
+        { type: '異なるリージョンのサーバー間通信', bw: '200 Mbps', lat: '+200 ms' },
+      ],
+    };
+  }
+}
+
+</script>
+</body>
+</html>
