@@ -51,7 +51,6 @@ type Config struct {
 	Server1Region  Region
 	Server2Region  Region
 	Server3Region  Region
-	MainServer     ServerID
 	DefaultCountry string
 }
 
@@ -60,7 +59,6 @@ func InitialConfig() Config {
 		Server1Region:  RegionAP,
 		Server2Region:  RegionEU,
 		Server3Region:  RegionUS,
-		MainServer:     Server1,
 		DefaultCountry: "JP",
 	}
 }
@@ -68,9 +66,6 @@ func InitialConfig() Config {
 func (c Config) Validate() error {
 	if c.Server1Region != RegionAP || c.Server2Region != RegionEU || c.Server3Region != RegionUS {
 		return errors.New("server regions are fixed: server1=AP, server2=EU, server3=US")
-	}
-	if !ValidServer(c.MainServer) {
-		return errors.New("main server is invalid")
 	}
 	if err := ValidateCountryCode(c.DefaultCountry); err != nil {
 		return fmt.Errorf("default country: %w", err)
@@ -126,14 +121,7 @@ func Calculate(team TeamKey, host HostnameConfig, cfg Config) (CalculatedConfig,
 		Server3Hostname:      "server3." + base,
 		DefaultCountryRegion: countryByCode[cfg.DefaultCountry].Region,
 	}
-	switch cfg.MainServer {
-	case Server1:
-		calculated.TargetHostname = calculated.Server1Hostname
-	case Server2:
-		calculated.TargetHostname = calculated.Server2Hostname
-	case Server3:
-		calculated.TargetHostname = calculated.Server3Hostname
-	}
+	calculated.TargetHostname = calculated.AppHostname
 	return calculated, nil
 }
 

@@ -35,7 +35,6 @@ var initialConfig = expectedConfig{
 	server1: portalv1.Region_REGION_AP,
 	server2: portalv1.Region_REGION_EU,
 	server3: portalv1.Region_REGION_US,
-	main:    portalv1.ServerId_SERVER_ID_SERVER1,
 	country: "JP",
 }
 
@@ -43,7 +42,6 @@ type expectedConfig struct {
 	server1 portalv1.Region
 	server2 portalv1.Region
 	server3 portalv1.Region
-	main    portalv1.ServerId
 	country string
 }
 
@@ -129,7 +127,6 @@ func (r *runner) full(ctx context.Context) error {
 		server1: portalv1.Region_REGION_AP,
 		server2: portalv1.Region_REGION_EU,
 		server3: portalv1.Region_REGION_US,
-		main:    portalv1.ServerId_SERVER_ID_SERVER3,
 		country: "US",
 	}
 	updateStarted := time.Now()
@@ -243,10 +240,10 @@ func (c expectedConfig) matches(actual *portalv1.Config) error {
 	}
 	regions := actual.GetServerRegions()
 	if regions.GetServer1() != c.server1 || regions.GetServer2() != c.server2 || regions.GetServer3() != c.server3 ||
-		actual.GetMainServer() != c.main || actual.GetDefaultCountry() != c.country {
-		return fmt.Errorf("desired config differs: got=(%s,%s,%s,%s,%s) want=(%s,%s,%s,%s,%s)",
-			regions.GetServer1(), regions.GetServer2(), regions.GetServer3(), actual.GetMainServer(), actual.GetDefaultCountry(),
-			c.server1, c.server2, c.server3, c.main, c.country)
+		actual.GetDefaultCountry() != c.country {
+		return fmt.Errorf("desired config differs: got=(%s,%s,%s,%s) want=(%s,%s,%s,%s)",
+			regions.GetServer1(), regions.GetServer2(), regions.GetServer3(), actual.GetDefaultCountry(),
+			c.server1, c.server2, c.server3, c.country)
 	}
 	return nil
 }
@@ -254,7 +251,6 @@ func (c expectedConfig) matches(actual *portalv1.Config) error {
 func (r *runner) updateDesired(ctx context.Context, config expectedConfig) error {
 	response, err := r.portal.UpdateDesired(ctx, connect.NewRequest(&portalmockv1.UpdateDesiredRequest{
 		Patch: &portalmockv1.DesiredPatch{
-			MainServer:     config.main.Enum(),
 			DefaultCountry: &config.country,
 		},
 	}))
@@ -266,6 +262,17 @@ func (r *runner) updateDesired(ctx context.Context, config expectedConfig) error
 	}
 	log.Printf("PASS desired update snapshot=%s", response.Msg.GetDesired().GetSnapshotId())
 	return nil
+}
+
+func nearestServer(country string) string {
+	switch country {
+	case "US", "CA", "MX":
+		return "server3"
+	case "GB", "DE", "FR":
+		return "server2"
+	default:
+		return "server1"
+	}
 }
 
 func (r *runner) assertInitialHTTP(ctx context.Context) error {
@@ -286,7 +293,7 @@ func (r *runner) assertInitialHTTP(ctx context.Context) error {
 	}
 
 	for _, country := range []string{"US", "CA", "MX", "JP", "KR", "CN", "AU", "GB", "DE", "FR"} {
-		if err := r.assertIdentity(ctx, appHost, []string{country}, "server1", []string{country}); err != nil {
+		if err := r.assertIdentity(ctx, appHost, []string{country}, nearestServer(country), []string{country}); err != nil {
 			return fmt.Errorf("country %s: %w", country, err)
 		}
 	}
@@ -305,9 +312,9 @@ func (r *runner) assertInitialHTTP(ctx context.Context) error {
 
 func (r *runner) assertDynamicHTTP(ctx context.Context) error {
 	if err := r.assertIdentity(ctx, appHost, nil, "server3", []string{"US"}); err != nil {
-		return fmt.Errorf("dynamic main/default route: %w", err)
+		return fmt.Errorf("dynamic default-country route: %w", err)
 	}
-	if err := r.assertIdentity(ctx, appHost, []string{"JP"}, "server3", []string{"JP"}); err != nil {
+	if err := r.assertIdentity(ctx, appHost, []string{"JP"}, "server1", []string{"JP"}); err != nil {
 		return fmt.Errorf("dynamic main explicit country: %w", err)
 	}
 	if err := r.assertIdentity(ctx, server2Host, []string{"DE"}, "server2", []string{"DE"}); err != nil {
@@ -318,7 +325,7 @@ func (r *runner) assertDynamicHTTP(ctx context.Context) error {
 			return fmt.Errorf("post-update request %d/100: %w", requestNumber, err)
 		}
 	}
-	log.Printf("PASS dynamic main/default route update and 100 post-update requests")
+	log.Printf("PASS dynamic default-country route update and 100 post-update requests")
 	return nil
 }
 

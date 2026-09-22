@@ -82,16 +82,14 @@ const (
 )
 
 type BenchmarkRun struct {
-	ID               string
-	Sequence         uint64
-	StartedAt        time.Time
-	CompletedAt      time.Time
-	MainServer       ServerID
-	MainServerRegion Region
-	TargetHostname   string
-	Score            uint64
-	Result           BenchmarkResult
-	Logs             []string
+	ID             string
+	Sequence       uint64
+	StartedAt      time.Time
+	CompletedAt    time.Time
+	TargetHostname string
+	Score          uint64
+	Result         BenchmarkResult
+	Logs           []string
 }
 
 type ScoreSummary struct {

@@ -108,7 +108,6 @@ func ConfigProto(config domain.Config) *portalv1.Config {
 			Server2: config.Server2Region,
 			Server3: config.Server3Region,
 		},
-		MainServer:     config.MainServer,
 		DefaultCountry: config.DefaultCountry,
 	}
 }

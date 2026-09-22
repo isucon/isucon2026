@@ -9,7 +9,6 @@ import {
   applyStateLabel,
   formatLongDateTime,
   regionLabel,
-  serverLabel,
   shortSnapshot,
 } from '../app/format';
 
@@ -22,11 +21,6 @@ export interface ApplyStatusProps {
 
 function configRows(desired?: Config, applied?: Config) {
   return [
-    {
-      label: 'メイン接続先',
-      desired: desired ? serverLabel(desired.mainServer) : '—',
-      applied: applied ? serverLabel(applied.mainServer) : '不明',
-    },
     {
       label: 'server1',
       desired: desired?.serverRegions ? regionLabel(desired.serverRegions.server1) : '—',

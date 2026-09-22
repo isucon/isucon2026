@@ -15,7 +15,6 @@ func configFromProto(config *portalv1.Config) (domain.Config, error) {
 		Server1Region:  config.ServerRegions.Server1,
 		Server2Region:  config.ServerRegions.Server2,
 		Server3Region:  config.ServerRegions.Server3,
-		MainServer:     config.MainServer,
 		DefaultCountry: config.DefaultCountry,
 	}
 	if err := result.Validate(); err != nil {
@@ -31,7 +30,6 @@ func configToProto(config domain.Config) *portalv1.Config {
 			Server2: config.Server2Region,
 			Server3: config.Server3Region,
 		},
-		MainServer:     config.MainServer,
 		DefaultCountry: config.DefaultCountry,
 	}
 }
@@ -152,16 +150,14 @@ func benchmarkRuntimeToProto(runtime domain.BenchmarkRuntime) *portalmockv1.Benc
 
 func benchmarkRunToProto(run domain.BenchmarkRun) *portalmockv1.BenchmarkRun {
 	return &portalmockv1.BenchmarkRun{
-		Id:               run.ID,
-		Sequence:         run.Sequence,
-		StartedAt:        timestamppb.New(run.StartedAt),
-		CompletedAt:      timestamppb.New(run.CompletedAt),
-		MainServer:       run.MainServer,
-		MainServerRegion: run.MainServerRegion,
-		TargetHostname:   run.TargetHostname,
-		Score:            run.Score,
-		Result:           benchmarkResultToProto(run.Result),
-		Logs:             append([]string(nil), run.Logs...),
+		Id:             run.ID,
+		Sequence:       run.Sequence,
+		StartedAt:      timestamppb.New(run.StartedAt),
+		CompletedAt:    timestamppb.New(run.CompletedAt),
+		TargetHostname: run.TargetHostname,
+		Score:          run.Score,
+		Result:         benchmarkResultToProto(run.Result),
+		Logs:           append([]string(nil), run.Logs...),
 	}
 }
 

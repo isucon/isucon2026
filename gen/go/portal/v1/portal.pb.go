@@ -235,7 +235,6 @@ type Config struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// 固定配置の確認用。固定値に一致しない snapshot/report は拒否する。
 	ServerRegions *ServerRegions `protobuf:"bytes,1,opt,name=server_regions,json=serverRegions,proto3" json:"server_regions,omitempty"`
-	MainServer    ServerId       `protobuf:"varint,2,opt,name=main_server,json=mainServer,proto3,enum=portal.v1.ServerId" json:"main_server,omitempty"`
 	// ISO 3166-1 alpha-2。
 	DefaultCountry string `protobuf:"bytes,3,opt,name=default_country,json=defaultCountry,proto3" json:"default_country,omitempty"`
 	unknownFields  protoimpl.UnknownFields
@@ -277,13 +276,6 @@ func (x *Config) GetServerRegions() *ServerRegions {
 		return x.ServerRegions
 	}
 	return nil
-}
-
-func (x *Config) GetMainServer() ServerId {
-	if x != nil {
-		return x.MainServer
-	}
-	return ServerId_SERVER_ID_UNSPECIFIED
 }
 
 func (x *Config) GetDefaultCountry() string {
@@ -682,12 +674,10 @@ const file_portal_v1_portal_proto_rawDesc = "" +
 	"\rServerRegions\x12+\n" +
 	"\aserver1\x18\x01 \x01(\x0e2\x11.portal.v1.RegionR\aserver1\x12+\n" +
 	"\aserver2\x18\x02 \x01(\x0e2\x11.portal.v1.RegionR\aserver2\x12+\n" +
-	"\aserver3\x18\x03 \x01(\x0e2\x11.portal.v1.RegionR\aserver3\"\xa8\x01\n" +
+	"\aserver3\x18\x03 \x01(\x0e2\x11.portal.v1.RegionR\aserver3\"\x85\x01\n" +
 	"\x06Config\x12?\n" +
-	"\x0eserver_regions\x18\x01 \x01(\v2\x18.portal.v1.ServerRegionsR\rserverRegions\x124\n" +
-	"\vmain_server\x18\x02 \x01(\x0e2\x13.portal.v1.ServerIdR\n" +
-	"mainServer\x12'\n" +
-	"\x0fdefault_country\x18\x03 \x01(\tR\x0edefaultCountry\"\x95\x01\n" +
+	"\x0eserver_regions\x18\x01 \x01(\v2\x18.portal.v1.ServerRegionsR\rserverRegions\x12'\n" +
+	"\x0fdefault_country\x18\x03 \x01(\tR\x0edefaultCountryJ\x04\b\x02\x10\x03R\vmain_server\"\x95\x01\n" +
 	"\x0eConfigSnapshot\x12\x1f\n" +
 	"\vsnapshot_id\x18\x01 \x01(\tR\n" +
 	"snapshotId\x12)\n" +
@@ -761,24 +751,23 @@ var file_portal_v1_portal_proto_depIdxs = []int32{
 	0,  // 1: portal.v1.ServerRegions.server2:type_name -> portal.v1.Region
 	0,  // 2: portal.v1.ServerRegions.server3:type_name -> portal.v1.Region
 	3,  // 3: portal.v1.Config.server_regions:type_name -> portal.v1.ServerRegions
-	1,  // 4: portal.v1.Config.main_server:type_name -> portal.v1.ServerId
-	4,  // 5: portal.v1.ConfigSnapshot.config:type_name -> portal.v1.Config
-	12, // 6: portal.v1.ConfigSnapshot.issued_at:type_name -> google.protobuf.Timestamp
-	2,  // 7: portal.v1.StreamDesiredRequest.team:type_name -> portal.v1.TeamKey
-	5,  // 8: portal.v1.StreamDesiredResponse.desired:type_name -> portal.v1.ConfigSnapshot
-	2,  // 9: portal.v1.ReportAppliedRequest.team:type_name -> portal.v1.TeamKey
-	9,  // 10: portal.v1.ReportAppliedRequest.success:type_name -> portal.v1.ApplySuccess
-	10, // 11: portal.v1.ReportAppliedRequest.failure:type_name -> portal.v1.ApplyFailure
-	4,  // 12: portal.v1.ApplySuccess.applied:type_name -> portal.v1.Config
-	6,  // 13: portal.v1.PortalRouterService.StreamDesired:input_type -> portal.v1.StreamDesiredRequest
-	8,  // 14: portal.v1.PortalRouterService.ReportApplied:input_type -> portal.v1.ReportAppliedRequest
-	7,  // 15: portal.v1.PortalRouterService.StreamDesired:output_type -> portal.v1.StreamDesiredResponse
-	11, // 16: portal.v1.PortalRouterService.ReportApplied:output_type -> portal.v1.ReportAppliedResponse
-	15, // [15:17] is the sub-list for method output_type
-	13, // [13:15] is the sub-list for method input_type
-	13, // [13:13] is the sub-list for extension type_name
-	13, // [13:13] is the sub-list for extension extendee
-	0,  // [0:13] is the sub-list for field type_name
+	4,  // 4: portal.v1.ConfigSnapshot.config:type_name -> portal.v1.Config
+	12, // 5: portal.v1.ConfigSnapshot.issued_at:type_name -> google.protobuf.Timestamp
+	2,  // 6: portal.v1.StreamDesiredRequest.team:type_name -> portal.v1.TeamKey
+	5,  // 7: portal.v1.StreamDesiredResponse.desired:type_name -> portal.v1.ConfigSnapshot
+	2,  // 8: portal.v1.ReportAppliedRequest.team:type_name -> portal.v1.TeamKey
+	9,  // 9: portal.v1.ReportAppliedRequest.success:type_name -> portal.v1.ApplySuccess
+	10, // 10: portal.v1.ReportAppliedRequest.failure:type_name -> portal.v1.ApplyFailure
+	4,  // 11: portal.v1.ApplySuccess.applied:type_name -> portal.v1.Config
+	6,  // 12: portal.v1.PortalRouterService.StreamDesired:input_type -> portal.v1.StreamDesiredRequest
+	8,  // 13: portal.v1.PortalRouterService.ReportApplied:input_type -> portal.v1.ReportAppliedRequest
+	7,  // 14: portal.v1.PortalRouterService.StreamDesired:output_type -> portal.v1.StreamDesiredResponse
+	11, // 15: portal.v1.PortalRouterService.ReportApplied:output_type -> portal.v1.ReportAppliedResponse
+	14, // [14:16] is the sub-list for method output_type
+	12, // [12:14] is the sub-list for method input_type
+	12, // [12:12] is the sub-list for extension type_name
+	12, // [12:12] is the sub-list for extension extendee
+	0,  // [0:12] is the sub-list for field type_name
 }
 
 func init() { file_portal_v1_portal_proto_init() }

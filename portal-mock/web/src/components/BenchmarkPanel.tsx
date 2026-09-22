@@ -1,10 +1,9 @@
-import { ServerId } from '@isucon/portal-proto/portal/v1/portal_pb';
 import {
   BenchmarkStatus,
   type BenchmarkRuntime,
   type PortalState,
 } from '@isucon/portal-proto/portal_mock/v1/portal_mock_pb';
-import { benchmarkStatusLabel, regionLabel, serverLabel } from '../app/format';
+import { benchmarkStatusLabel } from '../app/format';
 
 export interface BenchmarkPanelProps {
   benchmark?: BenchmarkRuntime;
@@ -23,17 +22,6 @@ export function BenchmarkPanel({
   const pending = status === BenchmarkStatus.PENDING;
   const running = status === BenchmarkStatus.RUNNING;
   const idle = status === BenchmarkStatus.IDLE;
-  const mainServer = portal?.applied?.config?.mainServer ?? ServerId.UNSPECIFIED;
-  const serverRegions = portal?.applied?.config?.serverRegions;
-  const mainRegion =
-    mainServer === ServerId.SERVER1
-      ? serverRegions?.server1
-      : mainServer === ServerId.SERVER2
-        ? serverRegions?.server2
-        : mainServer === ServerId.SERVER3
-          ? serverRegions?.server3
-          : undefined;
-
   const blockReason =
     benchmark?.lockReason ||
     (portal && !portal.converged
@@ -56,7 +44,7 @@ export function BenchmarkPanel({
       <div className="benchmark-target">
         <span>実行対象:</span>
         <strong className="mono">
-          {serverLabel(mainServer)} ({mainRegion === undefined ? '不明' : regionLabel(mainRegion)})
+          全3台（国別自動ルーティング）
         </strong>
         <small className="mono">{portal?.applied?.calculated?.hostnames?.target || '未同期'}</small>
       </div>

@@ -16,10 +16,10 @@ func TestRenderTCClassifiesSourcesByRegion(t *testing.T) {
 	interfaces := map[domain.ServerID]string{domain.Server1: "s1", domain.Server2: "s2", domain.Server3: "s3"}
 	networks := testNetworks()
 	cfg := domain.Config{
-		Server1Region: domain.RegionAP,
-		Server2Region: domain.RegionEU,
-		Server3Region: domain.RegionUS,
-		MainServer:    domain.Server1, DefaultCountry: "JP",
+		Server1Region:  domain.RegionAP,
+		Server2Region:  domain.RegionEU,
+		Server3Region:  domain.RegionUS,
+		DefaultCountry: "JP",
 	}
 	profile := domain.TrafficProfile{
 		SameRegionDelay: 0, CrossRegionDelay: 120 * time.Millisecond,
@@ -57,7 +57,7 @@ func TestRenderTCAllRegionCombinations(t *testing.T) {
 	t.Parallel()
 	interfaces := map[domain.ServerID]string{domain.Server1: "s1", domain.Server2: "s2", domain.Server3: "s3"}
 	profile := domain.TrafficProfile{SameRegionBandwidthBPS: 10_000, CrossRegionBandwidthBPS: 1_000, CrossRegionDelay: time.Millisecond}
-	cfg := domain.Config{Server1Region: domain.RegionAP, Server2Region: domain.RegionEU, Server3Region: domain.RegionUS, MainServer: domain.Server1, DefaultCountry: "JP"}
+	cfg := domain.Config{Server1Region: domain.RegionAP, Server2Region: domain.RegionEU, Server3Region: domain.RegionUS, DefaultCountry: "JP"}
 	for _, destinationServer := range domain.ServerIDs() {
 		for _, sourceServer := range domain.ServerIDs() {
 			destination, source := cfg.RegionFor(destinationServer), cfg.RegionFor(sourceServer)

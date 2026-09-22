@@ -79,7 +79,6 @@ func (h *MockHandler) UpdateDesired(
 		Server1Region:  protoPatch.Server1Region,
 		Server2Region:  protoPatch.Server2Region,
 		Server3Region:  protoPatch.Server3Region,
-		MainServer:     protoPatch.MainServer,
 		DefaultCountry: protoPatch.DefaultCountry,
 	}
 	changed, desired, diagnostic, err := h.store.UpdateDesired(patch)

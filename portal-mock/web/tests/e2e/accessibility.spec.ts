@@ -44,5 +44,5 @@ test('狭幅でも主要カードが横にはみ出さず縦配置される', as
   );
   expect(overflow).toBe(false);
   await expect(page.getByRole('heading', { name: 'ベンチマーク実行' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'メイン接続先' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '国別自動ルーティング' })).toBeVisible();
 });

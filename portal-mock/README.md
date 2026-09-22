@@ -163,7 +163,6 @@ router_rpc StreamDesired '{"team":{"teamNumber":1}}'
 ```bash
 mock_rpc UpdateDesired '{
   "patch": {
-    "mainServer": "SERVER_ID_SERVER3",
     "defaultCountry": "US"
   }
 }' | jq
@@ -183,7 +182,6 @@ cat >/tmp/report-applied.json <<'JSON'
         "server2": "REGION_EU",
         "server3": "REGION_US"
       },
-      "mainServer": "SERVER_ID_SERVER3",
       "defaultCountry": "US"
     }
   }

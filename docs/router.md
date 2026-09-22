@@ -6,7 +6,8 @@ HTTP 通信とサーバー間通信の両方へ同じリージョン判定を適
 
 3台は必ず別々のリージョンに固定され、ユーザーは配置を変更できない。Portal では配置を表示するだけとし、
 リージョン更新要求は `invalid_argument` で拒否する。snapshot の `server_regions` は固定配置の確認用に維持し、
-Portal と Router は固定値に一致しない設定を拒否する。変更可能なのは `mainServer` と `defaultCountry` である。
+Portal と Router は固定値に一致しない設定を拒否する。変更可能なのは `defaultCountry` のみである。
+メインサーバーは設けず、初回設定の適用時から3台すべてが国別ルーティングの対象になる。
 
 実装は `router/` の独立 Go module にあり、公開制御契約は既存の `portal.v1.PortalRouterService` を再利用する。
 本設計は開発・検証基盤を対象とし、TLS、VPN、複数チーム、本番 HA、採点は範囲外である。
@@ -65,7 +66,8 @@ Compose の interface 名には依存しない。Controller は `172.31.1.2` な
 Envoy bootstrap は listener、xDS cluster、server1〜3 cluster だけを固定する。Controller は次の RDS route matrix を
 snapshot ごとに生成する。
 
-- app Host は現在の `mainServer`、server1〜3 Host は各固定 server cluster へ送る。
+- app Host はクライアントの国に対応するリージョンへ送る。JP/KR/CN/AU は server1 (AP)、GB/DE/FR は server2 (EU)、US/CA/MX は server3 (US) を使う。
+- server1〜3 Host は各固定 server cluster へ送る。
 - `X-Country-Code` は US/CA/MX、JP/KR/CN/AU、GB/DE/FR の10値だけを exact match する。
 - header がない場合だけ Portal の `defaultCountry` を1値挿入する。
 - 空値、未知値、小文字、複数値は `400`、未知 Host は `404` を Envoy が直接返す。
@@ -152,7 +154,7 @@ report の送信成功で消さず、次の apply 開始または active commit 
 1. Portal desired/applied と Router readiness の初期収束。
 2. 4 Host、10か国、default、invalid/duplicate、unknown Host と upstream header。
 3. HTTP same/cross delay と 1 Mbps cross rate の実測。
-4. main/default の無停止動的変更と変更後100要求、server region 変更の拒否。
+4. defaultCountry の無停止動的変更と変更後100要求、明示された国がデフォルト国に優先すること、server region 変更の拒否。
 5. 6方向すべての peer route と cross-region peer transfer の rate。
 6. Portal 再起動、Router/Envoy 再起動後の自動再収束。
 7. Router namespace 停止中に6方向すべての新規 peer 接続が失敗し、復旧後に再度成功すること。

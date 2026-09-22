@@ -35,7 +35,7 @@ func TestRouterReportContractAndTeamSemantics(t *testing.T) {
 
 	state := server.App.Store.Snapshot()
 	cfg := state.Desired.Config
-	cfg.MainServer = portalv1.ServerId_SERVER_ID_SERVER2
+	cfg.DefaultCountry = "DE"
 	_, err = server.Router.ReportApplied(ctx, connect.NewRequest(&portalv1.ReportAppliedRequest{
 		Team: &portalv1.TeamKey{TeamNumber: 1},
 		Result: &portalv1.ReportAppliedRequest_Success{Success: &portalv1.ApplySuccess{

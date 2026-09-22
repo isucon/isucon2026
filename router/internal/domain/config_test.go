@@ -37,21 +37,20 @@ func TestConfigFromProtoRoundTrip(t *testing.T) {
 			Server2: portalv1.Region_REGION_EU,
 			Server3: portalv1.Region_REGION_US,
 		},
-		MainServer:     portalv1.ServerId_SERVER_ID_SERVER3,
 		DefaultCountry: "CA",
 	}
 	cfg, err := ConfigFromProto(in)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.RegionFor(Server2) != RegionEU || cfg.MainServer != Server3 || cfg.DefaultCountry != "CA" {
+	if cfg.RegionFor(Server2) != RegionEU || cfg.DefaultCountry != "CA" {
 		t.Fatalf("unexpected config: %+v", cfg)
 	}
 	out := cfg.Proto()
 	if out.GetServerRegions().GetServer1() != in.GetServerRegions().GetServer1() ||
 		out.GetServerRegions().GetServer2() != in.GetServerRegions().GetServer2() ||
 		out.GetServerRegions().GetServer3() != in.GetServerRegions().GetServer3() ||
-		out.GetMainServer() != in.GetMainServer() || out.GetDefaultCountry() != in.GetDefaultCountry() {
+		out.GetDefaultCountry() != in.GetDefaultCountry() {
 		t.Fatalf("round trip mismatch: got %+v want %+v", out, in)
 	}
 }
@@ -65,7 +64,7 @@ func TestConfigFromProtoRejectsInvalidValues(t *testing.T) {
 				Server2: portalv1.Region_REGION_EU,
 				Server3: portalv1.Region_REGION_US,
 			},
-			MainServer: portalv1.ServerId_SERVER_ID_SERVER1, DefaultCountry: "JP",
+			DefaultCountry: "JP",
 		}
 	}
 	tests := map[string]func() *portalv1.Config{
@@ -83,7 +82,6 @@ func TestConfigFromProtoRejectsInvalidValues(t *testing.T) {
 			c.ServerRegions.Server2, c.ServerRegions.Server3 = c.ServerRegions.Server3, c.ServerRegions.Server2
 			return c
 		},
-		"unknown server":  func() *portalv1.Config { c := valid(); c.MainServer = portalv1.ServerId(99); return c },
 		"unknown country": func() *portalv1.Config { c := valid(); c.DefaultCountry = "XX"; return c },
 	}
 	for name, makeConfig := range tests {
@@ -118,6 +116,6 @@ func validProtoConfig() *portalv1.Config {
 			Server2: portalv1.Region_REGION_EU,
 			Server3: portalv1.Region_REGION_US,
 		},
-		MainServer: portalv1.ServerId_SERVER_ID_SERVER1, DefaultCountry: "JP",
+		DefaultCountry: "JP",
 	}
 }

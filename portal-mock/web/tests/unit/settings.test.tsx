@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { ServerId } from '@isucon/portal-proto/portal/v1/portal_pb';
 import { PortalStateProvider } from '../../src/app/PortalStateContext';
 import { PortalPage } from '../../src/app/PortalPage';
 import { makeController, makeState } from './fixtures';
@@ -18,7 +17,7 @@ describe('地理分散設定', () => {
   it('10か国とdesired/applied設定を表示する', async () => {
     const user = userEvent.setup();
     renderPortal();
-    expect(screen.getByRole('heading', { name: 'メイン接続先' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '国別自動ルーティング' })).toBeInTheDocument();
     expect(screen.getByLabelText('server1 の固定リージョン')).toHaveTextContent('AP');
     expect(screen.getByLabelText('server2 の固定リージョン')).toHaveTextContent('EU');
     expect(screen.getByLabelText('server3 の固定リージョン')).toHaveTextContent('US');
@@ -29,7 +28,7 @@ describe('地理分散設定', () => {
   });
 
   it('反映待ちとRouter失敗理由を表示する', () => {
-    renderPortal(makeController(makeState({ desiredMain: ServerId.SERVER2, converged: false, reason: 'router apply failed' })));
+    renderPortal(makeController(makeState({ desiredCountry: 'DE', converged: false, reason: 'router apply failed' })));
     expect(screen.getAllByText('反映待ち').length).toBeGreaterThan(0);
     expect(screen.getByText(/router apply failed/)).toBeInTheDocument();
   });
