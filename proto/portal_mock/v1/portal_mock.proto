@@ -178,6 +178,8 @@ message ListSupportedCountriesResponse {
 
 // 指定したフィールドだけを更新する。
 message DesiredPatch {
+  // 互換性のためフィールドを保持するが、リージョンの指定は同値でも invalid_argument。
+  // 固定配置: server1=AP、server2=EU、server3=US。
   optional portal.v1.Region server1_region = 1;
   optional portal.v1.Region server2_region = 2;
   optional portal.v1.Region server3_region = 3;

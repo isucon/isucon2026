@@ -8,6 +8,11 @@
 
 **Status**: Draft
 
+**2026-09-22 仕様変更**: サーバー配置は server1=AP、server2=EU、server3=US に固定する。
+リージョンは表示専用で、更新要求は同値でも `INVALID_ARGUMENT` とする。Router の snapshot/report も固定配置と
+一致しなければならない。以下および本ディレクトリの設計・検証資料に残る「リージョン選択」「全台 AP」の記述は
+変更前の記録であり、この変更と [Router 設計](../../docs/router.md) を優先する。
+
 **Specification Stage**: 支援ツール仕様（開発補助モック / アプリ基準仕様・競技仕様のいずれにも属さない独立成果物）
 
 **Input**: User description: "docs/geometrics-distribution.md の開発時のテストを行うために 1チームのみを前提とした mock となる portal画面を作成したい。画面デザインは feature spec 配下へ取り込んだ参照デザインを使用する"
@@ -275,8 +280,8 @@ Portal へ報告する。
   team_number は正の整数でなければならず、Router 向け RPC で 0 が指定された場合は Connect code
   `INVALID_ARGUMENT` を返さなければならない。起動時設定と異なる正の TeamKey が指定された場合は
   `NOT_FOUND` を返さなければならない。いずれも TeamKey を無視または読み替えてはならない。
-- **FR-004**: ユーザーは server1／server2／server3 それぞれのリージョンを US/AP/EU から選択でき、
-  システムは変更内容を snapshot ID 付き desired として公開しなければならない。
+- **FR-004**: server1=AP、server2=EU、server3=US の配置を固定して表示し、ユーザーによるリージョン指定を
+  同値でも `INVALID_ARGUMENT` で拒否しなければならない。
 - **FR-005**: ユーザーはメイン接続先サーバー（server1〜3）を選択でき、システムは変更内容を snapshot ID 付き desired として
   公開しなければならない。
 - **FR-006**: ユーザーは本仕様で定義する10か国の中からデフォルト国を選択でき、システムは変更内容を snapshot ID 付き
@@ -335,8 +340,8 @@ Portal へ報告する。
   接続へ配信しなければならない。reset 前に開始されたタイマーや
   ベンチ完了処理は reset 後の状態を更新してはならない。ただし Router の成功報告は snapshot ID にかかわらず、
   構造・値域の妥当性検証を通過した Config を applied の実状態として反映しなければならない。
-- **FR-023**: reset またはプロセス再起動直後の既知の desired 初期値は、server1/server2/server3 のリージョンを
-  すべて AP、メイン接続先を server1、デフォルト国を JP とする。実行ステータスは idle、進捗は 0、履歴は空、
+- **FR-023**: reset またはプロセス再起動直後の既知の desired 初期値は、server1=AP、server2=EU、server3=US、
+  メイン接続先を server1、デフォルト国を JP とする。実行ステータスは idle、進捗は 0、履歴は空、
   実行回数は 0、最高/直近スコアは未設定とし、起動時に設定された TeamKey と TeamHostnameConfig は
   reset で変更してはならない。
   `stand-in` モードでは desired=applied、反映待ちなしとして即時初期化する。`external-router` モードでは applied を

@@ -1476,12 +1476,14 @@ func (x *ListSupportedCountriesResponse) GetCountries() []*SupportedCountry {
 
 // 指定したフィールドだけを更新する。
 type DesiredPatch struct {
-	state          protoimpl.MessageState `protogen:"open.v1"`
-	Server1Region  *v1.Region             `protobuf:"varint,1,opt,name=server1_region,json=server1Region,proto3,enum=portal.v1.Region,oneof" json:"server1_region,omitempty"`
-	Server2Region  *v1.Region             `protobuf:"varint,2,opt,name=server2_region,json=server2Region,proto3,enum=portal.v1.Region,oneof" json:"server2_region,omitempty"`
-	Server3Region  *v1.Region             `protobuf:"varint,3,opt,name=server3_region,json=server3Region,proto3,enum=portal.v1.Region,oneof" json:"server3_region,omitempty"`
-	MainServer     *v1.ServerId           `protobuf:"varint,4,opt,name=main_server,json=mainServer,proto3,enum=portal.v1.ServerId,oneof" json:"main_server,omitempty"`
-	DefaultCountry *string                `protobuf:"bytes,5,opt,name=default_country,json=defaultCountry,proto3,oneof" json:"default_country,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// 互換性のためフィールドを保持するが、リージョンの指定は同値でも invalid_argument。
+	// 固定配置: server1=AP、server2=EU、server3=US。
+	Server1Region  *v1.Region   `protobuf:"varint,1,opt,name=server1_region,json=server1Region,proto3,enum=portal.v1.Region,oneof" json:"server1_region,omitempty"`
+	Server2Region  *v1.Region   `protobuf:"varint,2,opt,name=server2_region,json=server2Region,proto3,enum=portal.v1.Region,oneof" json:"server2_region,omitempty"`
+	Server3Region  *v1.Region   `protobuf:"varint,3,opt,name=server3_region,json=server3Region,proto3,enum=portal.v1.Region,oneof" json:"server3_region,omitempty"`
+	MainServer     *v1.ServerId `protobuf:"varint,4,opt,name=main_server,json=mainServer,proto3,enum=portal.v1.ServerId,oneof" json:"main_server,omitempty"`
+	DefaultCountry *string      `protobuf:"bytes,5,opt,name=default_country,json=defaultCountry,proto3,oneof" json:"default_country,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }

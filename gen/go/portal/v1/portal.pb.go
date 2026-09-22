@@ -171,10 +171,11 @@ func (x *TeamKey) GetTeamNumber() uint32 {
 }
 
 type ServerRegions struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Server1       Region                 `protobuf:"varint,1,opt,name=server1,proto3,enum=portal.v1.Region" json:"server1,omitempty"`
-	Server2       Region                 `protobuf:"varint,2,opt,name=server2,proto3,enum=portal.v1.Region" json:"server2,omitempty"`
-	Server3       Region                 `protobuf:"varint,3,opt,name=server3,proto3,enum=portal.v1.Region" json:"server3,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// 固定配置: server1=AP、server2=EU、server3=US。ユーザーは変更できない。
+	Server1       Region `protobuf:"varint,1,opt,name=server1,proto3,enum=portal.v1.Region" json:"server1,omitempty"`
+	Server2       Region `protobuf:"varint,2,opt,name=server2,proto3,enum=portal.v1.Region" json:"server2,omitempty"`
+	Server3       Region `protobuf:"varint,3,opt,name=server3,proto3,enum=portal.v1.Region" json:"server3,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -231,9 +232,10 @@ func (x *ServerRegions) GetServer3() Region {
 }
 
 type Config struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	ServerRegions *ServerRegions         `protobuf:"bytes,1,opt,name=server_regions,json=serverRegions,proto3" json:"server_regions,omitempty"`
-	MainServer    ServerId               `protobuf:"varint,2,opt,name=main_server,json=mainServer,proto3,enum=portal.v1.ServerId" json:"main_server,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// 固定配置の確認用。固定値に一致しない snapshot/report は拒否する。
+	ServerRegions *ServerRegions `protobuf:"bytes,1,opt,name=server_regions,json=serverRegions,proto3" json:"server_regions,omitempty"`
+	MainServer    ServerId       `protobuf:"varint,2,opt,name=main_server,json=mainServer,proto3,enum=portal.v1.ServerId" json:"main_server,omitempty"`
 	// ISO 3166-1 alpha-2。
 	DefaultCountry string `protobuf:"bytes,3,opt,name=default_country,json=defaultCountry,proto3" json:"default_country,omitempty"`
 	unknownFields  protoimpl.UnknownFields

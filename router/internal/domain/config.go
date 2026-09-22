@@ -75,10 +75,8 @@ type Config struct {
 }
 
 func (c Config) Validate() error {
-	for _, server := range ServerIDs() {
-		if region := c.RegionFor(server); !region.Valid() {
-			return fmt.Errorf("%s region is invalid", server)
-		}
+	if c.Server1Region != RegionAP || c.Server2Region != RegionEU || c.Server3Region != RegionUS {
+		return errors.New("server regions are fixed: server1=AP, server2=EU, server3=US")
 	}
 	if !c.MainServer.Valid() {
 		return errors.New("main server is invalid")

@@ -33,8 +33,8 @@ const (
 
 var initialConfig = expectedConfig{
 	server1: portalv1.Region_REGION_AP,
-	server2: portalv1.Region_REGION_AP,
-	server3: portalv1.Region_REGION_AP,
+	server2: portalv1.Region_REGION_EU,
+	server3: portalv1.Region_REGION_US,
 	main:    portalv1.ServerId_SERVER_ID_SERVER1,
 	country: "JP",
 }
@@ -160,22 +160,16 @@ func (r *runner) full(ctx context.Context) error {
 	}
 	log.Printf("PASS peer-transfer cross=%s rate=%.0fbps", crossDuration, bitsPerSecond(256<<10, crossDuration))
 
-	same := distinct
-	same.server2 = portalv1.Region_REGION_AP
-	if err := r.updateDesired(ctx, same); err != nil {
+	_, err = r.portal.UpdateDesired(ctx, connect.NewRequest(&portalmockv1.UpdateDesiredRequest{
+		Patch: &portalmockv1.DesiredPatch{Server2Region: portalv1.Region_REGION_AP.Enum()},
+	}))
+	if connect.CodeOf(err) != connect.CodeInvalidArgument {
+		return fmt.Errorf("region update must be rejected: %v", err)
+	}
+	if err := r.waitStable(ctx, distinct); err != nil {
 		return err
 	}
-	if err := r.waitStable(ctx, same); err != nil {
-		return err
-	}
-	sameDuration, err := r.peerFetch(ctx, server1Host, "JP", "172.31.2.10", 256<<10)
-	if err != nil {
-		return fmt.Errorf("same-region peer transfer: %w", err)
-	}
-	if sameDuration+750*time.Millisecond >= crossDuration {
-		return fmt.Errorf("peer shaping did not distinguish regions: same=%s cross=%s", sameDuration, crossDuration)
-	}
-	log.Printf("PASS peer-transfer same=%s cross=%s", sameDuration, crossDuration)
+	log.Printf("PASS fixed server regions reject updates")
 	return nil
 }
 
@@ -260,9 +254,6 @@ func (c expectedConfig) matches(actual *portalv1.Config) error {
 func (r *runner) updateDesired(ctx context.Context, config expectedConfig) error {
 	response, err := r.portal.UpdateDesired(ctx, connect.NewRequest(&portalmockv1.UpdateDesiredRequest{
 		Patch: &portalmockv1.DesiredPatch{
-			Server1Region:  config.server1.Enum(),
-			Server2Region:  config.server2.Enum(),
-			Server3Region:  config.server3.Enum(),
 			MainServer:     config.main.Enum(),
 			DefaultCountry: &config.country,
 		},
@@ -320,14 +311,14 @@ func (r *runner) assertDynamicHTTP(ctx context.Context) error {
 		return fmt.Errorf("dynamic main explicit country: %w", err)
 	}
 	if err := r.assertIdentity(ctx, server2Host, []string{"DE"}, "server2", []string{"DE"}); err != nil {
-		return fmt.Errorf("dynamic server region route: %w", err)
+		return fmt.Errorf("fixed server region route: %w", err)
 	}
 	for requestNumber := 1; requestNumber <= 100; requestNumber++ {
 		if err := r.assertIdentity(ctx, appHost, nil, "server3", []string{"US"}); err != nil {
 			return fmt.Errorf("post-update request %d/100: %w", requestNumber, err)
 		}
 	}
-	log.Printf("PASS dynamic main/default/region route update and 100 post-update requests")
+	log.Printf("PASS dynamic main/default route update and 100 post-update requests")
 	return nil
 }
 

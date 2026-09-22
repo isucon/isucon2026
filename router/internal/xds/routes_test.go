@@ -70,7 +70,7 @@ func TestBuildRoutesMatrix(t *testing.T) {
 
 func TestBuildRoutesRejectsInvalidInputs(t *testing.T) {
 	t.Parallel()
-	validConfig := domain.Config{Server1Region: domain.RegionAP, Server2Region: domain.RegionAP, Server3Region: domain.RegionAP, MainServer: domain.Server1, DefaultCountry: "JP"}
+	validConfig := domain.Config{Server1Region: domain.RegionAP, Server2Region: domain.RegionEU, Server3Region: domain.RegionUS, MainServer: domain.Server1, DefaultCountry: "JP"}
 	validProfile := domain.TrafficProfile{SameRegionBandwidthBPS: 1000, CrossRegionBandwidthBPS: 100}
 	if _, err := BuildRoutes("", testHosts(), validConfig, validProfile); err == nil {
 		t.Fatal("empty route name unexpectedly succeeded")

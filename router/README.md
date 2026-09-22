@@ -39,7 +39,7 @@ docker compose --project-name isureal-router-e2e -f router/compose.e2e.yaml \
 ```text
 cmd/router/             process wiring
 internal/config/        strict environment/topology configuration
-internal/domain/        region/server/country/snapshot invariants
+internal/domain/        fixed region/server/country/snapshot invariants
 internal/netcontrol/    interface discovery, nftables, HTB/netem, rollback
 internal/xds/           RDS builder, xDS server, ACK/NACK correlation
 internal/reconcile/     Portal stream, latest-wins apply, report retry

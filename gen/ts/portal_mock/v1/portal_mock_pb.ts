@@ -577,6 +577,9 @@ export const ListSupportedCountriesResponseSchema: GenMessage<ListSupportedCount
  */
 export type DesiredPatch = Message<"portal_mock.v1.DesiredPatch"> & {
   /**
+   * 互換性のためフィールドを保持するが、リージョンの指定は同値でも invalid_argument。
+   * 固定配置: server1=AP、server2=EU、server3=US。
+   *
    * @generated from field: optional portal.v1.Region server1_region = 1;
    */
   server1Region?: Region | undefined;

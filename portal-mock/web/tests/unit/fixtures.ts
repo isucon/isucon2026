@@ -70,7 +70,6 @@ export interface StateOverrides {
   reason?: string;
   converged?: boolean;
   applied?: boolean;
-  desiredServer2?: Region;
   desiredMain?: ServerId;
   desiredCountry?: string;
   locked?: boolean;
@@ -81,19 +80,18 @@ export interface StateOverrides {
 }
 
 export function makeState(overrides: StateOverrides = {}): MockPortalState {
-  const desiredServer2 = overrides.desiredServer2 ?? Region.AP;
   const desiredMain = overrides.desiredMain ?? ServerId.SERVER1;
   const desiredCountry = overrides.desiredCountry ?? 'JP';
   const appliedExists = overrides.applied ?? true;
-  const converged = overrides.converged ?? (appliedExists && desiredServer2 === Region.AP);
+  const converged = overrides.converged ?? (appliedExists && desiredMain === ServerId.SERVER1 && desiredCountry === 'JP');
   const applyState =
     overrides.applyState ??
     (appliedExists ? (converged ? ApplyState.CONVERGED : ApplyState.PENDING) : ApplyState.UNSYNCED);
   const desiredConfig = create(ConfigSchema, {
     serverRegions: create(ServerRegionsSchema, {
       server1: Region.AP,
-      server2: desiredServer2,
-      server3: Region.AP,
+      server2: Region.EU,
+      server3: Region.US,
     }),
     mainServer: desiredMain,
     defaultCountry: desiredCountry,
@@ -101,8 +99,8 @@ export function makeState(overrides: StateOverrides = {}): MockPortalState {
   const appliedConfig = create(ConfigSchema, {
     serverRegions: create(ServerRegionsSchema, {
       server1: Region.AP,
-      server2: Region.AP,
-      server3: Region.AP,
+      server2: Region.EU,
+      server3: Region.US,
     }),
     mainServer: ServerId.SERVER1,
     defaultCountry: 'JP',
