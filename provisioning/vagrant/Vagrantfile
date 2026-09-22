@@ -36,61 +36,79 @@ Vagrant.configure("2") do |config|
   config.ssh.insert_key = false
   config.ssh.keep_alive = true
 
-  config.vm.define "server1" do |server1|
-    data = network(topology, "server1Data")
-    server1.vm.box = problem_box
-    server1.vm.hostname = topology.fetch("nodes").fetch("server1").fetch("hostname")
-    server1.vm.network "forwarded_port", id: "ssh", guest: 22, host: topology.fetch("sshPorts").fetch("server1"),
+  config.vm.define "app1" do |app1|
+    data = network(topology, "app1Data")
+    app1.vm.box = problem_box
+    app1.vm.hostname = topology.fetch("nodes").fetch("app1").fetch("hostname")
+    app1.vm.network "forwarded_port", id: "ssh", guest: 22, host: topology.fetch("sshPorts").fetch("app1"),
                        host_ip: "127.0.0.1", auto_correct: false
-    server1.vm.network "private_network", ip: data.fetch("peerAddress"), netmask: netmask(data.fetch("cidr")),
-                       virtualbox__intnet: "#{environment_id}-server1-data"
-    server1.vm.provider "virtualbox" do |vb|
-      vb.name = "#{environment_id}-server1"
+    app1.vm.network "private_network", ip: data.fetch("peerAddress"), netmask: netmask(data.fetch("cidr")),
+                       virtualbox__intnet: "#{environment_id}-app1-data"
+    app1.vm.provider "virtualbox" do |vb|
+      vb.name = "#{environment_id}-app1"
       vb.cpus = profile.fetch("problemServer").fetch("cpus")
       vb.memory = profile.fetch("problemServer").fetch("memoryMiB")
-      vb.customize ["modifyvm", :id, "--macaddress1", interface(topology, "server1", "bootstrap0")]
-      vb.customize ["modifyvm", :id, "--macaddress2", interface(topology, "server1", "data0")]
+      vb.customize ["modifyvm", :id, "--macaddress1", interface(topology, "app1", "bootstrap0")]
+      vb.customize ["modifyvm", :id, "--macaddress2", interface(topology, "app1", "data0")]
     end
   end
 
-  config.vm.define "server2" do |server2|
-    data = network(topology, "server2Data")
-    server2.vm.box = problem_box
-    server2.vm.hostname = topology.fetch("nodes").fetch("server2").fetch("hostname")
-    server2.vm.network "forwarded_port", id: "ssh", guest: 22, host: topology.fetch("sshPorts").fetch("server2"),
+  config.vm.define "app2" do |app2|
+    data = network(topology, "app2Data")
+    app2.vm.box = problem_box
+    app2.vm.hostname = topology.fetch("nodes").fetch("app2").fetch("hostname")
+    app2.vm.network "forwarded_port", id: "ssh", guest: 22, host: topology.fetch("sshPorts").fetch("app2"),
                        host_ip: "127.0.0.1", auto_correct: false
-    server2.vm.network "private_network", ip: data.fetch("peerAddress"), netmask: netmask(data.fetch("cidr")),
-                       virtualbox__intnet: "#{environment_id}-server2-data"
-    server2.vm.provider "virtualbox" do |vb|
-      vb.name = "#{environment_id}-server2"
+    app2.vm.network "private_network", ip: data.fetch("peerAddress"), netmask: netmask(data.fetch("cidr")),
+                       virtualbox__intnet: "#{environment_id}-app2-data"
+    app2.vm.provider "virtualbox" do |vb|
+      vb.name = "#{environment_id}-app2"
       vb.cpus = profile.fetch("problemServer").fetch("cpus")
       vb.memory = profile.fetch("problemServer").fetch("memoryMiB")
-      vb.customize ["modifyvm", :id, "--macaddress1", interface(topology, "server2", "bootstrap0")]
-      vb.customize ["modifyvm", :id, "--macaddress2", interface(topology, "server2", "data0")]
+      vb.customize ["modifyvm", :id, "--macaddress1", interface(topology, "app2", "bootstrap0")]
+      vb.customize ["modifyvm", :id, "--macaddress2", interface(topology, "app2", "data0")]
     end
   end
 
-  config.vm.define "server3" do |server3|
-    data = network(topology, "server3Data")
-    server3.vm.box = problem_box
-    server3.vm.hostname = topology.fetch("nodes").fetch("server3").fetch("hostname")
-    server3.vm.network "forwarded_port", id: "ssh", guest: 22, host: topology.fetch("sshPorts").fetch("server3"),
+  config.vm.define "app3" do |app3|
+    data = network(topology, "app3Data")
+    app3.vm.box = problem_box
+    app3.vm.hostname = topology.fetch("nodes").fetch("app3").fetch("hostname")
+    app3.vm.network "forwarded_port", id: "ssh", guest: 22, host: topology.fetch("sshPorts").fetch("app3"),
                        host_ip: "127.0.0.1", auto_correct: false
-    server3.vm.network "private_network", ip: data.fetch("peerAddress"), netmask: netmask(data.fetch("cidr")),
-                       virtualbox__intnet: "#{environment_id}-server3-data"
-    server3.vm.provider "virtualbox" do |vb|
-      vb.name = "#{environment_id}-server3"
+    app3.vm.network "private_network", ip: data.fetch("peerAddress"), netmask: netmask(data.fetch("cidr")),
+                       virtualbox__intnet: "#{environment_id}-app3-data"
+    app3.vm.provider "virtualbox" do |vb|
+      vb.name = "#{environment_id}-app3"
       vb.cpus = profile.fetch("problemServer").fetch("cpus")
       vb.memory = profile.fetch("problemServer").fetch("memoryMiB")
-      vb.customize ["modifyvm", :id, "--macaddress1", interface(topology, "server3", "bootstrap0")]
-      vb.customize ["modifyvm", :id, "--macaddress2", interface(topology, "server3", "data0")]
+      vb.customize ["modifyvm", :id, "--macaddress1", interface(topology, "app3", "bootstrap0")]
+      vb.customize ["modifyvm", :id, "--macaddress2", interface(topology, "app3", "data0")]
+    end
+  end
+
+  config.vm.define "db1" do |db1|
+    data = network(topology, "db1Data")
+    db1.vm.box = problem_box
+    db1.vm.hostname = topology.fetch("nodes").fetch("db1").fetch("hostname")
+    db1.vm.network "forwarded_port", id: "ssh", guest: 22, host: topology.fetch("sshPorts").fetch("db1"),
+                       host_ip: "127.0.0.1", auto_correct: false
+    db1.vm.network "private_network", ip: data.fetch("peerAddress"), netmask: netmask(data.fetch("cidr")),
+                       virtualbox__intnet: "#{environment_id}-db1-data"
+    db1.vm.provider "virtualbox" do |vb|
+      vb.name = "#{environment_id}-db1"
+      vb.cpus = profile.fetch("problemServer").fetch("cpus")
+      vb.memory = profile.fetch("problemServer").fetch("memoryMiB")
+      vb.customize ["modifyvm", :id, "--macaddress1", interface(topology, "db1", "bootstrap0")]
+      vb.customize ["modifyvm", :id, "--macaddress2", interface(topology, "db1", "data0")]
     end
   end
 
   config.vm.define "router" do |router|
-    data1 = network(topology, "server1Data")
-    data2 = network(topology, "server2Data")
-    data3 = network(topology, "server3Data")
+    data1 = network(topology, "app1Data")
+    data2 = network(topology, "app2Data")
+    data3 = network(topology, "app3Data")
+    data4 = network(topology, "db1Data")
     control = network(topology, "control")
     client = topology.fetch("clientForward")
     client_tls = topology.fetch("clientTlsForward")
@@ -105,11 +123,13 @@ Vagrant.configure("2") do |config|
                       host_ip: client_tls.fetch("hostAddress"), protocol: client_tls.fetch("protocol"),
                       auto_correct: client_tls.fetch("autoCorrect")
     router.vm.network "private_network", ip: data1.fetch("routerAddress"), netmask: netmask(data1.fetch("cidr")),
-                      virtualbox__intnet: "#{environment_id}-server1-data"
+                      virtualbox__intnet: "#{environment_id}-app1-data"
     router.vm.network "private_network", ip: data2.fetch("routerAddress"), netmask: netmask(data2.fetch("cidr")),
-                      virtualbox__intnet: "#{environment_id}-server2-data"
+                      virtualbox__intnet: "#{environment_id}-app2-data"
     router.vm.network "private_network", ip: data3.fetch("routerAddress"), netmask: netmask(data3.fetch("cidr")),
-                      virtualbox__intnet: "#{environment_id}-server3-data"
+                      virtualbox__intnet: "#{environment_id}-app3-data"
+    router.vm.network "private_network", ip: data4.fetch("routerAddress"), netmask: netmask(data4.fetch("cidr")),
+                      virtualbox__intnet: "#{environment_id}-db1-data"
     router.vm.network "private_network",
                       ip: control.fetch("routerAddress"),
                       netmask: netmask(control.fetch("cidr")),
@@ -122,7 +142,8 @@ Vagrant.configure("2") do |config|
       vb.customize ["modifyvm", :id, "--macaddress2", interface(topology, "router", "data1")]
       vb.customize ["modifyvm", :id, "--macaddress3", interface(topology, "router", "data2")]
       vb.customize ["modifyvm", :id, "--macaddress4", interface(topology, "router", "data3")]
-      vb.customize ["modifyvm", :id, "--macaddress5", interface(topology, "router", "control0")]
+      vb.customize ["modifyvm", :id, "--macaddress5", interface(topology, "router", "data4")]
+      vb.customize ["modifyvm", :id, "--macaddress6", interface(topology, "router", "control0")]
     end
   end
 end

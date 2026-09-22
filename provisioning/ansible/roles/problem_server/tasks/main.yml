@@ -115,14 +115,43 @@
   ansible.builtin.command: pg_createcluster 16 main --start
   args:
     creates: /var/lib/postgresql/16/main/PG_VERSION
-  when: not (isucon_image_build | bool)
+  when: not (isucon_image_build | bool) and isucon_node_id == 'db1'
+
+- name: Listen for app connections on the private db1 address
+  ansible.builtin.lineinfile:
+    path: /etc/postgresql/16/main/postgresql.conf
+    regexp: '^#?listen_addresses\s*='
+    line: "listen_addresses = '127.0.0.1,{{ isucon_data_address }}'"
+  when: not (isucon_image_build | bool) and isucon_node_id == 'db1'
+
+- name: Allow shared database access from the three app addresses
+  ansible.builtin.blockinfile:
+    path: /etc/postgresql/16/main/pg_hba.conf
+    block: |
+      host isureal isureal {{ isucon_topology.networks.app1Data.peerAddress }}/32 scram-sha-256
+      host isureal isureal {{ isucon_topology.networks.app2Data.peerAddress }}/32 scram-sha-256
+      host isureal isureal {{ isucon_topology.networks.app3Data.peerAddress }}/32 scram-sha-256
+  when: not (isucon_image_build | bool) and isucon_node_id == 'db1'
+
+- name: Restart shared PostgreSQL after network configuration
+  ansible.builtin.systemd_service:
+    name: postgresql@16-main.service
+    state: restarted
+  when: not (isucon_image_build | bool) and isucon_node_id == 'db1'
+
+- name: Disable local PostgreSQL on application nodes
+  ansible.builtin.systemd_service:
+    name: postgresql.service
+    state: stopped
+    enabled: false
+  when: not (isucon_image_build | bool) and isucon_node_id != 'db1'
 
 - name: Enable PostgreSQL 16 at runtime
   ansible.builtin.systemd_service:
     name: postgresql.service
     enabled: true
     state: started
-  when: not (isucon_image_build | bool)
+  when: not (isucon_image_build | bool) and isucon_node_id == 'db1'
 
 - name: Create application PostgreSQL role
   community.postgresql.postgresql_user:
@@ -133,7 +162,7 @@
   become: true
   become_user: postgres
   no_log: true
-  when: not (isucon_image_build | bool)
+  when: not (isucon_image_build | bool) and isucon_node_id == 'db1'
 
 - name: Create application PostgreSQL database
   community.postgresql.postgresql_db:
@@ -143,7 +172,7 @@
     login_unix_socket: /var/run/postgresql
   become: true
   become_user: postgres
-  when: not (isucon_image_build | bool)
+  when: not (isucon_image_build | bool) and isucon_node_id == 'db1'
 
 - name: Install backend runtime environment
   ansible.builtin.template:
@@ -154,7 +183,7 @@
     mode: "0640"
   no_log: true
   notify: Restart problem-server application
-  when: not (isucon_image_build | bool)
+  when: not (isucon_image_build | bool) and isucon_node_id != 'db1'
 
 - name: Run migrations and seed only an empty database
   ansible.builtin.command:
@@ -167,7 +196,7 @@
     ISUREAL_DATABASE_URL: "postgresql://isureal:{{ isucon_database_password }}@127.0.0.1:5432/isureal?sslmode=disable"
   no_log: true
   changed_when: false
-  when: not (isucon_image_build | bool)
+  when: not (isucon_image_build | bool) and isucon_node_id == 'db1'
 
 - name: Install nginx application configuration
   ansible.builtin.template:
@@ -177,7 +206,7 @@
     group: root
     mode: "0644"
   notify: Restart problem-server application
-  when: not (isucon_image_build | bool)
+  when: not (isucon_image_build | bool) and isucon_node_id != 'db1'
 
 - name: Enable nginx application configuration
   ansible.builtin.file:
@@ -186,14 +215,14 @@
     state: link
     force: true
   notify: Restart problem-server application
-  when: not (isucon_image_build | bool)
+  when: not (isucon_image_build | bool) and isucon_node_id != 'db1'
 
 - name: Remove default nginx site
   ansible.builtin.file:
     path: /etc/nginx/sites-enabled/default
     state: absent
   notify: Restart problem-server application
-  when: not (isucon_image_build | bool)
+  when: not (isucon_image_build | bool) and isucon_node_id != 'db1'
 
 - name: Install problem-server local health command
   ansible.builtin.template:
@@ -218,7 +247,7 @@
     - isureal-api.service
     - isureal-worker.service
     - nginx.service
-  when: not (isucon_image_build | bool)
+  when: not (isucon_image_build | bool) and isucon_node_id != 'db1'
 
 - name: Wait for backend readiness
   ansible.builtin.uri:
@@ -228,7 +257,7 @@
   retries: 30
   delay: 2
   until: isucon_backend_ready.status == 200
-  when: not (isucon_image_build | bool)
+  when: not (isucon_image_build | bool) and isucon_node_id != 'db1'
 
 - name: Wait for nginx frontend
   ansible.builtin.uri:
@@ -241,4 +270,4 @@
   retries: 30
   delay: 2
   until: isucon_nginx_ready.status == 200 and '<!doctype html' in (isucon_nginx_ready.content | lower)
-  when: not (isucon_image_build | bool)
+  when: not (isucon_image_build | bool) and isucon_node_id != 'db1'

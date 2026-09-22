@@ -23,9 +23,10 @@ enum Region {
 
 enum ServerId {
   SERVER_ID_UNSPECIFIED = 0;
-  SERVER_ID_SERVER1 = 1;
-  SERVER_ID_SERVER2 = 2;
-  SERVER_ID_SERVER3 = 3;
+  SERVER_ID_APP1 = 1;
+  SERVER_ID_APP2 = 2;
+  SERVER_ID_APP3 = 3;
+  SERVER_ID_DB1 = 4;
 }
 
 message TeamKey {
@@ -33,10 +34,11 @@ message TeamKey {
 }
 
 message ServerRegions {
-  // 固定配置: server1=AP、server2=EU、server3=US。ユーザーは変更できない。
-  Region server1 = 1;
-  Region server2 = 2;
-  Region server3 = 3;
+  // 固定配置: app1=AP、app2=EU、app3=US、db1=AP。ユーザーは変更できない。
+  Region app1 = 1;
+  Region app2 = 2;
+  Region app3 = 3;
+  Region db1 = 4;
 }
 
 message Config {

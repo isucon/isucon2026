@@ -44,7 +44,7 @@ make vm-up
 make vm-down
 ```
 
-起動後は http://127.0.0.1:15174/ からポータルに、https://server1.team1-local.127.0.0.1.nip.io:18443 からアプリケーションにアクセスする。
+起動後は http://127.0.0.1:15174/ からポータルに、https://app.team1-local.127.0.0.1.nip.io:18443 からアプリケーションにアクセスする。app1〜3 は共有 PostgreSQL の db1（AP 固定）を利用する。
 
 ベンチマーカーは Vagrant の HTTP Client forward と Router を経由して実行する。
 実行すると initialize phase で対象アプリのデータが初期化される。

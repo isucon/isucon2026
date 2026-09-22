@@ -68,11 +68,12 @@ func TestEnsureIPv4ForwardingReportsReadAndWriteFailures(t *testing.T) {
 
 func TestApplyRawRecreatesEachDedicatedTCTree(t *testing.T) {
 	t.Parallel()
-	errorsByCall := make([]error, 13)
+	errorsByCall := make([]error, 16)
 	errorsByCall[1] = errors.New("nft table absent")
 	errorsByCall[4] = errors.New("root qdisc absent")
 	errorsByCall[7] = errors.New("root qdisc absent")
 	errorsByCall[10] = errors.New("root qdisc absent")
+	errorsByCall[13] = errors.New("root qdisc absent")
 	executor := &recordingExecutor{
 		outputs: [][]byte{[]byte("1\n")},
 		errors:  errorsByCall,
@@ -80,20 +81,22 @@ func TestApplyRawRecreatesEachDedicatedTCTree(t *testing.T) {
 	controller := NewController(config.Config{CommandTimeout: time.Second}, executor, nil)
 	candidate := Candidate{
 		Interfaces: map[domain.ServerID]string{
-			domain.Server1: "eth1",
-			domain.Server2: "eth2",
-			domain.Server3: "eth3",
+			domain.App1: "eth1",
+			domain.App2: "eth2",
+			domain.App3: "eth3",
+			domain.DB1:  "eth4",
 		},
 		TCBatches: map[domain.ServerID]string{
-			domain.Server1: "qdisc replace dev eth1 root handle 1: htb\n",
-			domain.Server2: "qdisc replace dev eth2 root handle 1: htb\n",
-			domain.Server3: "qdisc replace dev eth3 root handle 1: htb\n",
+			domain.App1: "qdisc replace dev eth1 root handle 1: htb\n",
+			domain.App2: "qdisc replace dev eth2 root handle 1: htb\n",
+			domain.App3: "qdisc replace dev eth3 root handle 1: htb\n",
+			domain.DB1:  "qdisc replace dev eth4 root handle 1: htb\n",
 		},
 	}
 	if err := controller.applyRaw(context.Background(), candidate); err != nil {
 		t.Fatal(err)
 	}
-	for _, pair := range [][2]int{{4, 5}, {7, 8}, {10, 11}} {
+	for _, pair := range [][2]int{{4, 5}, {7, 8}, {10, 11}, {13, 14}} {
 		remove, apply := executor.commands[pair[0]], executor.commands[pair[1]]
 		if remove.Name != "tc" || len(remove.Args) < 2 || remove.Args[0] != "qdisc" || remove.Args[1] != "del" {
 			t.Fatalf("command %d does not remove root qdisc: %+v", pair[0], remove)

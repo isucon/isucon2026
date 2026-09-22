@@ -50,11 +50,11 @@ class ConformanceContractTest(unittest.TestCase):
                             "hostnames": {
                                 "app": "app.team1-local.127.0.0.1.nip.io",
                                 "servers": {
-                                    "server1": "server1.team1-local.127.0.0.1.nip.io",
-                                    "server2": "server2.team1-local.127.0.0.1.nip.io",
-                                    "server3": "server3.team1-local.127.0.0.1.nip.io",
+                                    "app1": "app1.team1-local.127.0.0.1.nip.io",
+                                    "app2": "app2.team1-local.127.0.0.1.nip.io",
+                                    "app3": "app3.team1-local.127.0.0.1.nip.io",
                                 },
-                                "target": "server1.team1-local.127.0.0.1.nip.io",
+                                "target": "app1.team1-local.127.0.0.1.nip.io",
                             }
                         }
                     },
@@ -65,9 +65,9 @@ class ConformanceContractTest(unittest.TestCase):
         self.assertEqual(
             {
                 "app": "app.team1-local.127.0.0.1.nip.io",
-                "server1": "server1.team1-local.127.0.0.1.nip.io",
-                "server2": "server2.team1-local.127.0.0.1.nip.io",
-                "server3": "server3.team1-local.127.0.0.1.nip.io",
+                "app1": "app1.team1-local.127.0.0.1.nip.io",
+                "app2": "app2.team1-local.127.0.0.1.nip.io",
+                "app3": "app3.team1-local.127.0.0.1.nip.io",
             },
             validate.portal_reported_hostnames(response),
         )
@@ -82,7 +82,7 @@ class ConformanceContractTest(unittest.TestCase):
         source = inspect.getsource(validate.main)
         self.assertIn('"releaseId": release["releaseId"]', source)
         self.assertIn("os.replace(temporary_report, report_path)", source)
-        with self.assertRaisesRegex(ValueError, "server3"):
+        with self.assertRaisesRegex(ValueError, "app3"):
             validate.portal_reported_hostnames(
                 {
                     "state": {
@@ -93,8 +93,8 @@ class ConformanceContractTest(unittest.TestCase):
                                     "hostnames": {
                                         "app": "app.example.test",
                                         "servers": {
-                                            "server1": "server1.example.test",
-                                            "server2": "server2.example.test",
+                                            "app1": "app1.example.test",
+                                            "app2": "app2.example.test",
                                         },
                                     }
                                 }

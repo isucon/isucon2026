@@ -23,20 +23,20 @@ type ServerNetwork struct {
 }
 
 type Hostnames struct {
-	App     string
-	Server1 string
-	Server2 string
-	Server3 string
+	App  string
+	App1 string
+	App2 string
+	App3 string
 }
 
 func (h Hostnames) For(server domain.ServerID) string {
 	switch server {
-	case domain.Server1:
-		return h.Server1
-	case domain.Server2:
-		return h.Server2
-	case domain.Server3:
-		return h.Server3
+	case domain.App1:
+		return h.App1
+	case domain.App2:
+		return h.App2
+	case domain.App3:
+		return h.App3
 	default:
 		return ""
 	}
@@ -77,18 +77,19 @@ func Load(lookup LookupFunc) (Config, error) {
 		EnvoyNodeID:         stringValue(lookup, "ROUTER_ENVOY_NODE_ID", "isureal-router-envoy"),
 		RouteConfigName:     stringValue(lookup, "ROUTER_ROUTE_CONFIG_NAME", "isureal_routes"),
 		Hosts: Hostnames{
-			App:     stringValue(lookup, "ROUTER_APP_HOST", "app.team1-abc123.isucon2026.westens.tokyo"),
-			Server1: stringValue(lookup, "ROUTER_SERVER1_HOST", "server1.team1-abc123.isucon2026.westens.tokyo"),
-			Server2: stringValue(lookup, "ROUTER_SERVER2_HOST", "server2.team1-abc123.isucon2026.westens.tokyo"),
-			Server3: stringValue(lookup, "ROUTER_SERVER3_HOST", "server3.team1-abc123.isucon2026.westens.tokyo"),
+			App:  stringValue(lookup, "ROUTER_APP_HOST", "app.team1-abc123.isucon2026.westens.tokyo"),
+			App1: stringValue(lookup, "ROUTER_APP1_HOST", "app1.team1-abc123.isucon2026.westens.tokyo"),
+			App2: stringValue(lookup, "ROUTER_APP2_HOST", "app2.team1-abc123.isucon2026.westens.tokyo"),
+			App3: stringValue(lookup, "ROUTER_APP3_HOST", "app3.team1-abc123.isucon2026.westens.tokyo"),
 		},
-		Servers: make(map[domain.ServerID]ServerNetwork, 3),
+		Servers: make(map[domain.ServerID]ServerNetwork, 4),
 	}
 
 	serverDefaults := map[domain.ServerID][3]string{
-		domain.Server1: {"172.31.1.0/24", "172.31.1.2", "172.31.1.10"},
-		domain.Server2: {"172.31.2.0/24", "172.31.2.2", "172.31.2.10"},
-		domain.Server3: {"172.31.3.0/24", "172.31.3.2", "172.31.3.10"},
+		domain.App1: {"172.31.1.0/24", "172.31.1.2", "172.31.1.10"},
+		domain.App2: {"172.31.2.0/24", "172.31.2.2", "172.31.2.10"},
+		domain.App3: {"172.31.3.0/24", "172.31.3.2", "172.31.3.10"},
+		domain.DB1:  {"172.31.4.0/24", "172.31.4.2", "172.31.4.10"},
 	}
 	for _, server := range domain.ServerIDs() {
 		prefix := "ROUTER_" + stringUpper(server)
@@ -168,7 +169,7 @@ func (c Config) Validate() error {
 	if c.EnvoyNodeID == "" || c.RouteConfigName == "" {
 		return errors.New("Envoy node ID and route config name are required")
 	}
-	hosts := []string{c.Hosts.App, c.Hosts.Server1, c.Hosts.Server2, c.Hosts.Server3}
+	hosts := []string{c.Hosts.App, c.Hosts.App1, c.Hosts.App2, c.Hosts.App3}
 	seenHosts := make(map[string]struct{}, len(hosts))
 	for _, host := range hosts {
 		if !hostnamePattern.MatchString(host) {
@@ -202,12 +203,14 @@ func (c Config) Validate() error {
 
 func stringUpper(server domain.ServerID) string {
 	switch server {
-	case domain.Server1:
-		return "SERVER1"
-	case domain.Server2:
-		return "SERVER2"
-	case domain.Server3:
-		return "SERVER3"
+	case domain.App1:
+		return "APP1"
+	case domain.App2:
+		return "APP2"
+	case domain.App3:
+		return "APP3"
+	case domain.DB1:
+		return "DB1"
 	default:
 		return ""
 	}

@@ -33,9 +33,10 @@ func TestConfigFromProtoRoundTrip(t *testing.T) {
 	t.Parallel()
 	in := &portalv1.Config{
 		ServerRegions: &portalv1.ServerRegions{
-			Server1: portalv1.Region_REGION_AP,
-			Server2: portalv1.Region_REGION_EU,
-			Server3: portalv1.Region_REGION_US,
+			App1: portalv1.Region_REGION_AP,
+			App2: portalv1.Region_REGION_EU,
+			App3: portalv1.Region_REGION_US,
+			Db1:  portalv1.Region_REGION_AP,
 		},
 		DefaultCountry: "CA",
 	}
@@ -43,13 +44,13 @@ func TestConfigFromProtoRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.RegionFor(Server2) != RegionEU || cfg.DefaultCountry != "CA" {
+	if cfg.RegionFor(App2) != RegionEU || cfg.DefaultCountry != "CA" {
 		t.Fatalf("unexpected config: %+v", cfg)
 	}
 	out := cfg.Proto()
-	if out.GetServerRegions().GetServer1() != in.GetServerRegions().GetServer1() ||
-		out.GetServerRegions().GetServer2() != in.GetServerRegions().GetServer2() ||
-		out.GetServerRegions().GetServer3() != in.GetServerRegions().GetServer3() ||
+	if out.GetServerRegions().GetApp1() != in.GetServerRegions().GetApp1() ||
+		out.GetServerRegions().GetApp2() != in.GetServerRegions().GetApp2() ||
+		out.GetServerRegions().GetApp3() != in.GetServerRegions().GetApp3() ||
 		out.GetDefaultCountry() != in.GetDefaultCountry() {
 		t.Fatalf("round trip mismatch: got %+v want %+v", out, in)
 	}
@@ -60,9 +61,10 @@ func TestConfigFromProtoRejectsInvalidValues(t *testing.T) {
 	valid := func() *portalv1.Config {
 		return &portalv1.Config{
 			ServerRegions: &portalv1.ServerRegions{
-				Server1: portalv1.Region_REGION_AP,
-				Server2: portalv1.Region_REGION_EU,
-				Server3: portalv1.Region_REGION_US,
+				App1: portalv1.Region_REGION_AP,
+				App2: portalv1.Region_REGION_EU,
+				App3: portalv1.Region_REGION_US,
+				Db1:  portalv1.Region_REGION_AP,
 			},
 			DefaultCountry: "JP",
 		}
@@ -72,17 +74,23 @@ func TestConfigFromProtoRejectsInvalidValues(t *testing.T) {
 		"missing regions": func() *portalv1.Config { c := valid(); c.ServerRegions = nil; return c },
 		"unspecified region": func() *portalv1.Config {
 			c := valid()
-			c.ServerRegions.Server2 = portalv1.Region_REGION_UNSPECIFIED
+			c.ServerRegions.App2 = portalv1.Region_REGION_UNSPECIFIED
 			return c
 		},
-		"unknown region": func() *portalv1.Config { c := valid(); c.ServerRegions.Server2 = portalv1.Region(99); return c },
-		"same region":    func() *portalv1.Config { c := valid(); c.ServerRegions.Server2 = portalv1.Region_REGION_AP; return c },
+		"unknown region": func() *portalv1.Config { c := valid(); c.ServerRegions.App2 = portalv1.Region(99); return c },
+		"same region":    func() *portalv1.Config { c := valid(); c.ServerRegions.App2 = portalv1.Region_REGION_AP; return c },
 		"swapped regions": func() *portalv1.Config {
 			c := valid()
-			c.ServerRegions.Server2, c.ServerRegions.Server3 = c.ServerRegions.Server3, c.ServerRegions.Server2
+			c.ServerRegions.App2, c.ServerRegions.App3 = c.ServerRegions.App3, c.ServerRegions.App2
 			return c
 		},
 		"unknown country": func() *portalv1.Config { c := valid(); c.DefaultCountry = "XX"; return c },
+		"db outside AP":   func() *portalv1.Config { c := valid(); c.ServerRegions.Db1 = portalv1.Region_REGION_EU; return c },
+		"missing db region": func() *portalv1.Config {
+			c := valid()
+			c.ServerRegions.Db1 = portalv1.Region_REGION_UNSPECIFIED
+			return c
+		},
 	}
 	for name, makeConfig := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -112,9 +120,10 @@ func TestSnapshotFromProto(t *testing.T) {
 func validProtoConfig() *portalv1.Config {
 	return &portalv1.Config{
 		ServerRegions: &portalv1.ServerRegions{
-			Server1: portalv1.Region_REGION_AP,
-			Server2: portalv1.Region_REGION_EU,
-			Server3: portalv1.Region_REGION_US,
+			App1: portalv1.Region_REGION_AP,
+			App2: portalv1.Region_REGION_EU,
+			App3: portalv1.Region_REGION_US,
+			Db1:  portalv1.Region_REGION_AP,
 		},
 		DefaultCountry: "JP",
 	}

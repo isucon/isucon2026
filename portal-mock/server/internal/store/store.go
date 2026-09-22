@@ -138,21 +138,21 @@ func (s *Store) SubscribeState(ctx context.Context) Subscription[domain.State] {
 }
 
 type Patch struct {
-	Server1Region  *domain.Region
-	Server2Region  *domain.Region
-	Server3Region  *domain.Region
+	App1Region     *domain.Region
+	App2Region     *domain.Region
+	App3Region     *domain.Region
 	DefaultCountry *string
 }
 
 func (p Patch) Empty() bool {
-	return p.Server1Region == nil &&
-		p.Server2Region == nil &&
-		p.Server3Region == nil &&
+	return p.App1Region == nil &&
+		p.App2Region == nil &&
+		p.App3Region == nil &&
 		p.DefaultCountry == nil
 }
 
 func (s *Store) UpdateDesired(patch Patch) (bool, domain.ConfigSnapshot, domain.ApplyDiagnostic, error) {
-	if patch.Server1Region != nil || patch.Server2Region != nil || patch.Server3Region != nil {
+	if patch.App1Region != nil || patch.App2Region != nil || patch.App3Region != nil {
 		return false, domain.ConfigSnapshot{}, domain.ApplyDiagnostic{}, fmt.Errorf("%w: server regions are fixed and cannot be configured", ErrInvalidArgument)
 	}
 	if patch.Empty() {

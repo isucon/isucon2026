@@ -38,7 +38,7 @@ func RenderNFT(interfaces map[domain.ServerID]string, tableExists bool) (string,
 }
 
 func validateInterfaces(interfaces map[domain.ServerID]string) error {
-	seen := make(map[string]struct{}, 3)
+	seen := make(map[string]struct{}, len(domain.ServerIDs()))
 	for _, server := range domain.ServerIDs() {
 		name, ok := interfaces[server]
 		if !ok || !interfaceNamePattern.MatchString(name) {

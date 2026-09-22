@@ -1,8 +1,7 @@
 [Unit]
 Description=ISUReal background worker
-After=network-online.target postgresql.service
+After=network-online.target
 Wants=network-online.target
-Requires=postgresql.service
 
 [Service]
 Type=simple

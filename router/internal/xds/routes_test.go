@@ -15,9 +15,9 @@ func TestBuildRoutesMatrix(t *testing.T) {
 	t.Parallel()
 	hosts := testHosts()
 	cfg := domain.Config{
-		Server1Region:  domain.RegionAP,
-		Server2Region:  domain.RegionEU,
-		Server3Region:  domain.RegionUS,
+		App1Region:     domain.RegionAP,
+		App2Region:     domain.RegionEU,
+		App3Region:     domain.RegionUS,
 		DefaultCountry: "JP",
 	}
 	profile := domain.TrafficProfile{
@@ -40,9 +40,9 @@ func TestBuildRoutesMatrix(t *testing.T) {
 		t.Fatalf("app routes = %d", len(app.Routes))
 	}
 	for country, server := range map[string]string{
-		"JP": "server1", "KR": "server1", "CN": "server1", "AU": "server1",
-		"US": "server3", "CA": "server3", "MX": "server3",
-		"GB": "server2", "DE": "server2", "FR": "server2",
+		"JP": "app1", "KR": "app1", "CN": "app1", "AU": "app1",
+		"US": "app3", "CA": "app3", "MX": "app3",
+		"GB": "app2", "DE": "app2", "FR": "app2",
 	} {
 		assertCountryRoute(t, app.Routes[routeIndex(t, country)], country, server, 0, profile.SameRegionBandwidthBPS)
 		cfg.DefaultCountry = country
@@ -56,12 +56,12 @@ func TestBuildRoutesMatrix(t *testing.T) {
 		}
 	}
 
-	server2 := virtualHost(t, routes, hosts.Server2)
-	assertCountryRoute(t, server2.Routes[routeIndex(t, "DE")], "DE", "server2", 0, profile.SameRegionBandwidthBPS)
-	assertCountryRoute(t, server2.Routes[routeIndex(t, "JP")], "JP", "server2", profile.CrossRegionDelay, profile.CrossRegionBandwidthBPS)
+	app2 := virtualHost(t, routes, hosts.App2)
+	assertCountryRoute(t, app2.Routes[routeIndex(t, "DE")], "DE", "app2", 0, profile.SameRegionBandwidthBPS)
+	assertCountryRoute(t, app2.Routes[routeIndex(t, "JP")], "JP", "app2", profile.CrossRegionDelay, profile.CrossRegionBandwidthBPS)
 
 	absent := app.Routes[len(domain.Countries())]
-	if absent.GetRoute().GetCluster() != "server1" {
+	if absent.GetRoute().GetCluster() != "app1" {
 		t.Fatalf("default route cluster = %q", absent.GetRoute().GetCluster())
 	}
 	if len(absent.Match.Headers) != 1 || !absent.Match.Headers[0].GetPresentMatch() || !absent.Match.Headers[0].InvertMatch {
@@ -83,13 +83,13 @@ func TestBuildRoutesMatrix(t *testing.T) {
 
 func TestBuildRoutesRejectsInvalidInputs(t *testing.T) {
 	t.Parallel()
-	validConfig := domain.Config{Server1Region: domain.RegionAP, Server2Region: domain.RegionEU, Server3Region: domain.RegionUS, DefaultCountry: "JP"}
+	validConfig := domain.Config{App1Region: domain.RegionAP, App2Region: domain.RegionEU, App3Region: domain.RegionUS, DefaultCountry: "JP"}
 	validProfile := domain.TrafficProfile{SameRegionBandwidthBPS: 1000, CrossRegionBandwidthBPS: 100}
 	if _, err := BuildRoutes("", testHosts(), validConfig, validProfile); err == nil {
 		t.Fatal("empty route name unexpectedly succeeded")
 	}
 	hosts := testHosts()
-	hosts.Server2 = hosts.Server1
+	hosts.App2 = hosts.App1
 	if _, err := BuildRoutes("routes", hosts, validConfig, validProfile); err == nil {
 		t.Fatal("duplicate host unexpectedly succeeded")
 	}
@@ -150,6 +150,6 @@ func assertCountryRoute(t *testing.T, route *routev3.Route, country, cluster str
 
 func testHosts() config.Hostnames {
 	return config.Hostnames{
-		App: "app.team1.test", Server1: "server1.team1.test", Server2: "server2.team1.test", Server3: "server3.team1.test",
+		App: "app.team1.test", App1: "app1.team1.test", App2: "app2.team1.test", App3: "app3.team1.test",
 	}
 }

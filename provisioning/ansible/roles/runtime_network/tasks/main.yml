@@ -3,7 +3,7 @@
   ansible.builtin.assert:
     that:
       - isucon_node_id in isucon_topology.nodes
-      - isucon_node.interfaces | length == (5 if isucon_node.role == 'router' else 2)
+      - isucon_node.interfaces | length == (6 if isucon_node.role == 'router' else 2)
       - isucon_node.interfaces | map(attribute='macAddress') | unique | length == isucon_node.interfaces | length
 
 - name: Build deterministic non-bootstrap interface definitions from macAddress

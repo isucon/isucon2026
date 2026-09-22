@@ -39,9 +39,9 @@ func TestStandInProfilesAndDesiredDiagnostics(t *testing.T) {
 		server := testkit.NewServer(t, func(cfg *config.Config) {
 			cfg.StandInProfile = config.StandInFailOnceThenSuccess
 		})
-		server2 := "DE"
+		app2 := "DE"
 		_, err := server.Mock.UpdateDesired(context.Background(), connect.NewRequest(&portalmockv1.UpdateDesiredRequest{
-			Patch: &portalmockv1.DesiredPatch{DefaultCountry: &server2},
+			Patch: &portalmockv1.DesiredPatch{DefaultCountry: &app2},
 		}))
 		if err != nil {
 			t.Fatal(err)
@@ -60,9 +60,9 @@ func TestStandInProfilesAndDesiredDiagnostics(t *testing.T) {
 		server := testkit.NewServer(t, func(cfg *config.Config) {
 			cfg.StandInProfile = config.StandInNoReport
 		})
-		server2 := "DE"
+		app2 := "DE"
 		response, err := server.Mock.UpdateDesired(context.Background(), connect.NewRequest(&portalmockv1.UpdateDesiredRequest{
-			Patch: &portalmockv1.DesiredPatch{DefaultCountry: &server2},
+			Patch: &portalmockv1.DesiredPatch{DefaultCountry: &app2},
 		}))
 		if err != nil {
 			t.Fatal(err)

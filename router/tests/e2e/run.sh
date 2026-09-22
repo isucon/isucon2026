@@ -33,8 +33,8 @@ trap cleanup EXIT INT TERM
 
 echo "router e2e: preparing isolated project $project_name"
 "${compose[@]}" down --volumes --remove-orphans --timeout 5 >/dev/null 2>&1 || true
-"${compose[@]}" build portal router server1 server2 server3 e2e
-"${compose[@]}" up --detach --wait --wait-timeout 90 portal router server1 server2 server3 envoy
+"${compose[@]}" build portal router app1 app2 app3 db1 e2e
+"${compose[@]}" up --detach --wait --wait-timeout 90 portal router app1 app2 app3 db1 envoy
 
 echo "router e2e: validating routing, shaping, and dynamic updates"
 "${compose[@]}" run --rm --no-deps e2e full
@@ -59,12 +59,18 @@ echo "router e2e: injecting Router and Envoy restart"
 
 echo "router e2e: proving peer isolation while Router is down"
 peer_pairs=(
-  "server1 172.31.2.10"
-  "server1 172.31.3.10"
-  "server2 172.31.1.10"
-  "server2 172.31.3.10"
-  "server3 172.31.1.10"
-  "server3 172.31.2.10"
+  "app1 172.31.2.10"
+  "app1 172.31.3.10"
+  "app2 172.31.1.10"
+  "app2 172.31.3.10"
+  "app3 172.31.1.10"
+  "app3 172.31.2.10"
+  "app1 172.31.4.10"
+  "app2 172.31.4.10"
+  "app3 172.31.4.10"
+  "db1 172.31.1.10"
+  "db1 172.31.2.10"
+  "db1 172.31.3.10"
 )
 for peer_pair in "${peer_pairs[@]}"; do
   read -r source target <<<"$peer_pair"
@@ -78,7 +84,7 @@ for peer_pair in "${peer_pairs[@]}"; do
     exit 1
   fi
 done
-echo "router e2e: PASS all six peer directions are isolated"
+echo "router e2e: PASS all twelve peer directions are isolated"
 
 "${compose[@]}" up --detach --wait --wait-timeout 90 router envoy
 "${compose[@]}" run --rm --no-deps e2e verify-initial

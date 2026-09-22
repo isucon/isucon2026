@@ -18,9 +18,10 @@ export const regionLabel = (region: Region): string =>
 
 export const serverLabel = (server: ServerId): string =>
   ({
-    [ServerId.SERVER1]: 'server1',
-    [ServerId.SERVER2]: 'server2',
-    [ServerId.SERVER3]: 'server3',
+    [ServerId.APP1]: 'app1',
+    [ServerId.APP2]: 'app2',
+    [ServerId.APP3]: 'app3',
+    [ServerId.DB1]: 'db1',
     [ServerId.UNSPECIFIED]: '不明',
   })[server];
 

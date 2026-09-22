@@ -56,9 +56,9 @@ function calculated(countryRegion: Region) {
     app: 'app.team1-a1b2c3.isucon2026.example',
     target: 'app.team1-a1b2c3.isucon2026.example',
     servers: create(ServerHostnamesSchema, {
-      server1: 'server1.team1-a1b2c3.isucon2026.example',
-      server2: 'server2.team1-a1b2c3.isucon2026.example',
-      server3: 'server3.team1-a1b2c3.isucon2026.example',
+      app1: 'app1.team1-a1b2c3.isucon2026.example',
+      app2: 'app2.team1-a1b2c3.isucon2026.example',
+      app3: 'app3.team1-a1b2c3.isucon2026.example',
     }),
   });
   return create(CalculatedConfigSchema, { hostnames, defaultCountryRegion: countryRegion });
@@ -86,17 +86,19 @@ export function makeState(overrides: StateOverrides = {}): MockPortalState {
     (appliedExists ? (converged ? ApplyState.CONVERGED : ApplyState.PENDING) : ApplyState.UNSYNCED);
   const desiredConfig = create(ConfigSchema, {
     serverRegions: create(ServerRegionsSchema, {
-      server1: Region.AP,
-      server2: Region.EU,
-      server3: Region.US,
+      app1: Region.AP,
+      app2: Region.EU,
+      app3: Region.US,
+      db1: Region.AP,
     }),
     defaultCountry: desiredCountry,
   });
   const appliedConfig = create(ConfigSchema, {
     serverRegions: create(ServerRegionsSchema, {
-      server1: Region.AP,
-      server2: Region.EU,
-      server3: Region.US,
+      app1: Region.AP,
+      app2: Region.EU,
+      app3: Region.US,
+      db1: Region.AP,
     }),
     defaultCountry: 'JP',
   });

@@ -16,9 +16,10 @@ const (
 	RegionAP = portalv1.Region_REGION_AP
 	RegionEU = portalv1.Region_REGION_EU
 
-	Server1 = portalv1.ServerId_SERVER_ID_SERVER1
-	Server2 = portalv1.ServerId_SERVER_ID_SERVER2
-	Server3 = portalv1.ServerId_SERVER_ID_SERVER3
+	App1 = portalv1.ServerId_SERVER_ID_APP1
+	App2 = portalv1.ServerId_SERVER_ID_APP2
+	App3 = portalv1.ServerId_SERVER_ID_APP3
+	DB1  = portalv1.ServerId_SERVER_ID_DB1
 )
 
 type TeamKey struct {
@@ -48,24 +49,24 @@ func (h HostnameConfig) Validate() error {
 }
 
 type Config struct {
-	Server1Region  Region
-	Server2Region  Region
-	Server3Region  Region
+	App1Region     Region
+	App2Region     Region
+	App3Region     Region
 	DefaultCountry string
 }
 
 func InitialConfig() Config {
 	return Config{
-		Server1Region:  RegionAP,
-		Server2Region:  RegionEU,
-		Server3Region:  RegionUS,
+		App1Region:     RegionAP,
+		App2Region:     RegionEU,
+		App3Region:     RegionUS,
 		DefaultCountry: "JP",
 	}
 }
 
 func (c Config) Validate() error {
-	if c.Server1Region != RegionAP || c.Server2Region != RegionEU || c.Server3Region != RegionUS {
-		return errors.New("server regions are fixed: server1=AP, server2=EU, server3=US")
+	if c.App1Region != RegionAP || c.App2Region != RegionEU || c.App3Region != RegionUS {
+		return errors.New("server regions are fixed: app1=AP, app2=EU, app3=US")
 	}
 	if err := ValidateCountryCode(c.DefaultCountry); err != nil {
 		return fmt.Errorf("default country: %w", err)
@@ -78,17 +79,19 @@ func ValidRegion(region Region) bool {
 }
 
 func ValidServer(server ServerID) bool {
-	return server == Server1 || server == Server2 || server == Server3
+	return server == App1 || server == App2 || server == App3
 }
 
 func (c Config) RegionFor(server ServerID) Region {
 	switch server {
-	case Server1:
-		return c.Server1Region
-	case Server2:
-		return c.Server2Region
-	case Server3:
-		return c.Server3Region
+	case App1:
+		return c.App1Region
+	case App2:
+		return c.App2Region
+	case App3:
+		return c.App3Region
+	case DB1:
+		return RegionAP
 	default:
 		return portalv1.Region_REGION_UNSPECIFIED
 	}
@@ -96,9 +99,9 @@ func (c Config) RegionFor(server ServerID) Region {
 
 type CalculatedConfig struct {
 	AppHostname          string
-	Server1Hostname      string
-	Server2Hostname      string
-	Server3Hostname      string
+	App1Hostname         string
+	App2Hostname         string
+	App3Hostname         string
 	TargetHostname       string
 	DefaultCountryRegion Region
 }
@@ -116,9 +119,9 @@ func Calculate(team TeamKey, host HostnameConfig, cfg Config) (CalculatedConfig,
 	base := fmt.Sprintf("team%d-%s.%s", team.Number, host.RandomHash, host.DomainSuffix)
 	calculated := CalculatedConfig{
 		AppHostname:          "app." + base,
-		Server1Hostname:      "server1." + base,
-		Server2Hostname:      "server2." + base,
-		Server3Hostname:      "server3." + base,
+		App1Hostname:         "app1." + base,
+		App2Hostname:         "app2." + base,
+		App3Hostname:         "app3." + base,
 		DefaultCountryRegion: countryByCode[cfg.DefaultCountry].Region,
 	}
 	calculated.TargetHostname = calculated.AppHostname

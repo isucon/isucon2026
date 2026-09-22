@@ -75,10 +75,10 @@ describe('反映診断の全状態表示', () => {
     });
     // 固定配置は desired/applied で一致する
     const rows = within(table).getAllByRole('row');
-    const server2Row = rows.find((r) => r.textContent?.startsWith('server2'));
-    expect(server2Row).toBeDefined();
-    expect(server2Row).toHaveTextContent('EU');
-    expect(server2Row).not.toHaveTextContent('AP');
+    const app2Row = rows.find((r) => r.textContent?.startsWith('app2'));
+    expect(app2Row).toBeDefined();
+    expect(app2Row).toHaveTextContent('EU');
+    expect(app2Row).not.toHaveTextContent('AP');
   });
 });
 

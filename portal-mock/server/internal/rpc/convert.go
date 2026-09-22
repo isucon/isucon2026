@@ -11,10 +11,13 @@ func configFromProto(config *portalv1.Config) (domain.Config, error) {
 	if config == nil || config.ServerRegions == nil {
 		return domain.Config{}, &validationError{"config and server_regions are required"}
 	}
+	if config.ServerRegions.Db1 != domain.RegionAP {
+		return domain.Config{}, &validationError{"db1 region is fixed: AP"}
+	}
 	result := domain.Config{
-		Server1Region:  config.ServerRegions.Server1,
-		Server2Region:  config.ServerRegions.Server2,
-		Server3Region:  config.ServerRegions.Server3,
+		App1Region:     config.ServerRegions.App1,
+		App2Region:     config.ServerRegions.App2,
+		App3Region:     config.ServerRegions.App3,
 		DefaultCountry: config.DefaultCountry,
 	}
 	if err := result.Validate(); err != nil {
@@ -26,9 +29,10 @@ func configFromProto(config *portalv1.Config) (domain.Config, error) {
 func configToProto(config domain.Config) *portalv1.Config {
 	return &portalv1.Config{
 		ServerRegions: &portalv1.ServerRegions{
-			Server1: config.Server1Region,
-			Server2: config.Server2Region,
-			Server3: config.Server3Region,
+			App1: config.App1Region,
+			App2: config.App2Region,
+			App3: config.App3Region,
+			Db1:  domain.RegionAP,
 		},
 		DefaultCountry: config.DefaultCountry,
 	}
@@ -47,9 +51,9 @@ func calculatedToProto(calculated domain.CalculatedConfig) *portalmockv1.Calcula
 		Hostnames: &portalmockv1.Hostnames{
 			App: calculated.AppHostname,
 			Servers: &portalmockv1.ServerHostnames{
-				Server1: calculated.Server1Hostname,
-				Server2: calculated.Server2Hostname,
-				Server3: calculated.Server3Hostname,
+				App1: calculated.App1Hostname,
+				App2: calculated.App2Hostname,
+				App3: calculated.App3Hostname,
 			},
 			Target: calculated.TargetHostname,
 		},

@@ -46,9 +46,10 @@ export function buildRuntimeTopology(
     },
     clientTlsForward: { hostPort: 443 },
     nodes: {
-      server1: { role: "problem-server" },
-      server2: { role: "problem-server" },
-      server3: { role: "problem-server" },
+      app1: { role: "problem-server" },
+      app2: { role: "problem-server" },
+      app3: { role: "problem-server" },
+      db1: { role: "problem-server" },
       router: { role: "router" },
     },
     networks: {
@@ -86,7 +87,7 @@ export function routerNetplan(
   dataMacs: readonly string[],
 ): string {
   if (dataMacs.length !== serverNetworks.length) {
-    throw new Error("Router requires exactly three data ENIs");
+    throw new Error("Router requires exactly four data ENIs");
   }
   const data = serverNetworks
     .map(
@@ -128,14 +129,14 @@ export function routerEnvironment(topology: RuntimeTopology): string {
     "ROUTER_ROUTE_CONFIG_NAME=isureal_routes",
     `ROUTER_APP_HOST=app.team1-aws.${topology.domain}`,
   ];
-  serverNetworks.forEach((network, index) => {
-    const number = index + 1;
+  serverNetworks.forEach((network) => {
+    const prefix = network.id.toUpperCase();
     const data = topology.networks[`${network.id}Data`];
     lines.push(
-      `ROUTER_SERVER${number}_HOST=${network.id}.team1-aws.${topology.domain}`,
-      `ROUTER_SERVER${number}_SUBNET=${data.cidr}`,
-      `ROUTER_SERVER${number}_REGION_LOCAL_IP=${data.routerAddress}`,
-      `ROUTER_SERVER${number}_IP=${data.peerAddress}`,
+      ...(network.id === "db1" ? [] : [`ROUTER_${prefix}_HOST=${network.id}.team1-aws.${topology.domain}`]),
+      `ROUTER_${prefix}_SUBNET=${data.cidr}`,
+      `ROUTER_${prefix}_REGION_LOCAL_IP=${data.routerAddress}`,
+      `ROUTER_${prefix}_IP=${data.peerAddress}`,
     );
   });
   if (!["http:", "https:"].includes(portal.protocol)) {

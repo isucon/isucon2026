@@ -1,4 +1,4 @@
-export type NodeId = "server1" | "server2" | "server3";
+export type NodeId = "app1" | "app2" | "app3" | "db1";
 
 export interface ServerNetwork {
   id: NodeId;
@@ -14,7 +14,7 @@ export const controlRouterIp = "192.168.60.69";
 
 export const serverNetworks: readonly ServerNetwork[] = [
   {
-    id: "server1",
+    id: "app1",
     vpcCidr: "192.168.60.0/24",
     serviceSubnetCidr: "192.168.60.0/28",
     routerSubnetCidr: "192.168.60.16/28",
@@ -22,7 +22,7 @@ export const serverNetworks: readonly ServerNetwork[] = [
     routerIp: "192.168.60.21",
   },
   {
-    id: "server2",
+    id: "app2",
     vpcCidr: "192.168.61.0/24",
     serviceSubnetCidr: "192.168.61.0/28",
     routerSubnetCidr: "192.168.61.16/28",
@@ -30,12 +30,20 @@ export const serverNetworks: readonly ServerNetwork[] = [
     routerIp: "192.168.61.21",
   },
   {
-    id: "server3",
+    id: "app3",
     vpcCidr: "192.168.62.0/24",
     serviceSubnetCidr: "192.168.62.0/28",
     routerSubnetCidr: "192.168.62.16/28",
     serviceIp: "192.168.62.6",
     routerIp: "192.168.62.21",
+  },
+  {
+    id: "db1",
+    vpcCidr: "192.168.63.0/24",
+    serviceSubnetCidr: "192.168.63.0/28",
+    routerSubnetCidr: "192.168.63.16/28",
+    serviceIp: "192.168.63.6",
+    routerIp: "192.168.63.21",
   },
 ] as const;
 

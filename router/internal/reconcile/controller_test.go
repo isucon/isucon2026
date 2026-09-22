@@ -278,5 +278,5 @@ func waitFor(t *testing.T, timeout time.Duration, condition func() bool) {
 }
 
 func testDomainConfig() domain.Config {
-	return domain.Config{Server1Region: domain.RegionAP, Server2Region: domain.RegionEU, Server3Region: domain.RegionUS, DefaultCountry: "JP"}
+	return domain.Config{App1Region: domain.RegionAP, App2Region: domain.RegionEU, App3Region: domain.RegionUS, DefaultCountry: "JP"}
 }
