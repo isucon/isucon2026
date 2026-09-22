@@ -11,8 +11,8 @@ import (
 
 	"github.com/isucon/isucon2026/backend/internal/clock"
 	"github.com/isucon/isucon2026/backend/internal/domain"
-	"github.com/isucon/isucon2026/backend/internal/migrate"
 	"github.com/isucon/isucon2026/backend/internal/repository/postgres"
+	"github.com/isucon/isucon2026/backend/internal/schema"
 	"github.com/isucon/isucon2026/backend/internal/service"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -33,7 +33,7 @@ func TestConcurrentLoginLeavesOneActiveSession(t *testing.T) {
 	}
 	defer pool.Exec(ctx, `SELECT pg_advisory_unlock(20260719)`)
 	_, filename, _, _ := runtime.Caller(0)
-	if err := migrate.Reset(ctx, pool, filepath.Join(filepath.Dir(filename), "..", "..", "migrations")); err != nil {
+	if err := schema.Reset(ctx, pool, filepath.Join(filepath.Dir(filename), "..", "..", "schema", "schema.sql")); err != nil {
 		t.Fatal(err)
 	}
 

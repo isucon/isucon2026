@@ -64,7 +64,7 @@ describe("AWS topology", () => {
         expect(database).toContain(`host isureal isureal ${app.serviceIp}/32 scram-sha-256`);
       }
       expect(rendered).toContain(
-        Buffer.from("ISUREAL_MIGRATIONS_DIR=/opt/isucon/share/migrations").toString(
+        Buffer.from("ISUREAL_SCHEMA_PATH=/opt/isucon/share/schema.sql").toString(
           "base64",
         ),
       );

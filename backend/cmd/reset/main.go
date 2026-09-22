@@ -6,18 +6,18 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/isucon/isucon2026/backend/internal/migrate"
+	"github.com/isucon/isucon2026/backend/internal/schema"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func main() {
-	directory := flag.String("dir", "migrations", "migration directory")
+	schemaPath := flag.String("schema", "schema/schema.sql", "path to schema.sql")
 	flag.Parse()
 	ctx := context.Background()
 	pool, err := pgxpool.New(ctx, os.Getenv("ISUREAL_DATABASE_URL"))
 	if err == nil {
 		defer pool.Close()
-		err = migrate.Reset(ctx, pool, *directory)
+		err = schema.Reset(ctx, pool, *schemaPath)
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)

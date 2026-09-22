@@ -12,7 +12,7 @@
 docker compose up
 ```
 
-初回はコンテナをbuildし、PostgreSQLの起動後にmigrationとminimal fixtureの投入を行ってから、API、worker、frontendを依存順に起動します。
+初回はコンテナをbuildし、PostgreSQLの起動後に `schema/schema.sql` とminimal fixtureの投入を行ってから、API、worker、frontendを依存順に起動します。
 
 - Web: <http://localhost:5173>
 - API readiness: <http://localhost:8080/health/ready>

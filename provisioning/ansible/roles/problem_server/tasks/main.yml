@@ -61,7 +61,7 @@
   loop:
     - {path: /opt/isucon/bin, owner: root, group: root, mode: "0755"}
     - {path: /opt/isucon/frontend, owner: root, group: root, mode: "0755"}
-    - {path: /opt/isucon/share/migrations, owner: root, group: root, mode: "0755"}
+    - {path: /opt/isucon/share, owner: root, group: root, mode: "0755"}
     - {path: /var/lib/isureal/images, owner: isureal, group: isureal, mode: "0750"}
 
 - name: Extract backend.tar
@@ -79,9 +79,9 @@
     owner: root
     group: root
 
-- name: Extract database-migrations.tar
+- name: Extract database-schema.tar
   ansible.builtin.unarchive:
-    src: "{{ isucon_effective_artifact_root }}/database-migrations.tar"
+    src: "{{ isucon_effective_artifact_root }}/database-schema.tar"
     dest: /opt/isucon
     owner: root
     group: root
@@ -185,13 +185,13 @@
   notify: Restart problem-server application
   when: not (isucon_image_build | bool) and isucon_node_id != 'db1'
 
-- name: Run migrations and seed only an empty database
+- name: Apply schema and seed only an empty database
   ansible.builtin.command:
     argv:
       - /opt/isucon/bin/seed
       - --if-empty
-      - --dir
-      - /opt/isucon/share/migrations
+      - --schema
+      - /opt/isucon/share/schema.sql
   environment:
     ISUREAL_DATABASE_URL: "postgresql://isureal:{{ isucon_database_password }}@127.0.0.1:5432/isureal?sslmode=disable"
   no_log: true

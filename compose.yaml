@@ -7,7 +7,7 @@ x-backend-build: &backend-build
 x-app-environment: &app-environment
   ISUREAL_DATABASE_URL: postgres://isureal:local-development-only@postgres:5432/isureal?sslmode=disable
   ISUREAL_OPENAPI_PATH: /usr/local/share/isureal/openapi.yaml
-  ISUREAL_MIGRATIONS_DIR: /usr/local/share/isureal/migrations
+  ISUREAL_SCHEMA_PATH: /usr/local/share/isureal/schema.sql
   ISUREAL_PUBLIC_ORIGIN: http://localhost:${ISUREAL_FRONTEND_PORT:-5173}
 
 services:
@@ -30,7 +30,7 @@ services:
   init:
     build: *backend-build
     entrypoint: ["/usr/local/bin/seed"]
-    command: ["--fixture", "minimal", "--dir", "/usr/local/share/isureal/migrations", "--if-empty"]
+    command: ["--fixture", "minimal", "--schema", "/usr/local/share/isureal/schema.sql", "--if-empty"]
     environment: *app-environment
     depends_on:
       postgres:

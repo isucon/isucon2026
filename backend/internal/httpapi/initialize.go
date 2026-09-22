@@ -13,8 +13,8 @@ import (
 )
 
 const (
-	defaultMigrationDirectory = "migrations"
-	migrationDirectoryEnvKey  = "ISUREAL_MIGRATIONS_DIR"
+	defaultSchemaPath = "schema/schema.sql"
+	schemaPathEnvKey  = "ISUREAL_SCHEMA_PATH"
 )
 
 // VirtualOffsetStore persists the virtual clock offset so that other
@@ -24,22 +24,22 @@ type VirtualOffsetStore interface {
 }
 
 type InitializeHandler struct {
-	pool    *pgxpool.Pool
-	clock   *clock.Virtual
-	offsets VirtualOffsetStore
-	migDir  string
+	pool       *pgxpool.Pool
+	clock      *clock.Virtual
+	offsets    VirtualOffsetStore
+	schemaPath string
 }
 
 func NewInitializeHandler(pool *pgxpool.Pool, clk *clock.Virtual, offsets VirtualOffsetStore) *InitializeHandler {
-	migDir := os.Getenv(migrationDirectoryEnvKey)
-	if migDir == "" {
-		migDir = defaultMigrationDirectory
+	schemaPath := os.Getenv(schemaPathEnvKey)
+	if schemaPath == "" {
+		schemaPath = defaultSchemaPath
 	}
 	return &InitializeHandler{
-		pool:    pool,
-		clock:   clk,
-		offsets: offsets,
-		migDir:  migDir,
+		pool:       pool,
+		clock:      clk,
+		offsets:    offsets,
+		schemaPath: schemaPath,
 	}
 }
 
@@ -58,7 +58,7 @@ type VirtualTimeAdvanceResponse struct {
 
 func (h *InitializeHandler) Initialize(c *echo.Context) error {
 	ctx := c.Request().Context()
-	if err := seed.Minimal(ctx, h.pool, h.migDir); err != nil {
+	if err := seed.Minimal(ctx, h.pool, h.schemaPath); err != nil {
 		return &AppError{
 			Status: http.StatusInternalServerError,
 			Code:   "initialize_failed",

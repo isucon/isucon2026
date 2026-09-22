@@ -191,7 +191,7 @@ def validate_release(release: dict[str, Any]) -> list[str]:
         "frontend",
         "router",
         "envoy",
-        "database-migrations",
+        "database-schema",
     }
     component_counts = Counter(artifact.get("component") for artifact in artifacts)
     if set(component_counts) != required_components or any(
@@ -213,7 +213,7 @@ def validate_release(release: dict[str, Any]) -> list[str]:
     if database.get("engine") != "postgresql" or database.get("majorVersion") != 16:
         errors.append("database contract must be PostgreSQL 16")
     database_compatibility = database.get("compatibilityId")
-    for component in ("backend", "database-migrations"):
+    for component in ("backend", "database-schema"):
         matches = [artifact for artifact in artifacts if artifact.get("component") == component]
         if len(matches) == 1 and matches[0].get("compatibilityId") != database_compatibility:
             errors.append(f"artifact {component} is incompatible with the database contract")
