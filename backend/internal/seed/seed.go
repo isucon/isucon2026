@@ -64,23 +64,17 @@ func MinimalIfEmpty(ctx context.Context, pool *pgxpool.Pool, schemaPath string) 
 }
 
 func insertMinimal(ctx context.Context, tx pgx.Tx) error {
-	userHash, err := service.HashPassword("password")
-	if err != nil {
-		return err
-	}
-	adminHash, err := service.HashPassword("admin-password")
-	if err != nil {
-		return err
-	}
+	userHash := service.HashCredential("password")
+	adminHash := service.HashCredential("admin-password")
 	for _, fixture := range users {
 		id := uuid.MustParse(fixture.ID)
-		if _, err := tx.Exec(ctx, `INSERT INTO users(id,username,username_normalized,password_hash,display_name,display_name_search,region,created_at,updated_at) VALUES($1,$2,$2,$3,$4,$5,$6,$7,$7)`, id, fixture.Username, userHash, fixture.DisplayName, service.NormalizeDisplayNameForSearch(fixture.DisplayName), fixture.Region, fixedTime); err != nil {
+		if _, err := tx.Exec(ctx, `INSERT INTO users(id,username,username_normalized,secret_key_hash,display_name,display_name_search,region,created_at,updated_at) VALUES($1,$2,$2,$3,$4,$5,$6,$7,$7)`, id, fixture.Username, userHash, fixture.DisplayName, service.NormalizeDisplayNameForSearch(fixture.DisplayName), fixture.Region, fixedTime); err != nil {
 			return fmt.Errorf("seed user %s: %w", fixture.Username, err)
 		}
 	}
 	if _, err := tx.Exec(ctx, `INSERT INTO administrators(id,login_name_normalized,password_hash,enabled,created_at) VALUES($1,'root',$2,true,$3)`, uuid.MustParse("00000000-0000-0000-0000-000000000001"), adminHash, fixedTime); err != nil {
 		return err
 	}
-	_, err = tx.Exec(ctx, `INSERT INTO app_settings(key,value,updated_at) VALUES('fixture','"minimal"'::jsonb,$1)`, fixedTime)
+	_, err := tx.Exec(ctx, `INSERT INTO app_settings(key,value,updated_at) VALUES('fixture','"minimal"'::jsonb,$1)`, fixedTime)
 	return err
 }

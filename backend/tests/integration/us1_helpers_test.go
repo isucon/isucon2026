@@ -24,7 +24,7 @@ func us1Database(t *testing.T) (*pgxpool.Pool, *postgres.PostRepository) {
 func addUser(t *testing.T, pool *pgxpool.Pool, id uuid.UUID, region string) {
 	t.Helper()
 	name := "u" + id.String()[:8]
-	_, err := pool.Exec(context.Background(), `INSERT INTO users(id,username,username_normalized,password_hash,display_name,display_name_search,region) VALUES($1,$2::varchar,$2::varchar,'hash',$2::text,$2::text,$3)`, id, name, region)
+	_, err := pool.Exec(context.Background(), `INSERT INTO users(id,username,username_normalized,secret_key_hash,display_name,display_name_search,region) VALUES($1,$2::varchar,$2::varchar,'hash',$2::text,$2::text,$3)`, id, name, region)
 	if err != nil {
 		t.Fatal(err)
 	}

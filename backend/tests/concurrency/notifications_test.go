@@ -21,7 +21,7 @@ func notificationUser(t *testing.T, db *postgres.DB, fake *clock.Fake, region do
 	t.Helper()
 	repository := postgres.NewSessionRepository(db, domain.RandomIDGenerator{}, fake)
 	name := "n" + uuid.NewString()[:8]
-	result, err := service.NewSessionService(repository).Register(context.Background(), service.RegistrationInput{Username: name, Password: "password 1", DisplayName: name, Region: string(region)})
+	result, err := service.NewSessionService(repository).Register(context.Background(), service.RegistrationInput{Username: name, DisplayName: name, Region: string(region)})
 	if err != nil {
 		t.Fatal(err)
 	}

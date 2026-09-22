@@ -24,11 +24,10 @@ const (
 	adminUsername = "root"
 	adminPassword = "admin-password"
 	seedUsername  = "alice"
-	seedPassword  = "password"
+	seedSecretKey = "password"
 
-	benchUserPassword = "bench-password-1"
-	benchUserRegion   = "asia"
-	asiaUTCOffset     = 9 * time.Hour
+	benchUserRegion = "asia"
+	asiaUTCOffset   = 9 * time.Hour
 
 	initializeTimeout = 30 * time.Second // INIT-10 provisional limit
 	// loadDuration is fixed at 60 seconds like every past ISUCON (D-008,
@@ -184,21 +183,21 @@ func (r *Runner) pretest(ctx context.Context) (string, bool) {
 	}
 	r.adminToken = adminToken
 
-	seedUser, err := r.api.Login(ctx, seedUsername, seedPassword)
+	seedUser, err := r.api.Login(ctx, seedUsername, seedSecretKey)
 	if err != nil {
 		return fmt.Sprintf("seeded user login failed: %v", err), false
 	}
 
-	if _, err := r.api.Login(ctx, seedUsername, "wrong-password-000"); !isStatus(err, http.StatusUnauthorized) {
-		return fmt.Sprintf("login with wrong password: expected 401, got %v", err), false
+	if _, err := r.api.Login(ctx, seedUsername, "wrong-secret-000"); !isStatus(err, http.StatusUnauthorized) {
+		return fmt.Sprintf("login with wrong secret key: expected 401, got %v", err), false
 	}
 
 	checkUsername := "bench_pretest_user"
-	registered, err := r.api.Register(ctx, checkUsername, benchUserPassword, "Pretest User", benchUserRegion)
+	registered, err := r.api.Register(ctx, checkUsername, "Pretest User", benchUserRegion)
 	if err != nil {
 		return fmt.Sprintf("register failed: %v", err), false
 	}
-	if _, err := r.api.Register(ctx, checkUsername, benchUserPassword, "Pretest User", benchUserRegion); !isStatus(err, http.StatusConflict) {
+	if _, err := r.api.Register(ctx, checkUsername, "Pretest User", benchUserRegion); !isStatus(err, http.StatusConflict) {
 		return fmt.Sprintf("duplicate register: expected 409, got %v", err), false
 	}
 
@@ -279,7 +278,7 @@ func (r *Runner) prepareUsers(ctx context.Context) string {
 	r.users = make([]client.User, 0, r.cfg.Users)
 	for index := range r.cfg.Users {
 		username := fmt.Sprintf("bench_user_%03d", index)
-		user, err := r.api.Register(ctx, username, benchUserPassword, fmt.Sprintf("Bench User %03d", index), benchUserRegion)
+		user, err := r.api.Register(ctx, username, fmt.Sprintf("Bench User %03d", index), benchUserRegion)
 		if err != nil {
 			return fmt.Sprintf("load user registration failed: %v", err)
 		}

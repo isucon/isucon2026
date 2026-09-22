@@ -12,7 +12,6 @@ import (
 
 var (
 	ErrInvalidUsername    = errors.New("username must contain 1 to 64 ASCII letters, digits, _, ., or -")
-	ErrInvalidPassword    = errors.New("password must contain 8 to 72 printable ASCII characters")
 	ErrInvalidDisplayName = errors.New("display name must contain 1 to 100 Unicode code points")
 	ErrInvalidBio         = errors.New("bio must contain at most 500 Unicode code points")
 	ErrInvalidRegion      = errors.New("region must be america, europe, or asia")
@@ -30,18 +29,6 @@ func NormalizeUsername(username string) (string, error) {
 func ValidateUsername(username string) error {
 	if !usernamePattern.MatchString(username) {
 		return ErrInvalidUsername
-	}
-	return nil
-}
-
-func ValidatePassword(password string) error {
-	if len(password) < 8 || len(password) > 72 {
-		return ErrInvalidPassword
-	}
-	for index := 0; index < len(password); index++ {
-		if password[index] < 0x20 || password[index] > 0x7e {
-			return ErrInvalidPassword
-		}
 	}
 	return nil
 }

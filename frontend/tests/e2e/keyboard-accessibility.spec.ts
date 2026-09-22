@@ -31,7 +31,8 @@ async function mockAPI(page: Page): Promise<void> {
   await page.route('**/api/v1/**', async (route) => {
     const request = route.request();
     const path = new URL(request.url()).pathname;
-    if (path === '/api/v1/auth/register' || path === '/api/v1/auth/login') return route.fulfill({ json: { token: 'keyboard-token', user: me } });
+    if (path === '/api/v1/auth/register') return route.fulfill({ status: 201, json: { token: 'keyboard-token', secretKey: 'keyboard-secret', user: me } });
+    if (path === '/api/v1/auth/login') return route.fulfill({ json: { token: 'keyboard-token', user: me } });
     if (path === '/api/v1/me') return route.fulfill({ json: me });
     if (path === '/api/v1/users') return route.fulfill({ json: { items: [other], nextCursor: null } });
     if (path === `/api/v1/users/${other.id}`) return route.fulfill({ json: other });
@@ -52,17 +53,19 @@ test('登録・ログイン・ログアウトをキーボードだけで完了�
   await tabTo(page, page.getByLabel('ユーザー名'));
   await page.keyboard.type('alice');
   await page.keyboard.press('Tab'); await page.keyboard.type('Alice');
-  await page.keyboard.press('Tab'); await page.keyboard.type('password-1');
   await page.keyboard.press('Tab'); await page.keyboard.press('End');
   await page.keyboard.press('Tab');
   await expect(page.getByRole('button', { name: '登録' })).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(page.getByLabel('保存した鍵')).toHaveText('keyboard-secret');
+  await page.getByRole('button', { name: 'はじめる' }).focus();
   await page.keyboard.press('Enter');
   await expect(page).toHaveURL('/');
   await tabTo(page, page.getByRole('button', { name: 'ログアウト' }));
   await page.keyboard.press('Enter');
   await expect(page).toHaveURL('/login');
   await expect(page.getByLabel('ユーザー名')).toBeFocused();
-  await page.keyboard.type('alice'); await page.keyboard.press('Tab'); await page.keyboard.type('password-1'); await page.keyboard.press('Tab');
+  await page.keyboard.type('alice'); await page.keyboard.press('Tab'); await page.keyboard.press('Control+A'); await page.keyboard.type('keyboard-secret'); await page.keyboard.press('Tab');
   await expect(page.getByRole('button', { name: 'ログイン' })).toBeFocused();
   await page.keyboard.press('Enter');
   await expect(page).toHaveURL('/');

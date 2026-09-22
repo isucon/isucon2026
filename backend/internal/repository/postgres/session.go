@@ -26,8 +26,8 @@ func (r *SessionRepository) CreateUserAndSession(ctx context.Context, record ser
 	user := domain.User{ID: r.ids.New(), Username: record.Username, UsernameNormalized: record.UsernameNormalized, DisplayName: record.DisplayName, Region: record.Region, AccountType: "regular", Status: "active"}
 	sessionID := r.ids.New()
 	err := r.db.InTx(ctx, pgx.TxOptions{}, func(tx pgx.Tx) error {
-		_, err := tx.Exec(ctx, `INSERT INTO users(id,username,username_normalized,password_hash,display_name,display_name_search,region) VALUES($1,$2,$3,$4,$5,$6,$7)`,
-			user.ID, record.Username, record.UsernameNormalized, record.PasswordHash, record.DisplayName, record.DisplayNameSearch, record.Region)
+		_, err := tx.Exec(ctx, `INSERT INTO users(id,username,username_normalized,secret_key_hash,display_name,display_name_search,region) VALUES($1,$2,$3,$4,$5,$6,$7)`,
+			user.ID, record.Username, record.UsernameNormalized, record.SecretKeyHash, record.DisplayName, record.DisplayNameSearch, record.Region)
 		if err != nil {
 			return err
 		}
@@ -42,16 +42,16 @@ func (r *SessionRepository) CreateUserAndSession(ctx context.Context, record ser
 
 func (r *SessionRepository) CredentialByUsername(ctx context.Context, normalized string) (domain.User, string, bool, error) {
 	var user domain.User
-	var passwordHash string
-	err := r.db.Pool.QueryRow(ctx, `SELECT id,username,username_normalized,password_hash,display_name,bio,region,account_type,status FROM users WHERE username_normalized=$1`, normalized).
-		Scan(&user.ID, &user.Username, &user.UsernameNormalized, &passwordHash, &user.DisplayName, &user.Bio, &user.Region, &user.AccountType, &user.Status)
+	var secretKeyHash string
+	err := r.db.Pool.QueryRow(ctx, `SELECT id,username,username_normalized,secret_key_hash,display_name,bio,region,account_type,status FROM users WHERE username_normalized=$1`, normalized).
+		Scan(&user.ID, &user.Username, &user.UsernameNormalized, &secretKeyHash, &user.DisplayName, &user.Bio, &user.Region, &user.AccountType, &user.Status)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.User{}, "", false, nil
 	}
 	if err != nil {
 		return domain.User{}, "", false, MapError(err)
 	}
-	return user, passwordHash, true, nil
+	return user, secretKeyHash, true, nil
 }
 
 func (r *SessionRepository) ReplaceSession(ctx context.Context, userID uuid.UUID, tokenHash string) (uuid.UUID, error) {

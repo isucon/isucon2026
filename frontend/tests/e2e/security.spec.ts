@@ -22,7 +22,7 @@ test('tokenをIndexedDBだけに保持し失効・削除・logoutで消去する
   const login = async () => {
     await page.goto('/login');
     await page.getByLabel('ユーザー名').fill('alice');
-    await page.getByLabel('パスワード').fill('password-1');
+    await page.getByLabel('SecretKey').fill('password-1');
     await page.getByRole('button', { name: 'ログイン' }).click();
     await expect(page).toHaveURL('/');
   };

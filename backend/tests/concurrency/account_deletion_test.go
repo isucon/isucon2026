@@ -23,8 +23,8 @@ import (
 func TestUS4DeadlinePurgeAndRetry(t *testing.T) {
 	pool := testkit.Database(t)
 	user := relationUser(t, pool)
-	hash, _ := service.HashPassword("password-1")
-	_, _ = pool.Exec(context.Background(), `UPDATE users SET password_hash=$2 WHERE id=$1`, user, hash)
+	hash := service.HashCredential("password-1")
+	_, _ = pool.Exec(context.Background(), `UPDATE users SET secret_key_hash=$2 WHERE id=$1`, user, hash)
 	fake := clock.NewFake(concurrencyNow)
 	db := &postgres.DB{Pool: pool}
 	accounts := postgres.NewAccountRepository(db, fake)
@@ -36,7 +36,7 @@ func TestUS4DeadlinePurgeAndRetry(t *testing.T) {
 	fake.Set(due)
 	loginErr, purgeErr := make(chan error, 1), make(chan error, 1)
 	go func() {
-		_, err := service.NewSessionService(sessions).Login(context.Background(), service.LoginInput{Username: "u" + user.String()[:8], Password: "password-1"})
+		_, err := service.NewSessionService(sessions).Login(context.Background(), service.LoginInput{Username: "u" + user.String()[:8], SecretKey: "password-1"})
 		loginErr <- err
 	}()
 	go func() { _, err := accounts.Purge(context.Background(), user); purgeErr <- err }()

@@ -55,27 +55,30 @@ func TestStructuredLogAuditExercisesOutcomesAndRejectsSensitiveData(t *testing.T
 		return recorder
 	}
 
-	const password = "LOG_PASSWORD_SECRET"
 	const content = "LOG_CONTENT_SECRET"
-	registered := request(http.MethodPost, "/api/v1/auth/register", fmt.Sprintf(`{"username":"audit-user","password":%q,"displayName":%q,"region":"asia"}`, password, content), "")
+	registered := request(http.MethodPost, "/api/v1/auth/register", fmt.Sprintf(`{"username":"audit-user","displayName":%q,"region":"asia"}`, content), "")
 	if registered.Code != http.StatusCreated {
 		t.Fatalf("register=%d %s", registered.Code, registered.Body.String())
 	}
 	var session struct {
-		Token string `json:"token"`
+		Token     string `json:"token"`
+		SecretKey string `json:"secretKey"`
 	}
 	if err := json.Unmarshal(registered.Body.Bytes(), &session); err != nil {
 		t.Fatal(err)
 	}
-	conflict := request(http.MethodPost, "/api/v1/auth/register", fmt.Sprintf(`{"username":"AUDIT-USER","password":%q,"displayName":"other","region":"asia"}`, password), "")
+	if session.SecretKey == "" {
+		t.Fatal("register response omitted secretKey")
+	}
+	conflict := request(http.MethodPost, "/api/v1/auth/register", `{"username":"AUDIT-USER","displayName":"other","region":"asia"}`, "")
 	if conflict.Code != http.StatusConflict {
 		t.Fatalf("conflict=%d %s", conflict.Code, conflict.Body.String())
 	}
-	input := request(http.MethodPost, "/api/v1/auth/login", `{"username":"audit-user","password":"bad","unexpected":true}`, "")
+	input := request(http.MethodPost, "/api/v1/auth/login", `{"username":"audit-user","secretKey":"bad","unexpected":true}`, "")
 	if input.Code != http.StatusBadRequest {
 		t.Fatalf("input=%d", input.Code)
 	}
-	authFailure := request(http.MethodPost, "/api/v1/auth/login", `{"username":"audit-user","password":"wrong-secret"}`, "")
+	authFailure := request(http.MethodPost, "/api/v1/auth/login", `{"username":"audit-user","secretKey":"wrong-secret"}`, "")
 	if authFailure.Code != http.StatusUnauthorized {
 		t.Fatalf("auth failure=%d", authFailure.Code)
 	}
@@ -89,10 +92,7 @@ func TestStructuredLogAuditExercisesOutcomesAndRejectsSensitiveData(t *testing.T
 	}
 
 	const adminPassword = "LOG_ADMIN_PASSWORD_SECRET"
-	adminHash, err := service.HashPassword(adminPassword)
-	if err != nil {
-		t.Fatal(err)
-	}
+	adminHash := service.HashCredential(adminPassword)
 	adminID := uuid.New()
 	if _, err := pool.Exec(ctx, `INSERT INTO administrators(id,login_name_normalized,password_hash,enabled,created_at)VALUES($1,'audit-admin',$2,true,$3)`, adminID, adminHash, us1Now); err != nil {
 		t.Fatal(err)
@@ -128,7 +128,7 @@ func TestStructuredLogAuditExercisesOutcomesAndRejectsSensitiveData(t *testing.T
 	e.HTTPErrorHandler(errorContext, errors.New("LOG_UNEXPECTED_SECRET"))
 
 	logs := output.String()
-	for _, secret := range []string{password, content, session.Token, adminPassword, adminSession.Token, pushEndpoint, p256dh, pushAuth, "LOG_UNEXPECTED_SECRET", "caption", "biography", "35.681236", "139.767125"} {
+	for _, secret := range []string{session.SecretKey, content, session.Token, adminPassword, adminSession.Token, pushEndpoint, p256dh, pushAuth, "LOG_UNEXPECTED_SECRET", "caption", "biography", "35.681236", "139.767125"} {
 		if secret != "" && strings.Contains(logs, secret) {
 			t.Errorf("secret leaked in logs: %q", secret)
 		}

@@ -29,17 +29,13 @@ func NewAdminService(repository AdminAuthRepository, certifier UserCertifier) *A
 func (s *AdminService) Login(ctx context.Context, login, password string) (AdminSessionResult, error) {
 	normalized, err := domain.NormalizeUsername(login)
 	if err != nil {
-		_ = AuthenticatePassword("", password)
 		return AdminSessionResult{}, ErrInvalidCredentials
 	}
 	administrator, hash, exists, err := s.repository.AdministratorCredential(ctx, normalized)
 	if err != nil {
 		return AdminSessionResult{}, err
 	}
-	if !exists {
-		hash = ""
-	}
-	if err := AuthenticatePassword(hash, password); err != nil || !exists || !administrator.Enabled {
+	if !exists || !administrator.Enabled || VerifyCredential(hash, password) != nil {
 		return AdminSessionResult{}, ErrInvalidCredentials
 	}
 	token, tokenHash, err := newSessionToken()

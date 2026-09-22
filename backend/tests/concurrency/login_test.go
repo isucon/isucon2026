@@ -40,7 +40,7 @@ func TestConcurrentLoginLeavesOneActiveSession(t *testing.T) {
 	db := &postgres.DB{Pool: pool}
 	repository := postgres.NewSessionRepository(db, domain.RandomIDGenerator{}, clock.NewFake(time.Date(2026, 7, 19, 12, 0, 0, 0, time.UTC)))
 	sessions := service.NewSessionService(repository)
-	registered, err := sessions.Register(ctx, service.RegistrationInput{Username: "racer", Password: "password 1", DisplayName: "Racer", Region: "america"})
+	registered, err := sessions.Register(ctx, service.RegistrationInput{Username: "racer", DisplayName: "Racer", Region: "america"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,7 +57,7 @@ func TestConcurrentLoginLeavesOneActiveSession(t *testing.T) {
 		go func() {
 			defer group.Done()
 			<-start
-			result, err := sessions.Login(ctx, service.LoginInput{Username: "RACER", Password: "password 1"})
+			result, err := sessions.Login(ctx, service.LoginInput{Username: "RACER", SecretKey: registered.SecretKey})
 			if err != nil {
 				errors <- err
 				return

@@ -16,7 +16,7 @@ docker compose up
 
 - Web: <http://localhost:5173>
 - API readiness: <http://localhost:8080/health/ready>
-- seed user: `alice` / `password`（`bob`、`carol`、`dave`も同じパスワード）
+- seed user: `alice` / SecretKey `password`（`bob`、`carol`、`dave`も同じSecretKey）
 - seed administrator: `root` / `admin-password`
 
 バックグラウンドで起動する場合は`docker compose up -d`、停止は`docker compose down`です。通常の再起動ではDBと画像のvolumeを保持し、minimal fixtureを再投入しません。ローカルデータも削除して完全に初期化する場合だけ、意図を確認したうえで`docker compose down --volumes`を使用してください。

@@ -14,7 +14,7 @@ CREATE TABLE users (
   id uuid PRIMARY KEY,
   username varchar(64) NOT NULL CHECK (username ~ '^[A-Za-z0-9_.-]{1,64}$'),
   username_normalized varchar(64) NOT NULL UNIQUE,
-  password_hash text NOT NULL,
+  secret_key_hash text NOT NULL,
   display_name text NOT NULL,
   display_name_search text NOT NULL,
   bio text NOT NULL DEFAULT '',
