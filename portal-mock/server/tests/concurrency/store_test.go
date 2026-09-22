@@ -17,13 +17,13 @@ func TestConcurrentUpdatesAndReportsPreserveValidState(t *testing.T) {
 		wg.Add(2)
 		go func(index int) {
 			defer wg.Done()
-			serverID := domain.ServerID(index%3 + 1)
-			_, _, _, _ = server.App.Store.UpdateDesired(store.Patch{MainServer: &serverID})
+			serverID := []string{"JP", "DE", "US"}[index%3]
+			_, _, _, _ = server.App.Store.UpdateDesired(store.Patch{DefaultCountry: &serverID})
 		}(i)
 		go func(index int) {
 			defer wg.Done()
 			cfg := domain.InitialConfig()
-			cfg.MainServer = domain.ServerID(index%3 + 1)
+			cfg.DefaultCountry = []string{"JP", "DE", "US"}[index%3]
 			_ = server.App.Store.ReportSuccess("report", cfg)
 		}(i)
 	}

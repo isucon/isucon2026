@@ -19,7 +19,7 @@ func TestInvalidReportResetAndBenchmarkCancellationRecovery(t *testing.T) {
 		cfg.StandInProfile = ""
 	})
 	invalid := testkit.ConfigProto(server.App.Store.Snapshot().Desired.Config)
-	invalid.MainServer = 99
+	invalid.DefaultCountry = "XX"
 	_, err := server.Router.ReportApplied(context.Background(), connect.NewRequest(&portalv1.ReportAppliedRequest{
 		Team: &portalv1.TeamKey{TeamNumber: 1},
 		Result: &portalv1.ReportAppliedRequest_Success{Success: &portalv1.ApplySuccess{

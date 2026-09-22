@@ -141,7 +141,6 @@ type Patch struct {
 	Server1Region  *domain.Region
 	Server2Region  *domain.Region
 	Server3Region  *domain.Region
-	MainServer     *domain.ServerID
 	DefaultCountry *string
 }
 
@@ -149,7 +148,6 @@ func (p Patch) Empty() bool {
 	return p.Server1Region == nil &&
 		p.Server2Region == nil &&
 		p.Server3Region == nil &&
-		p.MainServer == nil &&
 		p.DefaultCountry == nil
 }
 
@@ -167,13 +165,6 @@ func (s *Store) UpdateDesired(patch Patch) (bool, domain.ConfigSnapshot, domain.
 		return false, domain.ConfigSnapshot{}, domain.ApplyDiagnostic{}, fmt.Errorf("%w: benchmark is in progress", ErrFailedPrecondition)
 	}
 	cfg := s.state.Desired.Config
-	if patch.MainServer != nil {
-		if !domain.ValidServer(*patch.MainServer) {
-			s.mu.Unlock()
-			return false, domain.ConfigSnapshot{}, domain.ApplyDiagnostic{}, fmt.Errorf("%w: main server is invalid", ErrInvalidArgument)
-		}
-		cfg.MainServer = *patch.MainServer
-	}
 	if patch.DefaultCountry != nil {
 		if err := domain.ValidateCountryCode(*patch.DefaultCountry); err != nil {
 			s.mu.Unlock()

@@ -17,8 +17,8 @@ import (
 func TestPortalClientReconnectsAndUsesConfiguredTeam(t *testing.T) {
 	t.Parallel()
 	handler := &portalTestHandler{snapshots: []*portalv1.ConfigSnapshot{
-		testProtoSnapshot("first", portalv1.ServerId_SERVER_ID_SERVER1),
-		testProtoSnapshot("second", portalv1.ServerId_SERVER_ID_SERVER3),
+		testProtoSnapshot("first", "JP"),
+		testProtoSnapshot("second", "US"),
 	}}
 	server := newPortalTestServer(t, handler)
 	client, err := NewPortalClient(server.URL, 7, server.Client(), 5*time.Millisecond, 20*time.Millisecond)
@@ -132,9 +132,9 @@ func newPortalTestServer(t *testing.T, handler portalv1connect.PortalRouterServi
 	return server
 }
 
-func testProtoSnapshot(id string, main portalv1.ServerId) *portalv1.ConfigSnapshot {
+func testProtoSnapshot(id string, country string) *portalv1.ConfigSnapshot {
 	return &portalv1.ConfigSnapshot{SnapshotId: id, Config: &portalv1.Config{
-		ServerRegions: &portalv1.ServerRegions{Server1: portalv1.Region_REGION_AP, Server2: portalv1.Region_REGION_EU, Server3: portalv1.Region_REGION_US},
-		MainServer:    main, DefaultCountry: "JP",
+		ServerRegions:  &portalv1.ServerRegions{Server1: portalv1.Region_REGION_AP, Server2: portalv1.Region_REGION_EU, Server3: portalv1.Region_REGION_US},
+		DefaultCountry: country,
 	}}
 }

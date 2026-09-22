@@ -11,7 +11,7 @@ test.beforeEach(async ({ page }) => {
 test('pending/running、設定ロック、完了履歴とログを表示する', async ({ page }) => {
   await page.getByRole('button', { name: 'ベンチマークを実行' }).click();
   await expect(page.getByRole('button', { name: /実行待ち|実行中/ })).toBeDisabled();
-  await expect(page.getByRole('radio', { name: /server1/ })).toBeDisabled();
+  await expect(page.getByLabel('望ましい設定')).toBeDisabled();
   await expect(page.getByRole('progressbar')).toBeVisible();
 
   await expect(page.getByRole('table', { name: '新しい順のベンチマーク実行履歴' })).toBeVisible({

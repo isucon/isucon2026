@@ -9,9 +9,10 @@ test.beforeEach(async ({ page }) => {
 });
 
 test('設定変更が desired へ反映され applied へ収束する', async ({ page }) => {
-  await page.getByRole('radio', { name: /server2/ }).click();
+  await expect(page.getByRole('radio')).toHaveCount(0);
+  await page.getByLabel('望ましい設定').selectOption('DE');
   await expect(page.getByRole('status').filter({ hasText: /反映待ち|反映済み/ })).toBeVisible();
-  await expect(page.getByRole('radio', { name: /server2/ })).toHaveAttribute('aria-checked', 'true');
+  await expect(page.getByLabel('望ましい設定')).toHaveValue('DE');
   await expect(page.getByRole('status').filter({ hasText: '反映済み' })).toBeVisible({
     timeout: 10_000,
   });

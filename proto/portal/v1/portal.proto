@@ -42,7 +42,8 @@ message ServerRegions {
 message Config {
   // 固定配置の確認用。固定値に一致しない snapshot/report は拒否する。
   ServerRegions server_regions = 1;
-  ServerId main_server = 2;
+  reserved 2;
+  reserved "main_server";
   // ISO 3166-1 alpha-2。
   string default_country = 3;
 }

@@ -26,22 +26,22 @@ func TestControllerCoalescesPendingSnapshotsAndSkipsDuplicateApply(t *testing.T)
 	defer cancel()
 	go controller.Run(ctx)
 
-	if err := controller.Submit(testProtoSnapshot("one", portalv1.ServerId_SERVER_ID_SERVER1)); err != nil {
+	if err := controller.Submit(testProtoSnapshot("one", "JP")); err != nil {
 		t.Fatal(err)
 	}
 	<-network.firstEntered
-	if err := controller.Submit(testProtoSnapshot("two", portalv1.ServerId_SERVER_ID_SERVER2)); err != nil {
+	if err := controller.Submit(testProtoSnapshot("two", "DE")); err != nil {
 		t.Fatal(err)
 	}
-	if err := controller.Submit(testProtoSnapshot("three", portalv1.ServerId_SERVER_ID_SERVER3)); err != nil {
+	if err := controller.Submit(testProtoSnapshot("three", "US")); err != nil {
 		t.Fatal(err)
 	}
 	close(network.blockFirst)
 	waitFor(t, time.Second, func() bool { return network.applyCount() == 2 && portal.successCount() >= 2 })
-	if got := network.appliedMainServers(); len(got) != 2 || got[0] != domain.Server1 || got[1] != domain.Server3 {
-		t.Fatalf("applied main servers = %v", got)
+	if got := network.appliedCountries(); len(got) != 2 || got[0] != "JP" || got[1] != "US" {
+		t.Fatalf("applied countries = %v", got)
 	}
-	if err := controller.Submit(testProtoSnapshot("three", portalv1.ServerId_SERVER_ID_SERVER3)); err != nil {
+	if err := controller.Submit(testProtoSnapshot("three", "US")); err != nil {
 		t.Fatal(err)
 	}
 	waitFor(t, time.Second, func() bool { return portal.successCount() >= 3 })
@@ -60,20 +60,20 @@ func TestControllerRollsBackNetworkAfterXDSFailure(t *testing.T) {
 	defer cancel()
 	go controller.Run(ctx)
 
-	if err := controller.Submit(testProtoSnapshot("base", portalv1.ServerId_SERVER_ID_SERVER1)); err != nil {
+	if err := controller.Submit(testProtoSnapshot("base", "JP")); err != nil {
 		t.Fatal(err)
 	}
 	waitFor(t, time.Second, func() bool { return portal.successCount() == 1 })
 	routes.setWaitError(errors.New("route NACK"))
-	if err := controller.Submit(testProtoSnapshot("broken", portalv1.ServerId_SERVER_ID_SERVER2)); err != nil {
+	if err := controller.Submit(testProtoSnapshot("broken", "DE")); err != nil {
 		t.Fatal(err)
 	}
 	waitFor(t, time.Second, func() bool { return network.restoreCount() > 0 && portal.failureCount() > 0 })
 	active := network.Active()
-	if active == nil || active.Config.MainServer != domain.Server1 {
+	if active == nil || active.Config.DefaultCountry != "JP" {
 		t.Fatalf("network did not roll back: %+v", active)
 	}
-	if snapshot := controller.Active(); snapshot == nil || snapshot.Config.MainServer != domain.Server1 {
+	if snapshot := controller.Active(); snapshot == nil || snapshot.Config.DefaultCountry != "JP" {
 		t.Fatalf("controller active changed after failure: %+v", snapshot)
 	}
 }
@@ -88,7 +88,7 @@ func TestControllerRetriesReportWithoutReapplying(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go controller.Run(ctx)
-	if err := controller.Submit(testProtoSnapshot("report", portalv1.ServerId_SERVER_ID_SERVER1)); err != nil {
+	if err := controller.Submit(testProtoSnapshot("report", "JP")); err != nil {
 		t.Fatal(err)
 	}
 	waitFor(t, time.Second, func() bool { return portal.successCount() == 1 })
@@ -233,12 +233,12 @@ func (n *fakeNetwork) Active() *netcontrol.Candidate {
 
 func (n *fakeNetwork) applyCount() int   { n.mu.Lock(); defer n.mu.Unlock(); return len(n.applied) }
 func (n *fakeNetwork) restoreCount() int { n.mu.Lock(); defer n.mu.Unlock(); return n.restores }
-func (n *fakeNetwork) appliedMainServers() []domain.ServerID {
+func (n *fakeNetwork) appliedCountries() []string {
 	n.mu.Lock()
 	defer n.mu.Unlock()
-	result := make([]domain.ServerID, 0, len(n.applied))
+	result := make([]string, 0, len(n.applied))
 	for _, cfg := range n.applied {
-		result = append(result, cfg.MainServer)
+		result = append(result, cfg.DefaultCountry)
 	}
 	return result
 }
@@ -278,5 +278,5 @@ func waitFor(t *testing.T, timeout time.Duration, condition func() bool) {
 }
 
 func testDomainConfig() domain.Config {
-	return domain.Config{Server1Region: domain.RegionAP, Server2Region: domain.RegionEU, Server3Region: domain.RegionUS, MainServer: domain.Server1, DefaultCountry: "JP"}
+	return domain.Config{Server1Region: domain.RegionAP, Server2Region: domain.RegionEU, Server3Region: domain.RegionUS, DefaultCountry: "JP"}
 }

@@ -1,4 +1,3 @@
-import { ServerId } from '@isucon/portal-proto/portal/v1/portal_pb';
 import { BenchmarkStatus } from '@isucon/portal-proto/portal_mock/v1/portal_mock_pb';
 import { ApplyStatus } from '../components/ApplyStatus';
 import { BenchmarkHistory } from '../components/BenchmarkHistory';
@@ -94,12 +93,6 @@ export function PortalPage() {
                   applied={applied?.config}
                   desiredCalculated={desired?.calculated}
                   appliedCalculated={applied?.calculated}
-                  locked={locked}
-                  busy={mutating}
-                  lockReason={lockReason}
-                  onMainServerChange={(mainServer: ServerId) =>
-                    void updateDesired({ mainServer })
-                  }
                 />
                 <CountrySelector
                   desired={desired?.config}

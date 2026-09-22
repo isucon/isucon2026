@@ -70,16 +70,12 @@ type Config struct {
 	Server1Region  Region
 	Server2Region  Region
 	Server3Region  Region
-	MainServer     ServerID
 	DefaultCountry string
 }
 
 func (c Config) Validate() error {
 	if c.Server1Region != RegionAP || c.Server2Region != RegionEU || c.Server3Region != RegionUS {
 		return errors.New("server regions are fixed: server1=AP, server2=EU, server3=US")
-	}
-	if !c.MainServer.Valid() {
-		return errors.New("main server is invalid")
 	}
 	if _, ok := CountryRegion(c.DefaultCountry); !ok {
 		return errors.New("default country is unsupported")
@@ -100,6 +96,20 @@ func (c Config) RegionFor(server ServerID) Region {
 	}
 }
 
+// ServerForRegion returns the server in the client's region.
+func ServerForRegion(region Region) ServerID {
+	switch region {
+	case RegionAP:
+		return Server1
+	case RegionEU:
+		return Server2
+	case RegionUS:
+		return Server3
+	default:
+		return ""
+	}
+}
+
 func (c Config) Proto() *portalv1.Config {
 	return &portalv1.Config{
 		ServerRegions: &portalv1.ServerRegions{
@@ -107,7 +117,6 @@ func (c Config) Proto() *portalv1.Config {
 			Server2: regionToProto(c.Server2Region),
 			Server3: regionToProto(c.Server3Region),
 		},
-		MainServer:     serverToProto(c.MainServer),
 		DefaultCountry: c.DefaultCountry,
 	}
 }
@@ -131,15 +140,10 @@ func ConfigFromProto(value *portalv1.Config) (Config, error) {
 	if err != nil {
 		return Config{}, fmt.Errorf("server3: %w", err)
 	}
-	mainServer, err := serverFromProto(value.MainServer)
-	if err != nil {
-		return Config{}, err
-	}
 	config := Config{
 		Server1Region:  server1,
 		Server2Region:  server2,
 		Server3Region:  server3,
-		MainServer:     mainServer,
 		DefaultCountry: value.DefaultCountry,
 	}
 	if err := config.Validate(); err != nil {
@@ -232,31 +236,5 @@ func regionToProto(value Region) portalv1.Region {
 		return portalv1.Region_REGION_EU
 	default:
 		return portalv1.Region_REGION_UNSPECIFIED
-	}
-}
-
-func serverFromProto(value portalv1.ServerId) (ServerID, error) {
-	switch value {
-	case portalv1.ServerId_SERVER_ID_SERVER1:
-		return Server1, nil
-	case portalv1.ServerId_SERVER_ID_SERVER2:
-		return Server2, nil
-	case portalv1.ServerId_SERVER_ID_SERVER3:
-		return Server3, nil
-	default:
-		return "", fmt.Errorf("main server %d is invalid", value)
-	}
-}
-
-func serverToProto(value ServerID) portalv1.ServerId {
-	switch value {
-	case Server1:
-		return portalv1.ServerId_SERVER_ID_SERVER1
-	case Server2:
-		return portalv1.ServerId_SERVER_ID_SERVER2
-	case Server3:
-		return portalv1.ServerId_SERVER_ID_SERVER3
-	default:
-		return portalv1.ServerId_SERVER_ID_UNSPECIFIED
 	}
 }

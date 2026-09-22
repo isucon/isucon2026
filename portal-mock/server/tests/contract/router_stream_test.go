@@ -27,9 +27,9 @@ func TestRouterStreamInitialUpdateResetAndReconnect(t *testing.T) {
 	if !stream.Receive() {
 		t.Fatal(stream.Err())
 	}
-	server2 := portalv1.ServerId_SERVER_ID_SERVER2
+	server2 := "DE"
 	update, err := server.Mock.UpdateDesired(context.Background(), connect.NewRequest(&portalmockv1.UpdateDesiredRequest{
-		Patch: &portalmockv1.DesiredPatch{MainServer: &server2},
+		Patch: &portalmockv1.DesiredPatch{DefaultCountry: &server2},
 	}))
 	if err != nil {
 		t.Fatal(err)

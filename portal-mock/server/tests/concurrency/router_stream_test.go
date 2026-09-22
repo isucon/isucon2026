@@ -29,13 +29,13 @@ func TestSlowRouterEventuallyReceivesLatestDesired(t *testing.T) {
 		t.Fatal(stream.Err())
 	}
 	var latest string
-	for _, main := range []portalv1.ServerId{
-		portalv1.ServerId_SERVER_ID_SERVER2,
-		portalv1.ServerId_SERVER_ID_SERVER3,
-		portalv1.ServerId_SERVER_ID_SERVER1,
+	for _, main := range []string{
+		"DE",
+		"US",
+		"JP",
 	} {
 		response, updateErr := server.Mock.UpdateDesired(context.Background(), connect.NewRequest(&portalmockv1.UpdateDesiredRequest{
-			Patch: &portalmockv1.DesiredPatch{MainServer: &main},
+			Patch: &portalmockv1.DesiredPatch{DefaultCountry: &main},
 		}))
 		if updateErr != nil {
 			t.Fatal(updateErr)

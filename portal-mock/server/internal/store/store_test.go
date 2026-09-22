@@ -40,8 +40,8 @@ func TestUpdateNoopAndReports(t *testing.T) {
 	stateEvents := stateStore.SubscribeState(ctx)
 	<-desiredEvents.C
 	<-stateEvents.C
-	main := domain.Server1
-	changed, desired, _, err := stateStore.UpdateDesired(Patch{MainServer: &main})
+	main := "JP"
+	changed, desired, _, err := stateStore.UpdateDesired(Patch{DefaultCountry: &main})
 	if err != nil || changed {
 		t.Fatalf("no-op: changed=%v err=%v", changed, err)
 	}
@@ -72,7 +72,7 @@ func TestInvalidReportPreservesAppliedAndRecovers(t *testing.T) {
 		t.Fatalf("invalid report changed applied: %+v", afterInvalid)
 	}
 	mismatch := before.Desired.Config
-	mismatch.MainServer = domain.Server2
+	mismatch.DefaultCountry = "DE"
 	if err := stateStore.ReportSuccess("unknown-valid", mismatch); err != nil {
 		t.Fatal(err)
 	}
@@ -102,7 +102,7 @@ func TestEmptySnapshotIDValidConfigSetsInvalidReport(t *testing.T) {
 	stateStore, _ := testStore(t, domain.RouterModeStandIn)
 	before := stateStore.Snapshot()
 	valid := before.Desired.Config
-	valid.MainServer = domain.Server2
+	valid.DefaultCountry = "DE"
 
 	err := stateStore.ReportSuccess("", valid)
 	if !errors.Is(err, ErrInvalidArgument) {
@@ -121,7 +121,7 @@ func TestEmptySnapshotIDValidConfigSetsInvalidReport(t *testing.T) {
 	// A subsequent valid report must clear the INVALID_REPORT diagnostic,
 	// proving the state is not a terminal error.
 	recovered := before.Desired.Config
-	recovered.MainServer = domain.Server3
+	recovered.DefaultCountry = "US"
 	if err := stateStore.ReportSuccess("late-valid", recovered); err != nil {
 		t.Fatalf("valid recovery report failed: %v", err)
 	}

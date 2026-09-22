@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { ServerId } from '@isucon/portal-proto/portal/v1/portal_pb';
 import {
   ApplyState,
   BenchmarkStatus,
@@ -65,7 +64,7 @@ describe('反映診断の全状態表示', () => {
 
   it('desired と applied の比較表に snapshot と項目差分を含む', () => {
     renderPortal(
-      makeController(makeState({ desiredMain: ServerId.SERVER2, converged: false })),
+      makeController(makeState({ desiredCountry: 'DE', converged: false })),
     );
     // snapshot ID は短縮表示され、フル値は title 属性に保持される
     expect(
@@ -84,18 +83,16 @@ describe('反映診断の全状態表示', () => {
 });
 
 describe('設定パッチ送信形式', () => {
-  it('メイン・国のみを生成パッチ形式で送る', async () => {
+  it('国のみを生成パッチ形式で送る', async () => {
     const user = userEvent.setup();
     const updateDesired = vi.fn(async () => true);
     renderPortal(makeController(makeState(), { updateDesired }));
 
     expect(screen.queryByLabelText(/desired リージョン/)).not.toBeInTheDocument();
-    await user.click(screen.getByRole('radio', { name: /server2/ }));
     await user.selectOptions(screen.getByLabelText('望ましい設定'), 'GB');
 
-    expect(updateDesired).toHaveBeenCalledTimes(2);
-    expect(updateDesired).toHaveBeenNthCalledWith(1, { mainServer: ServerId.SERVER2 });
-    expect(updateDesired).toHaveBeenNthCalledWith(2, { defaultCountry: 'GB' });
+    expect(updateDesired).toHaveBeenCalledTimes(1);
+    expect(updateDesired).toHaveBeenNthCalledWith(1, { defaultCountry: 'GB' });
   });
 
   it('ベンチ実行中は全設定コントロールをロックする', () => {
@@ -110,7 +107,7 @@ describe('設定パッチ送信形式', () => {
     );
     expect(screen.queryByLabelText(/desired リージョン/)).not.toBeInTheDocument();
     expect(screen.getByLabelText('望ましい設定')).toBeDisabled();
-    screen.getAllByRole('radio').forEach((radio) => expect(radio).toBeDisabled());
+    expect(screen.queryByRole('radio')).not.toBeInTheDocument();
   });
 });
 

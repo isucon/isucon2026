@@ -18,7 +18,6 @@ func TestBuildRoutesMatrix(t *testing.T) {
 		Server1Region:  domain.RegionAP,
 		Server2Region:  domain.RegionEU,
 		Server3Region:  domain.RegionUS,
-		MainServer:     domain.Server3,
 		DefaultCountry: "JP",
 	}
 	profile := domain.TrafficProfile{
@@ -40,15 +39,29 @@ func TestBuildRoutesMatrix(t *testing.T) {
 	if len(app.Routes) != len(domain.Countries())+2 {
 		t.Fatalf("app routes = %d", len(app.Routes))
 	}
-	assertCountryRoute(t, app.Routes[routeIndex(t, "US")], "US", "server3", 0, profile.SameRegionBandwidthBPS)
-	assertCountryRoute(t, app.Routes[routeIndex(t, "JP")], "JP", "server3", profile.CrossRegionDelay, profile.CrossRegionBandwidthBPS)
+	for country, server := range map[string]string{
+		"JP": "server1", "KR": "server1", "CN": "server1", "AU": "server1",
+		"US": "server3", "CA": "server3", "MX": "server3",
+		"GB": "server2", "DE": "server2", "FR": "server2",
+	} {
+		assertCountryRoute(t, app.Routes[routeIndex(t, country)], country, server, 0, profile.SameRegionBandwidthBPS)
+		cfg.DefaultCountry = country
+		defaultRoutes, err := BuildRoutes("defaults", hosts, cfg, profile)
+		if err != nil {
+			t.Fatal(err)
+		}
+		fallback := virtualHost(t, defaultRoutes, hosts.App).Routes[len(domain.Countries())]
+		if fallback.GetRoute().GetCluster() != server || fallback.RequestHeadersToAdd[0].GetHeader().GetValue() != country {
+			t.Fatalf("default country %s did not select %s", country, server)
+		}
+	}
 
 	server2 := virtualHost(t, routes, hosts.Server2)
 	assertCountryRoute(t, server2.Routes[routeIndex(t, "DE")], "DE", "server2", 0, profile.SameRegionBandwidthBPS)
 	assertCountryRoute(t, server2.Routes[routeIndex(t, "JP")], "JP", "server2", profile.CrossRegionDelay, profile.CrossRegionBandwidthBPS)
 
 	absent := app.Routes[len(domain.Countries())]
-	if absent.GetRoute().GetCluster() != "server3" {
+	if absent.GetRoute().GetCluster() != "server1" {
 		t.Fatalf("default route cluster = %q", absent.GetRoute().GetCluster())
 	}
 	if len(absent.Match.Headers) != 1 || !absent.Match.Headers[0].GetPresentMatch() || !absent.Match.Headers[0].InvertMatch {
@@ -70,7 +83,7 @@ func TestBuildRoutesMatrix(t *testing.T) {
 
 func TestBuildRoutesRejectsInvalidInputs(t *testing.T) {
 	t.Parallel()
-	validConfig := domain.Config{Server1Region: domain.RegionAP, Server2Region: domain.RegionEU, Server3Region: domain.RegionUS, MainServer: domain.Server1, DefaultCountry: "JP"}
+	validConfig := domain.Config{Server1Region: domain.RegionAP, Server2Region: domain.RegionEU, Server3Region: domain.RegionUS, DefaultCountry: "JP"}
 	validProfile := domain.TrafficProfile{SameRegionBandwidthBPS: 1000, CrossRegionBandwidthBPS: 100}
 	if _, err := BuildRoutes("", testHosts(), validConfig, validProfile); err == nil {
 		t.Fatal("empty route name unexpectedly succeeded")
