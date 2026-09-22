@@ -1,0 +1,221 @@
+name: isureal-router-e2e
+
+services:
+  portal:
+    build:
+      context: ..
+      dockerfile: portal-mock/server/Dockerfile
+    environment:
+      PORTAL_TEAM_NUMBER: "1"
+      PORTAL_TEAM_HASH: abc123
+      PORTAL_DOMAIN_SUFFIX: isucon2026.westens.tokyo
+      PORTAL_ROUTER_MODE: external-router
+      PORTAL_APPLY_TIMEOUT_MS: "3000"
+      PORTAL_LISTEN_ADDRESS: 0.0.0.0:8080
+      PORTAL_WEB_DIR: ""
+    networks:
+      control:
+        ipv4_address: 172.30.20.10
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+      start_period: 2s
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+
+  router:
+    build:
+      context: ..
+      dockerfile: router/Dockerfile
+    environment:
+      ROUTER_PORTAL_ENDPOINT: http://portal:8080
+      ROUTER_TEAM_NUMBER: "1"
+      ROUTER_XDS_LISTEN_ADDRESS: 0.0.0.0:18000
+      ROUTER_STATUS_LISTEN_ADDRESS: 0.0.0.0:18081
+      ROUTER_ENVOY_NODE_ID: isureal-router-envoy
+      ROUTER_ROUTE_CONFIG_NAME: isureal_routes
+      ROUTER_APP_HOST: app.team1-abc123.isucon2026.westens.tokyo
+      ROUTER_SERVER1_HOST: server1.team1-abc123.isucon2026.westens.tokyo
+      ROUTER_SERVER2_HOST: server2.team1-abc123.isucon2026.westens.tokyo
+      ROUTER_SERVER3_HOST: server3.team1-abc123.isucon2026.westens.tokyo
+      ROUTER_SERVER1_SUBNET: 172.31.1.0/24
+      ROUTER_SERVER1_REGION_LOCAL_IP: 172.31.1.2
+      ROUTER_SERVER1_IP: 172.31.1.10
+      ROUTER_SERVER2_SUBNET: 172.31.2.0/24
+      ROUTER_SERVER2_REGION_LOCAL_IP: 172.31.2.2
+      ROUTER_SERVER2_IP: 172.31.2.10
+      ROUTER_SERVER3_SUBNET: 172.31.3.0/24
+      ROUTER_SERVER3_REGION_LOCAL_IP: 172.31.3.2
+      ROUTER_SERVER3_IP: 172.31.3.10
+      ROUTER_SAME_REGION_DELAY: 0s
+      ROUTER_CROSS_REGION_DELAY: 120ms
+      ROUTER_SAME_REGION_BANDWIDTH_BPS: "100000000"
+      ROUTER_CROSS_REGION_BANDWIDTH_BPS: "1000000"
+      ROUTER_XDS_ACK_TIMEOUT: 8s
+      ROUTER_COMMAND_TIMEOUT: 5s
+      ROUTER_REPORT_RETRY_INTERVAL: 250ms
+      ROUTER_PORTAL_RECONNECT_MIN_BACKOFF: 100ms
+      ROUTER_PORTAL_RECONNECT_MAX_BACKOFF: 2s
+    depends_on:
+      portal:
+        condition: service_healthy
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_ADMIN
+    sysctls:
+      net.ipv4.ip_forward: "1"
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      control:
+        ipv4_address: 172.30.20.2
+      edge:
+        ipv4_address: 172.30.10.2
+      server1_net:
+        ipv4_address: 172.31.1.2
+      server2_net:
+        ipv4_address: 172.31.2.2
+      server3_net:
+        ipv4_address: 172.31.3.2
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:18081/healthz"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+      start_period: 2s
+    init: true
+
+  envoy:
+    image: envoyproxy/envoy:v1.32.2
+    network_mode: service:router
+    user: "101:101"
+    command: ["envoy", "-c", "/etc/envoy/envoy.yaml", "--log-level", "info"]
+    volumes:
+      - ./envoy/bootstrap.yaml:/etc/envoy/envoy.yaml:ro
+    depends_on:
+      router:
+        condition: service_healthy
+      server1:
+        condition: service_healthy
+      server2:
+        condition: service_healthy
+      server3:
+        condition: service_healthy
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    init: true
+
+  server1:
+    build: &fixture_build
+      context: ..
+      dockerfile: router/test-fixtures/server/Dockerfile
+    environment:
+      FIXTURE_SERVER_ID: server1
+      FIXTURE_ROUTER_IP: 172.31.1.2
+      FIXTURE_PEER_SUBNETS: 172.31.2.0/24,172.31.3.0/24
+      FIXTURE_PEER_HOSTS: 172.31.1.10,172.31.2.10,172.31.3.10
+    cap_drop: &fixture_cap_drop
+      - ALL
+    cap_add: &fixture_cap_add
+      - NET_ADMIN
+    security_opt: &fixture_security
+      - no-new-privileges:true
+    networks:
+      server1_net:
+        ipv4_address: 172.31.1.10
+    healthcheck: &fixture_health
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+      start_period: 2s
+    init: true
+
+  server2:
+    build: *fixture_build
+    environment:
+      FIXTURE_SERVER_ID: server2
+      FIXTURE_ROUTER_IP: 172.31.2.2
+      FIXTURE_PEER_SUBNETS: 172.31.1.0/24,172.31.3.0/24
+      FIXTURE_PEER_HOSTS: 172.31.1.10,172.31.2.10,172.31.3.10
+    cap_drop: *fixture_cap_drop
+    cap_add: *fixture_cap_add
+    security_opt: *fixture_security
+    networks:
+      server2_net:
+        ipv4_address: 172.31.2.10
+    healthcheck: *fixture_health
+    init: true
+
+  server3:
+    build: *fixture_build
+    environment:
+      FIXTURE_SERVER_ID: server3
+      FIXTURE_ROUTER_IP: 172.31.3.2
+      FIXTURE_PEER_SUBNETS: 172.31.1.0/24,172.31.2.0/24
+      FIXTURE_PEER_HOSTS: 172.31.1.10,172.31.2.10,172.31.3.10
+    cap_drop: *fixture_cap_drop
+    cap_add: *fixture_cap_add
+    security_opt: *fixture_security
+    networks:
+      server3_net:
+        ipv4_address: 172.31.3.10
+    healthcheck: *fixture_health
+    init: true
+
+  e2e:
+    profiles: ["test"]
+    build:
+      context: ..
+      dockerfile: router/tests/e2e/Dockerfile
+    command: ["verify-initial"]
+    depends_on:
+      portal:
+        condition: service_healthy
+      router:
+        condition: service_healthy
+      envoy:
+        condition: service_started
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - control
+      - edge
+
+networks:
+  control:
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.30.20.0/24
+  edge:
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.30.10.0/24
+  server1_net:
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.31.1.0/24
+  server2_net:
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.31.2.0/24
+  server3_net:
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.31.3.0/24

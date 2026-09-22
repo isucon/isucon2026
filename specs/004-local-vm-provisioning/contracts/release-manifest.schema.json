@@ -1,0 +1,153 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://isucon2026.invalid/schemas/provisioning-release-manifest-v4.json",
+  "title": "ISUCON 2026 provisioning release manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "releaseId",
+    "ubuntu",
+    "artifacts",
+    "databaseContract"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 4
+    },
+    "releaseId": {
+      "type": "string",
+      "pattern": "^r[0-9]{4}\\.[0-9]{2}\\.[0-9]{2}\\.[1-9][0-9]*$"
+    },
+    "ubuntu": {
+      "$ref": "#/$defs/ubuntu"
+    },
+    "artifacts": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/artifact"
+      }
+    },
+    "databaseContract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["engine", "majorVersion", "compatibilityId"],
+      "properties": {
+        "engine": {
+          "const": "postgresql"
+        },
+        "majorVersion": {
+          "const": 16
+        },
+        "compatibilityId": {
+          "$ref": "#/$defs/compatibilityId"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "compatibilityId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9.-]{2,127}$"
+    },
+    "ubuntu": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["release", "installImages", "cloudImages"],
+      "properties": {
+        "release": {
+          "const": "24.04"
+        },
+        "installImages": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["amd64"],
+          "properties": {
+            "amd64": {
+              "$ref": "#/$defs/installImage"
+            }
+          }
+        },
+        "cloudImages": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["amd64"],
+          "properties": {
+            "amd64": {
+              "$ref": "#/$defs/cloudImage"
+            }
+          }
+        }
+      }
+    },
+    "installImage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["url", "sha256"],
+      "properties": {
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://"
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "cloudImage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["region", "amiId", "ownerId"],
+      "properties": {
+        "region": {
+          "type": "string",
+          "pattern": "^[a-z]{2}(?:-gov)?-[a-z]+-[1-9][0-9]*$"
+        },
+        "amiId": {
+          "type": "string",
+          "pattern": "^ami-[0-9a-f]+$"
+        },
+        "ownerId": {
+          "type": "string",
+          "pattern": "^[0-9]{12}$"
+        }
+      }
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["component", "architecture", "uri"],
+      "properties": {
+        "component": {
+          "enum": [
+            "backend",
+            "frontend",
+            "router",
+            "envoy",
+            "database-migrations"
+          ]
+        },
+        "architecture": {
+          "enum": ["amd64", "any"]
+        },
+        "uri": {
+          "type": "string",
+          "pattern": "^(file|https|s3)://"
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "compatibilityId": {
+          "$ref": "#/$defs/compatibilityId"
+        }
+      }
+    }
+  },
+  "$comment": "Semantic validation enforces the required component set, architecture-dependent artifacts, remote checksums, and database compatibility. Tool and package versions are intentionally owned by their installers or the built machine image rather than duplicated here."
+}

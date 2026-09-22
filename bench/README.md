@@ -12,10 +12,28 @@ $ go run . -target http://localhost:8080 -users 8
 | フラグ | 既定値 | 説明 |
 |---|---|---|
 | `-target` | `http://localhost:8080` | 対象アプリのベース URL |
+| `-host` | 空 | 接続先と公開ホスト名が異なる場合の HTTP Host ヘッダー |
 | `-users` | `8` | 同時負荷ユーザー数 |
 | `-cycles` | `0` | 0 より大きい場合、60 秒の負荷走行の代わりに指定サイクル数だけ実行する（開発用） |
 
 終了コード: `0` = pass、`1` = fail、`2` = ベンチマーカー自身の異常。
+
+## Vagrant 環境での実行
+
+repository root で Vagrant 環境を起動した後、次を実行する。接続先と Router が受理する
+Host ヘッダーは `VM_TOPOLOGY` から自動的に導出される。
+ベンチマーカーは最初に `POST /api/v1/initialize` を実行するため、対象アプリのデータは初期化される。
+
+```console
+$ make vm-up
+$ make vm-benchmark
+```
+
+開発中に 1 サイクルだけ実行する場合は、ベンチマーカーの引数を `BENCH_ARGS` で渡す。
+
+```console
+$ make vm-benchmark BENCH_ARGS='-users 2 -cycles 1'
+```
 
 負荷走行時間は **60 秒固定**（D-008、過去 ISUCON 全年度と同一。
 `docs/research/isucon-benchmarker-termination.md` 参照）。60 秒走行のスコアは

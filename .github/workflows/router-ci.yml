@@ -1,0 +1,84 @@
+name: Router CI
+
+on:
+  push:
+    paths:
+      - ".github/workflows/router-ci.yml"
+      - ".dockerignore"
+      - "Makefile"
+      - "docs/router.md"
+      - "gen/go/**"
+      - "portal-mock/server/**"
+      - "proto/portal/**"
+      - "router/**"
+      - "specs/003-router/**"
+  pull_request:
+    paths:
+      - ".github/workflows/router-ci.yml"
+      - ".dockerignore"
+      - "Makefile"
+      - "docs/router.md"
+      - "gen/go/**"
+      - "portal-mock/server/**"
+      - "proto/portal/**"
+      - "router/**"
+      - "specs/003-router/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: router-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GO_VERSION: "1.26.5"
+
+jobs:
+  static:
+    name: Go / Compose / Envoy validation
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: |
+            gen/go/go.sum
+            router/go.sum
+      - name: gofmt
+        working-directory: router
+        run: |
+          files="$(gofmt -l .)"
+          test -z "$files" || { printf '%s\n' "$files"; exit 1; }
+      - name: Vet
+        working-directory: router
+        run: go vet ./...
+      - name: Tests with race detector
+        working-directory: router
+        run: go test -race ./... -count=1 -timeout=2m
+      - name: Build Router and E2E runner
+        working-directory: router
+        run: |
+          go build -trimpath -o /tmp/isureal-router ./cmd/router
+          go build -trimpath -o /tmp/router-e2e ./tests/e2e
+      - name: Validate Compose model
+        run: docker compose -f router/compose.e2e.yaml config --quiet
+      - name: Validate pinned Envoy bootstrap
+        run: make router-envoy-check
+
+  compose-e2e:
+    name: Real Envoy / Linux network E2E
+    runs-on: ubuntu-24.04
+    timeout-minutes: 7
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Run isolated Router E2E
+        run: timeout --signal=INT --kill-after=30s 300s router/tests/e2e/run.sh
+      - name: Print retained diagnostics
+        if: failure()
+        run: |
+          if test -f router/.e2e-artifacts/compose.log; then
+            tail -n 2000 router/.e2e-artifacts/compose.log
+          fi

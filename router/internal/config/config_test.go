@@ -1,0 +1,86 @@
+package config
+
+import (
+	"testing"
+	"time"
+
+	"github.com/isucon/isucon2026/router/internal/domain"
+)
+
+func TestLoadDefaults(t *testing.T) {
+	t.Parallel()
+	cfg, err := Load(func(string) (string, bool) { return "", false })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.TeamNumber != 1 || cfg.PortalEndpoint != "http://portal:8080" {
+		t.Fatalf("unexpected portal defaults: %+v", cfg)
+	}
+	if cfg.Traffic.SameRegionDelay != 0 || cfg.Traffic.CrossRegionDelay != 200*time.Millisecond {
+		t.Fatalf("unexpected delay defaults: %+v", cfg.Traffic)
+	}
+	if cfg.Traffic.SameRegionBandwidthBPS != 1_000_000_000 || cfg.Traffic.CrossRegionBandwidthBPS != 200_000_000 {
+		t.Fatalf("unexpected bandwidth defaults: %+v", cfg.Traffic)
+	}
+	if cfg.Servers[domain.Server1].RouterIP.String() != "172.31.1.2" || cfg.Servers[domain.Server3].ServerIP.String() != "172.31.3.10" {
+		t.Fatalf("unexpected topology: %+v", cfg.Servers)
+	}
+	if cfg.Hosts.App != "app.team1-abc123.isucon2026.westens.tokyo" {
+		t.Fatalf("unexpected app host: %s", cfg.Hosts.App)
+	}
+}
+
+func TestLoadOverrides(t *testing.T) {
+	t.Parallel()
+	values := map[string]string{
+		"ROUTER_TEAM_NUMBER":                  "9",
+		"ROUTER_PORTAL_ENDPOINT":              "http://portal-control:9000",
+		"ROUTER_CROSS_REGION_DELAY":           "125ms",
+		"ROUTER_SAME_REGION_BANDWIDTH_BPS":    "100000000",
+		"ROUTER_CROSS_REGION_BANDWIDTH_BPS":   "1000000",
+		"ROUTER_SERVER2_REGION_LOCAL_IP":      "10.42.2.2",
+		"ROUTER_SERVER2_IP":                   "10.42.2.10",
+		"ROUTER_SERVER2_SUBNET":               "10.42.2.0/24",
+		"ROUTER_APP_HOST":                     "app.example.test",
+		"ROUTER_SERVER1_HOST":                 "one.example.test",
+		"ROUTER_SERVER2_HOST":                 "two.example.test",
+		"ROUTER_SERVER3_HOST":                 "three.example.test",
+		"ROUTER_XDS_ACK_TIMEOUT":              "7s",
+		"ROUTER_PORTAL_RECONNECT_MIN_BACKOFF": "20ms",
+		"ROUTER_PORTAL_RECONNECT_MAX_BACKOFF": "2s",
+	}
+	cfg, err := Load(func(key string) (string, bool) { value, ok := values[key]; return value, ok })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.TeamNumber != 9 || cfg.Traffic.CrossRegionDelay != 125*time.Millisecond || cfg.XDSAckTimeout != 7*time.Second {
+		t.Fatalf("overrides not loaded: %+v", cfg)
+	}
+	if got := cfg.Servers[domain.Server2].RouterIP.String(); got != "10.42.2.2" {
+		t.Fatalf("server2 router IP = %s", got)
+	}
+}
+
+func TestLoadRejectsInvalidConfiguration(t *testing.T) {
+	t.Parallel()
+	tests := map[string]map[string]string{
+		"zero team":         {"ROUTER_TEAM_NUMBER": "0"},
+		"bad endpoint":      {"ROUTER_PORTAL_ENDPOINT": "://bad"},
+		"cross over same":   {"ROUTER_SAME_REGION_BANDWIDTH_BPS": "100", "ROUTER_CROSS_REGION_BANDWIDTH_BPS": "101"},
+		"negative delay":    {"ROUTER_CROSS_REGION_DELAY": "-1ms"},
+		"overlap subnet":    {"ROUTER_SERVER2_SUBNET": "172.31.1.0/24", "ROUTER_SERVER2_REGION_LOCAL_IP": "172.31.1.3", "ROUTER_SERVER2_IP": "172.31.1.11"},
+		"router outside":    {"ROUTER_SERVER1_REGION_LOCAL_IP": "192.0.2.1"},
+		"duplicate address": {"ROUTER_SERVER2_REGION_LOCAL_IP": "172.31.2.10"},
+		"bad hostname":      {"ROUTER_APP_HOST": "http://example.test"},
+		"bad backoff":       {"ROUTER_PORTAL_RECONNECT_MIN_BACKOFF": "3s", "ROUTER_PORTAL_RECONNECT_MAX_BACKOFF": "1s"},
+	}
+	for name, values := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			_, err := Load(func(key string) (string, bool) { value, ok := values[key]; return value, ok })
+			if err == nil {
+				t.Fatal("Load unexpectedly succeeded")
+			}
+		})
+	}
+}

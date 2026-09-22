@@ -1,0 +1,21 @@
+[Unit]
+Description=ISUReal Router controller
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=isureal-router
+Group=isureal-router
+EnvironmentFile=/etc/isucon/router.env
+ExecStart=/opt/isucon/bin/isureal-router
+Restart=on-failure
+RestartSec=1s
+AmbientCapabilities=CAP_NET_ADMIN
+CapabilityBoundingSet=CAP_NET_ADMIN
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

@@ -2,7 +2,11 @@
 
 ## Docker Composeで起動
 
-必要なものはDockerとDocker Composeだけです。リポジトリ直下で次を実行します。
+### Requirements
+
+ * Docker / Docker Compose
+
+### 起動方法
 
 ```bash
 docker compose up
@@ -21,4 +25,33 @@ docker compose up
 
 ```bash
 ISUREAL_FRONTEND_PORT=15173 ISUREAL_API_PORT=18080 ISUREAL_POSTGRES_PORT=55432 docker compose up
+```
+
+## Vagrantでの起動
+
+### Requirements
+
+ * Docker / Docker Compose
+ * VirtualBox
+ * Vagrant
+
+### 起動・終了方法
+
+```
+# 起動
+make vm-up
+# 終了
+make vm-down
+```
+
+起動後は http://127.0.0.1:15174/ からポータルに、https://server1.team1-local.127.0.0.1.nip.io:18443 からアプリケーションにアクセスする。
+
+ベンチマーカーは Vagrant の HTTP Client forward と Router を経由して実行する。
+実行すると initialize phase で対象アプリのデータが初期化される。
+
+```bash
+make vm-benchmark
+
+# 開発用の固定 1 サイクル
+make vm-benchmark BENCH_ARGS='-users 2 -cycles 1'
 ```

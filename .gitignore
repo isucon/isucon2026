@@ -4,6 +4,10 @@
 *.out
 vendor/
 
+# Python
+__pycache__/
+*.py[cod]
+
 # Node / TypeScript
 node_modules/
 dist/
@@ -23,6 +27,23 @@ var/
 uploads/
 playwright-report/
 test-results/
+portal-mock/server/portal
+portal-mock/server/build/
+portal-mock/web/playwright-report/
+portal-mock/web/test-results/
+router/.e2e-artifacts/
+router/router
+
+# Local VM provisioning state and image outputs
+.vagrant/
+provisioning/.state/
+provisioning/packer_cache/
+provisioning/output-*/
+*.box
+packer-manifest.json
+provisioning/aws/node_modules/
+provisioning/aws/.pulumi/
+provisioning/aws/Pulumi.*.yaml
 
 # Editors and operating systems
 .DS_Store
@@ -31,3 +52,4 @@ Thumbs.db
 *.swp
 .vscode/
 .idea/
+.venv/

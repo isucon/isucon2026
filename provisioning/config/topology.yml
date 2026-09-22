@@ -1,0 +1,130 @@
+schemaVersion: 2
+environmentId: isureal-local
+baseCidr: 192.168.60.0/24
+domain: 127.0.0.1.nip.io
+portal:
+  mode: docker-compose
+  composeFile: portal-mock/compose.yaml
+  routerMode: external-router
+  teamNumber: 1
+  teamHash: local
+  apiHostPort: 18082
+  apiContainerPort: 8080
+  uiHostAddress: 127.0.0.1
+  uiHostPort: 15174
+  uiContainerPort: 5174
+clientForward:
+  hostAddress: 127.0.0.1
+  hostPort: 18080
+  guestPort: 8080
+  protocol: tcp
+  autoCorrect: false
+clientTlsForward:
+  hostAddress: 127.0.0.1
+  hostPort: 18443
+  guestPort: 443
+  protocol: tcp
+  autoCorrect: false
+sshPorts:
+  server1: 2201
+  server2: 2202
+  server3: 2203
+  router: 2204
+resourceProfiles:
+  compact:
+    problemServer:
+      cpus: 2
+      memoryMiB: 1536
+      diskGiB: 24
+    router:
+      cpus: 2
+      memoryMiB: 1024
+      diskGiB: 16
+  full:
+    problemServer:
+      cpus: 4
+      memoryMiB: 4096
+      diskGiB: 40
+    router:
+      cpus: 2
+      memoryMiB: 2048
+      diskGiB: 20
+defaultResourceProfile: compact
+networks:
+  server1Data:
+    kind: internal
+    cidr: 192.168.60.0/28
+    routerAddress: 192.168.60.5
+    peerAddress: 192.168.60.6
+  server2Data:
+    kind: internal
+    cidr: 192.168.60.16/28
+    routerAddress: 192.168.60.21
+    peerAddress: 192.168.60.22
+  server3Data:
+    kind: internal
+    cidr: 192.168.60.32/28
+    routerAddress: 192.168.60.37
+    peerAddress: 192.168.60.38
+  control:
+    kind: host-only
+    cidr: 192.168.60.64/28
+    routerAddress: 192.168.60.69
+    hostAddress: 192.168.60.65
+nodes:
+  server1:
+    role: problem-server
+    hostname: server1-isureal-local
+    interfaces:
+      - role: bootstrap0
+        mode: nat
+        macAddress: 080027600101
+      - role: data0
+        mode: intnet
+        segment: server1Data
+        macAddress: 080027600102
+  server2:
+    role: problem-server
+    hostname: server2-isureal-local
+    interfaces:
+      - role: bootstrap0
+        mode: nat
+        macAddress: 080027600201
+      - role: data0
+        mode: intnet
+        segment: server2Data
+        macAddress: 080027600202
+  server3:
+    role: problem-server
+    hostname: server3-isureal-local
+    interfaces:
+      - role: bootstrap0
+        mode: nat
+        macAddress: 080027600301
+      - role: data0
+        mode: intnet
+        segment: server3Data
+        macAddress: 080027600302
+  router:
+    role: router
+    hostname: router-isureal-local
+    interfaces:
+      - role: bootstrap0
+        mode: nat
+        macAddress: 080027600401
+      - role: data1
+        mode: intnet
+        segment: server1Data
+        macAddress: 080027600411
+      - role: data2
+        mode: intnet
+        segment: server2Data
+        macAddress: 080027600421
+      - role: data3
+        mode: intnet
+        segment: server3Data
+        macAddress: 080027600431
+      - role: control0
+        mode: hostonly
+        segment: control
+        macAddress: 080027600469

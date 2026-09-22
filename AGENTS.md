@@ -1,1 +1,1 @@
-応答は全て日本語で返してください
+This repository is used to develop an ISUCON challenge, where teams optimize a web application on three identical VMs to maximize its benchmark score.
