@@ -19,17 +19,18 @@ var (
 	ErrInactiveAccount = errors.New("account is not active")
 )
 
-type RegistrationInput struct{ Username, Password, DisplayName, Region string }
-type LoginInput struct{ Username, Password string }
+type RegistrationInput struct{ Username, DisplayName, Region string }
+type LoginInput struct{ Username, SecretKey string }
 type SessionResult struct {
 	Token     string
+	SecretKey string
 	SessionID uuid.UUID
 	User      domain.User
 }
 
 type RegistrationRecord struct {
-	Username, UsernameNormalized, PasswordHash, DisplayName, DisplayNameSearch, Region string
-	TokenHash                                                                          string
+	Username, UsernameNormalized, SecretKeyHash, DisplayName, DisplayNameSearch, Region string
+	TokenHash                                                                           string
 }
 
 type SessionRepository interface {
@@ -50,16 +51,13 @@ func (s *SessionService) Register(ctx context.Context, input RegistrationInput) 
 	if err != nil {
 		return SessionResult{}, err
 	}
-	if err := domain.ValidatePassword(input.Password); err != nil {
-		return SessionResult{}, err
-	}
 	if err := domain.ValidateDisplayName(input.DisplayName); err != nil {
 		return SessionResult{}, err
 	}
 	if err := domain.ValidateRegion(input.Region); err != nil {
 		return SessionResult{}, err
 	}
-	passwordHash, err := HashPassword(input.Password)
+	secretKey, secretKeyHash, err := newSecretKey()
 	if err != nil {
 		return SessionResult{}, err
 	}
@@ -68,29 +66,25 @@ func (s *SessionService) Register(ctx context.Context, input RegistrationInput) 
 		return SessionResult{}, err
 	}
 	user, sessionID, err := s.repository.CreateUserAndSession(ctx, RegistrationRecord{
-		Username: input.Username, UsernameNormalized: normalized, PasswordHash: passwordHash,
+		Username: input.Username, UsernameNormalized: normalized, SecretKeyHash: secretKeyHash,
 		DisplayName: input.DisplayName, DisplayNameSearch: domain.NormalizeSearchText(input.DisplayName), Region: input.Region, TokenHash: tokenHash,
 	})
 	if err != nil {
 		return SessionResult{}, err
 	}
-	return SessionResult{Token: token, SessionID: sessionID, User: user}, nil
+	return SessionResult{Token: token, SecretKey: secretKey, SessionID: sessionID, User: user}, nil
 }
 
 func (s *SessionService) Login(ctx context.Context, input LoginInput) (SessionResult, error) {
 	normalized, normalizeErr := domain.NormalizeUsername(input.Username)
 	if normalizeErr != nil {
-		_ = AuthenticatePassword("", input.Password)
 		return SessionResult{}, ErrInvalidCredentials
 	}
-	user, passwordHash, exists, err := s.repository.CredentialByUsername(ctx, normalized)
+	user, secretKeyHash, exists, err := s.repository.CredentialByUsername(ctx, normalized)
 	if err != nil {
 		return SessionResult{}, err
 	}
-	if !exists {
-		passwordHash = ""
-	}
-	if err := AuthenticatePassword(passwordHash, input.Password); err != nil || !exists {
+	if !exists || VerifyCredential(secretKeyHash, input.SecretKey) != nil {
 		return SessionResult{}, ErrInvalidCredentials
 	}
 	if user.Status != "active" && user.Status != "deletion_pending" {
@@ -118,6 +112,15 @@ func (s *SessionService) Logout(ctx context.Context, token string) error {
 func HashSessionToken(token string) string {
 	digest := sha256.Sum256([]byte(token))
 	return hex.EncodeToString(digest[:])
+}
+
+func newSecretKey() (string, string, error) {
+	raw := make([]byte, 32)
+	if _, err := rand.Read(raw); err != nil {
+		return "", "", fmt.Errorf("generate secret key: %w", err)
+	}
+	secretKey := base64.RawURLEncoding.EncodeToString(raw)
+	return secretKey, HashCredential(secretKey), nil
 }
 
 func newSessionToken() (string, string, error) {

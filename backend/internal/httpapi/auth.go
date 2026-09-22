@@ -24,8 +24,8 @@ func NewAuthHandler(sessions *service.SessionService, logger *slog.Logger) *Auth
 	return &AuthHandler{sessions: sessions, logger: logger}
 }
 
-type registerRequest struct{ Username, Password, DisplayName, Region string }
-type loginRequest struct{ Username, Password string }
+type registerRequest struct{ Username, DisplayName, Region string }
+type loginRequest struct{ Username, SecretKey string }
 
 func (h *AuthHandler) Register(c *echo.Context) error {
 	var input registerRequest
@@ -155,11 +155,15 @@ func authResult(err error) string {
 }
 
 func sessionResponse(result service.SessionResult) map[string]any {
-	return map[string]any{"token": result.Token, "user": map[string]any{
+	response := map[string]any{"token": result.Token, "user": map[string]any{
 		"id": result.User.ID, "username": result.User.Username, "displayName": result.User.DisplayName,
 		"bio": result.User.Bio, "region": result.User.Region, "pendingRegion": nil,
 		"accountType": result.User.AccountType, "status": result.User.Status,
 	}}
+	if result.SecretKey != "" {
+		response["secretKey"] = result.SecretKey
+	}
+	return response
 }
 
 func (h *AuthHandler) log(c *echo.Context, operation, result string, user *domain.User) {

@@ -188,9 +188,9 @@ func (s sessionResponse) user() User {
 	return User{ID: s.User.ID, Username: s.User.Username, Token: s.Token}
 }
 
-func (c *Client) Register(ctx context.Context, username, password, displayName, region string) (User, error) {
+func (c *Client) Register(ctx context.Context, username, displayName, region string) (User, error) {
 	body := marshalJSON(map[string]string{
-		"username": username, "password": password, "displayName": displayName, "region": region,
+		"username": username, "displayName": displayName, "region": region,
 	})
 	var session sessionResponse
 	err := c.do(ctx, request{
@@ -200,8 +200,8 @@ func (c *Client) Register(ctx context.Context, username, password, displayName, 
 	return session.user(), err
 }
 
-func (c *Client) Login(ctx context.Context, username, password string) (User, error) {
-	body := marshalJSON(map[string]string{"username": username, "password": password})
+func (c *Client) Login(ctx context.Context, username, secretKey string) (User, error) {
+	body := marshalJSON(map[string]string{"username": username, "secretKey": secretKey})
 	var session sessionResponse
 	err := c.do(ctx, request{
 		method: http.MethodPost, path: apiPrefix + "/auth/login",

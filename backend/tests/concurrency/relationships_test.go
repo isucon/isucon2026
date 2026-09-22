@@ -140,7 +140,7 @@ func relationUser(t *testing.T, pool *pgxpool.Pool) uuid.UUID {
 	t.Helper()
 	id := uuid.New()
 	name := "u" + id.String()[:8]
-	if _, err := pool.Exec(context.Background(), `INSERT INTO users(id,username,username_normalized,password_hash,display_name,display_name_search,region)VALUES($1,$2::varchar,$2::varchar,'hash',$2::text,$2::text,'america')`, id, name); err != nil {
+	if _, err := pool.Exec(context.Background(), `INSERT INTO users(id,username,username_normalized,secret_key_hash,display_name,display_name_search,region)VALUES($1,$2::varchar,$2::varchar,'hash',$2::text,$2::text,'america')`, id, name); err != nil {
 		t.Fatal(err)
 	}
 	return id

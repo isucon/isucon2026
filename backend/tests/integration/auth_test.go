@@ -24,7 +24,7 @@ func TestRegistrationLoginAndSessionReplacement(t *testing.T) {
 	repository := postgres.NewSessionRepository(db, domain.NewDeterministicIDGenerator(testNamespace), clock.NewFake(time.Date(2026, 7, 19, 12, 0, 0, 0, time.UTC)))
 	sessions := service.NewSessionService(repository)
 
-	registered, err := sessions.Register(ctx, service.RegistrationInput{Username: "Alice", Password: "password 1", DisplayName: "アリス", Region: "asia"})
+	registered, err := sessions.Register(ctx, service.RegistrationInput{Username: "Alice", DisplayName: "アリス", Region: "asia"})
 	if err != nil {
 		t.Fatalf("register: %v", err)
 	}
@@ -32,12 +32,12 @@ func TestRegistrationLoginAndSessionReplacement(t *testing.T) {
 		t.Fatalf("registered = %#v", registered)
 	}
 
-	if _, err := sessions.Register(ctx, service.RegistrationInput{Username: "ALICE", Password: "password 2", DisplayName: "Other", Region: "europe"}); !errors.Is(err, service.ErrUsernameTaken) {
+	if _, err := sessions.Register(ctx, service.RegistrationInput{Username: "ALICE", DisplayName: "Other", Region: "europe"}); !errors.Is(err, service.ErrUsernameTaken) {
 		t.Fatalf("case-insensitive duplicate error = %v", err)
 	}
 
-	missingErr := loginError(sessions, ctx, "missing", "password 1")
-	wrongErr := loginError(sessions, ctx, "Alice", "password 2")
+	missingErr := loginError(sessions, ctx, "missing", registered.SecretKey)
+	wrongErr := loginError(sessions, ctx, "Alice", registered.SecretKey+"x")
 	if !errors.Is(missingErr, service.ErrInvalidCredentials) || !errors.Is(wrongErr, service.ErrInvalidCredentials) || missingErr.Error() != wrongErr.Error() {
 		t.Fatalf("login errors differ: missing=%v wrong=%v", missingErr, wrongErr)
 	}
@@ -45,7 +45,7 @@ func TestRegistrationLoginAndSessionReplacement(t *testing.T) {
 	if err := repository.InsertTestPushSubscription(ctx, registered.User.ID, registered.SessionID); err != nil {
 		t.Fatal(err)
 	}
-	replacement, err := sessions.Login(ctx, service.LoginInput{Username: "aLiCe", Password: "password 1"})
+	replacement, err := sessions.Login(ctx, service.LoginInput{Username: "aLiCe", SecretKey: registered.SecretKey})
 	if err != nil {
 		t.Fatalf("login: %v", err)
 	}
@@ -67,8 +67,8 @@ func TestRegistrationLoginAndSessionReplacement(t *testing.T) {
 	}
 }
 
-func loginError(sessions *service.SessionService, ctx context.Context, username, password string) error {
-	_, err := sessions.Login(ctx, service.LoginInput{Username: username, Password: password})
+func loginError(sessions *service.SessionService, ctx context.Context, username, secretKey string) error {
+	_, err := sessions.Login(ctx, service.LoginInput{Username: username, SecretKey: secretKey})
 	return err
 }
 

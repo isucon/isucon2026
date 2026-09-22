@@ -5,11 +5,10 @@ test.skip(process.env.ISUREAL_COMPOSE_E2E !== '1', 'composeで起動した実環
 test('compose実環境でカメラ撮影とGPS位置を含む写真を投稿して配信できる', async ({ page, request }) => {
   const suffix = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
   const username = `compose${suffix}`;
-  const password = 'compose-password-1';
 
   const registration = await request.post('/api/v1/auth/register', {
     headers: { 'Idempotency-Key': crypto.randomUUID() },
-    data: { username, password, displayName: `Compose ${suffix}`, region: 'asia' },
+    data: { username, displayName: `Compose ${suffix}`, region: 'asia' },
   });
   expect(registration.status()).toBe(201);
   const { token } = await registration.json() as { token: string };

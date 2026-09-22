@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 const databaseName = 'isureal-session';
 const storeName = 'credentials';
 const tokenKey = 'user-token';
+const secretKeyName = 'user-secret-key';
 const sessionEvent = 'isureal:session-changed';
 
 function openDatabase(): Promise<IDBDatabase> {
@@ -34,6 +35,16 @@ async function transact<T>(mode: IDBTransactionMode, operation: (store: IDBObjec
 export async function getToken(): Promise<string | null> {
   const value = await transact<IDBValidKey | undefined>('readonly', (store) => store.get(tokenKey));
   return typeof value === 'string' ? value : null;
+}
+
+export async function getSecretKey(): Promise<string | null> {
+  const value = await transact<IDBValidKey | undefined>('readonly', (store) => store.get(secretKeyName));
+  return typeof value === 'string' && value !== '' ? value : null;
+}
+
+export async function replaceSecretKey(secretKey: string): Promise<void> {
+  if (!secretKey) throw new Error('An empty secret key cannot be persisted');
+  await transact<IDBValidKey>('readwrite', (store) => store.put(secretKey, secretKeyName));
 }
 
 export async function replaceToken(token: string): Promise<void> {

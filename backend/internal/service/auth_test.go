@@ -1,40 +1,36 @@
 package service_test
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"testing"
 
 	"github.com/isucon/isucon2026/backend/internal/service"
-	"golang.org/x/crypto/bcrypt"
 )
 
-func TestPasswordHashUsesBcryptCost12(t *testing.T) {
+func TestCredentialHashIsSHA256(t *testing.T) {
 	t.Parallel()
-	hash, err := service.HashPassword(" correct horse battery staple ")
-	if err != nil {
-		t.Fatal(err)
+	value := " correct horse battery staple "
+	hash := service.HashCredential(value)
+	digest := sha256.Sum256([]byte(value))
+	if hash != hex.EncodeToString(digest[:]) {
+		t.Fatalf("hash = %s", hash)
 	}
-	cost, err := bcrypt.Cost([]byte(hash))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cost != 12 {
-		t.Fatalf("bcrypt cost = %d, want 12", cost)
-	}
-	if err := service.VerifyPassword(hash, " correct horse battery staple "); err != nil {
+	if err := service.VerifyCredential(hash, value); err != nil {
 		t.Fatalf("verify: %v", err)
 	}
-	if err := service.VerifyPassword(hash, "correct horse battery staple"); !errors.Is(err, service.ErrInvalidCredentials) {
-		t.Fatalf("trimmed password error = %v", err)
+	if err := service.VerifyCredential(hash, "correct horse battery staple"); !errors.Is(err, service.ErrInvalidCredentials) {
+		t.Fatalf("different credential error = %v", err)
 	}
 }
 
 func TestLoginFailuresAreGeneric(t *testing.T) {
 	t.Parallel()
 	missing := service.InvalidCredentialProblem()
-	wrongPassword := service.InvalidCredentialProblem()
-	if missing != wrongPassword {
-		t.Fatalf("generic failures differ: %#v != %#v", missing, wrongPassword)
+	wrongSecret := service.InvalidCredentialProblem()
+	if missing != wrongSecret {
+		t.Fatalf("generic failures differ: %#v != %#v", missing, wrongSecret)
 	}
 	if missing.Code != "invalid_credentials" || missing.Message == "" {
 		t.Fatalf("unexpected problem: %#v", missing)

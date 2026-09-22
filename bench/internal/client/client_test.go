@@ -91,7 +91,7 @@ func TestUnexpectedStatusBecomesAPIError(t *testing.T) {
 	defer server.Close()
 
 	api := client.New(server.URL)
-	_, err := api.Register(context.Background(), "alice", "password", "Alice", "asia")
+	_, err := api.Register(context.Background(), "alice", "Alice", "asia")
 	apiErr, ok := err.(*client.APIError)
 	if !ok {
 		t.Fatalf("error type = %T, want *client.APIError", err)
