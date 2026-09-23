@@ -184,3 +184,26 @@ aws-infra-destroy:
 	cd provisioning/aws && pulumi destroy --stack "$(or $(STACK),dev)"
 
 check: proto-lint vet frontend-lint frontend-typecheck contract test build
+
+# Isolated portal -> supervisor -> real webapp development environment.
+DEBUG_COMPOSE := docker compose -f deploy/local-debug/compose.yaml
+.PHONY: debug-up debug-down debug-register debug-bench debug-result debug-logs
+
+debug-up:
+	$(DEBUG_COMPOSE) up -d --build --wait
+	@echo "Portal: http://localhost:$${DEBUG_PORTAL_PORT:-18081}; run make debug-register next"
+
+debug-down:
+	$(DEBUG_COMPOSE) down
+
+debug-register:
+	$(DEBUG_COMPOSE) exec -T portal /opt/portal/bin/local-debug register
+
+debug-bench: debug-register
+	$(DEBUG_COMPOSE) exec -T portal /opt/portal/bin/local-debug enqueue
+
+debug-result:
+	$(DEBUG_COMPOSE) exec -T portal /opt/portal/bin/local-debug status
+
+debug-logs:
+	$(DEBUG_COMPOSE) logs -f --tail=100 portal portal-worker supervisor
