@@ -65,11 +65,15 @@ type Config struct {
 	// fixed 60-second load duration, so repeated runs score identically.
 	MaxCycles int
 	Logger    *slog.Logger
+	// OnProgress is called synchronously at phase and completed-cycle boundaries.
+	OnProgress func(Result)
 }
 
 type Result struct {
 	Pass      bool             `json:"pass"`
 	Score     int64            `json:"score"`
+	RawScore  int64            `json:"rawScore"`
+	Deduction int64            `json:"deduction"`
 	Language  string           `json:"language"`
 	BaseTime  time.Time        `json:"baseTime"`
 	Cycles    int              `json:"cycles"`
@@ -112,40 +116,46 @@ func NewRunner(cfg Config) (*Runner, error) {
 	}, nil
 }
 
-// Run executes all phases. The returned Result is always usable; err is only
-// non-nil for infrastructure-level failures that prevented a verdict.
+// Run executes all phases. Cancellation and incomplete load execution cannot pass.
 func (r *Runner) Run(ctx context.Context) Result {
+	r.progress()
 	if reason, ok := r.initialize(ctx); !ok {
 		return r.failResult(reason)
 	}
+	r.progress()
 	if reason, ok := r.pretest(ctx); !ok {
 		return r.failResult(reason)
 	}
+	r.progress()
 	r.load(ctx)
+	if ctx.Err() != nil {
+		return r.failResult("benchmark interrupted: " + ctx.Err().Error())
+	}
 	if r.abortReason != "" {
 		return r.failResult(r.abortReason)
 	}
-	return Result{
-		Pass:      true,
-		Score:     r.board.Total(),
-		Language:  r.language,
-		BaseTime:  r.baseTime,
-		Cycles:    r.cycles,
-		Breakdown: r.board.Breakdown(),
-		Errors:    r.board.Errors(),
+	result := r.snapshot()
+	result.Pass = true
+	return result
+}
+
+func (r *Runner) snapshot() Result {
+	raw, deduction := r.board.Totals()
+	return Result{Score: max(raw-deduction, 0), RawScore: raw, Deduction: deduction,
+		Language: r.language, BaseTime: r.baseTime, Cycles: r.cycles, Breakdown: r.board.Breakdown(), Errors: r.board.Errors()}
+}
+
+func (r *Runner) progress() {
+	if r.cfg.OnProgress != nil {
+		r.cfg.OnProgress(r.snapshot())
 	}
 }
 
 func (r *Runner) failResult(reason string) Result {
-	return Result{
-		Pass:      false,
-		Language:  r.language,
-		BaseTime:  r.baseTime,
-		Cycles:    r.cycles,
-		Breakdown: r.board.Breakdown(),
-		Errors:    r.board.Errors(),
-		Reason:    reason,
-	}
+	result := r.snapshot()
+	result.Score = 0
+	result.Reason = reason
+	return result
 }
 
 // --- phase 1: initialize (spec-bench.md §6) ---
@@ -229,6 +239,7 @@ func (r *Runner) load(ctx context.Context) {
 	r.cfg.Logger.Info("phase: load", "users", r.cfg.Users, "duration", loadDuration.String(), "maxCycles", r.cfg.MaxCycles)
 	if reason := r.prepareUsers(ctx); reason != "" {
 		r.board.Errorf("%s", reason)
+		r.abortReason = reason
 		return
 	}
 	deadline := time.Now().Add(loadDuration)
@@ -237,9 +248,13 @@ func (r *Runner) load(ctx context.Context) {
 			return
 		}
 		if ok := r.runCycle(ctx, cycle); !ok {
+			if r.abortReason == "" {
+				r.abortReason = "load cycle did not complete"
+			}
 			return
 		}
 		r.cycles++
+		r.progress()
 		if r.shouldAbort() {
 			return
 		}
@@ -247,6 +262,7 @@ func (r *Runner) load(ctx context.Context) {
 			break
 		}
 		if !r.advanceToNextDay(ctx, cycle) {
+			r.abortReason = "virtual time advance failed"
 			return
 		}
 	}
