@@ -1,0 +1,26 @@
+---
+- name: Install Ubuntu LTS container packages
+  apt:
+    name: [docker.io, docker-compose-v2, docker-buildx, python3-requests]
+    state: present
+    update_cache: true
+
+- name: Enable Docker
+  systemd_service:
+    name: docker
+    state: started
+    enabled: true
+
+- name: Preserve images needed for rollback
+  cron:
+    name: docker system prune
+    cron_file: docker_system_prune
+    state: absent
+
+- name: Authenticate to the optional registry
+  community.docker.docker_login:
+    registry_url: '{{ registry.host }}'
+    username: '{{ registry.username }}'
+    password: '{{ registry.password }}'
+  when: app.mode == 'registry' and registry is defined
+  no_log: true

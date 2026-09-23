@@ -1,0 +1,11 @@
+---
+- name: Validate nginx configuration
+  command: nginx -t
+  changed_when: false
+  listen: reload nginx
+
+- name: Reload validated nginx configuration
+  service:
+    name: nginx
+    state: reloaded
+  listen: reload nginx

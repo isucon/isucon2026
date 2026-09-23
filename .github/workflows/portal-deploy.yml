@@ -1,0 +1,60 @@
+name: Deploy portal
+
+# 競技ポータルをさくらのクラウドの app サーバへローリング更新する。
+# サーバ側は ansible（portal/deploy/ansible）が用意した github ユーザと /opt/bin/github.sh を使う。
+# - develop は Build portal image の成功後に自動で更新する
+# - production は workflow_dispatch（stage=production）で明示的に更新する
+# isucon2026-portal の deploy-{dev,prod}.yml に相当。
+
+on:
+  workflow_dispatch:
+    inputs:
+      stage:
+        description: 'デプロイ先'
+        type: choice
+        options:
+          - develop
+          - production
+        default: develop
+  workflow_run:
+    workflows:
+      - Build portal image
+    types:
+      - completed
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Rolling update portal services
+    runs-on: ubuntu-24.04
+    if: vars.PORTAL_DEPLOY_ENABLED == 'true' && (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success')
+    env:
+      STAGE: ${{ github.event.inputs.stage || 'develop' }}
+      DEVELOP_HOST: ${{ vars.PORTAL_DEPLOY_HOST_DEVELOP }}
+      PRODUCTION_HOST: ${{ vars.PORTAL_DEPLOY_HOST_PRODUCTION }}
+    steps:
+      - name: Install SSH key
+        uses: shimataro/ssh-key-action@87a8f067114a8ce263df83e9ed5c849953548bc3 # v2.8.1
+        with:
+          key: ${{ secrets.PORTAL_DEPLOY_SSH_KEY }}
+          name: id_ed25519
+          known_hosts: ${{ secrets.PORTAL_DEPLOY_KNOWN_HOSTS }}
+
+      - name: Resolve target host
+        id: target
+        run: |
+          case "${STAGE}" in
+            production) host="$PRODUCTION_HOST" ;;
+            develop)    host="$DEVELOP_HOST" ;;
+            *) echo "unknown stage: ${STAGE}" >&2; exit 1 ;;
+          esac
+          [[ "$host" =~ ^[a-zA-Z0-9][a-zA-Z0-9.-]*$ ]] || { echo "invalid deployment host" >&2; exit 1; }
+          echo "host=$host" >> "$GITHUB_OUTPUT"
+
+      # Ubuntu 26.04 のデフォルト sudo は sudo-rs のため従来 sudo の sudo.ws を使う
+      - name: Rolling update
+        env:
+          DEPLOY_HOST: ${{ steps.target.outputs.host }}
+        run: ssh "github@$DEPLOY_HOST" sudo.ws /opt/bin/github.sh app

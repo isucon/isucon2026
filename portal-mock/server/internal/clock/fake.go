@@ -35,6 +35,14 @@ func (f *Fake) NewTimer(d time.Duration) Timer {
 	return t
 }
 
+// PendingTimers returns the number of timers registered but not fired or stopped.
+// Tests can use it to synchronize with workers before advancing the clock.
+func (f *Fake) PendingTimers() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.timers)
+}
+
 func (f *Fake) Advance(d time.Duration) {
 	f.mu.Lock()
 	f.now = f.now.Add(d)

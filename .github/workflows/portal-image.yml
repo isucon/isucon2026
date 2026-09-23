@@ -1,0 +1,65 @@
+name: Build portal image
+
+# 競技ポータル（portal/）のコンテナイメージを isucon.sakuracr.jp に push する。
+# - main の CI が緑になったら develop タグを自動で push する
+# - production タグは workflow_dispatch（tag=production）で明示的に push する
+# isucon2026-portal の build-image-{dev,prod}.yml に相当。
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'push するタグ'
+        type: choice
+        options:
+          - develop
+          - production
+        default: develop
+  workflow_run:
+    workflows:
+      - CI
+    branches:
+      - main
+    types:
+      - completed
+
+permissions:
+  contents: read
+
+env:
+  IMAGE: isucon.sakuracr.jp/isucon2026-contest-portal
+
+jobs:
+  build_image:
+    runs-on: ubuntu-24.04
+    if: vars.PORTAL_DEPLOY_ENABLED == 'true' && (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success')
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # workflow_run では CI が走ったコミットをビルドする
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: isucon.sakuracr.jp
+          username: github
+          password: ${{ secrets.SAKURACR_PASSWORD }}
+      - id: meta
+        run: |
+          sha="$(git rev-parse --short HEAD)"
+          tag="${{ github.event.inputs.tag || 'develop' }}"
+          echo "sha=${sha}" >> "$GITHUB_OUTPUT"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: portal
+          file: portal/deploy/Dockerfile
+          platforms: linux/amd64
+          push: true
+          build-args: |
+            REVISION=${{ steps.meta.outputs.sha }}
+          tags: |
+            ${{ env.IMAGE }}:${{ steps.meta.outputs.tag }}
+            ${{ env.IMAGE }}:${{ steps.meta.outputs.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

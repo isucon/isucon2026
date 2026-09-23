@@ -1,0 +1,23 @@
+---
+- hosts: 'app:class=app'
+  become: true
+  vars_files:
+    - vars/defaults.yml
+  module_defaults:
+    apt:
+      cache_valid_time: 86400
+  pre_tasks:
+    - name: Require the tested LTS distribution
+      assert:
+        that:
+          - ansible_facts['distribution'] == 'Ubuntu'
+          - ansible_facts['distribution_version'] == '26.04'
+  roles:
+    - init
+    - common
+    - config
+    - docker
+    - nginx
+    - app
+    - role: ghactions
+      when: github_deploy_authorized_keys | length > 0 and app.mode == 'registry'
