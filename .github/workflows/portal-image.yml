@@ -1,7 +1,7 @@
 name: Build portal image
 
 # 競技ポータル（portal/）のコンテナイメージを isucon.sakuracr.jp に push する。
-# - main の CI が緑になったら develop タグを自動で push する
+# - main の Portal CI が緑になったら develop タグを自動で push する
 # - production タグは workflow_dispatch（tag=production）で明示的に push する
 # isucon2026-portal の build-image-{dev,prod}.yml に相当。
 
@@ -17,7 +17,7 @@ on:
         default: develop
   workflow_run:
     workflows:
-      - CI
+      - Portal CI
     branches:
       - main
     types:
@@ -32,7 +32,7 @@ env:
 jobs:
   build_image:
     runs-on: ubuntu-24.04
-    if: vars.PORTAL_DEPLOY_ENABLED == 'true' && (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success')
+    if: vars.PORTAL_DEPLOY_ENABLED == 'true' && (github.event_name == 'workflow_dispatch' || (github.event.workflow_run.event == 'push' && github.event.workflow_run.conclusion == 'success'))
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
