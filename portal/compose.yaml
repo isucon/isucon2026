@@ -1,0 +1,28 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: isuxportal-postgres
+    environment:
+      POSTGRES_DB: isuxportal
+      POSTGRES_USER: isuxportal
+      POSTGRES_PASSWORD: isuxportal
+      TZ: UTC
+      PGTZ: UTC
+    ports:
+      - "15432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U isuxportal -d isuxportal"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  redis:
+    image: redis:7
+    container_name: isuxportal-redis
+    ports:
+      - "16379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 30

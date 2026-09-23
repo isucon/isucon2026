@@ -1,0 +1,126 @@
+# docker stack deploy 用（ansible が生成。手で編集しない）
+services:
+  postgres:
+    image: {{ postgres.image }}
+    environment:
+      POSTGRES_DB: {{ postgres.database }}
+      POSTGRES_USER: {{ postgres.user }}
+      POSTGRES_PASSWORD: {{ postgres.password | to_json }}
+      TZ: UTC
+      PGTZ: UTC
+    volumes:
+      - pgdata18:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U {{ postgres.user }} -d {{ postgres.database }}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      replicas: 1
+      update_config:
+        order: stop-first
+      restart_policy:
+        condition: any
+        delay: 5s
+
+  redis:
+    image: {{ redis.image }}
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata82:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      replicas: 1
+      update_config:
+        order: stop-first
+      restart_policy:
+        condition: any
+        delay: 5s
+
+  portal:
+    image: {{ portal_image }}
+    command: ["portal"]
+    env_file:
+      - /opt/portal/env
+    environment:
+      # 起動時にスキーマを適用する（advisory lock で直列化されるので start-first と共存できる）
+      PORTAL_AUTO_MIGRATE: "1"
+    ports:
+      # ホストの nginx から 127.0.0.1:8080 で参照する（ingress 経由）
+      - target: 8081
+        published: 8080
+        protocol: tcp
+        mode: ingress
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8081/site/sha"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    # graceful shutdown は 30 秒（cmd/portal）なので余裕を持つ
+    stop_grace_period: 45s
+    deploy:
+      replicas: 1
+      update_config:
+        order: start-first
+        failure_action: rollback
+        monitor: 30s
+      rollback_config:
+        order: start-first
+      restart_policy:
+        condition: any
+        delay: 10s
+
+  worker:
+    image: {{ portal_image }}
+    command: ["worker"]
+{% if portal.admin_ssh_private_key | length > 0 %}
+    volumes:
+      - /opt/portal/isucon_admin.key:/run/portal/isucon_admin.key:ro
+{% endif %}
+    env_file:
+      - /opt/portal/env
+    stop_grace_period: 45s
+    deploy:
+      replicas: 1
+      update_config:
+        order: start-first
+        failure_action: rollback
+        monitor: 30s
+      restart_policy:
+        condition: any
+        delay: 10s
+
+  notifyloop:
+    image: {{ portal_image }}
+    command: ["notifyloop"]
+    environment:
+      PORTAL_NOTIFYLOOP_TARGET: http://portal:8081/admin/long_running_check
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: any
+        delay: 10s
+{% if portal.discord.bot_token | length > 0 %}
+
+  bot:
+    image: {{ portal_image }}
+    command: ["bot"]
+    env_file:
+      - /opt/portal/env
+    deploy:
+      replicas: 1
+      update_config:
+        order: stop-first
+      restart_policy:
+        condition: any
+        delay: 10s
+{% endif %}
+
+volumes:
+  pgdata18:
+  redisdata82:

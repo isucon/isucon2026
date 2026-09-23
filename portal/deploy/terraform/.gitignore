@@ -1,0 +1,17 @@
+# Local .terraform directories
+**/.terraform/*
+
+# state はリポジトリに入れない（初期パスワード等を含む）。
+# 複数人で運用するならさくらのオブジェクトストレージを S3 backend にする（README 参照）
+terraform.tfstate.d/
+*.tfstate
+*.tfstate.*
+*.tfplan
+
+crash.log
+*.backup
+
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
