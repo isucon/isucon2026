@@ -102,3 +102,13 @@ func (b *Board) Breakdown() map[string]int64 {
 	}
 	return out
 }
+
+// Totals returns weighted successes and the full error penalty, before flooring.
+func (b *Board) Totals() (raw, deduction int64) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	for tag, count := range b.counts {
+		raw += weights[tag] * count
+	}
+	return raw, errorPenalty * b.errorCount
+}

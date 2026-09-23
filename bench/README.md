@@ -93,3 +93,54 @@ $ go -C bench run . -target http://localhost:8080
 
 `ISUREAL_MIGRATIONS_DIR` は `POST /api/v1/initialize` がスキーマリセットに使う
 マイグレーションディレクトリ（未設定時はカレントディレクトリ相対の `migrations`）。
+
+## supervisor からの実行
+
+`ISUXBENCH_REPORT_FD` が渡された場合、ポータルと共有する `BenchmarkResult` の protobuf を専用パイプへ送信する。
+起動時、初期化完了時、事前検証完了時、各負荷サイクル完了時に途中報告し、終了前に最終結果を送る。
+途中報告の `passed` は false とし、正常完走した最終報告だけを true にする。
+全体タイムアウトや SIGTERM による中断、負荷サイクルの未完了は失敗になる。
+パイプへの書き込みは 5 秒でタイムアウトし、報告エラーは終了コード 2 とする。
+
+```bash
+# リポジトリルートからビルドする。生成 protobuf は ../portal を参照する。
+go -C bench build -o /tmp/isureal-bench .
+
+# 接続先と秘密値は systemd の EnvironmentFile 等で設定しておく。
+# --target は supervisor がジョブから追加するため、ここでは指定しない。
+ISUXPORTAL_SUPERVISOR_HARD_TIMEOUT=150 \
+  /usr/local/bin/isuxportal-supervisor /tmp/isureal-bench --target-port 8080
+```
+
+| 追加フラグ | 既定値 | 動作 |
+|---|---|---|
+| `-target-port` | `80` | ポートを含まない IP を `http://<IP>:<port>` に変換する際のポート。URL または明示ポート付きの対象には適用しない |
+| `-timeout` | `2m` | 初期化から負荷終了までの全体上限。既存の 60 秒負荷は変更しない |
+| `-only-post-validation` | `false` | 最終検証は未実装のため、対象へ接続せず失敗を報告して終了コード 1 で終了する |
+
+`-target` の指定がなければ `ISUXBENCH_TARGET` を参照し、それもなければ従来の `http://localhost:8080` を使う。
+`ISUXBENCH_ALL_ADDRESSES` は現状の単一対象シナリオでは使用しない。
+負荷はサイクル境界で 60 秒経過を判定する既存仕様のため、最後のサイクルは 60 秒を超えて継続する場合がある。
+全体上限の 120 秒でその継続も打ち切る。
+本番の時間予算は実測して確定し、supervisor のハードタイムアウトはベンチの全体上限と報告処理の余裕を含めて長く設定する。
+上記の 150 秒は初期設定例である。
+
+supervisor 実行時の stdout は `pass` と `score` だけの JSON とする。
+採点内訳、言語、詳細な失敗理由は stderr に出し、ポータルへ送る選手向けの失敗理由は一般的な文面にする。
+単独実行時は従来どおり詳細 JSON を stdout に出す。
+`rawScore` と `deduction` はそれぞれ重み付け後の加点と全エラーの減点で、合計点は下限 0 を適用した値を明示的に送る。
+
+最終検証モードの検証内容は未定義であり、この対応だけでは本番の最終検証を実施できない。
+初期化してから通常ベンチを回す代替動作は行わない。
+残る supervisor 自体の修正と実行環境の準備は [結合要件](../docs/research/bench.md) を参照。
+
+### 接続実装のテスト
+
+```bash
+go -C bench test -race ./...
+go -C bench vet ./...
+go -C bench build ./...
+```
+
+子プロセスへ実際に FD を引き継ぐテストで、protobuf の途中報告と確定、公開出力の制限、最終検証指定時に対象へ接続しないことを確認する。
+フレーム長 65,535 / 65,536 バイトの境界、短い書き込み、不正 FD、書き込み失敗も検証する。
