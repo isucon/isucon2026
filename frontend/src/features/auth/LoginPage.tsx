@@ -1,2 +1,51 @@
-import{useState}from'react';import{Link,useNavigate}from'react-router-dom';import{login}from'../../api/account';
-export function LoginPage():React.JSX.Element{const[username,setUsername]=useState('');const[password,setPassword]=useState('');const[error,setError]=useState('');const navigate=useNavigate();async function submit(event:React.FormEvent){event.preventDefault();try{await login(username,password);navigate('/')}catch{setError('ユーザー名またはパスワードが正しくありません。')}}return<main className="auth-page"><form onSubmit={event=>void submit(event)}><h1>ログイン</h1><label>ユーザー名<input data-login-focus required value={username}onChange={event=>setUsername(event.target.value)}/></label><label>パスワード<input required type="password"value={password}onChange={event=>setPassword(event.target.value)}/></label>{error&&<p role="alert">{error}</p>}<button>ログイン</button><Link to="/register">新規登録</Link></form></main>}
+import { useEffect, useRef, useState } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { login } from "../../api/account";
+export function LoginPage(): React.JSX.Element {
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const navigate = useNavigate();
+  const location = useLocation();
+  const usernameInput = useRef<HTMLInputElement>(null);
+  const focusUsername = location.state?.focusUsername === true;
+  useEffect(() => {
+    if (focusUsername) usernameInput.current?.focus();
+  }, [location.key, focusUsername]);
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    try {
+      await login(username, password);
+      navigate("/");
+    } catch {
+      setError("ユーザー名またはパスワードが正しくありません。");
+    }
+  }
+  return (
+    <main className="auth-page">
+      <form onSubmit={(event) => void submit(event)}>
+        <h1>ログイン</h1>
+        <label>
+          ユーザー名<input
+            ref={usernameInput}
+            data-login-focus
+            required
+            value={username}
+            onChange={(event) => setUsername(event.target.value)}
+          />
+        </label>
+        <label>
+          パスワード<input
+            required
+            type="password"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+          />
+        </label>
+        {error && <p role="alert">{error}</p>}
+        <button>ログイン</button>
+        <Link to="/register">新規登録</Link>
+      </form>
+    </main>
+  );
+}

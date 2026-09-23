@@ -67,6 +67,11 @@ make server     # ビルド済みアセットを配信する状態で起動（ht
 - `sw.js`・アイコン・ロゴなど public 直下のファイルはルート未マッチ時のフォールバックで配信する
 - TS バインディングの再生成は `buf generate`（`frontend/proto` に出力）
 
+## ベンチマーカーの接続
+
+ジョブの取得と結果報告は、同梱の [supervisor](../supervisor/README.md) が中継します。
+Docker によるビルドと、ローカルのポータルおよび webapp への接続手順は同 README を参照してください。
+
 ## テスト
 
 backend/ と同じ構成（tests/{contract,integration,concurrency} + testkit）。
