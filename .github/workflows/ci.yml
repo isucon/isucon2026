@@ -15,6 +15,13 @@ env:
   TEST_DATABASE_URL: postgres://isureal:local-development-only@localhost:5432/isureal?sslmode=disable
 
 jobs:
+  supervisor-test-build:
+    runs-on: actions-runner-processor
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: make -C supervisor docker-test
+      - run: make -C supervisor docker-build
+
   backend-unit-contract-build:
     runs-on: actions-runner-processor
     steps:
@@ -147,7 +154,7 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
           cache-dependency-path: portal/go.sum
-      - run: go test ./tests/integration -count=1
+      - run: go test ./tests/integration ./cmd/local-debug -count=1
         working-directory: portal
         env:
           ISUXPORTAL_TEST_DATABASE_URL: postgres://isuxportal:isuxportal@127.0.0.1:5432/isuxportal?sslmode=disable

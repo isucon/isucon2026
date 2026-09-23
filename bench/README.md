@@ -96,6 +96,9 @@ $ go -C bench run . -target http://localhost:8080
 
 ## supervisor からの実行
 
+supervisor は [`../supervisor`](../supervisor/README.md) に同梱しています。
+`make -C supervisor docker-build`（リポジトリルート）で、ベンチを含むイメージをビルドできます。
+
 `ISUXBENCH_REPORT_FD` が渡された場合、ポータルと共有する `BenchmarkResult` の protobuf を専用パイプへ送信する。
 起動時、初期化完了時、事前検証完了時、各負荷サイクル完了時に途中報告し、終了前に最終結果を送る。
 途中報告の `passed` は false とし、正常完走した最終報告だけを true にする。
