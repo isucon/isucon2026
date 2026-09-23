@@ -1,0 +1,240 @@
+name: Portal CI
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/portal-ci.yml"
+      - "portal/**"
+      - "mise.toml"
+      - "mise.lock"
+      - ".github/workflows/portal-image.yml"
+  pull_request:
+    paths:
+      - ".github/workflows/portal-ci.yml"
+      - "portal/**"
+      - "mise.toml"
+      - "mise.lock"
+      - ".github/workflows/portal-image.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  GO_VERSION: 1.26.5
+  NODE_VERSION: 24.14.1
+
+jobs:
+  portal-unit-contract-build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: portal/go.sum
+      - run: gofmt -l . | tee /tmp/gofmt-files && test ! -s /tmp/gofmt-files
+        working-directory: portal
+      - run: go vet ./...
+        working-directory: portal
+      - run: go test ./internal/... ./tests/contract -count=1
+        working-directory: portal
+      - run: |
+          mkdir -p build
+          for command in portal worker bot notifyloop; do
+            CGO_ENABLED=0 go build -trimpath -o "build/$command" "./cmd/$command"
+          done
+        working-directory: portal
+
+  portal-integration-migration:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:18.6-alpine@sha256:d3e1620b530c944afa6e887d22eb899824da68e19c52024bf98f5220c88a65b2
+        env:
+          POSTGRES_DB: isuxportal
+          POSTGRES_USER: isuxportal
+          POSTGRES_PASSWORD: isuxportal
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U isuxportal -d isuxportal"
+          --health-interval 2s --health-timeout 2s --health-retries 30
+      redis:
+        image: redis:8.2.9-alpine@sha256:30abb90e62f14b737010746def3ba99cc79fe19dcdb3d37b41f21fc62e7da19d
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 2s --health-timeout 2s --health-retries 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: portal/go.sum
+      - run: go test ./tests/integration ./cmd/local-debug -count=1
+        working-directory: portal
+        env:
+          ISUXPORTAL_TEST_DATABASE_URL: postgres://isuxportal:isuxportal@127.0.0.1:5432/isuxportal?sslmode=disable
+          ISUXPORTAL_TEST_REDIS_URL: redis://127.0.0.1:6379/0
+
+  portal-concurrency:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:18.6-alpine@sha256:d3e1620b530c944afa6e887d22eb899824da68e19c52024bf98f5220c88a65b2
+        env:
+          POSTGRES_DB: isuxportal
+          POSTGRES_USER: isuxportal
+          POSTGRES_PASSWORD: isuxportal
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U isuxportal -d isuxportal"
+          --health-interval 2s --health-timeout 2s --health-retries 30
+      redis:
+        image: redis:8.2.9-alpine@sha256:30abb90e62f14b737010746def3ba99cc79fe19dcdb3d37b41f21fc62e7da19d
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 2s --health-timeout 2s --health-retries 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: portal/go.sum
+      - run: go test ./tests/concurrency -count=1
+        working-directory: portal
+        env:
+          ISUXPORTAL_TEST_DATABASE_URL: postgres://isuxportal:isuxportal@127.0.0.1:5432/isuxportal?sslmode=disable
+          ISUXPORTAL_TEST_REDIS_URL: redis://127.0.0.1:6379/0
+
+  portal-frontend-build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - run: corepack enable && corepack prepare pnpm@9.15.0 --activate
+      - run: pnpm install --frozen-lockfile
+        working-directory: portal/frontend
+      - run: pnpm run typecheck
+        working-directory: portal/frontend
+      - run: pnpm run webpack
+        working-directory: portal/frontend
+        env:
+          NODE_ENV: production
+      - run: test -f public/packs/manifest.json && test -f public/sw.js
+        working-directory: portal/frontend
+
+  # デプロイ資材の検証: 本番イメージのビルド（push なし）、terraform、ansible の構文
+  portal-deploy-lint:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: portal
+          file: portal/deploy/Dockerfile
+          push: false
+          build-args: |
+            REVISION=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: '1.15.5'
+      - run: terraform fmt -check -recursive -diff
+        working-directory: portal/deploy/terraform
+      - run: terraform init -backend=false -input=false && terraform validate
+        working-directory: portal/deploy/terraform
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+      - run: uv sync --frozen
+        working-directory: portal/deploy/ansible
+      - run: uv run python -m unittest discover -s tests -v
+        working-directory: portal/deploy/ansible
+      - run: uv run ansible-playbook --syntax-check -i develop/hosts.yml playbook.yml
+        working-directory: portal/deploy/ansible
+
+  # HTTP 化した受け入れ RSpec（contest_spec の転用 + 登録/bench/envcheck/admin フロー）
+  portal-rspec:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:18.6-alpine@sha256:d3e1620b530c944afa6e887d22eb899824da68e19c52024bf98f5220c88a65b2
+        env:
+          POSTGRES_DB: isuxportal
+          POSTGRES_USER: isuxportal
+          POSTGRES_PASSWORD: isuxportal
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U isuxportal -d isuxportal"
+          --health-interval 2s --health-timeout 2s --health-retries 30
+      redis:
+        image: redis:8.2.9-alpine@sha256:30abb90e62f14b737010746def3ba99cc79fe19dcdb3d37b41f21fc62e7da19d
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 2s --health-timeout 2s --health-retries 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: portal/go.sum
+      - uses: ruby/setup-ruby@762794c140bbeda0f1224786aa33b4b46783a6c1 # v1.326.0
+        with:
+          ruby-version: '3.3'
+          bundler-cache: true
+          working-directory: portal/rspec
+      - name: Start portal server in test mode
+        run: |
+          go build -o bin/portal ./cmd/portal
+          ./bin/portal &
+          for _ in $(seq 1 50); do
+            curl -sf http://127.0.0.1:8081/site/sha >/dev/null && break
+            sleep 0.2
+          done
+        working-directory: portal
+        env:
+          PORTAL_TEST_MODE: '1'
+          PORTAL_AUTO_MIGRATE: '1'
+          PORTAL_LISTEN: ':8081'
+          ISUXPORTAL_DATABASE_URL: postgres://isuxportal:isuxportal@127.0.0.1:5432/isuxportal?sslmode=disable
+          REDIS_URL: redis://127.0.0.1:6379/0
+          DEFAULT_URL_HOST: 127.0.0.1:8081
+          AWS_ACCESS_KEY_ID: test-dummy
+          AWS_SECRET_ACCESS_KEY: test-dummy
+          AWS_EC2_METADATA_DISABLED: 'true'
+          ISUXPORTAL_AVATAR_BUCKET: isuxportal-avatars-test
+          ISUXPORTAL_TEST_AMI_ID: ami-test
+          ISUXPORTAL_ADMIN_LOGIN: admin
+          ISUXPORTAL_ADMIN_PASSWORD: adminpass
+          ISUXPORTAL_GITHUB_CLIENT_ID: gh-client
+          ISUXPORTAL_GITHUB_CLIENT_SECRET: gh-secret
+          ISUXPORTAL_GITHUB_AUTHORIZE_URL: http://127.0.0.1:8081/debug/oauth/github/authorize
+          ISUXPORTAL_GITHUB_TOKEN_URL: http://127.0.0.1:8081/debug/oauth/github/token
+          ISUXPORTAL_GITHUB_API_BASE_URL: http://127.0.0.1:8081/debug/oauth/github
+          ISUXPORTAL_DISCORD_CLIENT_ID: dc-client
+          ISUXPORTAL_DISCORD_CLIENT_SECRET: dc-secret
+          ISUXPORTAL_DISCORD_AUTHORIZE_URL: http://127.0.0.1:8081/debug/oauth/discord/authorize
+          ISUXPORTAL_DISCORD_TOKEN_URL: http://127.0.0.1:8081/debug/oauth/discord/token
+          ISUXPORTAL_DISCORD_API_BASE_URL: http://127.0.0.1:8081/debug/oauth/discord
+      - run: bundle exec rspec
+        working-directory: portal/rspec
+        env:
+          TARGET_BASE: http://127.0.0.1:8081
+          DB_HOST: 127.0.0.1
+          DB_PORT: '5432'

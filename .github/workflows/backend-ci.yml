@@ -1,0 +1,115 @@
+name: Backend CI
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/backend-ci.yml"
+      - "backend/**"
+      - "mise.toml"
+      - "mise.lock"
+      - "specs/001-isureal-social-app/contracts/**"
+  pull_request:
+    paths:
+      - ".github/workflows/backend-ci.yml"
+      - "backend/**"
+      - "mise.toml"
+      - "mise.lock"
+      - "specs/001-isureal-social-app/contracts/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  GO_VERSION: 1.26.5
+  TEST_DATABASE_URL: postgres://isureal:local-development-only@localhost:5432/isureal?sslmode=disable
+
+jobs:
+  backend-unit-contract-build:
+    runs-on: actions-runner-processor
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: backend/go.sum
+      - run: gofmt -l . | tee /tmp/gofmt-files && test ! -s /tmp/gofmt-files
+        working-directory: backend
+      - run: go vet ./...
+        working-directory: backend
+      - run: go test ./internal/... ./tests/contract -count=1
+        working-directory: backend
+      - run: |
+          mkdir -p build
+          for command in api worker image-sanitizer migrate reset seed; do
+            CGO_ENABLED=0 go build -trimpath -o "build/$command" "./cmd/$command"
+          done
+        working-directory: backend
+
+  backend-integration-migration:
+    runs-on: actions-runner-processor
+    services:
+      postgres:
+        image: postgres:16.9-alpine@sha256:7c688148e5e156d0e86df7ba8ae5a05a2386aaec1e2ad8e6d11bdf10504b1fb7
+        env:
+          POSTGRES_DB: isureal
+          POSTGRES_USER: isureal
+          POSTGRES_PASSWORD: local-development-only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U isureal -d isureal"
+          --health-interval 2s --health-timeout 2s --health-retries 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: backend/go.sum
+      - run: go test ./tests/integration -count=1
+        working-directory: backend
+        env:
+          ISUREAL_TEST_DATABASE_URL: ${{ env.TEST_DATABASE_URL }}
+
+  backend-concurrency:
+    runs-on: actions-runner-processor
+    services:
+      postgres:
+        image: postgres:16.9-alpine@sha256:7c688148e5e156d0e86df7ba8ae5a05a2386aaec1e2ad8e6d11bdf10504b1fb7
+        env:
+          POSTGRES_DB: isureal
+          POSTGRES_USER: isureal
+          POSTGRES_PASSWORD: local-development-only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U isureal -d isureal"
+          --health-interval 2s --health-timeout 2s --health-retries 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: backend/go.sum
+      - run: go test ./tests/concurrency -count=1
+        working-directory: backend
+        env:
+          ISUREAL_TEST_DATABASE_URL: ${{ env.TEST_DATABASE_URL }}
+
+  image-sanitizer-resource-isolation:
+    runs-on: actions-runner-processor
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: backend/go.sum
+      - run: go test ./internal/image -count=1
+        working-directory: backend
+      - run: go test ./tests/integration -run 'TestSanitizer|TestSubprocessSanitizer' -count=1
+        working-directory: backend
