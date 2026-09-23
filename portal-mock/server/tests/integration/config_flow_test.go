@@ -26,6 +26,10 @@ func TestStandInProfilesAndDesiredDiagnostics(t *testing.T) {
 		if !response.Msg.Changed || response.Msg.Apply.State != portalmockv1.ApplyState_APPLY_STATE_PENDING {
 			t.Fatalf("unexpected update: %+v", response.Msg)
 		}
+		// The store timeout and stand-in timer must both be registered.
+		testkit.Eventually(t, time.Second, func() bool {
+			return server.Clock.PendingTimers() == 2
+		})
 		server.Clock.Advance(100 * time.Millisecond)
 		testkit.Eventually(t, time.Second, func() bool {
 			state := server.App.Store.Snapshot()
@@ -47,9 +51,17 @@ func TestStandInProfilesAndDesiredDiagnostics(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		// The store timeout and stand-in timer must both be registered.
+		testkit.Eventually(t, time.Second, func() bool {
+			return server.Clock.PendingTimers() == 2
+		})
 		server.Clock.Advance(100 * time.Millisecond)
 		testkit.Eventually(t, time.Second, func() bool {
 			return server.App.Store.Snapshot().Apply.State == "failed-retryable"
+		})
+		// The store timeout and stand-in timer must both be registered.
+		testkit.Eventually(t, time.Second, func() bool {
+			return server.Clock.PendingTimers() == 2
 		})
 		server.Clock.Advance(100 * time.Millisecond)
 		testkit.Eventually(t, time.Second, func() bool {
