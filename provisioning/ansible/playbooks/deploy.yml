@@ -1,0 +1,134 @@
+---
+- name: Check all service nodes before updating any files
+  hosts: problem_servers
+  become: true
+  gather_facts: false
+  any_errors_fatal: true
+  tags: [precheck]
+  tasks:
+    - name: Read deployed migration hashes without changing the database
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/python3
+          - -c
+          - |
+            import hashlib, json
+            from pathlib import Path
+            root = Path('/opt/isucon/share/migrations')
+            print(json.dumps({str(p.relative_to(root)): hashlib.sha256(p.read_bytes()).hexdigest()
+                              for p in sorted(root.rglob('*')) if p.is_file()}))
+      register: deployed_migrations
+      changed_when: false
+
+    - name: Require matching migration files
+      ansible.builtin.assert:
+        that: (deployed_migrations.stdout | from_json) == deploy_migrations
+        fail_msg: "Migration files differ. Run make provisioning-artifacts and make vm-provision before vm-deploy."
+
+    - name: Require a healthy provisioned service node
+      ansible.builtin.command: /usr/local/sbin/isureal-node-check
+      changed_when: false
+
+- name: Check Router before updating application files
+  hosts: routers
+  become: true
+  gather_facts: false
+  any_errors_fatal: true
+  tags: [precheck]
+  tasks:
+    - name: Require running Router and Envoy
+      ansible.builtin.command: systemctl is-active isureal-router.service isureal-envoy.service
+      changed_when: false
+
+- name: Update only application artifacts
+  hosts: app_servers
+  become: true
+  gather_facts: false
+  any_errors_fatal: true
+  tasks:
+    - name: Deploy backend files and restore services after a partial update
+      when: deploy_backend is defined
+      tags: [deploy]
+      block:
+        - name: Copy backend executables atomically when different
+          ansible.builtin.copy:
+            src: "{{ deploy_backend }}/bin/{{ item }}"
+            dest: "/opt/isucon/bin/{{ item }}"
+            owner: root
+            group: root
+            mode: "0755"
+          loop: [api, worker, image-sanitizer, migrate, reset, seed]
+          register: backend_copy
+
+        - name: Copy API contract
+          ansible.builtin.copy:
+            src: "{{ deploy_backend }}/share/openapi.yaml"
+            dest: /opt/isucon/share/openapi.yaml
+            owner: root
+            group: root
+            mode: "0644"
+          register: contract_copy
+      always:
+        - name: Restart API and worker only after backend changes
+          ansible.builtin.systemd_service:
+            name: "{{ item }}"
+            state: restarted
+          loop: [isureal-api.service, isureal-worker.service]
+          when: (backend_copy is defined and backend_copy is changed) or (contract_copy is defined and contract_copy is changed)
+          tags: [restart]
+
+    - name: Update frontend without restarting services
+      when: deploy_frontend is defined
+      tags: [deploy]
+      block:
+        - name: Copy changed frontend files
+          ansible.builtin.copy:
+            src: "{{ deploy_frontend }}/frontend/"
+            dest: /opt/isucon/frontend/
+            owner: root
+            group: root
+            mode: preserve
+          register: frontend_copy
+
+        - name: Find frontend files including obsolete assets
+          ansible.builtin.find:
+            paths: /opt/isucon/frontend
+            recurse: true
+            hidden: true
+            file_type: file
+          register: frontend_files
+
+        - name: Remove assets absent from this build
+          ansible.builtin.file:
+            path: "{{ item.path }}"
+            state: absent
+          loop: "{{ frontend_files.files }}"
+          loop_control:
+            label: "{{ item.path }}"
+          when: (item.path | relpath('/opt/isucon/frontend')) not in deploy_frontend_files
+
+    - name: Wait for local readiness after deployment
+      ansible.builtin.command: /usr/local/sbin/isureal-node-check
+      changed_when: false
+      register: readiness
+      retries: 30
+      delay: 2
+      until: readiness.rc == 0
+      tags: [verify]
+
+    - name: Verify each app through the host Router forward
+      ansible.builtin.uri:
+        url: "http://{{ isucon_topology.clientForward.hostAddress }}:{{ isucon_topology.clientForward.hostPort }}/"
+        headers:
+          Host: "{{ inventory_hostname }}.team{{ isucon_topology.portal.teamNumber }}-{{ isucon_topology.portal.teamHash }}.{{ isucon_topology.domain }}"
+          X-Country-Code: JP
+        status_code: 200
+        return_content: true
+        use_proxy: false
+      delegate_to: localhost
+      become: false
+      register: frontend_response
+      retries: 10
+      delay: 2
+      until: frontend_response.status == 200 and '<!doctype html' in (frontend_response.content | default('') | lower)
+      tags: [verify]
