@@ -27,7 +27,8 @@ nginx は公式 stable 1.30.5。PostgreSQL / Redis のイメージは digest で
 - [Terraform によるクラウドリソース作成](terraform/README.md)（API キーを用意できる場合）
 
 既定では日時を未設定とし、運営限定モードで起動する。
-確定済みの開催日時は後日 `portal_overrides.timing` に設定する。
+開催日は **2026年10月31日（土）**。
+開始、凍結、終了などの時刻は未設定であり、確定後に `portal_overrides.timing` に RFC3339 で設定する。
 デプロイ例は Ansible README に集約している。
 
 GitHub Actions からのレジストリ配布は任意。
