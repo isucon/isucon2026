@@ -4,6 +4,8 @@
 計画は [`../docs/plan/portal-go-rewrite.md`](../docs/plan/portal-go-rewrite.md)、
 要件は [`../docs/plan/portal-go-requirements.md`](../docs/plan/portal-go-requirements.md) を参照。
 仕様の典拠は isucon14-portal @ `4c2b99a` の実装コード。
+開催日は **2026年10月31日（土）**。
+開始、凍結、終了時刻は未設定であり、確定後に `portal_overrides.timing` に設定する。
 
 ## 実装範囲
 
@@ -49,13 +51,14 @@ portal/
 │   └── public/          # 静的アセット + ビルド出力（packs/ は gitignore）
 ├── gen/pb/              # buf generate（Go）
 ├── proto/               # isucon14-portal から流用した proto 定義
-└── rspec/               # HTTP 化した受け入れテスト（93 examples）
+└── rspec/               # HTTP 化した受け入れテスト
 ```
 
 ## フロントエンド
 
-isucon14-portal の React SPA を `frontend/` にそのまま取り込んだ（表示文字列の
-ISUCON14 → ISUCON2026 置換のみ。ロゴ画像は既存アセットを流用中）。
+isucon14-portal の React SPA を `frontend/` にそのまま取り込んだ。
+表示文字列と開催案内は ISUCON2026 向けに更新している。
+ロゴは RGB 素材から書き出した SVG、favicon と端末用アイコンは同じ素材から生成した PNG / ICO を使用する。
 
 ```sh
 make frontend   # pnpm install + production ビルド → frontend/public/packs + manifest.json
@@ -66,6 +69,23 @@ make server     # ビルド済みアセットを配信する状態で起動（ht
   `/packs/*` は `public,max-age=31536000` で配信する
 - `sw.js`・アイコン・ロゴなど public 直下のファイルはルート未マッチ時のフォールバックで配信する
 - TS バインディングの再生成は `buf generate`（`frontend/proto` に出力）
+
+### アイコンの再生成
+
+元の RGB Illustrator 素材は `frontend/materials/isucon2026-logo-rgb.ai` に保持する。
+横組み（1 ページ目）を横長タイル、縦組み（3 ページ目）を正方形アイコンに使用する。
+Poppler の `pdftocairo` と `uv` を用意し、リポジトリルートから実行する。
+
+```sh
+uv run portal/scripts/generate_icons.py
+cd portal/frontend
+pnpm test
+```
+
+ブラウザ用の `icon-*.png` と `favicon.ico` は、縦組み素材の末尾の「26」だけを切り出す。
+`favicon.ico` は 16 / 32 / 48 px を含む。
+Apple Touch Icon、Android 用アイコン、タイルはロゴ全体を使用する。
+サイズ指定のない Apple Touch Icon は 180 px とする。
 
 ## ベンチマーカーの接続
 
@@ -81,7 +101,7 @@ CI は portal-unit-contract-build / portal-integration-migration / portal-concur
 make test              # 単体 + 契約テスト（DB 不要）: internal/... + tests/contract
 make test-integration  # PostgreSQL + Redis: HTTP 越しの結合（bench 一巡・envcheck 形式・スキーマ再適用・ジョブキュー）
 make test-concurrency  # PostgreSQL + Redis: 並行不変条件（DM-4 重複 enqueue / NF-3 払い出し排他 / DM-3 確定競合 / キュー排他）
-make rspec             # HTTP 化 RSpec 95 examples（受け入れの主戦力）
+make rspec             # HTTP 化 RSpec（受け入れの主戦力）
 ```
 
 - `tests/contract` は DB なしで守れる契約を固定する: token 形式（Ruby 生成のゴールデントークン込み、FR-AUTH-7）、
@@ -115,11 +135,12 @@ bypass token の Ruby ⇔ Go 相互運用などを検証する。
   `FOR UPDATE SKIP LOCKED` で 1 件ずつ取り出して実行する。失敗は指数バックオフで 5 回まで再試行し、
   それ以降は `status = 'dead'` に落として残す（`SELECT * FROM jobs WHERE status = 'dead'` で確認）。
   テストモード（`PORTAL_TEST_MODE=1`）では投入時に同期実行する
-- 管理対象のマネージドサービスは PostgreSQL / Redis / S3 / EC2（+ GitHub・Discord・Slack の外部 API）。
-  SQS は使わない
+- PostgreSQL と Redis はポータル VM に同居する。選手環境の EC2 とアイコン保存先 S3 は AWS を使う。
+  外部連携は GitHub / Discord / Slack など。非同期ジョブに SQS は使わない
 - セッションは Rails と互換しないため、切り替え時に全員のログインが切れる（計画書 §7）
-- SPA アセットは `ISUXPORTAL_PUBLIC_DIR` / `ISUXPORTAL_PACKS_MANIFEST` を isucon14-portal の
-  `public/` に向ける（manifest.json でハッシュ付きパス解決、`/packs` は長期キャッシュ）
+- SPA アセットは `ISUXPORTAL_PUBLIC_DIR=frontend/public` /
+  `ISUXPORTAL_PACKS_MANIFEST=frontend/public/packs/manifest.json` を使う。
+  デプロイ時はイメージ内の配置に合わせて設定する。`/packs` は長期キャッシュで配信する
 
 ## isucon14-portal からの意図的な差分
 
@@ -142,7 +163,7 @@ bypass token の Ruby ⇔ Go 相互運用などを検証する。
   送るため。Go 側に override ミドルウェアを置いた）
 - **ETag の値**は Rails とバイト一致しない（304 の挙動のみ互換）
 - `EnvCheck.status` は Rails 同様 DONE 固定（感想戦 FIXME の踏襲）。段階表示を戻す場合は
-  `internal/model/envcheck.go` のコメント参照
+  [Issue #16](https://github.com/isucon/isucon2026/issues/16) を参照
 - 空の pending 払い出しで target が無い場合、bench receive は 500 ではなく空 IP を返す
 
 ## protobuf の再生成

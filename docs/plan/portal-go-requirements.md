@@ -1,6 +1,6 @@
 # ポータルバックエンド Go rewrite 要件定義
 
-作成日: 2026-08-23。実装計画は [`portal-go-rewrite.md`](portal-go-rewrite.md)、
+作成日: 2026-08-23。更新日: 2026-09-24。実装計画は [`portal-go-rewrite.md`](portal-go-rewrite.md)、
 調査は [`../survey/portal/`](../survey/portal/README.md)。
 
 本書は「Go 実装が満たすべきこと」を ID 付きで列挙する。
@@ -9,14 +9,17 @@
 
 ID 規約: FR = 機能要件 / CT = 互換契約 / DM = データ要件 / NF = 非機能要件 / OQ = 未確定。
 
+通常開催への復旧が未完了の箇所（環境確認状態、登録画面、CheckerToken の期限検証）は [Issue #16](https://github.com/isucon/isucon2026/issues/16) で管理する。
+本書の要件を満たすことと、現在の実装で満たしていることは区別する。
+
 ## 0. 前提（確定済み）
 
 | # | 前提 |
 |---|---|
-| P-1 | ホスティング・競技環境ともに AWS。1 チーム 3 台（EC2 + CloudFormation） |
-| P-2 | supervisor は Rust のまま。フロントエンド（React SPA）・envcheck（Go）も無改修 |
+| P-1 | ポータルはさくらのクラウド is1c の単一 VM（Ansible / Docker Swarm）。現行の選手環境は AWS、1 チーム 3 台（EC2 + CloudFormation） |
+| P-2 | supervisor は Rust、envcheck は Go を維持する。React SPA は流用し、表示と通常開催に必要な挙動を更新する |
 | P-3 | **単一開催（本選のみ）**。予選分岐 `ISUXPORTAL_FINAL` は実装しない |
-| P-4 | 競技日 2026-11-25、登録締切 2026-09-30。切り替えは締切後のクリーンカットオーバー |
+| P-4 | 競技日 **2026年10月31日（土）**、登録締切 2026-09-30。開始、凍結、終了時刻は未設定。切り替えは締切後のクリーンカットオーバー |
 | P-5 | `isucon2026-portal` からの登録データ移行あり（切り替えとは別日） |
 
 ## 1. アクターとスコープ
@@ -29,7 +32,7 @@ ID 規約: FR = 機能要件 / CT = 互換契約 / DM = データ要件 / NF = �
 | supervisor（Rust） | `/api/bench/*` 4 本。共有トークン認証 |
 | isucon-env-checker（Go） | 非 protobuf 3 本。CheckerToken / HMAC 署名 |
 | ブラウザ SW | Web Push（VAPID）+ Service Worker |
-| 外部サービス | GitHub OAuth / Discord OAuth・Bot / Slack Webhook / EC2 / S3 / SQS |
+| 外部サービス | GitHub OAuth / Discord OAuth・Bot / Slack Webhook / EC2 / S3 |
 
 ### スコープ外（実装しない）
 
@@ -121,7 +124,7 @@ ID 規約: FR = 機能要件 / CT = 互換契約 / DM = データ要件 / NF = �
 | FR-B-3 | 途中報告: `job_id` + `handle` で所有検証。`marked_at` 必須。**既存より新しい `marked_at` のみ採用**。`execution` を含んではならない（400） |
 | FR-B-4 | 確定報告: `finished` と `execution` が必須。closed に遷移したら `BenchmarkCompletionJob` を投入 |
 | FR-B-5 | `survey_response`（実装言語）が添付されていれば保存 |
-| FR-B-6 | ISUReal ベンチ本体は `benchrun.Reporter` で `BenchmarkResult` を supervisor に渡す接続層を実装する（別リポジトリ作業。CT-7 のセンチネル規則に従う） |
+| FR-B-6 | ISUReal ベンチ本体は `benchrun.Reporter` で `BenchmarkResult` を supervisor に渡す接続層を実装する（同リポジトリの bench / supervisor。CT-7 のセンチネル規則に従う） |
 
 ### 2.7 envcheck 連携（FR-E）
 
@@ -164,7 +167,7 @@ Discord bot（常駐）: アナウンス投稿の中継（app 複数台時の co
 | CT-5 | ETag / 304: ダッシュボード 3 系統は事前生成キャッシュの **SHA-384 ダイジェストを ETag** に、キャッシュミス時は合成 etag（`leaderboard_etag`）/ 自チーム最新結果の updated_at にフォールバックし、`If-None-Match` 一致で 304（Rails `stale?` 相当）。ポーリング負荷対策の中核 |
 | CT-6 | 非 admin へのマスク: `stderr=""` / `exit_status=-2` / `exit_signal=-2` / `signaled=false` / `instance_name=""` / `post_validation` 省略。admin は実値（nil は -1） |
 | CT-7 | **score センチネル**: 報告の `score == -1` は「`raw - deduction` で計算せよ」。加えて `finished && !passed` は score=0 |
-| CT-8 | DB スキーマ 16 テーブル: **既存カラム・インデックスの変更禁止。追加は可**（同意記録 4 カラムはデータ移行で追加する。Rails は未知カラムを無視するので差分テストと両立） |
+| CT-8 | DB スキーマ 16 テーブル: **既存カラム・インデックスの変更禁止。追加は可**（同意記録 4 カラムはデータ移行で追加する。DB は PostgreSQL の型を使い、Rails との DB 共有は行わない） |
 | CT-9 | 変則ルート `GET /api/admin/instance_command_execute_requests/:request_id/:id/output` を含む全 107 ルートのパス互換 |
 | CT-10 | VAPID 鍵は既存形式（`ISUXPORTAL_VAPID_PRIVATE_KEY` = JSON 文字列化した PEM）を読めること。読めない場合は鍵の再発行 + 全購読の再登録が必要になるため、まず互換を試す |
 | CT-11 | 環境変数 `ISUXPORTAL_*` の名前と形式を維持（`ISUXPORTAL_FINAL` は廃止）。時刻は ISO8601（`Time.xmlschema` 互換）。全量は `config/environments/development.rb:70-137` |
@@ -182,7 +185,7 @@ Discord bot（常駐）: アナウンス投稿の中継（app 複数台時の co
 | DM-7 | 可視性スコープ: audience = 凍結前かつ終了前 / contestant = 自チームは無条件・他チームは凍結前 / admin = 無制限。`contest_freeze` / `contest_end` 未設定時は素通し |
 | DM-8 | 非正規化 3 カラム（best_benchmark_result_id / _for_audience_id / _for_admin_id）はベンチ確定ごとに更新。leaderboard の best_score はこのカラムを読む |
 | DM-9 | `extra_time_assignments` は `final=false` 固定で読み書き（P-3。スキーマは触らない） |
-| DM-10 | Redis 4 系統: セッション / 短期キャッシュ（leaderboard 30 秒）/ `dashboard-v2:*` / `leaderboard-v2:*`。Go は `round` セグメントを落とすため **Rails 並走期間は DB index を分離** |
+| DM-10 | Redis 4 系統: セッション / 短期キャッシュ（leaderboard 30 秒）/ `dashboard-v2:*` / `leaderboard-v2:*`。単一開催のため `round` セグメントを落とす。Rails との並走は行わない |
 
 ## 5. 非機能要件（NF）
 
@@ -194,18 +197,18 @@ Discord bot（常駐）: アナウンス投稿の中継（app 複数台時の co
 | NF-2 | leaderboard 全体生成（935 チーム、history なし）が**数秒以内**。ベンチ確定のたびに走る。リハーサルで実測する（NF-7） |
 | NF-3 | ベンチ払い出しの排他が supervisor フリート同時ポーリング下で正しく 1 件ずつ払い出されること |
 | NF-4 | 公開 clarification の全選手通知（〜2,800 行 insert）が 150 件バッチで数秒以内 |
-| NF-5 | graceful shutdown: SIGTERM でヘルスを落とし、処理中リクエストと実行中ジョブを完了してから終了（ecspresso のローリング更新前提） |
+| NF-5 | graceful shutdown: SIGTERM でヘルスを落とし、処理中リクエストと実行中ジョブを完了してから終了（Docker Swarm でのサービス更新時も同条件を満たす） |
 | NF-6 | 観測性: `/site/sha`（git SHA）、Sentry、Prometheus `/metrics`（内部ポート）。構造化ログ（slog） |
 | NF-7 | リハーサルは**本番想定規模（900+ チーム相当のデータ）で実施**。数十チームでは NF-1 / NF-2 を検証できない |
-| NF-8 | 秘密情報は既存の sops 運用を踏襲。トークン比較は定数時間。セッション Cookie は署名 + Secure + HttpOnly |
+| NF-8 | 内部共有鍵は VM の `/opt/portal/secrets.json`（0600）で保持し、外部の秘密情報は Git 管理外の Ansible Vault から渡す。トークン比較は定数時間。セッション Cookie は署名 + Secure + HttpOnly |
 
 ## 6. 受け入れ条件
 
 1. HTTP 化した `contest_spec`（465 行 + `history: false` 追加分）が `TARGET_BASE=Go` で全部緑
-2. 差分テスト: Rails と Go を同一 DB / 別 Redis index で並走させ、54 API のデコード後比較が一致（マスク値 CT-6・センチネル CT-7 を含む）
+2. Go の単体、契約、結合、並行テストと HTTP 化 RSpec が通る（マスク値 CT-6、センチネル CT-7 を含む）。Rails との同一 DB 上の差分テストは行わない
 3. 実 supervisor + dummybench で enqueue → 払い出し → 途中報告 → 確定 → best 更新 → ダッシュボード反映 → Push 到達（実機）が一巡
 4. 既存 isucon-env-checker バイナリが**無改修で** FR-E の 3 本を通せる
-5. 既存 SPA が**無改修で**全 25 画面動作（CSRF・manifest 解決・meta タグを含む）
+5. 更新した SPA の全 25 画面が動作（CSRF・manifest 解決・meta タグを含む）
 6. NF-1 / NF-2 を 900+ チーム規模のデータで実測しクリア
 
 ## 7. 未確定（OQ）
@@ -217,20 +220,20 @@ Discord bot（常駐）: アナウンス投稿の中継（app 複数台時の co
 | OQ-1 | 体制（1 人か 2 人か）。スケジュールの前提 | 運営判断 |
 | OQ-2 | データ移行と Rails→Go 切り替えの順序 | 運営判断 |
 | OQ-3 | `survey_response` の粒度（proto は結果単位、DB はチーム単位で上書き） | 実害なしと推定。Rails の挙動に合わせて写す |
-| OQ-4 | `instance_name` が ECS Fargate 上で何になるか（孤児回収の識別子。タスク再起動で変わると回収漏れ） | supervisor の taskdef / entrypoint.sh を確認 |
-| OQ-5 | CFn テンプレートに渡す変数の全量 | `cf_templates/*.yaml.erb` を読む（ISUCON2026 用に作り直す際の入力仕様） |
+| OQ-4 | supervisor の再起動前後で `instance_name` が安定するか（孤児回収の識別子） | 現行 supervisor の起動設定と `cancel_owned` を確認 |
+| OQ-5 | 選手環境用 CFn の開催向け検証 | `portal/internal/cloudformation/` の test / contest テンプレートと AMI を確認。更新は今回保留 |
 | OQ-6 | Discord の `support_comm_channel_roles` 構成 | 運営の Discord 設計 |
-| OQ-7 | New Relic 前提の taskdef 環境変数 | `ecs/taskdef/lib/app.libsonnet` を読む |
+| OQ-7 | 解決済み: slog / Sentry / Prometheus を実装 | 本番の監視と通知の実接続確認は残る |
 | OQ-8 | `ISUXPORTAL_ADMIN_ONLY` をいつ落とすかの運用手順 | 運営手順として文書化 |
-| OQ-9 | **ALB ヘルスチェックのパス**（Rails 側の設定が terraform / taskdef のどこにあるか未確認） | terraform module を読む |
-| OQ-10 | **静的アセットの配信主体**（前段 nginx が `/packs` を直接返すか、app が返すか。CT-3 の実装位置が変わる） | `ecs/nginx/default.conf` を読む |
+| OQ-9 | 解決済み: さくら LB のヘルスチェック | Host ヘッダ付き `HEAD /site/sha`。Ansible README を参照 |
+| OQ-10 | 解決済み: Go アプリが静的アセットを配信 | nginx はアプリへ転送する。CT-3 の manifest とキャッシュを維持 |
 | OQ-11 | Redis のキー全量（4 系統以外が無いか） | `Rails.cache` / `redis` の全参照を洗う |
 
-OQ-9 / OQ-10 は Phase 1 の着手前に、OQ-4 / OQ-5 は Phase 4 の着手前に潰す。
+未解決項目は公開前のリハーサルまでに確認する。開始、凍結、終了時刻は `portal_overrides.timing` に RFC3339 で設定する。
 
 ## 8. 計画書への訂正
 
-本書の洗い直しで判明した、[`portal-go-rewrite.md`](portal-go-rewrite.md) の要修正点。
+初版の計画書に対する訂正履歴。以下の内容は現在の計画書と要件に反映済み。
 
 1. **CSRF が契約から抜けていた**（CT-2）。計画書 §3 は「bench / envcheck は CSRF なし」とだけ書いていたが、
    **逆側**——SPA が `X-Csrf-Token` を送り、シェルが `csrf-token` meta を出す——が要件。
