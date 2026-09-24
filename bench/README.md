@@ -1,95 +1,59 @@
-# ISUReal ベンチマーカー（ベーシック版）
+# ISUReal ベンチマーカー
 
-ISUReal アプリケーションに対して初期化 → 事前検証（pretest）→ 負荷走行（load）を実行し、
-結果 JSON を標準出力へ出力する。仕様は `bench/spec-bench.md` を参照。
+`webapp/go` の `/api` に対して、初期化 → 事前検証 → 負荷走行を実行する。
+結果 JSON を標準出力、進捗を標準エラー出力へ出す。
 
-## 使い方
-
-```console
-$ go run . -target http://localhost:8080 -users 8
+```sh
+# Compose を起動済みのリポジトリルートから実行
+# 対象の共有 DB は initialize により初期化される
+go -C bench run . -users 8 -cycles 2
 ```
 
-| フラグ | 既定値 | 説明 |
+| フラグ | 既定値 | 内容 |
 |---|---|---|
-| `-target` | `http://localhost:8080` | 対象アプリのベース URL |
-| `-host` | 空 | 接続先と公開ホスト名が異なる場合の HTTP Host ヘッダー |
-| `-users` | `8` | 同時負荷ユーザー数 |
-| `-cycles` | `0` | 0 より大きい場合、60 秒の負荷走行の代わりに指定サイクル数だけ実行する（開発用） |
+| `-target` | `http://app.127.0.0.1.nip.io:18090` | 接続先 |
+| `-host` | 空 | HTTP Host の上書き（VM の IP に接続する場合など） |
+| `-region` | `asia` | ユーザーの地域。`asia` / `europe` / `america` |
+| `-users` | `8` | 負荷ユーザー数 |
+| `-cycles` | `0` | 0 は60秒走行。正数は指定サイクル数の開発用実行 |
 
-終了コード: `0` = pass、`1` = fail、`2` = ベンチマーカー自身の異常。
+各実行は1リージョンを対象にする。地域に応じて `X-Country-Code` を JP / DE / US に設定する。
+VM 環境では `make vm-benchmark BENCH_ARGS='-users 2 -cycles 2'` でも実行できる。
 
-## Vagrant 環境での実行
+## 実行内容
 
-repository root で Vagrant 環境を起動した後、次を実行する。接続先と Router が受理する
-Host ヘッダーは `VM_TOPOLOGY` から自動的に導出される。
-ベンチマーカーは最初に `POST /api/v1/initialize` を実行するため、対象アプリのデータは初期化される。
+事前検証では、初期データの管理者 `admin` / `password1234` でログインする。
+検証ユーザーは登録時の SecretKey でログインし、重複登録、誤った鍵、プロフィール、
+投稿前の空フィード、再ログインとログアウトによるセッション失効を確認する。
 
-```console
-$ make vm-up
-$ make vm-benchmark
+負荷走行は次のサイクルを繰り返す。
+
+1. 各ユーザーが通知ストリームへ接続する。
+2. 管理者が `POST /api/admin/posting-window` で投稿期間を開く。
+3. 通知を受信したユーザーが投稿し、取得した画像が送信時のバイト列と一致することを確認する。
+4. 投稿処理が揃ってから公開フィードを読み、他ユーザーの投稿へ RealMoji・コメントを送る。
+5. 2サイクル目以降は、Memories に前サイクルの投稿が含まれることを確認する。
+
+`localDate` は初回の UTC 日付からサイクルごとに1日進める。サーバーの時計は操作しない。
+通知は投稿開始前に接続し、1件受信すると切断する。10秒以内に通知を受信しなかったユーザーは
+そのサイクルの投稿を行わない。通知漏れ自体はエラーにしないが、受信内容の不整合はエラーとする。
+一覧は `hasMore` と末尾の `postedAt` / `id` でページ送りする。
+
+## 結果と検証範囲
+
+暫定重みは post=10、realmoji=3、comment=3、feed=1、notification=1、memory=1。
+エラー1件につき10点減点し、下限は0。100エラーで負荷走行を打ち切る。
+初期化・事前検証・ユーザー準備・投稿期間の開始に失敗した場合も fail とする。
+60秒走行は進行中のリクエストを期限でキャンセルし、期限内の成功処理を集計する。
+終了コードは pass=0、fail=1、設定などの異常=2。
+
+これは基本シナリオであり、全 API の競技用検証は未実装。
+地域間アクセス制御、関係管理、投稿編集・削除、プロフィール画像、退会、認定などの追加シナリオと、
+RealMoji・コメントの読取整合性検証、スコア較正は今後の作業。
+
+旧実装の仮想時計、自動スケジュール、通知履歴、Idempotency-Key、503 の自動再送は削除した。
+`spec-bench.md` と `design-bench.md` は旧 backend 向けの設計記録であり、現行の実行手順・挙動は本 README を参照する。
+
+```sh
+go -C bench test -race ./...
 ```
-
-開発中に 1 サイクルだけ実行する場合は、ベンチマーカーの引数を `BENCH_ARGS` で渡す。
-
-```console
-$ make vm-benchmark BENCH_ARGS='-users 2 -cycles 1'
-```
-
-負荷走行時間は **60 秒固定**（D-008、過去 ISUCON 全年度と同一。
-`docs/research/isucon-benchmarker-termination.md` 参照）。60 秒走行のスコアは
-締切までに完了するサイクル数が ±1 変わるため走行ごとに段階的にずれうる。
-開発中に走行間でスコアを比較したい場合は `-cycles` でサイクル数を固定すること。
-
-負荷走行中にエラー合計が **100 件**に達した時点で負荷走行を打ち切り、fail として
-終了する（D-009、固定回数閾値方式）。閾値は較正段階で見直す。
-
-## フェーズ構成
-
-1. **initialize**: `POST /api/v1/initialize`（30 秒タイムアウト、INIT-10 暫定値）。
-   応答の `base_time` を仮想時間の起点として取り込む（VT-003）。
-2. **pretest**: 管理者ログイン、シードユーザーログイン、誤パスワード 401、
-   登録と重複 409、`GET /me` 整合、投稿前フィード空（FR-012）を検査する。
-   失敗は即 fail（失格相当）。
-3. **load**: 投稿期間サイクルを実時間の許す限り繰り返す（spec-bench.md §3.3）。
-   - 管理者 API で通知時刻を仮想現在 +3 秒に設定
-   - ワーカーが投稿期間を開始するのをポーリングで待機
-   - 通知の到達を確認（FR-002）
-   - 全ユーザーが並列に JPEG を投稿 → 公開フィード閲覧 → RealMoji・コメント
-   - 2 サイクル目以降は Memories に前日分が現れることを確認（FR-016）
-   - `POST /api/v1/virtual-time/advance` で翌カレンダー日へ進め、
-     ワーカーのオフセット同期を 2 秒待つ（D-006）
-
-## スコア（暫定重み、較正前）
-
-post=10 / realmoji=3 / comment=3 / feed=1 / notification=1 / memory=1、
-エラー 1 件につき −10、下限 0。503 応答は仕様上再試行可能なため、
-投稿系はリトライ（最大 4 回、線形バックオフ）後の失敗のみエラーとする。
-
-出力 JSON の `breakdown` と `errors` は運営向け情報である（D-005: 選手向け開示は
-pass と合計 score のみ）。
-
-## ローカル E2E 実行手順
-
-アプリ側は PostgreSQL + api + worker が必要。macOS でローカル実行する場合、
-`ISUREAL_IMAGE_SANITIZER_MEMORY_BYTES` の既定値 512MiB は darwin の
-`setrlimit(RLIMIT_AS)` で Go ランタイムが起動できず 503 になるため、
-十分大きな値（例: `1099511627776`）を設定すること。
-
-```console
-$ go -C backend build -o /tmp/isureal/api ./cmd/api
-$ go -C backend build -o /tmp/isureal/worker ./cmd/worker
-$ go -C backend build -o /tmp/isureal/image-sanitizer ./cmd/image-sanitizer
-
-$ export ISUREAL_DATABASE_URL='postgres://isureal:local-development-only@localhost:5432/isureal?sslmode=disable'
-$ export ISUREAL_CURSOR_HMAC_KEY='local-e2e-cursor-key-0123456789abcdef'
-$ export ISUREAL_IMAGE_ROOT=/tmp/isureal/images
-$ export ISUREAL_IMAGE_SANITIZER_PATH=/tmp/isureal/image-sanitizer
-$ export ISUREAL_SCHEMA_PATH=$PWD/backend/schema/schema.sql
-$ export ISUREAL_OPENAPI_PATH=$PWD/specs/001-isureal-social-app/contracts/openapi.yaml
-$ /tmp/isureal/api & /tmp/isureal/worker &
-
-$ go -C bench run . -target http://localhost:8080
-```
-
-`ISUREAL_SCHEMA_PATH` は `POST /api/v1/initialize` がスキーマリセットに使う
-`schema.sql`（未設定時はカレントディレクトリ相対の `schema/schema.sql`）。

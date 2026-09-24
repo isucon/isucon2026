@@ -1,151 +1,183 @@
 package client_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
-	"regexp"
 	"testing"
+	"time"
 
 	"github.com/isucon/isucon2026/bench/internal/client"
 )
 
-var uuidPattern = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
-
-func TestNewUUIDFormat(t *testing.T) {
-	seen := make(map[string]bool, 100)
-	for range 100 {
-		id := client.NewUUID()
-		if !uuidPattern.MatchString(id) {
-			t.Fatalf("NewUUID() = %q, not a v4 UUID", id)
-		}
-		if seen[id] {
-			t.Fatalf("NewUUID() repeated %q", id)
-		}
-		seen[id] = true
-	}
-}
-
-func TestLoginSendsContractHeaders(t *testing.T) {
-	var captured http.Header
+func TestRegisterThenLogin(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		captured = r.Header.Clone()
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"token": "session-token",
-			"user":  map[string]any{"id": "u1", "username": "alice"},
-		})
+		if r.Header.Get("Idempotency-Key") != "" || r.Header.Get("Cookie") != "" {
+			t.Error("unexpected legacy headers")
+		}
+		if r.Header.Get("X-Country-Code") != "DE" {
+			t.Error("country header missing")
+		}
+		if r.Host != "app.127.0.0.1.nip.io" {
+			t.Errorf("host=%s", r.Host)
+		}
+		switch r.URL.Path {
+		case "/api/auth/register":
+			w.WriteHeader(http.StatusCreated)
+			fmt.Fprint(w, `{"secretKey":"secret","user":{"id":"u1","username":"alice"}}`)
+		case "/api/auth/login":
+			var input map[string]string
+			_ = json.NewDecoder(r.Body).Decode(&input)
+			if input["secretKey"] != "secret" {
+				t.Error("wrong secret")
+			}
+			fmt.Fprint(w, `{"token":"token","user":{"id":"u1","username":"alice"}}`)
+		default:
+			t.Errorf("unexpected path %s", r.URL.Path)
+			w.WriteHeader(404)
+		}
 	}))
 	defer server.Close()
-
-	api := client.New(server.URL)
-	user, err := api.Login(context.Background(), "alice", "password")
-	if err != nil {
-		t.Fatal(err)
+	api := client.NewWithHost(server.URL, "app.127.0.0.1.nip.io")
+	api.SetCountry("DE")
+	registered, err := api.Register(t.Context(), "alice", "Alice", "europe")
+	if err != nil || registered.SecretKey != "secret" || registered.Token != "" {
+		t.Fatalf("registered=%+v err=%v", registered, err)
 	}
-	if user.Token != "session-token" {
-		t.Fatalf("token = %q, want %q", user.Token, "session-token")
-	}
-	if got := captured.Get("Content-Type"); got != "application/json" {
-		t.Fatalf("Content-Type = %q, want application/json", got)
-	}
-	if got := captured.Get("Idempotency-Key"); !uuidPattern.MatchString(got) {
-		t.Fatalf("Idempotency-Key = %q, not a UUID", got)
-	}
-	if got := captured.Get("Cookie"); got != "" {
-		t.Fatalf("Cookie header must be absent, got %q", got)
-	}
-	if got := captured.Get("Origin"); got != "" {
-		t.Fatalf("Origin header must be absent, got %q", got)
+	user, err := api.Login(t.Context(), registered.Username, registered.SecretKey)
+	if err != nil || user.Token != "token" || user.ID != registered.ID {
+		t.Fatalf("user=%+v err=%v", user, err)
 	}
 }
 
-func TestHostOverride(t *testing.T) {
-	var capturedHost string
+func TestErrorBody(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		capturedHost = r.Host
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"token": "session-token",
-			"user":  map[string]any{"id": "u1", "username": "alice"},
-		})
-	}))
-	defer server.Close()
-
-	api := client.NewWithHost(server.URL, "app.team1-local.127.0.0.1.nip.io")
-	if _, err := api.Login(context.Background(), "alice", "password"); err != nil {
-		t.Fatal(err)
-	}
-	if capturedHost != "app.team1-local.127.0.0.1.nip.io" {
-		t.Fatalf("Host = %q, want Vagrant application hostname", capturedHost)
-	}
-}
-
-func TestUnexpectedStatusBecomesAPIError(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/problem+json")
 		w.WriteHeader(http.StatusConflict)
-		_, _ = w.Write([]byte(`{"type":"https://isureal.invalid/problems/username_taken","title":"Conflict","status":409,"code":"username_taken","correlationId":"x"}`))
+		fmt.Fprint(w, `{"error":"username_taken"}`)
 	}))
 	defer server.Close()
-
-	api := client.New(server.URL)
-	_, err := api.Register(context.Background(), "alice", "Alice", "asia")
-	apiErr, ok := err.(*client.APIError)
-	if !ok {
-		t.Fatalf("error type = %T, want *client.APIError", err)
-	}
-	if apiErr.Status != http.StatusConflict || apiErr.Code != "username_taken" {
-		t.Fatalf("APIError = %+v, want status 409 code username_taken", apiErr)
-	}
-	if apiErr.Method != http.MethodPost || apiErr.Path != "/api/v1/auth/register" {
-		t.Fatalf("APIError location = %s %s", apiErr.Method, apiErr.Path)
+	_, err := client.New(server.URL).Register(t.Context(), "alice", "Alice", "asia")
+	var apiErr *client.APIError
+	if !errors.As(err, &apiErr) || apiErr.Code != "username_taken" || apiErr.Path != "/api/auth/register" || apiErr.Want != 201 || apiErr.Status != 409 {
+		t.Fatalf("err=%v", err)
 	}
 }
 
-func TestCreatePostBuildsMultipartWithLocationFile(t *testing.T) {
-	var locationFilename, imageContentType, visibility string
-	var locationBody []byte
+func TestPostMultipart(t *testing.T) {
+	image := []byte{0xff, 0xd8, 0xff, 0xd9}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if err := r.ParseMultipartForm(16 << 20); err != nil {
-			t.Errorf("parse multipart: %v", err)
+		if r.Header.Get("Authorization") != "Bearer token" {
+			t.Error("missing bearer")
 		}
-		if files := r.MultipartForm.File["location"]; len(files) == 1 {
-			locationFilename = files[0].Filename
-			file, _ := files[0].Open()
-			locationBody = make([]byte, files[0].Size)
-			_, _ = file.Read(locationBody)
-			_ = file.Close()
+		if err := r.ParseMultipartForm(1 << 20); err != nil {
+			t.Fatal(err)
 		}
-		if files := r.MultipartForm.File["image"]; len(files) == 1 {
-			imageContentType = files[0].Header.Get("Content-Type")
+		if r.FormValue("location_kind") != "none" || len(r.MultipartForm.File["location"]) != 0 {
+			t.Error("location must be regular form fields")
 		}
-		visibility = r.FormValue("visibility")
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusCreated)
-		_, _ = w.Write([]byte(`{"id":"p1","imageUrl":"/api/v1/images/i1"}`))
+		file, header, err := r.FormFile("image")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer file.Close()
+		data, _ := io.ReadAll(file)
+		if !bytes.Equal(data, image) || header.Header.Get("Content-Type") != "image/jpeg" {
+			t.Error("image changed")
+		}
+		w.WriteHeader(201)
+		fmt.Fprint(w, `{"id":"p1","imageUrl":"/api/images/i1"}`)
 	}))
 	defer server.Close()
+	post, err := client.New(server.URL).CreatePost(t.Context(), "token", image, "caption", "public")
+	if err != nil || post.ID != "p1" {
+		t.Fatalf("post=%+v err=%v", post, err)
+	}
+}
 
+func TestPaginationAndOpen(t *testing.T) {
+	before := client.Post{ID: "p1", PostedAt: time.Date(2026, 9, 30, 1, 2, 3, 123, time.UTC)}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/admin/posting-window" {
+			var input map[string]string
+			_ = json.NewDecoder(r.Body).Decode(&input)
+			if input["region"] != "asia" || input["localDate"] != "2026-10-01" || r.Method != http.MethodPost {
+				t.Errorf("open=%v", input)
+			}
+			w.WriteHeader(201)
+			fmt.Fprint(w, `{"id":"w1","region":"asia","localDate":"2026-10-01"}`)
+			return
+		}
+		if r.URL.Query().Get("beforeId") != before.ID || r.URL.Query().Get("beforePostedAt") != before.PostedAt.Format(time.RFC3339Nano) || r.URL.Query().Has("cursor") {
+			t.Errorf("query=%s", r.URL.RawQuery)
+		}
+		fmt.Fprint(w, `{"items":[],"hasMore":true}`)
+	}))
+	defer server.Close()
 	api := client.New(server.URL)
-	post, err := api.CreatePost(context.Background(), "token", []byte{0xFF, 0xD8, 0xFF}, "caption", "public")
+	feed, err := api.Feed(t.Context(), "token", "public", &before)
+	if err != nil || !feed.HasMore {
+		t.Fatalf("feed=%+v err=%v", feed, err)
+	}
+	memory, err := api.MemoriesMonth(t.Context(), "token", "2026-09", &before)
+	if err != nil || !memory.HasMore {
+		t.Fatalf("memory=%+v err=%v", memory, err)
+	}
+	window, err := api.OpenWindow(t.Context(), "admin", "asia", "2026-10-01")
+	if err != nil || window.ID != "w1" {
+		t.Fatalf("window=%+v err=%v", window, err)
+	}
+}
+
+func TestNotificationSubscriptionEstablishedBeforeEvent(t *testing.T) {
+	send := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer token" || r.Header.Get("Accept") != "text/event-stream" {
+			t.Error("stream headers")
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.(http.Flusher).Flush()
+		select {
+		case <-send:
+		case <-r.Context().Done():
+			return
+		}
+		fmt.Fprint(w, "data: {\"id\":\"n1\",\"postingWindowId\":\"w1\",\"region\":\"asia\"}\n\n")
+	}))
+	defer server.Close()
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+	defer cancel()
+	stream, err := client.New(server.URL).OpenNotifications(ctx, "token")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if post.ID != "p1" {
-		t.Fatalf("post id = %q, want p1", post.ID)
+	defer stream.Close()
+	close(send)
+	notification, err := stream.Receive()
+	if err != nil || notification.ID != "n1" || notification.PostingWindowID != "w1" {
+		t.Fatalf("notification=%+v err=%v", notification, err)
 	}
-	if locationFilename == "" {
-		t.Fatal("location part has no filename; app reads it via FormFile")
+}
+
+func TestNotificationCancellation(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.(http.Flusher).Flush()
+		<-r.Context().Done()
+	}))
+	defer server.Close()
+	ctx, cancel := context.WithCancel(t.Context())
+	stream, err := client.New(server.URL).OpenNotifications(ctx, "token")
+	if err != nil {
+		t.Fatal(err)
 	}
-	if string(locationBody) != `{"kind":"none"}` {
-		t.Fatalf("location body = %q", locationBody)
-	}
-	if imageContentType != "image/jpeg" {
-		t.Fatalf("image part Content-Type = %q, want image/jpeg", imageContentType)
-	}
-	if visibility != "public" {
-		t.Fatalf("visibility = %q, want public", visibility)
+	defer stream.Close()
+	cancel()
+	if _, err := stream.Receive(); !errors.Is(err, context.Canceled) {
+		t.Fatalf("want context.Canceled, got %v", err)
 	}
 }
