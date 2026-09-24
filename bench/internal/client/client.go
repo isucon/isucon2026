@@ -1,39 +1,35 @@
-// Package client is the benchmarker's HTTP client for the ISUReal API.
-//
-// Contract rules it enforces (spec.md FR-044, spec-bench.md §4):
-//   - authentication only via Authorization: Bearer — never cookies
-//   - Idempotency-Key (UUID) on every state-changing request
-//   - no Origin / Sec-Fetch-Site headers (headerless non-browser client)
-//   - multipart file parts carry a filename (the app reads them via FormFile)
 package client
 
 import (
+	"bufio"
 	"bytes"
 	"context"
-	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"io"
 	"mime/multipart"
 	"net/http"
 	"net/textproto"
+	"net/url"
 	"strings"
 	"time"
 )
 
 const (
-	apiPrefix          = "/api/v1"
+	apiPrefix          = "/api"
 	requestTimeout     = 15 * time.Second
 	maxErrorBodyBytes  = 1 << 20
-	locationNoneJSON   = `{"kind":"none"}`
 	multipartImageName = "photo.jpg"
 )
 
 type Client struct {
-	base string
-	host string
-	http *http.Client
+	base    string
+	host    string
+	country string
+	http    *http.Client
 }
+
+func (c *Client) SetCountry(country string) { c.country = country }
 
 func New(base string) *Client {
 	return NewWithHost(base, "")
@@ -46,20 +42,9 @@ func NewWithHost(base, host string) *Client {
 	return &Client{
 		base: strings.TrimRight(base, "/"),
 		host: host,
-		// No cookie jar: any Cookie header is rejected with 400 by the app.
+		// Sessions use bearer tokens.
 		http: &http.Client{Timeout: requestTimeout},
 	}
-}
-
-// NewUUID returns a random v4 UUID for Idempotency-Key headers.
-func NewUUID() string {
-	var b [16]byte
-	if _, err := rand.Read(b[:]); err != nil {
-		panic(fmt.Sprintf("crypto/rand failed: %v", err))
-	}
-	b[6] = (b[6] & 0x0F) | 0x40
-	b[8] = (b[8] & 0x3F) | 0x80
-	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
 }
 
 // APIError reports an unexpected status with the diagnostic fields required
@@ -80,10 +65,10 @@ type request struct {
 	method      string
 	path        string
 	token       string
-	idempotent  bool
 	contentType string
 	body        []byte
 	want        int
+	timeout     time.Duration
 }
 
 func (c *Client) do(ctx context.Context, r request, out any) error {
@@ -94,16 +79,18 @@ func (c *Client) do(ctx context.Context, r request, out any) error {
 	if c.host != "" {
 		httpRequest.Host = c.host
 	}
+	httpRequest.Header.Set("X-Country-Code", c.country)
 	if r.contentType != "" {
 		httpRequest.Header.Set("Content-Type", r.contentType)
 	}
 	if r.token != "" {
 		httpRequest.Header.Set("Authorization", "Bearer "+r.token)
 	}
-	if r.idempotent {
-		httpRequest.Header.Set("Idempotency-Key", NewUUID())
+	httpClient := *c.http
+	if r.timeout > 0 {
+		httpClient.Timeout = r.timeout
 	}
-	response, err := c.http.Do(httpRequest)
+	response, err := httpClient.Do(httpRequest)
 	if err != nil {
 		return fmt.Errorf("%s %s: %w", r.method, r.path, err)
 	}
@@ -125,7 +112,7 @@ func (c *Client) do(ctx context.Context, r request, out any) error {
 
 func problemCode(body []byte) string {
 	var problem struct {
-		Code string `json:"code"`
+		Code string `json:"error"`
 	}
 	if err := json.Unmarshal(body, &problem); err != nil || problem.Code == "" {
 		return "unknown"
@@ -144,48 +131,35 @@ func marshalJSON(value any) []byte {
 // --- competition operation endpoints ---
 
 type InitializeResult struct {
-	Language string    `json:"language"`
-	BaseTime time.Time `json:"base_time"`
+	Language string `json:"language"`
 }
 
 func (c *Client) Initialize(ctx context.Context) (InitializeResult, error) {
 	var result InitializeResult
-	err := c.do(ctx, request{method: http.MethodPost, path: apiPrefix + "/initialize", want: http.StatusOK}, &result)
+	err := c.do(ctx, request{method: http.MethodPost, path: apiPrefix + "/initialize", want: http.StatusOK, timeout: 30 * time.Second}, &result)
 	return result, err
-}
-
-func (c *Client) AdvanceVirtualTime(ctx context.Context, offsetSeconds int64) (time.Time, error) {
-	var result struct {
-		CurrentTime time.Time `json:"current_time"`
-	}
-	err := c.do(ctx, request{
-		method:      http.MethodPost,
-		path:        apiPrefix + "/virtual-time/advance",
-		contentType: "application/json",
-		body:        marshalJSON(map[string]int64{"offset_seconds": offsetSeconds}),
-		want:        http.StatusOK,
-	}, &result)
-	return result.CurrentTime, err
 }
 
 // --- auth ---
 
 type User struct {
-	ID       string
-	Username string
-	Token    string
+	ID        string
+	Username  string
+	Token     string
+	SecretKey string
 }
 
 type sessionResponse struct {
-	Token string `json:"token"`
-	User  struct {
+	SecretKey string `json:"secretKey"`
+	Token     string `json:"token"`
+	User      struct {
 		ID       string `json:"id"`
 		Username string `json:"username"`
 	} `json:"user"`
 }
 
 func (s sessionResponse) user() User {
-	return User{ID: s.User.ID, Username: s.User.Username, Token: s.Token}
+	return User{ID: s.User.ID, Username: s.User.Username, Token: s.Token, SecretKey: s.SecretKey}
 }
 
 func (c *Client) Register(ctx context.Context, username, displayName, region string) (User, error) {
@@ -195,7 +169,7 @@ func (c *Client) Register(ctx context.Context, username, displayName, region str
 	var session sessionResponse
 	err := c.do(ctx, request{
 		method: http.MethodPost, path: apiPrefix + "/auth/register",
-		idempotent: true, contentType: "application/json", body: body, want: http.StatusCreated,
+		contentType: "application/json", body: body, want: http.StatusCreated,
 	}, &session)
 	return session.user(), err
 }
@@ -205,7 +179,7 @@ func (c *Client) Login(ctx context.Context, username, secretKey string) (User, e
 	var session sessionResponse
 	err := c.do(ctx, request{
 		method: http.MethodPost, path: apiPrefix + "/auth/login",
-		idempotent: true, contentType: "application/json", body: body, want: http.StatusOK,
+		contentType: "application/json", body: body, want: http.StatusOK,
 	}, &session)
 	return session.user(), err
 }
@@ -217,19 +191,19 @@ func (c *Client) AdminLogin(ctx context.Context, username, password string) (str
 	}
 	err := c.do(ctx, request{
 		method: http.MethodPost, path: apiPrefix + "/admin/auth/login",
-		idempotent: true, contentType: "application/json", body: body, want: http.StatusOK,
+		contentType: "application/json", body: body, want: http.StatusOK,
 	}, &result)
 	return result.Token, err
 }
 
-// --- admin schedule ---
+func (c *Client) OpenWindow(ctx context.Context, token, region, date string) (Window, error) {
+	var window Window
+	err := c.do(ctx, request{method: http.MethodPost, path: apiPrefix + "/admin/posting-window", token: token, contentType: "application/json", body: marshalJSON(map[string]string{"region": region, "localDate": date}), want: http.StatusCreated}, &window)
+	return window, err
+}
 
-func (c *Client) SetSchedule(ctx context.Context, adminToken, region string, at time.Time) error {
-	body := marshalJSON(map[string]string{"scheduledAt": at.UTC().Format(time.RFC3339)})
-	return c.do(ctx, request{
-		method: http.MethodPut, path: apiPrefix + "/admin/regions/" + region + "/schedule",
-		token: adminToken, idempotent: true, contentType: "application/json", body: body, want: http.StatusOK,
-	}, nil)
+func (c *Client) Logout(ctx context.Context, token string) error {
+	return c.do(ctx, request{method: http.MethodPost, path: apiPrefix + "/auth/logout", token: token, want: http.StatusNoContent}, nil)
 }
 
 // --- posting ---
@@ -301,10 +275,9 @@ func buildMultipart(fields map[string]string, files []filePart) (string, []byte,
 
 func (c *Client) CreatePost(ctx context.Context, token string, image []byte, caption, visibility string) (Post, error) {
 	contentType, body, err := buildMultipart(
-		map[string]string{"caption": caption, "visibility": visibility},
+		map[string]string{"caption": caption, "visibility": visibility, "location_kind": "none"},
 		[]filePart{
 			{field: "image", filename: multipartImageName, contentType: "image/jpeg", data: image},
-			{field: "location", filename: "location.json", contentType: "application/json", data: []byte(locationNoneJSON)},
 		},
 	)
 	if err != nil {
@@ -313,20 +286,20 @@ func (c *Client) CreatePost(ctx context.Context, token string, image []byte, cap
 	var post Post
 	err = c.do(ctx, request{
 		method: http.MethodPost, path: apiPrefix + "/posts",
-		token: token, idempotent: true, contentType: contentType, body: body, want: http.StatusCreated,
+		token: token, contentType: contentType, body: body, want: http.StatusCreated,
 	}, &post)
 	return post, err
 }
 
 type FeedPage struct {
-	Items      []Post  `json:"items"`
-	NextCursor *string `json:"nextCursor"`
+	Items   []Post `json:"items"`
+	HasMore bool   `json:"hasMore"`
 }
 
-func (c *Client) Feed(ctx context.Context, token, feed, cursor string) (FeedPage, error) {
+func (c *Client) Feed(ctx context.Context, token, feed string, before *Post) (FeedPage, error) {
 	path := apiPrefix + "/feeds/" + feed
-	if cursor != "" {
-		path += "?cursor=" + cursor
+	if before != nil {
+		path += "?" + url.Values{"beforePostedAt": {before.PostedAt.Format(time.RFC3339Nano)}, "beforeId": {before.ID}}.Encode()
 	}
 	var page FeedPage
 	err := c.do(ctx, request{method: http.MethodGet, path: path, token: token, want: http.StatusOK}, &page)
@@ -338,7 +311,7 @@ func (c *Client) Feed(ctx context.Context, token, feed, cursor string) (FeedPage
 func (c *Client) CreateComment(ctx context.Context, token, postID, body string) error {
 	return c.do(ctx, request{
 		method: http.MethodPost, path: apiPrefix + "/posts/" + postID + "/comments",
-		token: token, idempotent: true, contentType: "application/json",
+		token: token, contentType: "application/json",
 		body: marshalJSON(map[string]string{"body": body}), want: http.StatusCreated,
 	}, nil)
 }
@@ -353,7 +326,7 @@ func (c *Client) ReplaceRealMoji(ctx context.Context, token, postID, reactionTyp
 	}
 	return c.do(ctx, request{
 		method: http.MethodPost, path: apiPrefix + "/posts/" + postID + "/realmojis",
-		token: token, idempotent: true, contentType: contentType, body: body, want: http.StatusCreated,
+		token: token, contentType: contentType, body: body, want: http.StatusCreated,
 	}, nil)
 }
 
@@ -363,17 +336,83 @@ type Notification struct {
 	ID              string `json:"id"`
 	PostingWindowID string `json:"postingWindowId"`
 	Region          string `json:"region"`
-	Read            bool   `json:"read"`
 }
 
-type NotificationPage struct {
-	Items []Notification `json:"items"`
+type NotificationStream struct{ body io.ReadCloser }
+
+// OpenNotifications returns after the server has established the subscription.
+func (c *Client) OpenNotifications(ctx context.Context, token string) (*NotificationStream, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base+apiPrefix+"/notifications", nil)
+	if err != nil {
+		return nil, err
+	}
+	if c.host != "" {
+		req.Host = c.host
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Accept", "text/event-stream")
+	req.Header.Set("X-Country-Code", c.country)
+	streaming := *c.http
+	streaming.Timeout = 0
+	res, err := streaming.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	if res.StatusCode != http.StatusOK {
+		defer res.Body.Close()
+		data, _ := io.ReadAll(io.LimitReader(res.Body, maxErrorBodyBytes))
+		return nil, &APIError{Method: http.MethodGet, Path: apiPrefix + "/notifications", Status: res.StatusCode, Want: http.StatusOK, Code: problemCode(data)}
+	}
+	if !strings.HasPrefix(res.Header.Get("Content-Type"), "text/event-stream") {
+		res.Body.Close()
+		return nil, fmt.Errorf("notifications: expected text/event-stream, got %q", res.Header.Get("Content-Type"))
+	}
+	return &NotificationStream{body: res.Body}, nil
 }
 
-func (c *Client) Notifications(ctx context.Context, token string) (NotificationPage, error) {
-	var page NotificationPage
-	err := c.do(ctx, request{method: http.MethodGet, path: apiPrefix + "/notifications", token: token, want: http.StatusOK}, &page)
-	return page, err
+func (s *NotificationStream) Close() error { return s.body.Close() }
+func (s *NotificationStream) Receive() (Notification, error) {
+	scanner := bufio.NewScanner(s.body)
+	var data []string
+	for scanner.Scan() {
+		line := scanner.Text()
+		if line == "" && len(data) > 0 {
+			var notification Notification
+			err := json.Unmarshal([]byte(strings.Join(data, "\n")), &notification)
+			return notification, err
+		}
+		if strings.HasPrefix(line, "data:") {
+			data = append(data, strings.TrimPrefix(strings.TrimPrefix(line, "data:"), " "))
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return Notification{}, err
+	}
+	return Notification{}, io.EOF
+}
+
+func (c *Client) Image(ctx context.Context, token, path string) ([]byte, error) {
+	if !strings.HasPrefix(path, apiPrefix+"/images/") {
+		return nil, fmt.Errorf("invalid image URL %q", path)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base+path, nil)
+	if err != nil {
+		return nil, err
+	}
+	if c.host != "" {
+		req.Host = c.host
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("X-Country-Code", c.country)
+	res, err := c.http.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		return nil, &APIError{Method: http.MethodGet, Path: path, Status: res.StatusCode, Want: http.StatusOK}
+	}
+	return io.ReadAll(io.LimitReader(res.Body, 16<<20))
 }
 
 type Profile struct {
@@ -389,11 +428,16 @@ func (c *Client) Me(ctx context.Context, token string) (Profile, error) {
 }
 
 type MemoryPage struct {
-	Items []json.RawMessage `json:"items"`
+	Items   []Post `json:"items"`
+	HasMore bool   `json:"hasMore"`
 }
 
-func (c *Client) MemoriesMonth(ctx context.Context, token, month string) (MemoryPage, error) {
+func (c *Client) MemoriesMonth(ctx context.Context, token, month string, before *Post) (MemoryPage, error) {
+	path := apiPrefix + "/memories?month=" + url.QueryEscape(month)
+	if before != nil {
+		path += "&" + url.Values{"beforePostedAt": {before.PostedAt.Format(time.RFC3339Nano)}, "beforeId": {before.ID}}.Encode()
+	}
 	var page MemoryPage
-	err := c.do(ctx, request{method: http.MethodGet, path: apiPrefix + "/memories?month=" + month, token: token, want: http.StatusOK}, &page)
+	err := c.do(ctx, request{method: http.MethodGet, path: path, token: token, want: http.StatusOK}, &page)
 	return page, err
 }

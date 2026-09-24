@@ -1,5 +1,7 @@
 # Feature Specification: ISUReal Benchmarker
 
+> 2026-09-24: この文書は旧 backend 向けの設計記録です。Go 版への移行で仮想時計・自動スケジュール等を廃止しました。現行ベンチマーカーの仕様と実行手順は [README.md](README.md) を参照してください。
+
 **Feature Branch**: `002-isureal-benchmarker`
 
 **Created**: 2026-08-07

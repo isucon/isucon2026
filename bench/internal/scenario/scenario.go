@@ -1,15 +1,12 @@
-// Package scenario drives the benchmark phases: initialize → pretest → load.
-// Phase structure follows spec-bench.md §5.2; the load model is the basic
-// posting-cycle described in §3.3 (schedule → window → post → interact →
-// advance to the next calendar day).
 package scenario
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
-	"math"
 	"net/http"
 	"sync"
 	"time"
@@ -17,51 +14,24 @@ import (
 	"github.com/isucon/isucon2026/bench/internal/client"
 	"github.com/isucon/isucon2026/bench/internal/imagegen"
 	"github.com/isucon/isucon2026/bench/internal/score"
-	"github.com/isucon/isucon2026/bench/internal/vt"
 )
 
 const (
-	adminUsername = "root"
-	adminPassword = "admin-password"
-	seedUsername  = "alice"
-	seedSecretKey = "password"
-
-	benchUserRegion = "asia"
-	asiaUTCOffset   = 9 * time.Hour
-
-	initializeTimeout = 30 * time.Second // INIT-10 provisional limit
-	// loadDuration is fixed at 60 seconds like every past ISUCON (D-008,
-	// docs/research/isucon-benchmarker-termination.md).
-	loadDuration = 60 * time.Second
-	// abortErrorThreshold aborts the load phase as fail once the total
-	// error count reaches it (D-009, fixed-count style like ISUCON 11/12/14).
+	initializeTimeout   = 30 * time.Second
+	loadDuration        = 60 * time.Second
+	notificationTimeout = 10 * time.Second
 	abortErrorThreshold = 100
-	scheduleLead        = 3 * time.Second // virtual delay until the window opens
-	windowPollEvery     = 500 * time.Millisecond
-	windowPollTimeout   = 20 * time.Second
-	offsetSyncWait      = 2 * time.Second // D-006: wait for worker clock sync
-	virtualDay          = 24 * time.Hour
-
-	postImageSize       = 64
-	realMojiImageSize   = 32
-	interactionsPerUser = 2 // posts each user reacts to per cycle
-
-	// 503 (e.g. image_sanitizer_unavailable) is documented as retryable and
-	// is never recorded by the idempotency layer, so retrying is safe.
-	retryAttempts  = 4
-	retryBaseDelay = 300 * time.Millisecond
+	interactionsPerUser = 2
 )
 
+var countries = map[string]string{"asia": "JP", "europe": "DE", "america": "US"}
 var reactionTypes = []string{"like", "heart", "laugh", "smile", "surprise", "instant"}
 
 type Config struct {
-	Target string
-	// Host overrides the HTTP Host header while Target remains the connection
-	// endpoint. It is used by environments whose ingress routes by hostname.
-	Host  string
-	Users int
-	// MaxCycles > 0 runs exactly that many posting cycles instead of the
-	// fixed 60-second load duration, so repeated runs score identically.
+	Target    string
+	Host      string
+	Region    string
+	Users     int
 	MaxCycles int
 	Logger    *slog.Logger
 }
@@ -70,7 +40,6 @@ type Result struct {
 	Pass      bool             `json:"pass"`
 	Score     int64            `json:"score"`
 	Language  string           `json:"language"`
-	BaseTime  time.Time        `json:"baseTime"`
 	Cycles    int              `json:"cycles"`
 	Breakdown map[string]int64 `json:"breakdown"`
 	Errors    []string         `json:"errors"`
@@ -78,391 +47,373 @@ type Result struct {
 }
 
 type Runner struct {
-	cfg         Config
-	api         *client.Client
-	clock       *vt.Clock
-	board       *score.Board
-	adminToken  string
-	users       []client.User
-	postImage   []byte
-	mojiImage   []byte
-	language    string
-	baseTime    time.Time
-	cycles      int
-	abortReason string
+	cfg           Config
+	api           *client.Client
+	board         *score.Board
+	adminToken    string
+	users         []client.User
+	postImage     []byte
+	mojiImage     []byte
+	language      string
+	firstDate     time.Time
+	previousPosts []client.Post
+	cycles        int
 }
 
 func NewRunner(cfg Config) (*Runner, error) {
-	postImage, err := imagegen.JPEG(postImageSize, postImageSize, 1)
-	if err != nil {
-		return nil, fmt.Errorf("generate post image: %w", err)
+	if cfg.Region == "" {
+		cfg.Region = "asia"
 	}
-	mojiImage, err := imagegen.JPEG(realMojiImageSize, realMojiImageSize, 2)
-	if err != nil {
-		return nil, fmt.Errorf("generate realmoji image: %w", err)
+	if countries[cfg.Region] == "" {
+		return nil, fmt.Errorf("invalid region %q", cfg.Region)
 	}
-	return &Runner{
-		cfg:       cfg,
-		api:       client.NewWithHost(cfg.Target, cfg.Host),
-		clock:     vt.NewClock(),
-		board:     score.NewBoard(),
-		postImage: postImage,
-		mojiImage: mojiImage,
-	}, nil
+	if cfg.Users < 1 || cfg.MaxCycles < 0 {
+		return nil, fmt.Errorf("users must be positive and cycles must be nonnegative")
+	}
+	if cfg.Logger == nil {
+		cfg.Logger = slog.Default()
+	}
+	postImage, err := imagegen.JPEG(64, 64, 1)
+	if err != nil {
+		return nil, err
+	}
+	mojiImage, err := imagegen.JPEG(32, 32, 2)
+	if err != nil {
+		return nil, err
+	}
+	api := client.NewWithHost(cfg.Target, cfg.Host)
+	api.SetCountry(countries[cfg.Region])
+	return &Runner{cfg: cfg, api: api, board: score.NewBoard(), postImage: postImage, mojiImage: mojiImage}, nil
 }
 
-// Run executes all phases. The returned Result is always usable; err is only
-// non-nil for infrastructure-level failures that prevented a verdict.
 func (r *Runner) Run(ctx context.Context) Result {
-	if reason, ok := r.initialize(ctx); !ok {
-		return r.failResult(reason)
+	reason := r.initialize(ctx)
+	if reason == "" {
+		reason = r.pretest(ctx)
 	}
-	if reason, ok := r.pretest(ctx); !ok {
-		return r.failResult(reason)
+	if reason == "" {
+		reason = r.prepareUsers(ctx)
 	}
-	r.load(ctx)
-	if r.abortReason != "" {
-		return r.failResult(r.abortReason)
+	if reason == "" {
+		reason = r.load(ctx)
 	}
-	return Result{
-		Pass:      true,
-		Score:     r.board.Total(),
-		Language:  r.language,
-		BaseTime:  r.baseTime,
-		Cycles:    r.cycles,
-		Breakdown: r.board.Breakdown(),
-		Errors:    r.board.Errors(),
+	if ctx.Err() != nil {
+		reason = ctx.Err().Error()
 	}
+	result := Result{Pass: reason == "", Language: r.language, Cycles: r.cycles, Breakdown: r.board.Breakdown(), Errors: r.board.Errors(), Reason: reason}
+	if result.Pass {
+		result.Score = r.board.Total()
+	}
+	return result
 }
 
-func (r *Runner) failResult(reason string) Result {
-	return Result{
-		Pass:      false,
-		Language:  r.language,
-		BaseTime:  r.baseTime,
-		Cycles:    r.cycles,
-		Breakdown: r.board.Breakdown(),
-		Errors:    r.board.Errors(),
-		Reason:    reason,
-	}
-}
-
-// --- phase 1: initialize (spec-bench.md §6) ---
-
-func (r *Runner) initialize(ctx context.Context) (string, bool) {
+func (r *Runner) initialize(ctx context.Context) string {
 	r.cfg.Logger.Info("phase: initialize")
-	initCtx, cancel := context.WithTimeout(ctx, initializeTimeout)
+	ctx, cancel := context.WithTimeout(ctx, initializeTimeout)
 	defer cancel()
-	result, err := r.api.Initialize(initCtx)
+	result, err := r.api.Initialize(ctx)
 	if err != nil {
-		return fmt.Sprintf("initialize failed: %v", err), false
+		return fmt.Sprintf("initialize failed: %v", err)
 	}
 	if result.Language == "" {
-		return "initialize response has empty language (INIT-04)", false
-	}
-	if result.BaseTime.IsZero() {
-		return "initialize response has zero base_time (VT-003)", false
+		return "initialize response has empty language"
 	}
 	r.language = result.Language
-	r.baseTime = result.BaseTime
-	r.clock.SetBase(result.BaseTime)
-	r.cfg.Logger.Info("initialized", "language", result.Language, "baseTime", result.BaseTime.Format(time.RFC3339))
-	// Give the worker time to pick up the reset virtual offset (D-006).
-	sleepCtx(ctx, offsetSyncWait)
-	return "", true
+	// localDate is a posting-window label; it does not advance the server clock.
+	now := time.Now().UTC()
+	r.firstDate = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+	return ""
 }
 
-// --- phase 2: pretest (spec-bench.md §7) ---
+func (r *Runner) registerAndLogin(ctx context.Context, name string) (client.User, error) {
+	registered, err := r.api.Register(ctx, name, name, r.cfg.Region)
+	if err != nil {
+		return client.User{}, err
+	}
+	if registered.ID == "" || registered.SecretKey == "" {
+		return client.User{}, fmt.Errorf("register: missing user ID or secretKey")
+	}
+	user, err := r.api.Login(ctx, name, registered.SecretKey)
+	if err != nil {
+		return client.User{}, err
+	}
+	if user.ID != registered.ID || user.Username != name || user.Token == "" {
+		return client.User{}, fmt.Errorf("login: user or token mismatch")
+	}
+	user.SecretKey = registered.SecretKey
+	return user, nil
+}
 
-func (r *Runner) pretest(ctx context.Context) (string, bool) {
+func (r *Runner) pretest(ctx context.Context) string {
 	r.cfg.Logger.Info("phase: pretest")
-
-	adminToken, err := r.api.AdminLogin(ctx, adminUsername, adminPassword)
+	token, err := r.api.AdminLogin(ctx, "admin", "password1234")
+	if err != nil || token == "" {
+		return fmt.Sprintf("admin login failed: token empty=%t error=%v", token == "", err)
+	}
+	r.adminToken = token
+	user, err := r.registerAndLogin(ctx, "bench_pretest_user")
 	if err != nil {
-		return fmt.Sprintf("admin login failed (PRE-004): %v", err), false
+		return fmt.Sprintf("register/login: %v", err)
 	}
-	r.adminToken = adminToken
-
-	seedUser, err := r.api.Login(ctx, seedUsername, seedSecretKey)
+	if _, err := r.api.Register(ctx, user.Username, "duplicate", r.cfg.Region); !isStatus(err, http.StatusConflict) {
+		return fmt.Sprintf("duplicate registration: want 409, got %v", err)
+	}
+	if _, err := r.api.Login(ctx, user.Username, "wrong-secret"); !isStatus(err, http.StatusUnauthorized) {
+		return fmt.Sprintf("wrong secret: want 401, got %v", err)
+	}
+	profile, err := r.api.Me(ctx, user.Token)
 	if err != nil {
-		return fmt.Sprintf("seeded user login failed: %v", err), false
+		return fmt.Sprintf("GET /me: %v", err)
 	}
-
-	if _, err := r.api.Login(ctx, seedUsername, "wrong-secret-000"); !isStatus(err, http.StatusUnauthorized) {
-		return fmt.Sprintf("login with wrong secret key: expected 401, got %v", err), false
+	if profile.ID != user.ID || profile.Username != user.Username || profile.Region != r.cfg.Region {
+		return fmt.Sprintf("GET /me: unexpected profile %+v", profile)
 	}
-
-	checkUsername := "bench_pretest_user"
-	registered, err := r.api.Register(ctx, checkUsername, "Pretest User", benchUserRegion)
+	feed, err := r.api.Feed(ctx, user.Token, "public", nil)
+	if err != nil || len(feed.Items) != 0 || feed.HasMore {
+		return fmt.Sprintf("feed before posting: want empty, got %+v, error=%v", feed, err)
+	}
+	replacement, err := r.api.Login(ctx, user.Username, user.SecretKey)
 	if err != nil {
-		return fmt.Sprintf("register failed: %v", err), false
+		return fmt.Sprintf("second login: %v", err)
 	}
-	if _, err := r.api.Register(ctx, checkUsername, "Pretest User", benchUserRegion); !isStatus(err, http.StatusConflict) {
-		return fmt.Sprintf("duplicate register: expected 409, got %v", err), false
+	if _, err := r.api.Me(ctx, user.Token); !isStatus(err, http.StatusUnauthorized) {
+		return fmt.Sprintf("previous session: want 401, got %v", err)
 	}
-
-	profile, err := r.api.Me(ctx, registered.Token)
-	if err != nil {
-		return fmt.Sprintf("GET /me failed: %v", err), false
+	if err := r.api.Logout(ctx, replacement.Token); err != nil {
+		return fmt.Sprintf("logout: %v", err)
 	}
-	if profile.Username != checkUsername || profile.Region != benchUserRegion {
-		return fmt.Sprintf("GET /me returned username=%q region=%q, want %q/%q", profile.Username, profile.Region, checkUsername, benchUserRegion), false
+	if _, err := r.api.Me(ctx, replacement.Token); !isStatus(err, http.StatusUnauthorized) {
+		return fmt.Sprintf("logged-out session: want 401, got %v", err)
 	}
-
-	// FR-012: before posting, the feed must not expose other posts.
-	feed, err := r.api.Feed(ctx, seedUser.Token, "public", "")
-	if err != nil {
-		return fmt.Sprintf("feed before posting failed: %v", err), false
-	}
-	if len(feed.Items) != 0 {
-		return fmt.Sprintf("feed before posting: expected 0 items (FR-012), got %d", len(feed.Items)), false
-	}
-
-	r.cfg.Logger.Info("pretest passed")
-	return "", true
-}
-
-// --- phase 3: load (spec-bench.md §8, basic cycle) ---
-
-func (r *Runner) load(ctx context.Context) {
-	r.cfg.Logger.Info("phase: load", "users", r.cfg.Users, "duration", loadDuration.String(), "maxCycles", r.cfg.MaxCycles)
-	if reason := r.prepareUsers(ctx); reason != "" {
-		r.board.Errorf("%s", reason)
-		return
-	}
-	deadline := time.Now().Add(loadDuration)
-	for cycle := 0; r.hasNextCycle(cycle, deadline); cycle++ {
-		if ctx.Err() != nil {
-			return
-		}
-		if ok := r.runCycle(ctx, cycle); !ok {
-			return
-		}
-		r.cycles++
-		if r.shouldAbort() {
-			return
-		}
-		if !r.hasNextCycle(cycle+1, deadline.Add(-offsetSyncWait)) {
-			break
-		}
-		if !r.advanceToNextDay(ctx, cycle) {
-			return
-		}
-	}
-}
-
-// hasNextCycle decides whether cycle should run: a fixed cycle count when
-// MaxCycles is set, otherwise the real-time deadline.
-func (r *Runner) hasNextCycle(cycle int, deadline time.Time) bool {
-	if r.cfg.MaxCycles > 0 {
-		return cycle < r.cfg.MaxCycles
-	}
-	return time.Now().Before(deadline)
-}
-
-// shouldAbort marks the run as fail once the total error count reaches the
-// threshold (D-009). The abort survives into the final Result.
-func (r *Runner) shouldAbort() bool {
-	if r.abortReason != "" {
-		return true
-	}
-	if count := r.board.ErrorCount(); count >= abortErrorThreshold {
-		r.abortReason = fmt.Sprintf("load aborted: error count reached %d (threshold %d, D-009)", count, abortErrorThreshold)
-		r.cfg.Logger.Error("load aborted", "errorCount", count, "threshold", abortErrorThreshold)
-		return true
-	}
-	return false
+	return ""
 }
 
 func (r *Runner) prepareUsers(ctx context.Context) string {
-	r.users = make([]client.User, 0, r.cfg.Users)
 	for index := range r.cfg.Users {
-		username := fmt.Sprintf("bench_user_%03d", index)
-		user, err := r.api.Register(ctx, username, fmt.Sprintf("Bench User %03d", index), benchUserRegion)
+		user, err := r.registerAndLogin(ctx, fmt.Sprintf("bench_user_%03d", index))
 		if err != nil {
-			return fmt.Sprintf("load user registration failed: %v", err)
+			return fmt.Sprintf("load user registration: %v", err)
 		}
 		r.users = append(r.users, user)
 	}
 	return ""
 }
 
-func (r *Runner) runCycle(ctx context.Context, cycle int) bool {
-	scheduledAt := r.clock.Now().Add(scheduleLead)
-	if err := r.api.SetSchedule(ctx, r.adminToken, benchUserRegion, scheduledAt); err != nil {
-		r.board.Errorf("set schedule (cycle %d): %v", cycle, err)
-		return false
+func (r *Runner) load(ctx context.Context) string {
+	r.cfg.Logger.Info("phase: load", "users", len(r.users), "region", r.cfg.Region, "maxCycles", r.cfg.MaxCycles)
+	if r.cfg.MaxCycles == 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, loadDuration)
+		defer cancel()
 	}
-	window, ok := r.waitForWindow(ctx, r.clock.LocalDate(asiaUTCOffset))
-	if !ok {
-		r.board.Errorf("posting window did not open within %s (cycle %d, FR-003)", windowPollTimeout, cycle)
-		return false
-	}
-	r.cfg.Logger.Info("cycle window open", "cycle", cycle, "localDate", window.LocalDate)
-
-	r.checkNotifications(ctx, window.ID)
-	r.fanOutUsers(ctx, cycle)
-	if r.shouldAbort() {
-		return false
-	}
-	if cycle > 0 {
-		r.checkMemories(ctx)
-	}
-	return true
-}
-
-func (r *Runner) waitForWindow(ctx context.Context, wantLocalDate string) (client.Window, bool) {
-	pollCtx, cancel := context.WithTimeout(ctx, windowPollTimeout)
-	defer cancel()
-	ticker := time.NewTicker(windowPollEvery)
-	defer ticker.Stop()
-	probe := r.users[0]
-	for {
-		status, err := r.api.CurrentWindow(pollCtx, probe.Token)
-		if err == nil && status.Window != nil && status.Window.LocalDate == wantLocalDate {
-			return *status.Window, true
+	for cycle := 0; r.cfg.MaxCycles == 0 || cycle < r.cfg.MaxCycles; cycle++ {
+		if ctx.Err() != nil {
+			return ""
 		}
-		select {
-		case <-pollCtx.Done():
-			return client.Window{}, false
-		case <-ticker.C:
+		reason := r.runCycle(ctx, cycle)
+		if ctx.Err() != nil {
+			return ""
+		}
+		if reason != "" {
+			return reason
+		}
+		r.cycles++
+		if r.board.ErrorCount() >= abortErrorThreshold {
+			return fmt.Sprintf("load aborted: error count reached %d", r.board.ErrorCount())
 		}
 	}
+	return ""
 }
 
-func (r *Runner) checkNotifications(ctx context.Context, windowID string) {
-	page, err := r.api.Notifications(ctx, r.users[0].Token)
-	if err != nil {
-		r.board.Errorf("notifications: %v", err)
-		return
-	}
-	for _, notification := range page.Items {
-		if notification.PostingWindowID == windowID {
-			r.board.Add(score.TagNotification)
-			return
-		}
-	}
-	r.board.Errorf("GET /api/v1/notifications: expected a notification for window %s (FR-002), got none", windowID)
-}
-
-func (r *Runner) fanOutUsers(ctx context.Context, cycle int) {
+func parallel(count int, fn func(int)) {
 	var wg sync.WaitGroup
-	wg.Add(len(r.users))
-	for index, user := range r.users {
-		go func() {
-			defer wg.Done()
-			r.runUserTurn(ctx, cycle, index, user)
-		}()
+	for index := range count {
+		wg.Go(func() { fn(index) })
 	}
 	wg.Wait()
 }
 
-func (r *Runner) runUserTurn(ctx context.Context, cycle, index int, user client.User) {
-	caption := fmt.Sprintf("cycle %d from %s", cycle, user.Username)
-	err := retryOn503(ctx, func() error {
-		_, postErr := r.api.CreatePost(ctx, user.Token, r.postImage, caption, "public")
-		return postErr
-	})
-	if err != nil {
-		r.board.Errorf("create post (%s): %v", user.Username, err)
-		return
+func (r *Runner) recordError(ctx context.Context, format string, args ...any) {
+	if ctx.Err() == nil {
+		r.board.Errorf(format, args...)
 	}
-	r.board.Add(score.TagPost)
+}
 
-	page, err := r.api.Feed(ctx, user.Token, "public", "")
+func (r *Runner) runCycle(ctx context.Context, cycle int) string {
+	date := r.firstDate.AddDate(0, 0, cycle).Format(time.DateOnly)
+	notifyCtx, cancel := context.WithTimeout(ctx, notificationTimeout)
+	defer cancel()
+	streams := make([]*client.NotificationStream, len(r.users))
+	defer func() {
+		for _, stream := range streams {
+			if stream != nil {
+				_ = stream.Close()
+			}
+		}
+	}()
+	parallel(len(r.users), func(i int) {
+		var err error
+		streams[i], err = r.api.OpenNotifications(notifyCtx, r.users[i].Token)
+		if err != nil {
+			r.recordError(ctx, "connect notifications (%s): %v", r.users[i].Username, err)
+		}
+	})
+	window, err := r.api.OpenWindow(ctx, r.adminToken, r.cfg.Region, date)
 	if err != nil {
-		r.board.Errorf("feed (%s): %v", user.Username, err)
+		return fmt.Sprintf("open posting window: %v", err)
+	}
+	if window.ID == "" || window.Region != r.cfg.Region || window.LocalDate != date {
+		return fmt.Sprintf("open posting window: unexpected response %+v", window)
+	}
+	r.cfg.Logger.Info("cycle window open", "cycle", cycle, "localDate", date)
+	notified := make([]bool, len(r.users))
+	parallel(len(r.users), func(i int) {
+		if streams[i] == nil {
+			return
+		}
+		notification, err := streams[i].Receive()
+		if err != nil {
+			if notifyCtx.Err() == nil && !errors.Is(err, io.EOF) {
+				r.recordError(ctx, "receive notification: %v", err)
+			}
+			return
+		}
+		if notification.ID == "" || notification.PostingWindowID != window.ID || notification.Region != r.cfg.Region {
+			r.recordError(ctx, "notification: expected window %s/%s, got %+v", window.ID, r.cfg.Region, notification)
+			return
+		}
+		notified[i] = true
+		r.board.Add(score.TagNotification)
+	})
+	posts := make([]client.Post, len(r.users))
+	parallel(len(r.users), func(i int) {
+		if !notified[i] {
+			return
+		}
+		user := r.users[i]
+		status, err := r.api.CurrentWindow(ctx, user.Token)
+		if err != nil || status.Window == nil || status.Window.ID != window.ID || !status.CanPost || status.HasPosted {
+			r.recordError(ctx, "current window (%s): expected %s and canPost, got %+v, error=%v", user.Username, window.ID, status, err)
+			return
+		}
+		post, err := r.api.CreatePost(ctx, user.Token, r.postImage, fmt.Sprintf("cycle %d from %s", cycle, user.Username), "public")
+		if err != nil {
+			r.recordError(ctx, "create post (%s): %v", user.Username, err)
+			return
+		}
+		if post.ID == "" || post.Author.ID != user.ID || post.PostedAt.IsZero() {
+			r.recordError(ctx, "create post (%s): unexpected response %+v", user.Username, post)
+			return
+		}
+		image, err := r.api.Image(ctx, user.Token, post.ImageURL)
+		if err != nil || !bytes.Equal(image, r.postImage) {
+			r.recordError(ctx, "post image (%s): bytes mismatch or error=%v", user.Username, err)
+			return
+		}
+		posts[i] = post
+		r.board.Add(score.TagPost)
+	})
+	parallel(len(r.users), func(i int) {
+		if posts[i].ID != "" {
+			r.interact(ctx, cycle, i, posts)
+		}
+		if cycle > 0 && r.previousPosts[i].ID != "" {
+			r.checkMemory(ctx, i, r.firstDate.AddDate(0, 0, cycle-1).Format("2006-01"), r.previousPosts[i].ID)
+		}
+	})
+	r.previousPosts = posts
+	return ""
+}
+
+func (r *Runner) interact(ctx context.Context, cycle, index int, posts []client.Post) {
+	user := r.users[index]
+	known := make(map[string]client.Post)
+	for i, post := range posts {
+		if i != index && post.ID != "" {
+			known[post.ID] = post
+		}
+	}
+	seen := make(map[string]bool)
+	var before *client.Post
+	var items []client.Post
+	for {
+		page, err := r.api.Feed(ctx, user.Token, "public", before)
+		if err != nil {
+			r.recordError(ctx, "feed (%s): %v", user.Username, err)
+			return
+		}
+		for _, post := range page.Items {
+			expected, ok := known[post.ID]
+			if !ok || seen[post.ID] || post.Author.ID != expected.Author.ID {
+				r.recordError(ctx, "feed (%s): unexpected or duplicate post %s", user.Username, post.ID)
+				return
+			}
+			seen[post.ID] = true
+			items = append(items, post)
+		}
+		if !page.HasMore {
+			break
+		}
+		if len(page.Items) == 0 {
+			r.recordError(ctx, "feed: hasMore with empty items")
+			return
+		}
+		last := page.Items[len(page.Items)-1]
+		before = &last
+	}
+	if len(seen) != len(known) {
+		r.recordError(ctx, "feed (%s): expected %d posts, got %d", user.Username, len(known), len(seen))
 		return
 	}
 	r.board.Add(score.TagFeed)
-
-	interacted := 0
-	for _, post := range page.Items {
-		if post.Author.ID == user.ID {
-			r.board.Errorf("GET /api/v1/feeds/public: expected feed to exclude own posts, got post %s by %s", post.ID, user.Username)
-			continue
-		}
-		if interacted >= interactionsPerUser {
+	for n, post := range items {
+		if n >= interactionsPerUser {
 			break
 		}
-		reaction := reactionTypes[(cycle+index+interacted)%len(reactionTypes)]
-		mojiErr := retryOn503(ctx, func() error {
-			return r.api.ReplaceRealMoji(ctx, user.Token, post.ID, reaction, r.mojiImage)
-		})
-		if mojiErr != nil {
-			r.board.Errorf("realmoji (%s): %v", user.Username, mojiErr)
+		reaction := reactionTypes[(cycle+index+n)%len(reactionTypes)]
+		if err := r.api.ReplaceRealMoji(ctx, user.Token, post.ID, reaction, r.mojiImage); err != nil {
+			r.recordError(ctx, "realmoji (%s): %v", user.Username, err)
 		} else {
 			r.board.Add(score.TagRealMoji)
 		}
-		comment := fmt.Sprintf("nice one! (cycle %d, %s)", cycle, user.Username)
-		if err := r.api.CreateComment(ctx, user.Token, post.ID, comment); err != nil {
-			r.board.Errorf("comment (%s): %v", user.Username, err)
+		if err := r.api.CreateComment(ctx, user.Token, post.ID, fmt.Sprintf("cycle %d from %s", cycle, user.Username)); err != nil {
+			r.recordError(ctx, "comment (%s): %v", user.Username, err)
 		} else {
 			r.board.Add(score.TagComment)
 		}
-		interacted++
 	}
 }
 
-func (r *Runner) checkMemories(ctx context.Context) {
-	month := r.clock.Now().Add(asiaUTCOffset).Format("2006-01")
-	page, err := r.api.MemoriesMonth(ctx, r.users[0].Token, month)
-	if err != nil {
-		r.board.Errorf("memories: %v", err)
-		return
+func (r *Runner) checkMemory(ctx context.Context, index int, month, postID string) {
+	var before *client.Post
+	seen := make(map[string]bool)
+	for {
+		page, err := r.api.MemoriesMonth(ctx, r.users[index].Token, month, before)
+		if err != nil {
+			r.recordError(ctx, "memories: %v", err)
+			return
+		}
+		for _, post := range page.Items {
+			if seen[post.ID] {
+				r.recordError(ctx, "memories: duplicate post %s", post.ID)
+				return
+			}
+			seen[post.ID] = true
+			if post.ID == postID {
+				r.board.Add(score.TagMemory)
+				return
+			}
+		}
+		if !page.HasMore || len(page.Items) == 0 {
+			r.recordError(ctx, "memories month %s: missing previous post %s", month, postID)
+			return
+		}
+		last := page.Items[len(page.Items)-1]
+		before = &last
 	}
-	if len(page.Items) == 0 {
-		r.board.Errorf("GET /api/v1/memories?month=%s: expected past windows to appear (FR-016), got 0 items", month)
-		return
-	}
-	r.board.Add(score.TagMemory)
-}
-
-// advanceToNextDay moves the virtual clock so the next cycle lands on the
-// following calendar day at 00:00 UTC (VT-API-05: only between cycles).
-func (r *Runner) advanceToNextDay(ctx context.Context, cycle int) bool {
-	nextBase := r.baseTime.Add(time.Duration(cycle+1) * virtualDay)
-	delta := nextBase.Sub(r.clock.Now())
-	offsetSeconds := int64(math.Ceil(delta.Seconds()))
-	if offsetSeconds <= 0 {
-		offsetSeconds = 1
-	}
-	if _, err := r.api.AdvanceVirtualTime(ctx, offsetSeconds); err != nil {
-		r.board.Errorf("advance virtual time (cycle %d): %v", cycle, err)
-		return false
-	}
-	r.clock.Advance(time.Duration(offsetSeconds) * time.Second)
-	// D-006: wait until every application process reflects the new offset.
-	sleepCtx(ctx, offsetSyncWait)
-	return ctx.Err() == nil
 }
 
 func isStatus(err error, status int) bool {
 	var apiErr *client.APIError
 	return errors.As(err, &apiErr) && apiErr.Status == status
-}
-
-// retryOn503 retries fn with linear backoff while it fails with 503.
-func retryOn503(ctx context.Context, fn func() error) error {
-	var err error
-	for attempt := range retryAttempts {
-		err = fn()
-		if err == nil || !isStatus(err, http.StatusServiceUnavailable) {
-			return err
-		}
-		sleepCtx(ctx, retryBaseDelay*time.Duration(attempt+1))
-		if ctx.Err() != nil {
-			return err
-		}
-	}
-	return err
-}
-
-func sleepCtx(ctx context.Context, d time.Duration) {
-	timer := time.NewTimer(d)
-	defer timer.Stop()
-	select {
-	case <-ctx.Done():
-	case <-timer.C:
-	}
 }
