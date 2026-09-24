@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { register } from '../../api/account';
+import { login, register } from '../../api/account';
 import { SecretKeyPanel } from './SecretKeyPanel';
 
 export function RegisterPage(): React.JSX.Element {
@@ -23,7 +23,8 @@ export function RegisterPage(): React.JSX.Element {
     return (
       <main className="auth-page">
         <SecretKeyPanel secretKey={secretKey} />
-        <button type="button" onClick={() => navigate('/')}>はじめる</button>
+        {error && <p role="alert">{error}</p>}
+        <button type="button" onClick={() => void login(username, secretKey).then(() => navigate('/')).catch(() => setError('ログインできませんでした。再度お試しください。'))}>はじめる</button>
       </main>
     );
   }
@@ -31,7 +32,7 @@ export function RegisterPage(): React.JSX.Element {
     <main className="auth-page">
       <form onSubmit={(event) => void submit(event)}>
         <h1>新規登録</h1>
-        <label>ユーザー名<input required maxLength={64} pattern="[A-Za-z0-9_.\-]+" value={username} onChange={(event) => setUsername(event.target.value)} /></label>
+        <label>ユーザー名<input required maxLength={64} pattern="[a-z0-9_.\-]+" value={username} onChange={(event) => setUsername(event.target.value)} /></label>
         <label>表示名<input required maxLength={100} value={displayName} onChange={(event) => setDisplayName(event.target.value)} /></label>
         <label>地域<select value={region} onChange={(event) => setRegion(event.target.value)}><option value="america">アメリカ</option><option value="europe">ヨーロッパ</option><option value="asia">アジア</option></select></label>
         {error && <p role="alert">{error}</p>}

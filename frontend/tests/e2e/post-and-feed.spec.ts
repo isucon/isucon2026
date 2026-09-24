@@ -10,16 +10,16 @@ test('投稿画面は友達を既定値にし、投稿後に自己投稿と4フ�
     postingWindowId: '30000000-0000-0000-0000-000000000001', imageUrl: '/test-image.jpg', caption: '', visibility: 'friends',
     location: { kind: 'none' }, postedAt: '2026-07-19T12:00:00Z', onTime: true, lateSeconds: 0,
   };
-  await page.route('**/api/v1/**', async (route) => {
+  await page.route('**://*/api/**', async (route) => {
     const path = new URL(route.request().url()).pathname;
-    if (path === '/api/v1/posts' && route.request().method() === 'POST') {
+    if (path === '/api/posts' && route.request().method() === 'POST') {
       await route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify(post) }); return;
     }
-    if (path === '/api/v1/posts/me/current') {
+    if (path === '/api/posts/me/current') {
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(post) }); return;
     }
-    if (path.startsWith('/api/v1/feeds/')) {
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ items: [], nextCursor: null }) }); return;
+    if (path.startsWith('/api/feeds/')) {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ items: [], hasMore: false }) }); return;
     }
     await route.fulfill({ status: 404, contentType: 'application/problem+json', body: '{}' });
   });
@@ -40,7 +40,7 @@ test('投稿画面は友達を既定値にし、投稿後に自己投稿と4フ�
   await page.reload();
   await page.goto('/posts/new');
   await expect(page.getByRole('radio', { name: '友達', exact: true })).toBeChecked();
-  await expect(page.locator('input[type=file]')).toHaveCount(0);
+  await expect(page.locator('input[type=file]')).toHaveCount(1);
   await expect(page.getByLabel('投稿用カメラ')).toBeVisible();
   await page.getByRole('button', { name: '撮影する' }).click();
   await expect(page.getByAltText('投稿画像のプレビュー')).toBeVisible();

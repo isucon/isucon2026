@@ -1,36 +1,17 @@
-import { jsonRequest } from './client';
-import { randomUUID } from './ids';
+import { apiFetch, APIError } from './client';
 
 export interface NotificationItem {
   id: string;
   postingWindowId: string;
   region: 'america' | 'europe' | 'asia';
   createdAt: string;
-  read: boolean;
 }
 
-export interface NotificationPage {
-  items: NotificationItem[];
-  nextCursor: string | null;
+export async function receiveNotification(signal: AbortSignal): Promise<NotificationItem | null> {
+  const response = await apiFetch('/notifications', { headers: { Accept: 'text/event-stream' }, signal });
+  if (!response.ok) throw new APIError(response.status, await response.json().catch(() => null));
+  // The server closes the stream after delivering one event.
+  const body = await response.text();
+  const data = body.split(/\r?\n/).filter(line => line.startsWith('data:')).map(line => line.slice(5).trimStart()).join('\n');
+  return data ? JSON.parse(data) as NotificationItem : null;
 }
-
-const idempotencyHeaders = (): HeadersInit => ({ 'Idempotency-Key': randomUUID() });
-
-export const listNotifications = (cursor?: string) =>
-  jsonRequest<NotificationPage>(`/notifications${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`);
-
-export const openNotification = (id: string) =>
-  jsonRequest<{ destination: 'create-post' | 'my-current-post' | 'memory'; path: string }>(
-    `/notifications/${id}/open`,
-    { method: 'POST', headers: idempotencyHeaders() },
-  );
-
-export const replacePushSubscription = (subscription: PushSubscriptionJSON) =>
-  jsonRequest<void>('/me/push-subscription', {
-    method: 'PUT',
-    headers: { ...idempotencyHeaders(), 'Content-Type': 'application/json' },
-    body: JSON.stringify(subscription),
-  });
-
-export const removePushSubscription = () =>
-  jsonRequest<void>('/me/push-subscription', { method: 'DELETE', headers: idempotencyHeaders() });

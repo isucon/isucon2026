@@ -54,6 +54,7 @@ export async function replaceToken(token: string): Promise<void> {
 }
 
 export async function clearToken(): Promise<void> {
+  sessionStorage.removeItem('isureal-me');
   await transact<undefined>('readwrite', (store) => store.delete(tokenKey));
   window.dispatchEvent(new Event(sessionEvent));
 }

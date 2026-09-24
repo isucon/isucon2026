@@ -14,7 +14,7 @@
     "typecheck": "tsc -b --pretty false",
     "test": "vitest run --passWithNoTests",
     "test:e2e": "playwright test",
-    "test:e2e:compose": "ISUREAL_COMPOSE_E2E=1 PLAYWRIGHT_BASE_URL=http://localhost:5173 playwright test tests/e2e/compose-photo-upload.spec.ts",
+    "test:e2e:compose": "ISUREAL_COMPOSE_E2E=1 ISUREAL_API_PROXY_TARGET=http://asia.127.0.0.1.nip.io:18090 PLAYWRIGHT_BASE_URL=http://127.0.0.1:5173 playwright test tests/e2e/compose-photo-upload.spec.ts",
     "test:contract": "redocly lint --config redocly.yaml ../specs/001-isureal-social-app/contracts/openapi.yaml",
     "generate:api": "openapi-typescript ../specs/001-isureal-social-app/contracts/openapi.yaml -o src/api/schema.d.ts",
     "check:openapi": "node scripts/check-openapi.mjs",

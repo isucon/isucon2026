@@ -10,7 +10,7 @@ export function AuthenticatedImage({ src, ...props }: Props): React.JSX.Element 
     const controller = new AbortController();
     let nextObjectUrl: string | undefined;
     setObjectUrl(undefined);
-    void apiFetch(src.replace(/^\/api\/v1/, ''), { signal: controller.signal })
+    void apiFetch(src.replace(/^\/api/, ''), { signal: controller.signal })
       .then((response) => {
         if (!response.ok) throw new Error(`Image request failed with status ${response.status}`);
         return response.blob();
