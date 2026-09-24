@@ -1,5 +1,5 @@
+import { pageRequest } from './pagination';
 import { jsonRequest } from './client';
-import { randomUUID } from './ids';
 
 export type Visibility = 'friends' | 'friends_of_friends' | 'public';
 export type FeedKind = 'friends' | 'friends-of-friends' | 'public' | 'following';
@@ -21,17 +21,20 @@ export interface Post {
   lateSeconds: number;
 }
 
-export interface PostPage { items: Post[]; nextCursor: string | null }
-
-const mutationHeaders = (): HeadersInit => ({ 'Idempotency-Key': randomUUID() });
+export interface PostPage { items: Post[]; nextPage: string | null }
 
 export function createPost(input: { image: File; caption: string; visibility: Visibility; location: Location }): Promise<Post> {
   const body = new FormData();
   body.set('image', input.image);
   body.set('caption', input.caption);
   body.set('visibility', input.visibility);
-  body.set('location', new Blob([JSON.stringify(input.location)], { type: 'application/json' }), 'location.json');
-  return jsonRequest<Post>('/posts', { method: 'POST', headers: mutationHeaders(), body });
+  body.set('location_kind', input.location.kind);
+  if (input.location.kind === 'exact') {
+    body.set('latitude', String(input.location.latitude));
+    body.set('longitude', String(input.location.longitude));
+  }
+  if (input.location.kind === 'approximate') body.set('locality', input.location.locality);
+  return jsonRequest<Post>('/posts', { method: 'POST', body });
 }
 
 export function getMyCurrentPost(): Promise<Post> {
@@ -41,15 +44,14 @@ export function getPost(postId:string):Promise<Post>{return jsonRequest<Post>(`/
 
 export function updatePost(postId: string, input: { caption?: string; visibility?: Visibility }): Promise<Post> {
   return jsonRequest<Post>(`/posts/${postId}`, {
-    method: 'PATCH', headers: { ...mutationHeaders(), 'Content-Type': 'application/json' }, body: JSON.stringify(input),
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input),
   });
 }
 
 export function deletePost(postId: string): Promise<void> {
-  return jsonRequest<void>(`/posts/${postId}`, { method: 'DELETE', headers: mutationHeaders() });
+  return jsonRequest<void>(`/posts/${postId}`, { method: 'DELETE', });
 }
 
-export function getFeed(feed: FeedKind, cursor?: string): Promise<PostPage> {
-  const query = cursor ? `?cursor=${encodeURIComponent(cursor)}` : '';
-  return jsonRequest<PostPage>(`/feeds/${feed}${query}`);
+export function getFeed(feed: FeedKind, next?: string): Promise<PostPage> {
+  return pageRequest<Post>(`/feeds/${feed}`, next, post => ({ beforePostedAt: post.postedAt, beforeId: post.id }));
 }

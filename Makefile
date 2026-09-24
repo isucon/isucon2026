@@ -193,3 +193,17 @@ aws-infra-destroy:
 	cd provisioning/aws && pulumi destroy --stack "$(or $(STACK),dev)"
 
 check: proto-lint vet frontend-lint frontend-typecheck contract test build
+
+.PHONY: dev-up dev-down dev-logs dev-check
+
+dev-up:
+	docker compose up -d --build --wait --wait-timeout 180
+
+dev-down:
+	docker compose down
+
+dev-logs:
+	docker compose logs -f
+
+dev-check:
+	python3 deploy/dev/smoke.py

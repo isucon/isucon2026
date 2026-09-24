@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiFetch } from '../api/client';
-import { randomUUID } from '../api/ids';
 import { clearToken } from './auth';
 
 export function LogoutButton(): React.JSX.Element {
@@ -10,7 +9,7 @@ export function LogoutButton(): React.JSX.Element {
   async function logout(): Promise<void> {
     setBusy(true);
     try {
-      await apiFetch('/auth/logout', { method: 'POST', headers: { 'Idempotency-Key': randomUUID() } });
+      await apiFetch('/auth/logout', { method: 'POST' });
     } finally {
       await clearToken();
       navigate('/login', { replace: true });
