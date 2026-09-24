@@ -30,7 +30,10 @@ export class Landing extends React.Component<Props, State> {
       <header className="hero">
         <div className="hero-body">
           <div className="isux-landing-logo-wrapper container has-text-centered">
-            <img src="/isucon14_logo.png" />
+            <img src="/isucon2026-logo.svg" alt="ISUCON2026" />
+            <p>
+              開催日：<time dateTime="2026-10-31">2026年10月31日（土）</time>
+            </p>
           </div>
         </div>
       </header>
@@ -50,26 +53,12 @@ export class Landing extends React.Component<Props, State> {
       return (
         <main>
           <p className="block">参加登録は右上から行えます</p>
-          <p className="block">
-            予選参加確定枠を利用される方は2024年10月10日以降、本登録開始となります。
-            <br />
-            個別にメールにて案内している手順を参照してください。
-            <br />
-            予選参加確定枠のチームメンバーは代表者の方から招待を受け取ってください。
-          </p>
         </main>
       );
     } else {
       return (
         <main>
           <p className="block">現在は参加登録を受け付けていません</p>
-          <p className="block">
-            予選参加確定枠を利用される方は2024年10月10日以降、本登録開始となります。
-            <br />
-            個別にメールにて案内している手順を参照してください。
-            <br />
-            予選参加確定枠のチームメンバーは代表者の方から招待を受け取ってください。
-          </p>
         </main>
       );
     }
