@@ -131,6 +131,12 @@ bypass token の Ruby ⇔ Go 相互運用などを検証する。
 [登録情報の移行手順](docs/registration-migration.md) を参照してください。
 検証専用モードと、空の DB に取り込む `cmd/import-registration` を用意しています。
 
+## 負荷試験用の履歴データ
+
+8時間に1000チームが3〜5分間隔で実行した履歴を `go run ./cmd/loadfixture` で生成できます。
+初回と各回の投入時刻をランダム化し、結果、ログ、通知、ランキング用の参照を含む SQL を出力します。
+生成と投入の手順は [loadtest/README.md](loadtest/README.md) を参照してください。
+
 ## 運用
 
 - 本番はさくらのクラウド 石狩第 3 ゾーンに Docker Swarm で載せる。手順と構成は
