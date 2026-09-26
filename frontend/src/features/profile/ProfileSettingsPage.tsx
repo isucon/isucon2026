@@ -1,12 +1,15 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { cachedMe, deleteProfileImage, getMe, putProfileImage, requestAccountDeletion, updateMe, type Me } from '../../api/account';
+import { cachedMe, deleteProfileImage, exportPosts, getMe, putProfileImage, requestAccountDeletion, updateMe, type Me } from '../../api/account';
 import { APIError } from '../../api/client';
 import { clearToken, getSecretKey } from '../../app/auth';
 import { SecretKeyPanel } from '../auth/SecretKeyPanel';
 import { RegionSettings } from './RegionSettings';
 
 export function ProfileSettingsPage(): React.JSX.Element {
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState('');
+  const [exportStatus, setExportStatus] = useState('');
   const [error, setError] = useState('');
   const [me, setMe] = useState<Me | null>(null);
   const [display, setDisplay] = useState('');
@@ -40,6 +43,30 @@ export function ProfileSettingsPage(): React.JSX.Element {
       setError('');
     } catch { setError('保存できませんでした。'); }
   }
+  async function downloadPosts() {
+    if (exporting) return;
+    setExporting(true);
+    setExportError('');
+    setExportStatus('');
+    try {
+      const blob = await exportPosts();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'isureal-posts.zip';
+      document.body.appendChild(link);
+      try { link.click(); }
+      finally {
+        link.remove();
+        window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      }
+      setExportStatus('ダウンロードを開始しました。');
+    } catch (reason) {
+      setExportError(reason instanceof APIError && reason.status === 403
+        ? '接続先の地域を確認してください。'
+        : 'エクスポートできませんでした。もう一度お試しください。');
+    } finally { setExporting(false); }
+  }
   async function removeAccount() {
     if (!window.confirm('退会しますか？このアカウントは復元できず、同じユーザー名で再登録できません。')) return;
     try { await requestAccountDeletion(); await clearToken(); navigate('/login'); }
@@ -57,6 +84,15 @@ export function ProfileSettingsPage(): React.JSX.Element {
       </form>
       {me.profileImageUrl && <button onClick={() => void deleteProfileImage().then(load).catch(() => setError('画像を削除できませんでした。'))}>画像を削除</button>}
       <RegionSettings me={me} onChange={setMe} />
+      <section aria-labelledby="export-heading">
+        <h2 id="export-heading">投稿のエクスポート</h2>
+        <p>全投稿の画像と投稿情報（JSON）を ZIP ファイルでダウンロードできます。削除済みの投稿は含まれません。</p>
+        <button disabled={exporting} onClick={() => void downloadPosts()}>
+          {exporting ? 'エクスポート中…' : '全投稿をダウンロード'}
+        </button>
+        <p role="status">{exporting ? 'ZIP ファイルを準備しています。投稿数によって時間がかかります。' : exportStatus}</p>
+        {exportError && <p role="alert">{exportError}</p>}
+      </section>
       <button className="danger" onClick={() => void removeAccount()}>退会する</button>
     </section>
   );
