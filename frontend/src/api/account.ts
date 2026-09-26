@@ -1,4 +1,4 @@
-import { jsonRequest } from './client';
+import { APIError, apiFetch, jsonRequest } from './client';
 import { pageRequest } from './pagination';
 import { replaceSecretKey, replaceToken } from '../app/auth';
 import type { Post } from './posts';
@@ -50,3 +50,9 @@ export const requestAccountDeletion = () => jsonRequest<void>('/me/account-delet
 const position = (post: MemoryPost) => ({ beforePostedAt: post.postedAt, beforeId: post.id });
 export const getMemories = (month: string, next?: string) => pageRequest<MemoryPost>(`/memories?month=${encodeURIComponent(month)}`, next, position);
 export const getMemoriesDate = (date: string, next?: string) => pageRequest<MemoryPost>(`/memories/${date}`, next, position);
+
+export async function exportPosts(): Promise<Blob> {
+  const response = await apiFetch('/me/export', { headers: { Accept: 'application/zip' } });
+  if (!response.ok) throw new APIError(response.status, await response.json().catch(() => null));
+  return response.blob();
+}

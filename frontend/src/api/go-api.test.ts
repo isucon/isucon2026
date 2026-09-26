@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { getFeed, createPost } from './posts';
-import { getMemories } from './account';
+import { exportPosts, getMemories } from './account';
 import { listComments, listRealMojis } from './interactions';
 import { listRelationships, searchUsers } from './relationships';
 import { receiveNotification } from './notifications';
@@ -81,5 +81,23 @@ describe('Go API contract', () => {
     await expect(jsonRequest('/me')).rejects.toEqual(new APIError(403, { error: 'region_mismatch' }));
     expect(changed).toHaveBeenCalledOnce();
     window.removeEventListener('isureal:region-mismatch', changed);
+  });
+});
+
+describe('post export', () => {
+  it('downloads ZIP bytes using the current bearer token', async () => {
+    const fetcher = vi.fn().mockResolvedValue(new Response('ZIP bytes', { headers: { 'Content-Type': 'application/zip' } }));
+    vi.stubGlobal('fetch', fetcher);
+    const blob = await exportPosts();
+    expect(await blob.text()).toBe('ZIP bytes');
+    expect(fetcher.mock.calls[0][0]).toBe('/api/me/export');
+    const headers = new Headers(fetcher.mock.calls[0][1].headers);
+    expect(headers.get('Authorization')).toBe('Bearer session');
+    expect(headers.get('Accept')).toBe('application/zip');
+  });
+
+  it.each([401, 403, 500])('rejects a failed export (%s)', async (status) => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{"error":"export_failed"}', { status })));
+    await expect(exportPosts()).rejects.toEqual(new APIError(status, { error: 'export_failed' }));
   });
 });
