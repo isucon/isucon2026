@@ -74,7 +74,7 @@ func TestRegionIntegration(t *testing.T) {
 		{"GET", "/api/memories?month=2026-09"}, {"GET", "/api/memories/2026-09-24"},
 		{"POST", "/api/posts/post/comments"}, {"GET", "/api/posts/post/comments"}, {"DELETE", "/api/comments/comment"},
 		{"POST", "/api/posts/post/realmojis"}, {"GET", "/api/posts/post/realmojis"}, {"DELETE", "/api/realmojis/reaction"},
-		{"GET", "/api/images/image"}, {"GET", "/api/notifications"}, {"POST", "/api/friend-requests"},
+		{"GET", "/api/notifications"}, {"POST", "/api/friend-requests"},
 		{"POST", "/api/friend-requests/request/accept"}, {"GET", "/api/relationships/friends"}, {"DELETE", "/api/friendships/other"},
 		{"PUT", "/api/follows/other"}, {"DELETE", "/api/follows/other"}, {"PUT", "/api/blocks/other"}, {"DELETE", "/api/blocks/other"},
 	}

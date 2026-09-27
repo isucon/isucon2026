@@ -35,7 +35,7 @@ func TestMemoryInteractionsIntegration(t *testing.T) {
 	exec(string(schema))
 	tokens := map[string]string{}
 	for _, id := range []string{"author", "reactor", "stranger"} {
-		exec(`INSERT INTO users(id,username,display_name,secret_key_hash,region) VALUES($1,$2,$3,'hash','asia')`, id, id, id)
+		exec(`INSERT INTO users(id,username,display_name,secret_key_hash,region) VALUES($1,$2,$3,'9caf06bb4436cdbfa20af9121a626bc1093c4f54b31c0fa937957856135345b6','asia')`, id, id, id)
 		session, err := CreateLoginSession(db, id)
 		if err != nil {
 			t.Fatal(err)
@@ -54,7 +54,7 @@ func TestMemoryInteractionsIntegration(t *testing.T) {
 	e.GET("/api/memories", getMemoriesHandler(h), SessionMiddleware(h, true))
 	e.GET("/api/memories/:date", getMemoriesByDateHandler(h), SessionMiddleware(h, true))
 	e.GET("/api/posts/:postId/comments", getCommentsHandler(h), SessionMiddleware(h, true))
-	e.GET("/api/images/:imageId", getImageHandler(h), SessionMiddleware(h, true))
+	e.GET("/api/images/:imageId", getImageHandler(h))
 	request := func(actor, path string, status int) *httptest.ResponseRecorder {
 		t.Helper()
 		req := httptest.NewRequest(http.MethodGet, path, nil)
@@ -83,7 +83,7 @@ func TestMemoryInteractionsIntegration(t *testing.T) {
 	}
 	for i := 0; i < 55; i++ {
 		id := fmt.Sprintf("r-%02d", i)
-		exec(`INSERT INTO users(id,username,secret_key_hash,display_name,region) VALUES($1,$2,'hash',$3,'asia')`, id, id, id)
+		exec(`INSERT INTO users(id,username,secret_key_hash,display_name,region) VALUES($1,$2,'9caf06bb4436cdbfa20af9121a626bc1093c4f54b31c0fa937957856135345b6',$3,'asia')`, id, id, id)
 		exec(`INSERT INTO image_objects(id,owner_user_id,data,media_type) VALUES($1,$2,$3,'image/jpeg')`, id+"-image", id, []byte("original bytes"))
 		exec(`INSERT INTO realmojis(id,post_id,reactor_id,image_id,reaction_type,created_at) VALUES($1,'author-post',$2,$3,'like','2026-09-24T01:00:00Z')`, id, id, id+"-image")
 		exec(`INSERT INTO comments(id,post_id,author_id,body,created_at) VALUES($1,'author-post',$2,'comment','2026-09-24T01:00:00Z')`, id, id)
@@ -111,7 +111,7 @@ func TestMemoryInteractionsIntegration(t *testing.T) {
 		if !bytes.Equal(rec.Body.Bytes(), []byte("original bytes")) {
 			t.Fatal("image bytes changed")
 		}
-		request("reactor", item.RealMojis[0].ImageURL, http.StatusNotFound)
+		request("", item.RealMojis[0].ImageURL, http.StatusOK)
 	}
 	request("author", "/api/posts/author-post/comments", http.StatusForbidden)
 	other := page("reactor", "/api/memories?month=2026-09")

@@ -42,7 +42,7 @@ func TestCreatePostIntegration(t *testing.T) {
 		}
 	}
 	userID, windowID := uuid.NewString(), uuid.NewString()
-	exec(`INSERT INTO users (id, username, secret_key_hash, display_name, region) VALUES ($1, 'alice', 'hash', 'アリス', 'asia')`, userID)
+	exec(`INSERT INTO users (id, username, secret_key_hash, display_name, region) VALUES ($1, 'alice', '9caf06bb4436cdbfa20af9121a626bc1093c4f54b31c0fa937957856135345b6', 'アリス', 'asia')`, userID)
 	session, err := CreateLoginSession(db, userID)
 	if err != nil {
 		t.Fatal(err)
@@ -54,7 +54,7 @@ func TestCreatePostIntegration(t *testing.T) {
 	e.PATCH("/api/posts/:postId", updatePostHandler(h), SessionMiddleware(h, true))
 	e.DELETE("/api/posts/:postId", deletePostHandler(h), SessionMiddleware(h, true))
 	e.GET("/api/posts/:postId", getPostHandler(h), SessionMiddleware(h, true))
-	e.GET("/api/images/:imageId", getImageHandler(h), SessionMiddleware(h, true))
+	e.GET("/api/images/:imageId", getImageHandler(h))
 	action := func(method, path, token, body string) *httptest.ResponseRecorder {
 		req := httptest.NewRequest(method, path, strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
@@ -163,7 +163,7 @@ func TestCreatePostIntegration(t *testing.T) {
 	for _, invalid := range []string{`{`, `{}`, `{"visibility":"invalid"}`} {
 		check(action(http.MethodPatch, path, session.Token, invalid), http.StatusBadRequest)
 	}
-	exec(`INSERT INTO users (id, username, secret_key_hash, display_name, region) VALUES ('other', 'other', 'hash', 'Other', 'asia')`)
+	exec(`INSERT INTO users (id, username, secret_key_hash, display_name, region) VALUES ('other', 'other', '9caf06bb4436cdbfa20af9121a626bc1093c4f54b31c0fa937957856135345b6', 'Other', 'asia')`)
 	other, err := CreateLoginSession(db, "other")
 	if err != nil {
 		t.Fatal(err)
@@ -176,7 +176,7 @@ func TestCreatePostIntegration(t *testing.T) {
 	if err := json.Unmarshal(updated.Body.Bytes(), &edited); err != nil {
 		t.Fatal(err)
 	}
-	if edited.Caption != "edited" || edited.Visibility != created.Visibility || edited.ImageURL != created.ImageURL || !edited.PostedAt.Equal(created.PostedAt) {
+	if edited.Caption != "edited" || edited.Visibility != created.Visibility || strings.Split(edited.ImageURL, "?")[0] != strings.Split(created.ImageURL, "?")[0] || !edited.PostedAt.Equal(created.PostedAt) {
 		t.Fatalf("unexpected edit: %+v", edited)
 	}
 	check(action(http.MethodPatch, path, session.Token, `{"visibility":"friends"}`), http.StatusOK)
@@ -214,7 +214,7 @@ func TestCreatePostIntegration(t *testing.T) {
 		t.Fatalf("successful deletes=%d", deleted)
 	}
 	check(action(http.MethodGet, path, session.Token, ""), http.StatusNotFound)
-	check(action(http.MethodGet, created.ImageURL, session.Token, ""), http.StatusNotFound)
+	check(action(http.MethodGet, created.ImageURL, "", ""), http.StatusForbidden)
 	check(action(http.MethodPatch, path, session.Token, `{"caption":"edited"}`), http.StatusNotFound)
 	exec(`UPDATE posting_windows SET on_time_deadline=clock_timestamp()-interval '10 seconds' WHERE id=$1`, windowID)
 	rec := request(session.Token, body, contentType)

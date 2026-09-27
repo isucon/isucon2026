@@ -38,7 +38,7 @@ func TestNotificationsIntegration(t *testing.T) {
 	}
 	exec(string(schema))
 	userID, otherID := uuid.NewString(), uuid.NewString()
-	exec(`INSERT INTO users (id, username, secret_key_hash, display_name, region) VALUES ($1, 'alice', 'hash', 'Alice', 'asia'), ($2, 'bob', 'hash', 'Bob', 'asia')`, userID, otherID)
+	exec(`INSERT INTO users (id, username, secret_key_hash, display_name, region) VALUES ($1, 'alice', '9caf06bb4436cdbfa20af9121a626bc1093c4f54b31c0fa937957856135345b6', 'Alice', 'asia'), ($2, 'bob', '9caf06bb4436cdbfa20af9121a626bc1093c4f54b31c0fa937957856135345b6', 'Bob', 'asia')`, userID, otherID)
 	session, err := CreateLoginSession(db, userID)
 	if err != nil {
 		t.Fatal(err)

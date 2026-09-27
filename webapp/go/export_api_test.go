@@ -38,7 +38,7 @@ func TestExportPostsIntegration(t *testing.T) {
 	exec(string(schema))
 	tokens := map[string]string{}
 	for _, id := range []string{"owner", "other", "empty", "foreign"} {
-		exec(`INSERT INTO users(id,username,display_name,secret_key_hash,region) VALUES($1,$2,$3,'hash','asia')`, id, id, id)
+		exec(`INSERT INTO users(id,username,display_name,secret_key_hash,region) VALUES($1,$2,$3,'9caf06bb4436cdbfa20af9121a626bc1093c4f54b31c0fa937957856135345b6','asia')`, id, id, id)
 		session, err := CreateLoginSession(db, id)
 		if err != nil {
 			t.Fatal(err)

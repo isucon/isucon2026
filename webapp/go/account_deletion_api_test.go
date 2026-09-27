@@ -1,6 +1,7 @@
 package isureal
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -44,7 +45,7 @@ func TestAccountDeletionIntegration(t *testing.T) {
 	e.GET("/api/users", searchUsersHandler(h), SessionMiddleware(h, true))
 	e.GET("/api/users/:userId", getUserHandler(h), SessionMiddleware(h, true))
 	e.GET("/api/posts/:postId", getPostHandler(h), SessionMiddleware(h, true))
-	e.GET("/api/images/:imageId", getImageHandler(h), SessionMiddleware(h, true))
+	e.GET("/api/images/:imageId", getImageHandler(h))
 	e.GET("/api/relationships/:kind", getRelationshipsHandler(h), SessionMiddleware(h, true))
 	request := func(method, path, token, body string, status int) *httptest.ResponseRecorder {
 		t.Helper()
@@ -80,7 +81,7 @@ func TestAccountDeletionIntegration(t *testing.T) {
 	}
 	old := login()
 	current := login()
-	exec(`INSERT INTO users(id,username,display_name,secret_key_hash,region) VALUES('viewer','viewer','Viewer','hash','asia')`)
+	exec(`INSERT INTO users(id,username,display_name,secret_key_hash,region) VALUES('viewer','viewer','Viewer','9caf06bb4436cdbfa20af9121a626bc1093c4f54b31c0fa937957856135345b6','asia')`)
 	viewer, err := CreateLoginSession(db, "viewer")
 	if err != nil {
 		t.Fatal(err)
@@ -90,11 +91,17 @@ func TestAccountDeletionIntegration(t *testing.T) {
 	exec(`INSERT INTO posting_windows(id,region,local_date,starts_at,on_time_deadline) VALUES('window','asia','2026-09-24',clock_timestamp(),clock_timestamp()+interval '1 day')`)
 	exec(`INSERT INTO posts(id,author_id,posting_window_id,image_id,visibility,location_kind,posted_at) VALUES('post',$1,'window','post-image','public','none',clock_timestamp()),('viewer-post','viewer','window','viewer-image','public','none',clock_timestamp())`, id)
 	exec(`INSERT INTO friendships(id,user_low_id,user_high_id) VALUES('00000000-0000-0000-0000-000000000001',$1,$2)`, min(id, "viewer"), max(id, "viewer"))
+	owner, err := getUser(context.Background(), db, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	profileURL := signedImageURL(owner, "profile")
+	postURL := signedImageURL(owner, "post-image")
 	path := "/api/me/account-deletion"
 	request(http.MethodPost, path, "", "", http.StatusUnauthorized)
 	request(http.MethodPost, path, old.Token, "", http.StatusUnauthorized)
 	request(http.MethodGet, "/api/posts/post", viewer.Token, "", http.StatusOK)
-	request(http.MethodGet, "/api/images/profile", viewer.Token, "", http.StatusOK)
+	request(http.MethodGet, profileURL, "", "", http.StatusOK)
 	exec(`CREATE FUNCTION reject_retirement() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.reason='account_deletion' THEN RAISE EXCEPTION 'reject retirement'; END IF; RETURN NEW; END $$`)
 	exec(`CREATE TRIGGER reject_retirement BEFORE UPDATE ON login_sessions FOR EACH ROW EXECUTE FUNCTION reject_retirement()`)
 	request(http.MethodPost, path, current.Token, "", http.StatusInternalServerError)
@@ -141,8 +148,8 @@ func TestAccountDeletionIntegration(t *testing.T) {
 	request(http.MethodPost, "/api/auth/register", "", regBody, http.StatusConflict)
 	request(http.MethodGet, "/api/users/"+id, viewer.Token, "", http.StatusNotFound)
 	request(http.MethodGet, "/api/posts/post", viewer.Token, "", http.StatusNotFound)
-	request(http.MethodGet, "/api/images/post-image", viewer.Token, "", http.StatusNotFound)
-	request(http.MethodGet, "/api/images/profile", viewer.Token, "", http.StatusNotFound)
+	request(http.MethodGet, postURL, "", "", http.StatusForbidden)
+	request(http.MethodGet, profileURL, "", "", http.StatusForbidden)
 	rec = request(http.MethodGet, "/api/users?q=retiring", viewer.Token, "", http.StatusOK)
 	var search searchUsersResponse
 	if err := json.Unmarshal(rec.Body.Bytes(), &search); err != nil {
