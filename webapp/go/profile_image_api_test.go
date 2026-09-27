@@ -2,6 +2,7 @@ package isureal
 
 import (
 	"bytes"
+	"context"
 	"image"
 	"image/jpeg"
 	"net/http"
@@ -36,7 +37,7 @@ func TestProfileImageIntegration(t *testing.T) {
 	exec(string(schema))
 	tokens := map[string]string{}
 	for _, id := range []string{"owner", "viewer"} {
-		exec(`INSERT INTO users(id,username,display_name,secret_key_hash,region) VALUES($1,$2,$3,'hash','asia')`, id, id, id)
+		exec(`INSERT INTO users(id,username,display_name,secret_key_hash,region) VALUES($1,$2,$3,'9caf06bb4436cdbfa20af9121a626bc1093c4f54b31c0fa937957856135345b6','asia')`, id, id, id)
 		session, err := CreateLoginSession(db, id)
 		if err != nil {
 			t.Fatal(err)
@@ -48,7 +49,7 @@ func TestProfileImageIntegration(t *testing.T) {
 	h := &HandlerContext{DB: db}
 	e.PUT("/api/me/profile-image", putProfileImageHandler(h), SessionMiddleware(h, true))
 	e.DELETE("/api/me/profile-image", deleteProfileImageHandler(h), SessionMiddleware(h, true))
-	e.GET("/api/images/:imageId", getImageHandler(h), SessionMiddleware(h, true))
+	e.GET("/api/images/:imageId", getImageHandler(h))
 	var data bytes.Buffer
 	if err := jpeg.Encode(&data, image.NewRGBA(image.Rect(0, 0, 4, 4)), nil); err != nil {
 		t.Fatal(err)
@@ -90,9 +91,14 @@ func TestProfileImageIntegration(t *testing.T) {
 	count(0)
 	request("owner", http.MethodPut, path, "image/jpeg", data.Bytes(), http.StatusNoContent)
 	old := current()
+	owner, err := getUser(context.Background(), db, "owner")
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldURL := signedImageURL(owner, old)
 	count(1)
 	for _, actor := range []string{"owner", "viewer"} {
-		rec := request(actor, http.MethodGet, "/api/images/"+old, "", nil, http.StatusOK)
+		rec := request(actor, http.MethodGet, oldURL, "", nil, http.StatusOK)
 		if rec.Header().Get("Content-Type") != "image/jpeg" {
 			t.Fatal("wrong media")
 		}
@@ -103,11 +109,12 @@ func TestProfileImageIntegration(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	request("", http.MethodGet, "/api/images/"+old, "", nil, http.StatusUnauthorized)
+	request("", http.MethodGet, oldURL, "", nil, http.StatusOK)
+	request("owner", http.MethodGet, "/api/images/"+old, "", nil, http.StatusForbidden)
 	for _, pair := range [][2]string{{"owner", "viewer"}, {"viewer", "owner"}} {
 		exec(`INSERT INTO block_relations(id,blocker_id,blocked_id) VALUES('00000000-0000-0000-0000-000000000001',$1,$2)`, pair[0], pair[1])
-		request("viewer", http.MethodGet, "/api/images/"+old, "", nil, http.StatusNotFound)
-		request("owner", http.MethodGet, "/api/images/"+old, "", nil, http.StatusOK)
+		request("viewer", http.MethodGet, oldURL, "", nil, http.StatusOK)
+		request("owner", http.MethodGet, oldURL, "", nil, http.StatusOK)
 		exec(`DELETE FROM block_relations`)
 	}
 	exec(`CREATE FUNCTION reject_image_delete() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'reject image deletion'; END $$`)
@@ -126,14 +133,15 @@ func TestProfileImageIntegration(t *testing.T) {
 	exec(`DROP FUNCTION reject_image_delete()`)
 	request("owner", http.MethodPut, path, "image/jpeg", data.Bytes(), http.StatusNoContent)
 	fresh := current()
+	freshURL := signedImageURL(owner, fresh)
 	if fresh == old {
 		t.Fatal("image ID unchanged")
 	}
 	count(1)
-	request("viewer", http.MethodGet, "/api/images/"+old, "", nil, http.StatusNotFound)
-	request("viewer", http.MethodGet, "/api/images/"+fresh, "", nil, http.StatusOK)
+	request("viewer", http.MethodGet, oldURL, "", nil, http.StatusForbidden)
+	request("viewer", http.MethodGet, freshURL, "", nil, http.StatusOK)
 	exec(`UPDATE users SET status='deleted' WHERE id='owner'`)
-	request("viewer", http.MethodGet, "/api/images/"+fresh, "", nil, http.StatusNotFound)
+	request("viewer", http.MethodGet, freshURL, "", nil, http.StatusForbidden)
 	exec(`UPDATE users SET status='active' WHERE id='owner'`)
 	request("owner", http.MethodDelete, path, "", nil, http.StatusNoContent)
 	count(0)
@@ -144,6 +152,6 @@ func TestProfileImageIntegration(t *testing.T) {
 	if id != nil {
 		t.Fatal("profile reference retained")
 	}
-	request("viewer", http.MethodGet, "/api/images/"+fresh, "", nil, http.StatusNotFound)
+	request("viewer", http.MethodGet, freshURL, "", nil, http.StatusForbidden)
 	request("owner", http.MethodDelete, path, "", nil, http.StatusNotFound)
 }

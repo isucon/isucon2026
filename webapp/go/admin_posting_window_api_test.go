@@ -37,7 +37,7 @@ func TestOpenPostingWindowIntegration(t *testing.T) {
 	}
 	exec(string(schema))
 	exec(`INSERT INTO administrators (id, username, password_hash) VALUES ('admin1', 'admin', 'hash')`)
-	exec(`INSERT INTO users (id, username, secret_key_hash, display_name, region, status) VALUES ('a', 'alice', 'hash', 'Alice', 'asia', 'active'), ('b', 'bob', 'hash', 'Bob', 'asia', 'active'), ('c', 'carol', 'hash', 'Carol', 'europe', 'active'), ('d', 'dave', 'hash', 'Dave', 'asia', 'deleted')`)
+	exec(`INSERT INTO users (id, username, secret_key_hash, display_name, region, status) VALUES ('a', 'alice', '9caf06bb4436cdbfa20af9121a626bc1093c4f54b31c0fa937957856135345b6', 'Alice', 'asia', 'active'), ('b', 'bob', '9caf06bb4436cdbfa20af9121a626bc1093c4f54b31c0fa937957856135345b6', 'Bob', 'asia', 'active'), ('c', 'carol', '9caf06bb4436cdbfa20af9121a626bc1093c4f54b31c0fa937957856135345b6', 'Carol', 'europe', 'active'), ('d', 'dave', '9caf06bb4436cdbfa20af9121a626bc1093c4f54b31c0fa937957856135345b6', 'Dave', 'asia', 'deleted')`)
 	session, err := CreateAdminSession(db, "admin1")
 	if err != nil {
 		t.Fatal(err)

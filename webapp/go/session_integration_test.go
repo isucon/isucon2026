@@ -27,7 +27,7 @@ func TestCreateLoginSessionIntegration(t *testing.T) {
 	if _, err = db.Exec(string(schema)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = db.Exec(`INSERT INTO users (id, username, secret_key_hash, display_name, region) VALUES ('user1', 'alice', 'hash', 'Alice', 'asia')`); err != nil {
+	if _, err = db.Exec(`INSERT INTO users (id, username, secret_key_hash, display_name, region) VALUES ('user1', 'alice', '9caf06bb4436cdbfa20af9121a626bc1093c4f54b31c0fa937957856135345b6', 'Alice', 'asia')`); err != nil {
 		t.Fatal(err)
 	}
 	first, err := CreateLoginSession(db, "user1")

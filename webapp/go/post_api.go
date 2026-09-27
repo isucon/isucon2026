@@ -149,7 +149,7 @@ func newPostResponse(post Post, user User) createPostResponse {
 			ProfileImageURL: newGetMeResponse(user).ProfileImageURL,
 			Bio:             user.Bio, AccountType: user.AccountType,
 		},
-		PostingWindowID: post.PostingWindowID, ImageURL: "/api/images/" + post.ImageID,
+		PostingWindowID: post.PostingWindowID, ImageURL: signedImageURL(user, post.ImageID),
 		Caption: post.Caption, Visibility: post.Visibility, Location: post.PostLocation,
 		PostedAt: post.PostedAt, OnTime: !post.PostedAt.After(post.OnTimeDeadline),
 	}

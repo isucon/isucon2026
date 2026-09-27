@@ -66,7 +66,7 @@ func newSessionUserResponse(user User) sessionUserResponse {
 func newGetMeResponse(user User) getMeResponse {
 	response := getMeResponse{sessionUserResponse: newSessionUserResponse(user)}
 	if user.ProfileImageID != nil {
-		url := "/api/images/" + *user.ProfileImageID
+		url := signedImageURL(user, *user.ProfileImageID)
 		response.ProfileImageURL = &url
 	}
 	return response

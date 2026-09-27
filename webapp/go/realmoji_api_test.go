@@ -40,7 +40,7 @@ func TestRealMojiIntegration(t *testing.T) {
 	exec(string(schema))
 	tokens := map[string]string{}
 	for _, id := range []string{"author", "reactor", "stranger"} {
-		exec(`INSERT INTO users(id,username,display_name,secret_key_hash,region) VALUES($1,$2,$3,'hash','asia')`, id, id, id)
+		exec(`INSERT INTO users(id,username,display_name,secret_key_hash,region) VALUES($1,$2,$3,'9caf06bb4436cdbfa20af9121a626bc1093c4f54b31c0fa937957856135345b6','asia')`, id, id, id)
 		session, err := CreateLoginSession(db, id)
 		if err != nil {
 			t.Fatal(err)
@@ -58,7 +58,7 @@ func TestRealMojiIntegration(t *testing.T) {
 	e.POST("/api/posts/:postId/realmojis", replaceRealMojiHandler(h), SessionMiddleware(h, true))
 	e.GET("/api/posts/:postId/realmojis", getRealMojisHandler(h), SessionMiddleware(h, true))
 	e.DELETE("/api/realmojis/:realMojiId", deleteRealMojiHandler(h), SessionMiddleware(h, true))
-	e.GET("/api/images/:imageId", getImageHandler(h), SessionMiddleware(h, true))
+	e.GET("/api/images/:imageId", getImageHandler(h))
 	request := func(actor, method, path, media string, data []byte) *httptest.ResponseRecorder {
 		req := httptest.NewRequest(method, path, bytes.NewReader(data))
 		req.Header.Set("Content-Type", media)
@@ -147,9 +147,9 @@ func TestRealMojiIntegration(t *testing.T) {
 	first := create("reactor", http.StatusCreated)
 	imageCheck("author", first, http.StatusOK)
 	imageCheck("reactor", first, http.StatusOK)
-	imageCheck("stranger", first, http.StatusNotFound)
+	imageCheck("stranger", first, http.StatusOK)
 	second := create("reactor", http.StatusCreated)
-	imageCheck("author", first, http.StatusNotFound)
+	imageCheck("author", first, http.StatusForbidden)
 	if out := list(""); len(out.Items) != 1 || out.Items[0].ID != second.ID {
 		t.Fatalf("replacement list: %+v", out)
 	}
@@ -183,7 +183,7 @@ func TestRealMojiIntegration(t *testing.T) {
 	active := out.Items[0]
 	check(request("stranger", http.MethodDelete, "/api/realmojis/"+active.ID, "", nil), http.StatusForbidden)
 	check(request("author", http.MethodDelete, "/api/realmojis/"+active.ID, "", nil), http.StatusNoContent)
-	imageCheck("author", active, http.StatusNotFound)
+	imageCheck("author", active, http.StatusForbidden)
 	check(request("author", http.MethodDelete, "/api/realmojis/"+active.ID, "", nil), http.StatusNotFound)
 	third := create("reactor", http.StatusCreated)
 	check(request("reactor", http.MethodDelete, "/api/realmojis/"+third.ID, "", nil), http.StatusNoContent)
@@ -199,17 +199,17 @@ func TestRealMojiIntegration(t *testing.T) {
 	exec(`UPDATE posting_windows SET ended_at=clock_timestamp()`)
 	create("reactor", http.StatusForbidden)
 	check(request("reactor", http.MethodGet, path, "", nil), http.StatusForbidden)
-	imageCheck("reactor", current, http.StatusNotFound)
+	imageCheck("reactor", current, http.StatusOK)
 	imageCheck("author", current, http.StatusOK)
 	exec(`UPDATE posting_windows SET ended_at=NULL`)
 	exec(`UPDATE posts SET deleted_at=clock_timestamp() WHERE id='author-post'`)
 	create("reactor", http.StatusForbidden)
-	imageCheck("author", current, http.StatusNotFound)
+	imageCheck("author", current, http.StatusForbidden)
 	exec(`UPDATE posts SET deleted_at=NULL WHERE id='author-post'`)
 	exec(`UPDATE realmojis SET deleted_at=clock_timestamp()`)
 	for i := 0; i < 52; i++ {
 		id := fmt.Sprintf("page-%02d", i)
-		exec(`INSERT INTO users(id,username,display_name,secret_key_hash,region) VALUES($1,$2,$3,'hash','asia')`, id, id, id)
+		exec(`INSERT INTO users(id,username,display_name,secret_key_hash,region) VALUES($1,$2,$3,'9caf06bb4436cdbfa20af9121a626bc1093c4f54b31c0fa937957856135345b6','asia')`, id, id, id)
 		exec(`INSERT INTO realmojis(id,post_id,reactor_id,image_id,reaction_type,created_at) VALUES($1,'author-post',$2,'author-image','like','2026-09-24T00:00:00Z')`, id, id)
 	}
 	page := list("")

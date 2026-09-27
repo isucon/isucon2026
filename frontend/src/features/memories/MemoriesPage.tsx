@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { getMemories, type MemoryPost } from '../../api/account';
 import { deletePost } from '../../api/posts';
-import { AuthenticatedImage } from '../../app/AuthenticatedImage';
 
 export function MemoriesPage(): React.JSX.Element {
   const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
@@ -24,9 +23,9 @@ export function MemoriesPage(): React.JSX.Element {
   return <section><h1>Memories</h1><label>月<input type="month" value={month} onChange={event => setMonth(event.target.value)} /></label>
     {error && <p role="alert">{error}</p>}
     <div className="feed-grid">{items.map(post => <article className="post-card" key={post.id}>
-      <AuthenticatedImage src={post.imageUrl} alt="過去の投稿画像" /><p>{post.caption}</p>
+      <img src={post.imageUrl} alt="過去の投稿画像" /><p>{post.caption}</p>
       <details><summary>RealMoji とコメント</summary>
-        <ul>{post.realmojis.map(item => <li key={item.id}><AuthenticatedImage src={item.imageUrl} alt={`${item.reactor.displayName}のRealMoji`} />{item.reactionType}</li>)}</ul>
+        <ul>{post.realmojis.map(item => <li key={item.id}><img src={item.imageUrl} alt={`${item.reactor.displayName}のRealMoji`} />{item.reactionType}</li>)}</ul>
         <ol>{post.comments.map(item => <li key={item.id}>{item.author.displayName}: {item.body}</li>)}</ol>
       </details>
       <button className="danger" onClick={() => void remove(post.id)}>削除</button>

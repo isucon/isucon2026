@@ -38,7 +38,7 @@ func TestCertifyUserIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, id := range []string{"target", "viewer", "deleted"} {
-		exec(`INSERT INTO users(id,username,display_name,secret_key_hash,region) VALUES($1,$2,$3,'hash','asia')`, id, id, id)
+		exec(`INSERT INTO users(id,username,display_name,secret_key_hash,region) VALUES($1,$2,$3,'9caf06bb4436cdbfa20af9121a626bc1093c4f54b31c0fa937957856135345b6','asia')`, id, id, id)
 	}
 	exec(`UPDATE users SET status='deleted' WHERE id='deleted'`)
 	viewer, err := CreateLoginSession(db, "viewer")

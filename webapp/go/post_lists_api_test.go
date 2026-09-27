@@ -38,7 +38,7 @@ func TestPostListsIntegration(t *testing.T) {
 	}
 	exec(string(schema))
 	addUser := func(id string) {
-		exec(`INSERT INTO users (id, username, secret_key_hash, display_name, region) VALUES ($1, $2, 'hash', $3, 'asia')`, id, id, id)
+		exec(`INSERT INTO users (id, username, secret_key_hash, display_name, region) VALUES ($1, $2, '9caf06bb4436cdbfa20af9121a626bc1093c4f54b31c0fa937957856135345b6', $3, 'asia')`, id, id, id)
 	}
 	for _, id := range []string{"viewer", "a", "b", "c", "d"} {
 		addUser(id)
