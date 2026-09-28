@@ -218,6 +218,11 @@ func (h *Handler) GitHubCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if user.ID.String() == "" || user.Login == "" {
+		h.authFailure(w, r)
+		return
+	}
+
 	ri := info(r)
 	ri.sess.GitHubLogin = &session.OAuthIdentity{
 		ID: user.ID.String(), Login: user.Login, Token: accessToken, AvatarURL: user.AvatarURL,
@@ -270,6 +275,11 @@ func (h *Handler) DiscordCallback(w http.ResponseWriter, r *http.Request) {
 		Avatar        string `json:"avatar"`
 	}
 	if err := h.oauthGetJSON(r.Context(), h.cfg.Discord.OAuthProvider.APIBaseURL+"/users/@me", accessToken, &user); err != nil {
+		h.authFailure(w, r)
+		return
+	}
+
+	if user.ID == "" || user.Username == "" {
 		h.authFailure(w, r)
 		return
 	}

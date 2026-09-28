@@ -104,6 +104,8 @@ func (h *Handler) Router() http.Handler {
 
 	r.Route("/api/registration", func(r chi.Router) {
 		r.Get("/session", h.api(h.RegistrationSessionShow))
+		r.Get("/record", h.api(h.RegistrationRecordShow))
+		r.Put("/record", h.api(h.RegistrationRecordUpdate))
 		r.Put("/", h.api(h.RegistrationUpdate))
 		r.Delete("/", h.api(h.RegistrationDelete))
 		r.Post("/team", h.api(h.RegistrationCreateTeam))
@@ -135,6 +137,8 @@ func (h *Handler) Router() http.Handler {
 
 	r.Route("/api/admin", func(r chi.Router) {
 		r.Use(h.adminAPIGuard)
+		r.Get("/contestants/{id}/registration_record", h.api(h.AdminRegistrationRecord))
+		r.Get("/registration_source/{id}", h.api(h.AdminRegistrationSource))
 		r.Get("/dashboard", h.api(h.AdminDashboard))
 		r.Get("/dashboard/teams/{id}", h.api(h.AdminSoloDashboard))
 		r.Get("/teams", h.api(h.AdminTeamsIndex))

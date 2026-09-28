@@ -1,4 +1,9 @@
 import React from "react";
+import { RegistrationConsentFields } from "./RegistrationConsentFields";
+import {
+  RegistrationRecordInputSchema,
+  type RegistrationRecordInput,
+} from "../../proto/isuxportal/services/registration/records_pb";
 import AvatarEditor from "react-avatar-editor";
 import { ApiClient } from "./ApiClient";
 
@@ -22,6 +27,7 @@ export interface Props {
 }
 
 export interface State {
+  registrationRecord: Partial<RegistrationRecordInput>;
   teamName: string;
   name: string;
   emailAddress: string;
@@ -39,6 +45,7 @@ export class RegistrationForm extends React.Component<Props, State> {
   constructor(props: Props) {
     super(props);
     this.state = {
+      registrationRecord: { agreeSponsor: false, minorParentalConsent: false },
       teamName: this.props.registrationSession.team?.name ?? "",
       name: this.props.session.contestant?.name ?? "",
       emailAddress: this.props.registrationSession.team?.detail?.emailAddress ?? "",
@@ -126,6 +133,9 @@ export class RegistrationForm extends React.Component<Props, State> {
         isStudent: this.state.isStudent,
         isInPerson: this.state.isInPerson,
         avatarUrl: this.state.avatarurl,
+        registrationRecord: this.isEditing()
+          ? undefined
+          : create(RegistrationRecordInputSchema, this.state.registrationRecord),
       }),
     );
   }
@@ -139,6 +149,9 @@ export class RegistrationForm extends React.Component<Props, State> {
         isStudent: this.state.isStudent,
         isInPerson: this.state.isInPerson,
         avatarUrl: this.state.avatarurl,
+        registrationRecord: this.isEditing()
+          ? undefined
+          : create(RegistrationRecordInputSchema, this.state.registrationRecord),
       }),
     );
   }
@@ -152,6 +165,9 @@ export class RegistrationForm extends React.Component<Props, State> {
         isStudent: this.state.isStudent,
         isInPerson: this.state.isInPerson,
         avatarUrl: this.state.avatarurl,
+        registrationRecord: this.isEditing()
+          ? undefined
+          : create(RegistrationRecordInputSchema, this.state.registrationRecord),
       }),
     );
   }
@@ -179,6 +195,12 @@ export class RegistrationForm extends React.Component<Props, State> {
           <form onSubmit={this.onSubmit.bind(this)}>
             {this.renderTeamFormFields()}
             {this.renderContestantFormFields()}
+            {!this.isEditing() && (
+              <RegistrationConsentFields
+                value={this.state.registrationRecord}
+                onChange={(registrationRecord) => this.setState({ registrationRecord })}
+              />
+            )}
 
             <div className="field">
               <div className="control">

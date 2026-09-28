@@ -125,12 +125,19 @@ bypass token の Ruby ⇔ Go 相互運用などを検証する。
 | `/debug/flushdb` | example 間の Redis 初期化 |
 | ジョブの同期実行 | perform_later が即時実行になる（副作用を決定的に検証するため） |
 
+## Django 版からの登録情報移行
+
+同意記録、個人の登録属性、アイコンのコピー、招待方式と認証の切り替えは
+[登録情報の移行手順](docs/registration-migration.md) を参照してください。
+検証専用モードと、空の DB に取り込む `cmd/import-registration` を用意しています。
+
 ## 運用
 
 - 本番はさくらのクラウド 石狩第 3 ゾーンに Docker Swarm で載せる。手順と構成は
   [`deploy/README.md`](deploy/README.md)（isucon2026-portal-infra と同じ流儀）
 - DB は PostgreSQL（`ISUXPORTAL_DATABASE_URL`）。`PORTAL_AUTO_MIGRATE=1` で起動時に
-  `internal/db/schema.sql` を適用する（`IF NOT EXISTS` のみで冪等）
+  `internal/db/schema.sql` と未適用の `internal/db/migrations/*.sql` をトランザクション内で適用する。
+  適用済みバージョンは `schema_migrations` に記録する
 - 非同期ジョブは PostgreSQL の `jobs` テーブルに積み、`cmd/worker` が
   `FOR UPDATE SKIP LOCKED` で 1 件ずつ取り出して実行する。失敗は指数バックオフで 5 回まで再試行し、
   それ以降は `status = 'dead'` に落として残す（`SELECT * FROM jobs WHERE status = 'dead'` で確認）。

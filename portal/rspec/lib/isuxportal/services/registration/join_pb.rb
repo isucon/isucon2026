@@ -4,8 +4,10 @@
 
 require 'google/protobuf'
 
+require 'isuxportal/services/registration/records_pb'
 
-descriptor_data = "\n+isuxportal/services/registration/join.proto\x12&isuxportal.proto.services.registration\"\xc1\x01\n\x0fJoinTeamRequest\x12\x17\n\x07team_id\x18\x01 \x01(\x03R\x06teamId\x12!\n\x0cinvite_token\x18\x02 \x01(\tR\x0binviteToken\x12\x12\n\x04name\x18\x03 \x01(\tR\x04name\x12\x1d\n\nis_student\x18\x04 \x01(\x08R\tisStudent\x12 \n\x0cis_in_person\x18\x05 \x01(\x08R\nisInPerson\x12\x1d\n\navatar_url\x18\x06 \x01(\tR\tavatarUrl\"\x12\n\x10JoinTeamResponseb\x06proto3"
+
+descriptor_data = "\n+isuxportal/services/registration/join.proto\x12&isuxportal.proto.services.registration\x1a.isuxportal/services/registration/records.proto\"\xb3\x02\n\x0fJoinTeamRequest\x12\x17\n\x07team_id\x18\x01 \x01(\x03R\x06teamId\x12!\n\x0cinvite_token\x18\x02 \x01(\tR\x0binviteToken\x12\x12\n\x04name\x18\x03 \x01(\tR\x04name\x12\x1d\n\nis_student\x18\x04 \x01(\x08R\tisStudent\x12 \n\x0cis_in_person\x18\x05 \x01(\x08R\nisInPerson\x12\x1d\n\navatar_url\x18\x06 \x01(\tR\tavatarUrl\x12p\n\x13registration_record\x18\x07 \x01(\x0b\x32?.isuxportal.proto.services.registration.RegistrationRecordInputR\x12registrationRecord\"\x12\n\x10JoinTeamResponseb\x06proto3"
 
 pool = Google::Protobuf::DescriptorPool.generated_pool
 pool.add_serialized_file(descriptor_data)

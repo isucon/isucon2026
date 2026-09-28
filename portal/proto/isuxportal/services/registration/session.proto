@@ -1,5 +1,6 @@
 syntax = "proto3";
 package isuxportal.proto.services.registration;
+import "isuxportal/services/registration/records.proto";
 
 
 import "isuxportal/resources/team.proto";
@@ -42,6 +43,7 @@ message UpdateRegistrationRequest {
   bool is_student = 4;
   bool is_in_person = 5;
   string avatar_url = 6;
+  RegistrationRecordInput registration_record = 7;
 }
 
 message UpdateRegistrationResponse {}

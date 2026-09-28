@@ -1,0 +1,23 @@
+syntax = "proto3";
+package isuxportal.proto.services.registration;
+
+// Omitted fields leave existing records unchanged. Timestamps are server-owned.
+message RegistrationRecordInput {
+  optional bool agree_terms = 1;
+  optional bool agree_privacy = 2;
+  optional bool agree_sponsor = 3;
+  optional bool minor_parental_consent = 4;
+  optional string email = 5;
+  optional string tshirt_size = 6;
+}
+
+// RFC3339 timestamps are optional to distinguish unknown from agreement.
+message RegistrationRecord {
+  optional string terms_agreed_at = 1;
+  optional string privacy_agreed_at = 2;
+  optional string sponsor_provide_agreed_at = 3;
+  optional string sponsor_provide_withdrawn_at = 4;
+  optional bool minor_parental_consent = 5;
+  string email = 6;
+  string tshirt_size = 7;
+}

@@ -102,7 +102,7 @@ CREATE TABLE IF NOT EXISTS contestants (
   is_discord_guild_member boolean NOT NULL DEFAULT false,
   in_person boolean
 );
-CREATE UNIQUE INDEX IF NOT EXISTS index_contestants_on_discord_id ON contestants (discord_id);
+CREATE UNIQUE INDEX IF NOT EXISTS index_contestants_on_discord_id ON contestants (discord_id) WHERE discord_id <> '';
 CREATE UNIQUE INDEX IF NOT EXISTS index_contestants_on_github_id ON contestants (github_id);
 CREATE INDEX IF NOT EXISTS index_contestants_on_team_id ON contestants (team_id);
 

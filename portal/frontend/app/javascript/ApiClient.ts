@@ -1,3 +1,8 @@
+import {
+  RegistrationRecordSchema,
+  RegistrationRecordInputSchema,
+  type RegistrationRecordInput,
+} from "../../proto/isuxportal/services/registration/records_pb";
 import { create, fromBinary, toBinary } from "@bufbuild/protobuf";
 import * as Rails from "@rails/ujs";
 import { ErrorSchema, type Error as RemoteError } from "../../proto/isuxportal/error_pb";
@@ -112,6 +117,21 @@ export class ApiClient {
     }
     const resp = await this.request(`${this.baseUrl}/api/registration/session`, "GET", queryMessage ?? null, null);
     return fromBinary(GetRegistrationSessionResponseSchema, new Uint8Array(await resp.arrayBuffer()));
+  }
+
+  public async getRegistrationRecord() {
+    const resp = await this.request(`${this.baseUrl}/api/registration/record`, "GET", null, null);
+    return fromBinary(RegistrationRecordSchema, new Uint8Array(await resp.arrayBuffer()));
+  }
+
+  public async updateRegistrationRecord(payload: RegistrationRecordInput) {
+    const resp = await this.request(
+      `${this.baseUrl}/api/registration/record`,
+      "PUT",
+      null,
+      toBinary(RegistrationRecordInputSchema, payload),
+    );
+    return fromBinary(RegistrationRecordSchema, new Uint8Array(await resp.arrayBuffer()));
   }
 
   public async createTeam(payload: CreateTeamRequest) {
