@@ -22,15 +22,16 @@ const (
 )
 
 type JoinTeamRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	TeamId        int64                  `protobuf:"varint,1,opt,name=team_id,json=teamId,proto3" json:"team_id,omitempty"`
-	InviteToken   string                 `protobuf:"bytes,2,opt,name=invite_token,json=inviteToken,proto3" json:"invite_token,omitempty"`
-	Name          string                 `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
-	IsStudent     bool                   `protobuf:"varint,4,opt,name=is_student,json=isStudent,proto3" json:"is_student,omitempty"`
-	IsInPerson    bool                   `protobuf:"varint,5,opt,name=is_in_person,json=isInPerson,proto3" json:"is_in_person,omitempty"`
-	AvatarUrl     string                 `protobuf:"bytes,6,opt,name=avatar_url,json=avatarUrl,proto3" json:"avatar_url,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state              protoimpl.MessageState   `protogen:"open.v1"`
+	TeamId             int64                    `protobuf:"varint,1,opt,name=team_id,json=teamId,proto3" json:"team_id,omitempty"`
+	InviteToken        string                   `protobuf:"bytes,2,opt,name=invite_token,json=inviteToken,proto3" json:"invite_token,omitempty"`
+	Name               string                   `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
+	IsStudent          bool                     `protobuf:"varint,4,opt,name=is_student,json=isStudent,proto3" json:"is_student,omitempty"`
+	IsInPerson         bool                     `protobuf:"varint,5,opt,name=is_in_person,json=isInPerson,proto3" json:"is_in_person,omitempty"`
+	AvatarUrl          string                   `protobuf:"bytes,6,opt,name=avatar_url,json=avatarUrl,proto3" json:"avatar_url,omitempty"`
+	RegistrationRecord *RegistrationRecordInput `protobuf:"bytes,7,opt,name=registration_record,json=registrationRecord,proto3" json:"registration_record,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *JoinTeamRequest) Reset() {
@@ -105,6 +106,13 @@ func (x *JoinTeamRequest) GetAvatarUrl() string {
 	return ""
 }
 
+func (x *JoinTeamRequest) GetRegistrationRecord() *RegistrationRecordInput {
+	if x != nil {
+		return x.RegistrationRecord
+	}
+	return nil
+}
+
 type JoinTeamResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -145,7 +153,7 @@ var File_isuxportal_services_registration_join_proto protoreflect.FileDescriptor
 
 const file_isuxportal_services_registration_join_proto_rawDesc = "" +
 	"\n" +
-	"+isuxportal/services/registration/join.proto\x12&isuxportal.proto.services.registration\"\xc1\x01\n" +
+	"+isuxportal/services/registration/join.proto\x12&isuxportal.proto.services.registration\x1a.isuxportal/services/registration/records.proto\"\xb3\x02\n" +
 	"\x0fJoinTeamRequest\x12\x17\n" +
 	"\ateam_id\x18\x01 \x01(\x03R\x06teamId\x12!\n" +
 	"\finvite_token\x18\x02 \x01(\tR\vinviteToken\x12\x12\n" +
@@ -155,7 +163,8 @@ const file_isuxportal_services_registration_join_proto_rawDesc = "" +
 	"\fis_in_person\x18\x05 \x01(\bR\n" +
 	"isInPerson\x12\x1d\n" +
 	"\n" +
-	"avatar_url\x18\x06 \x01(\tR\tavatarUrl\"\x12\n" +
+	"avatar_url\x18\x06 \x01(\tR\tavatarUrl\x12p\n" +
+	"\x13registration_record\x18\a \x01(\v2?.isuxportal.proto.services.registration.RegistrationRecordInputR\x12registrationRecord\"\x12\n" +
 	"\x10JoinTeamResponseB\xc0\x02\n" +
 	"*com.isuxportal.proto.services.registrationB\tJoinProtoP\x01ZKgithub.com/isucon/isucon2026/portal/gen/pb/isuxportal/services/registration\xa2\x02\x04IPSR\xaa\x02&Isuxportal.Proto.Services.Registration\xca\x02&Isuxportal\\Proto\\Services\\Registration\xe2\x022Isuxportal\\Proto\\Services\\Registration\\GPBMetadata\xea\x02)Isuxportal::Proto::Services::Registrationb\x06proto3"
 
@@ -173,15 +182,17 @@ func file_isuxportal_services_registration_join_proto_rawDescGZIP() []byte {
 
 var file_isuxportal_services_registration_join_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
 var file_isuxportal_services_registration_join_proto_goTypes = []any{
-	(*JoinTeamRequest)(nil),  // 0: isuxportal.proto.services.registration.JoinTeamRequest
-	(*JoinTeamResponse)(nil), // 1: isuxportal.proto.services.registration.JoinTeamResponse
+	(*JoinTeamRequest)(nil),         // 0: isuxportal.proto.services.registration.JoinTeamRequest
+	(*JoinTeamResponse)(nil),        // 1: isuxportal.proto.services.registration.JoinTeamResponse
+	(*RegistrationRecordInput)(nil), // 2: isuxportal.proto.services.registration.RegistrationRecordInput
 }
 var file_isuxportal_services_registration_join_proto_depIdxs = []int32{
-	0, // [0:0] is the sub-list for method output_type
-	0, // [0:0] is the sub-list for method input_type
-	0, // [0:0] is the sub-list for extension type_name
-	0, // [0:0] is the sub-list for extension extendee
-	0, // [0:0] is the sub-list for field type_name
+	2, // 0: isuxportal.proto.services.registration.JoinTeamRequest.registration_record:type_name -> isuxportal.proto.services.registration.RegistrationRecordInput
+	1, // [1:1] is the sub-list for method output_type
+	1, // [1:1] is the sub-list for method input_type
+	1, // [1:1] is the sub-list for extension type_name
+	1, // [1:1] is the sub-list for extension extendee
+	0, // [0:1] is the sub-list for field type_name
 }
 
 func init() { file_isuxportal_services_registration_join_proto_init() }
@@ -189,6 +200,7 @@ func file_isuxportal_services_registration_join_proto_init() {
 	if File_isuxportal_services_registration_join_proto != nil {
 		return
 	}
+	file_isuxportal_services_registration_records_proto_init()
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{

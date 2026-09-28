@@ -11,6 +11,7 @@ import {
   GetRegistrationSessionResponse_Status,
   type GetRegistrationSessionResponse,
 } from "../../proto/isuxportal/services/registration/session_pb";
+import { RegistrationRecordPanel } from "./RegistrationRecordPanel";
 import { RegistrationForm } from "./RegistrationForm";
 import { RegistrationLogin } from "./RegistrationLogin";
 import { RegistrationStatus } from "./RegistrationStatus";
@@ -79,6 +80,7 @@ export class Registration extends React.Component<Props, State> {
         <main>
           {this.renderError()}
           {this.renderPhase()}
+          {this.state.session.contestant && <RegistrationRecordPanel client={this.props.client} />}
         </main>
       </>
     );
