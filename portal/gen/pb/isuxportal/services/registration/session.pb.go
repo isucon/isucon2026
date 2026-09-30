@@ -261,15 +261,16 @@ func (x *GetRegistrationSessionResponse) GetCoupon() *resources.Coupon {
 }
 
 type UpdateRegistrationRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	TeamName      string                 `protobuf:"bytes,1,opt,name=team_name,json=teamName,proto3" json:"team_name,omitempty"`
-	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"` // contestant name
-	EmailAddress  string                 `protobuf:"bytes,3,opt,name=email_address,json=emailAddress,proto3" json:"email_address,omitempty"`
-	IsStudent     bool                   `protobuf:"varint,4,opt,name=is_student,json=isStudent,proto3" json:"is_student,omitempty"`
-	IsInPerson    bool                   `protobuf:"varint,5,opt,name=is_in_person,json=isInPerson,proto3" json:"is_in_person,omitempty"`
-	AvatarUrl     string                 `protobuf:"bytes,6,opt,name=avatar_url,json=avatarUrl,proto3" json:"avatar_url,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state              protoimpl.MessageState   `protogen:"open.v1"`
+	TeamName           string                   `protobuf:"bytes,1,opt,name=team_name,json=teamName,proto3" json:"team_name,omitempty"`
+	Name               string                   `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"` // contestant name
+	EmailAddress       string                   `protobuf:"bytes,3,opt,name=email_address,json=emailAddress,proto3" json:"email_address,omitempty"`
+	IsStudent          bool                     `protobuf:"varint,4,opt,name=is_student,json=isStudent,proto3" json:"is_student,omitempty"`
+	IsInPerson         bool                     `protobuf:"varint,5,opt,name=is_in_person,json=isInPerson,proto3" json:"is_in_person,omitempty"`
+	AvatarUrl          string                   `protobuf:"bytes,6,opt,name=avatar_url,json=avatarUrl,proto3" json:"avatar_url,omitempty"`
+	RegistrationRecord *RegistrationRecordInput `protobuf:"bytes,7,opt,name=registration_record,json=registrationRecord,proto3" json:"registration_record,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *UpdateRegistrationRequest) Reset() {
@@ -342,6 +343,13 @@ func (x *UpdateRegistrationRequest) GetAvatarUrl() string {
 		return x.AvatarUrl
 	}
 	return ""
+}
+
+func (x *UpdateRegistrationRequest) GetRegistrationRecord() *RegistrationRecordInput {
+	if x != nil {
+		return x.RegistrationRecord
+	}
+	return nil
 }
 
 type UpdateRegistrationResponse struct {
@@ -456,7 +464,7 @@ var File_isuxportal_services_registration_session_proto protoreflect.FileDescrip
 
 const file_isuxportal_services_registration_session_proto_rawDesc = "" +
 	"\n" +
-	".isuxportal/services/registration/session.proto\x12&isuxportal.proto.services.registration\x1a\x1fisuxportal/resources/team.proto\x1a!isuxportal/resources/coupon.proto\x1a$isuxportal/resources/env_check.proto\"|\n" +
+	".isuxportal/services/registration/session.proto\x12&isuxportal.proto.services.registration\x1a.isuxportal/services/registration/records.proto\x1a\x1fisuxportal/resources/team.proto\x1a!isuxportal/resources/coupon.proto\x1a$isuxportal/resources/env_check.proto\"|\n" +
 	"\x1bGetRegistrationSessionQuery\x12\x17\n" +
 	"\ateam_id\x18\x01 \x01(\x03R\x06teamId\x12!\n" +
 	"\finvite_token\x18\x02 \x01(\tR\vinviteToken\x12!\n" +
@@ -483,7 +491,7 @@ const file_isuxportal_services_registration_session_proto_rawDesc = "" +
 	"\bJOINABLE\x10\x04\x12\n" +
 	"\n" +
 	"\x06JOINED\x10\x05\x12\x10\n" +
-	"\fDISQUALIFIED\x10\x06\"\xd1\x01\n" +
+	"\fDISQUALIFIED\x10\x06\"\xc3\x02\n" +
 	"\x19UpdateRegistrationRequest\x12\x1b\n" +
 	"\tteam_name\x18\x01 \x01(\tR\bteamName\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12#\n" +
@@ -493,7 +501,8 @@ const file_isuxportal_services_registration_session_proto_rawDesc = "" +
 	"\fis_in_person\x18\x05 \x01(\bR\n" +
 	"isInPerson\x12\x1d\n" +
 	"\n" +
-	"avatar_url\x18\x06 \x01(\tR\tavatarUrl\"\x1c\n" +
+	"avatar_url\x18\x06 \x01(\tR\tavatarUrl\x12p\n" +
+	"\x13registration_record\x18\a \x01(\v2?.isuxportal.proto.services.registration.RegistrationRecordInputR\x12registrationRecord\"\x1c\n" +
 	"\x1aUpdateRegistrationResponse\"\x1b\n" +
 	"\x19DeleteRegistrationRequest\"\x1c\n" +
 	"\x1aDeleteRegistrationResponseB\xc3\x02\n" +
@@ -524,17 +533,19 @@ var file_isuxportal_services_registration_session_proto_goTypes = []any{
 	(*resources.Team)(nil),                     // 7: isuxportal.proto.resources.Team
 	(resources.EnvCheckStatus)(0),              // 8: isuxportal.proto.resources.EnvCheckStatus
 	(*resources.Coupon)(nil),                   // 9: isuxportal.proto.resources.Coupon
+	(*RegistrationRecordInput)(nil),            // 10: isuxportal.proto.services.registration.RegistrationRecordInput
 }
 var file_isuxportal_services_registration_session_proto_depIdxs = []int32{
-	7, // 0: isuxportal.proto.services.registration.GetRegistrationSessionResponse.team:type_name -> isuxportal.proto.resources.Team
-	0, // 1: isuxportal.proto.services.registration.GetRegistrationSessionResponse.status:type_name -> isuxportal.proto.services.registration.GetRegistrationSessionResponse.Status
-	8, // 2: isuxportal.proto.services.registration.GetRegistrationSessionResponse.env_check_status:type_name -> isuxportal.proto.resources.EnvCheckStatus
-	9, // 3: isuxportal.proto.services.registration.GetRegistrationSessionResponse.coupon:type_name -> isuxportal.proto.resources.Coupon
-	4, // [4:4] is the sub-list for method output_type
-	4, // [4:4] is the sub-list for method input_type
-	4, // [4:4] is the sub-list for extension type_name
-	4, // [4:4] is the sub-list for extension extendee
-	0, // [0:4] is the sub-list for field type_name
+	7,  // 0: isuxportal.proto.services.registration.GetRegistrationSessionResponse.team:type_name -> isuxportal.proto.resources.Team
+	0,  // 1: isuxportal.proto.services.registration.GetRegistrationSessionResponse.status:type_name -> isuxportal.proto.services.registration.GetRegistrationSessionResponse.Status
+	8,  // 2: isuxportal.proto.services.registration.GetRegistrationSessionResponse.env_check_status:type_name -> isuxportal.proto.resources.EnvCheckStatus
+	9,  // 3: isuxportal.proto.services.registration.GetRegistrationSessionResponse.coupon:type_name -> isuxportal.proto.resources.Coupon
+	10, // 4: isuxportal.proto.services.registration.UpdateRegistrationRequest.registration_record:type_name -> isuxportal.proto.services.registration.RegistrationRecordInput
+	5,  // [5:5] is the sub-list for method output_type
+	5,  // [5:5] is the sub-list for method input_type
+	5,  // [5:5] is the sub-list for extension type_name
+	5,  // [5:5] is the sub-list for extension extendee
+	0,  // [0:5] is the sub-list for field type_name
 }
 
 func init() { file_isuxportal_services_registration_session_proto_init() }
@@ -542,6 +553,7 @@ func file_isuxportal_services_registration_session_proto_init() {
 	if File_isuxportal_services_registration_session_proto != nil {
 		return
 	}
+	file_isuxportal_services_registration_records_proto_init()
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{

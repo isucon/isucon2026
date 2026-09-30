@@ -4,6 +4,7 @@
 
 import type { GenFile, GenMessage } from "@bufbuild/protobuf/codegenv1";
 import type { Message } from "@bufbuild/protobuf";
+import type { RegistrationRecordInput } from "./records_pb";
 
 /**
  * Describes the file isuxportal/services/registration/create_team.proto.
@@ -45,6 +46,11 @@ export declare type CreateTeamRequest = Message<"isuxportal.proto.services.regis
    * @generated from field: string avatar_url = 6;
    */
   avatarUrl: string;
+
+  /**
+   * @generated from field: isuxportal.proto.services.registration.RegistrationRecordInput registration_record = 7;
+   */
+  registrationRecord?: RegistrationRecordInput;
 
   /**
    * requires bypass token

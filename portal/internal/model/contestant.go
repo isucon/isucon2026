@@ -59,6 +59,9 @@ func FindContestantIncludeDisqualified(ctx context.Context, db DBTX, id int64) (
 }
 
 func FindContestantIncludeDisqualifiedBy(ctx context.Context, db DBTX, column, value string) (*Contestant, error) {
+	if value == "" {
+		return nil, nil
+	}
 	if column != "github_id" && column != "discord_id" {
 		panic("unexpected column: " + column)
 	}
