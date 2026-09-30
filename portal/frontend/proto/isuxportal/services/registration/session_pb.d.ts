@@ -7,6 +7,7 @@ import type { Message } from "@bufbuild/protobuf";
 import type { Team } from "../../resources/team_pb";
 import type { EnvCheckStatus } from "../../resources/env_check_pb";
 import type { Coupon } from "../../resources/coupon_pb";
+import type { RegistrationRecordInput } from "./records_pb";
 
 /**
  * Describes the file isuxportal/services/registration/session.proto.
@@ -182,6 +183,11 @@ export declare type UpdateRegistrationRequest = Message<"isuxportal.proto.servic
    * @generated from field: string avatar_url = 6;
    */
   avatarUrl: string;
+
+  /**
+   * @generated from field: isuxportal.proto.services.registration.RegistrationRecordInput registration_record = 7;
+   */
+  registrationRecord?: RegistrationRecordInput;
 };
 
 /**

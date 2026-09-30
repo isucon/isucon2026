@@ -22,16 +22,17 @@ const (
 )
 
 type CreateTeamRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	TeamName      string                 `protobuf:"bytes,1,opt,name=team_name,json=teamName,proto3" json:"team_name,omitempty"`
-	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"` // contestant name
-	EmailAddress  string                 `protobuf:"bytes,3,opt,name=email_address,json=emailAddress,proto3" json:"email_address,omitempty"`
-	IsStudent     bool                   `protobuf:"varint,4,opt,name=is_student,json=isStudent,proto3" json:"is_student,omitempty"`
-	IsInPerson    bool                   `protobuf:"varint,5,opt,name=is_in_person,json=isInPerson,proto3" json:"is_in_person,omitempty"`
-	AvatarUrl     string                 `protobuf:"bytes,6,opt,name=avatar_url,json=avatarUrl,proto3" json:"avatar_url,omitempty"`
-	Hidden        bool                   `protobuf:"varint,16,opt,name=hidden,proto3" json:"hidden,omitempty"` // requires bypass token
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state              protoimpl.MessageState   `protogen:"open.v1"`
+	TeamName           string                   `protobuf:"bytes,1,opt,name=team_name,json=teamName,proto3" json:"team_name,omitempty"`
+	Name               string                   `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"` // contestant name
+	EmailAddress       string                   `protobuf:"bytes,3,opt,name=email_address,json=emailAddress,proto3" json:"email_address,omitempty"`
+	IsStudent          bool                     `protobuf:"varint,4,opt,name=is_student,json=isStudent,proto3" json:"is_student,omitempty"`
+	IsInPerson         bool                     `protobuf:"varint,5,opt,name=is_in_person,json=isInPerson,proto3" json:"is_in_person,omitempty"`
+	AvatarUrl          string                   `protobuf:"bytes,6,opt,name=avatar_url,json=avatarUrl,proto3" json:"avatar_url,omitempty"`
+	RegistrationRecord *RegistrationRecordInput `protobuf:"bytes,7,opt,name=registration_record,json=registrationRecord,proto3" json:"registration_record,omitempty"`
+	Hidden             bool                     `protobuf:"varint,16,opt,name=hidden,proto3" json:"hidden,omitempty"` // requires bypass token
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *CreateTeamRequest) Reset() {
@@ -106,6 +107,13 @@ func (x *CreateTeamRequest) GetAvatarUrl() string {
 	return ""
 }
 
+func (x *CreateTeamRequest) GetRegistrationRecord() *RegistrationRecordInput {
+	if x != nil {
+		return x.RegistrationRecord
+	}
+	return nil
+}
+
 func (x *CreateTeamRequest) GetHidden() bool {
 	if x != nil {
 		return x.Hidden
@@ -161,7 +169,7 @@ var File_isuxportal_services_registration_create_team_proto protoreflect.FileDes
 
 const file_isuxportal_services_registration_create_team_proto_rawDesc = "" +
 	"\n" +
-	"2isuxportal/services/registration/create_team.proto\x12&isuxportal.proto.services.registration\"\xe1\x01\n" +
+	"2isuxportal/services/registration/create_team.proto\x12&isuxportal.proto.services.registration\x1a.isuxportal/services/registration/records.proto\"\xd3\x02\n" +
 	"\x11CreateTeamRequest\x12\x1b\n" +
 	"\tteam_name\x18\x01 \x01(\tR\bteamName\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12#\n" +
@@ -171,7 +179,8 @@ const file_isuxportal_services_registration_create_team_proto_rawDesc = "" +
 	"\fis_in_person\x18\x05 \x01(\bR\n" +
 	"isInPerson\x12\x1d\n" +
 	"\n" +
-	"avatar_url\x18\x06 \x01(\tR\tavatarUrl\x12\x16\n" +
+	"avatar_url\x18\x06 \x01(\tR\tavatarUrl\x12p\n" +
+	"\x13registration_record\x18\a \x01(\v2?.isuxportal.proto.services.registration.RegistrationRecordInputR\x12registrationRecord\x12\x16\n" +
 	"\x06hidden\x18\x10 \x01(\bR\x06hidden\"-\n" +
 	"\x12CreateTeamResponse\x12\x17\n" +
 	"\ateam_id\x18\x01 \x01(\x03R\x06teamIdB\xc6\x02\n" +
@@ -191,15 +200,17 @@ func file_isuxportal_services_registration_create_team_proto_rawDescGZIP() []byt
 
 var file_isuxportal_services_registration_create_team_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
 var file_isuxportal_services_registration_create_team_proto_goTypes = []any{
-	(*CreateTeamRequest)(nil),  // 0: isuxportal.proto.services.registration.CreateTeamRequest
-	(*CreateTeamResponse)(nil), // 1: isuxportal.proto.services.registration.CreateTeamResponse
+	(*CreateTeamRequest)(nil),       // 0: isuxportal.proto.services.registration.CreateTeamRequest
+	(*CreateTeamResponse)(nil),      // 1: isuxportal.proto.services.registration.CreateTeamResponse
+	(*RegistrationRecordInput)(nil), // 2: isuxportal.proto.services.registration.RegistrationRecordInput
 }
 var file_isuxportal_services_registration_create_team_proto_depIdxs = []int32{
-	0, // [0:0] is the sub-list for method output_type
-	0, // [0:0] is the sub-list for method input_type
-	0, // [0:0] is the sub-list for extension type_name
-	0, // [0:0] is the sub-list for extension extendee
-	0, // [0:0] is the sub-list for field type_name
+	2, // 0: isuxportal.proto.services.registration.CreateTeamRequest.registration_record:type_name -> isuxportal.proto.services.registration.RegistrationRecordInput
+	1, // [1:1] is the sub-list for method output_type
+	1, // [1:1] is the sub-list for method input_type
+	1, // [1:1] is the sub-list for extension type_name
+	1, // [1:1] is the sub-list for extension extendee
+	0, // [0:1] is the sub-list for field type_name
 }
 
 func init() { file_isuxportal_services_registration_create_team_proto_init() }
@@ -207,6 +218,7 @@ func file_isuxportal_services_registration_create_team_proto_init() {
 	if File_isuxportal_services_registration_create_team_proto != nil {
 		return
 	}
+	file_isuxportal_services_registration_records_proto_init()
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{

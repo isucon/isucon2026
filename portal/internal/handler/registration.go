@@ -201,6 +201,9 @@ func (h *Handler) RegistrationCreateTeam(w http.ResponseWriter, r *http.Request)
 	if _, err := tx.ExecContext(ctx, `UPDATE teams SET leader_id = $1 WHERE id = $2`, contestantID, teamID); err != nil {
 		return err
 	}
+	if err := saveRecordInput(ctx, tx, contestantID, req.RegistrationRecord, ri.now); err != nil {
+		return err
+	}
 	if err := model.UpdateTeamStudentStatus(ctx, tx, teamID); err != nil {
 		return err
 	}
@@ -279,6 +282,9 @@ func (h *Handler) RegistrationJoinTeam(w http.ResponseWriter, r *http.Request) e
 	if err != nil {
 		return err
 	}
+	if err := saveRecordInput(ctx, tx, contestantID, req.RegistrationRecord, ri.now); err != nil {
+		return err
+	}
 	if err := model.UpdateTeamStudentStatus(ctx, tx, team.ID); err != nil {
 		return err
 	}
@@ -344,6 +350,9 @@ func (h *Handler) RegistrationUpdate(w http.ResponseWriter, r *http.Request) err
 			req.TeamName, req.EmailAddress, team.ID); err != nil {
 			return err
 		}
+	}
+	if err := saveRecordInput(ctx, tx, c.ID, req.RegistrationRecord, ri.now); err != nil {
+		return err
 	}
 	if err := model.UpdateTeamStudentStatus(ctx, tx, team.ID); err != nil {
 		return err
