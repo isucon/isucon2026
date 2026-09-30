@@ -48,7 +48,42 @@ DEBUG_PORTAL_PORT=28081 DEBUG_API_PORT=28080 DEBUG_WEB_PORT=25173 make debug-up
 Compose project は `isureal-debug` です。
 通常の `isureal` や `portal` のDBとネットワークを共有しません。
 `PORTAL_TEST_MODE=0` で実行するため、完了処理とダッシュボード更新は `portal-worker` の PostgreSQL ジョブキューを経由します。
-競技時刻はこの環境専用の2020年開始、2099年終了に設定しています。
+`make debug-up` は Python 3 で起動時刻の8時間前を競技開始、1時間後を競技終了に設定します。
+凍結は終了と同時にし、起動後1時間はベンチを実行できます。
+時刻は git 管理対象外の `deploy/local-debug/.env.timing` に保存し、次の `make debug-up` で更新します。
+Timeline の横軸には終了後1時間の余白があるため、表示幅は10時間です。
+固定の競技時刻を使う場合は `DEBUG_CONTEST_START`、`DEBUG_CONTEST_FREEZE`、`DEBUG_CONTEST_END` にタイムゾーン付きの日時を指定してください。
+
+```sh
+DEBUG_CONTEST_START=2026-09-25T09:00:00+09:00 \
+DEBUG_CONTEST_FREEZE=2026-09-25T18:00:00+09:00 \
+DEBUG_CONTEST_END=2026-09-25T18:00:00+09:00 make debug-up
+```
+
+`docker compose` を直接使う場合は `--env-file deploy/local-debug/.env.timing` を指定してください。
+指定しない場合は、従来の2020年〜2099年の設定に戻ります。
+
+## 履歴が蓄積した状態の表示
+
+`make debug-up` の起動後に `make debug-loadfixture` を実行すると、この Compose 環境の `portal-db` に1000チームの履歴を追加します。
+ホストに Go が必要です。
+既存の試験チームと結果は保持し、1000001以降のIDを使います。
+同じデータの再投入は拒否します。
+
+```sh
+make debug-up
+make debug-loadfixture
+# 生成済み履歴のスコア推移だけを更新する場合
+make debug-refresh-scores
+```
+
+実行時点から過去8時間、3〜5分間隔の履歴を作成し、worker に全チームのダッシュボードキャッシュ更新を依頼します。
+更新完了後に http://localhost:18081/ を再読み込みしてください。
+選手の履歴は `/admin/impersonate` で contestant ID `1000001` に代理ログインして `/contestant/benchmark_jobs` を開くと確認できます。
+生成したチームのインスタンスは架空のため、実ベンチの実行には従来の `make debug-register` のチームを使用してください。
+
+`portal/compose.yaml` の DB（ホストの15432番ポート）へ投入したデータは、この環境には表示されません。
+データ生成の詳細は [portal/loadtest/README.md](../../portal/loadtest/README.md) を参照してください。
 
 ## 接続設定とAPIの対応
 
