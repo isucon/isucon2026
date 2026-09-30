@@ -83,7 +83,7 @@ func createPostHandler(h *HandlerContext) echo.HandlerFunc {
 		}
 		defer tx.Rollback()
 		var lockedUserID string
-		if err := tx.GetContext(ctx, &lockedUserID, `SELECT id FROM users WHERE id = $1 FOR UPDATE`, userID); err != nil {
+		if err := tx.GetContext(ctx, &lockedUserID, `SELECT id FROM users WHERE id = $1 FOR NO KEY UPDATE`, userID); err != nil {
 			return err
 		}
 		user, err := getUser(ctx, tx, userID)
@@ -95,7 +95,11 @@ func createPostHandler(h *HandlerContext) echo.HandlerFunc {
 			LocalDate time.Time `db:"local_date"`
 			StartsAt  time.Time `db:"starts_at"`
 		}
-		if err := tx.GetContext(ctx, &window, `SELECT id, local_date, starts_at FROM posting_windows WHERE region = $1 AND ended_at IS NULL FOR UPDATE`, user.Region); err != nil {
+		err = tx.GetContext(ctx, &window, `SELECT id, local_date, starts_at FROM posting_windows WHERE region = $1 AND ended_at IS NULL FOR UPDATE`, user.Region)
+		if errors.Is(err, sql.ErrNoRows) {
+			err = tx.GetContext(ctx, &window, `SELECT id, local_date, starts_at FROM posting_windows WHERE region = $1 AND ended_at IS NULL FOR UPDATE`, user.Region)
+		}
+		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				return NewAPIError(http.StatusConflict, "post_slot_unavailable")
 			}
@@ -208,28 +212,21 @@ func getPostHandler(h *HandlerContext) echo.HandlerFunc {
 			return err
 		}
 		ctx := c.Request().Context()
-		allowed, err := canViewPost(ctx, h.DB, GetSession(c).UserID, input.PostID)
-		if err != nil {
-			return err
-		}
-		if !allowed {
-			return NewAPIError(http.StatusNotFound, "post_not_found")
-		}
-		post, err := getPost(ctx, h.DB, input.PostID)
+		post, err := getPostWithAuthor(ctx, h.DB, input.PostID)
 		if errors.Is(err, sql.ErrNoRows) {
 			return NewAPIError(http.StatusNotFound, "post_not_found")
 		}
 		if err != nil {
 			return err
 		}
-		author, err := getUser(ctx, h.DB, post.AuthorID)
-		if errors.Is(err, sql.ErrNoRows) {
-			return NewAPIError(http.StatusNotFound, "post_not_found")
-		}
-		if err != nil {
+		viewer, err := loadViewerContext(ctx, h.DB, GetSession(c).UserID)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return err
 		}
-		return c.JSON(http.StatusOK, getPostResponse(newPostResponse(post, author)))
+		if err != nil || !viewer.canView(post.Post) {
+			return NewAPIError(http.StatusNotFound, "post_not_found")
+		}
+		return c.JSON(http.StatusOK, getPostResponse(newPostResponse(post.Post, post.Author)))
 	}
 }
 
@@ -268,7 +265,7 @@ func updatePostHandler(h *HandlerContext) echo.HandlerFunc {
 		}
 		defer tx.Rollback()
 		var lockedUserID string
-		if err := tx.GetContext(ctx, &lockedUserID, `SELECT id FROM users WHERE id = $1 FOR UPDATE`, userID); err != nil {
+		if err := tx.GetContext(ctx, &lockedUserID, `SELECT id FROM users WHERE id = $1 FOR NO KEY UPDATE`, userID); err != nil {
 			return err
 		}
 		post, err := getPost(ctx, tx, input.PostID)
@@ -331,7 +328,7 @@ func deletePostHandler(h *HandlerContext) echo.HandlerFunc {
 		}
 		defer tx.Rollback()
 		var lockedUserID string
-		if err := tx.GetContext(ctx, &lockedUserID, `SELECT id FROM users WHERE id = $1 FOR UPDATE`, userID); err != nil {
+		if err := tx.GetContext(ctx, &lockedUserID, `SELECT id FROM users WHERE id = $1 FOR NO KEY UPDATE`, userID); err != nil {
 			return err
 		}
 		post, err := getPost(ctx, tx, input.PostID)

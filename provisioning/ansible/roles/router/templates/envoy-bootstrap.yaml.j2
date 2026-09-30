@@ -125,6 +125,12 @@ static_resources:
     - name: {{ server }}
       type: STATIC
       connect_timeout: 2s
+      circuit_breakers:
+        thresholds:
+          - priority: DEFAULT
+            max_connections: 100000
+            max_pending_requests: 100000
+            max_requests: 100000
       load_assignment:
         cluster_name: {{ server }}
         endpoints:

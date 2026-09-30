@@ -1,0 +1,551 @@
+// Package initialdata は、アプリが初期データ（dataset）どおりの内容を返すことを確かめる。
+//
+// 初期データのユーザーとしてログインし、Memories（RealMoji とコメントを含む）、友達の一覧、
+// 投稿のエクスポートを dataset から計算した期待値と比べる。画像は署名付き URL が持ち主の
+// 鍵で署名されていることと、中身が一致することも確かめる。履歴は読むだけで書き込まない。
+package initialdata
+
+import (
+	"archive/zip"
+	"bytes"
+	"cmp"
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"math"
+	"math/rand/v2"
+	"slices"
+	"sync"
+	"time"
+
+	"github.com/isucon/isucon2026/bench/internal/agent"
+	"github.com/isucon/isucon2026/bench/internal/client"
+	"github.com/isucon/isucon2026/bench/internal/imageurl"
+	"github.com/isucon/isucon2026/dataset"
+)
+
+// アプリが 1 ページ、または投稿 1 件に付けて返す最大件数。
+const pageSize = 50
+
+// imageConcurrency は 1 人のユーザーが同時に取得する画像の数。ブラウザが 1 つのホストに
+// 張る接続数と同じくらいにする。
+const imageConcurrency = 6
+
+// Checker は関係の初期データの索引を持つ。投稿は履歴全体を持たず、確かめるユーザーの
+// 確かめる日の分だけ dataset から作り直す。
+type Checker struct {
+	world *dataset.World
+	// MemoryMonths は Check が Memories を読む月の数。履歴のある月から無作為に選ぶ。
+	// 0 ならすべての月を読む。
+	MemoryMonths int
+
+	users             map[string]*dataset.User
+	windows           map[string]*dataset.Window
+	friendshipsByUser map[string][]*dataset.Friendship
+}
+
+// New は world から期待値を引くための索引を作る。退会したユーザーとの友達関係はアプリが
+// 返さないので、ここで除いておく。
+func New(world *dataset.World) *Checker {
+	c := &Checker{
+		world:             world,
+		MemoryMonths:      2,
+		users:             map[string]*dataset.User{},
+		windows:           map[string]*dataset.Window{},
+		friendshipsByUser: map[string][]*dataset.Friendship{},
+	}
+	for _, u := range world.Users {
+		c.users[u.ID] = u
+	}
+	for _, w := range world.Windows {
+		c.windows[w.ID] = w
+	}
+	for _, f := range world.Friendships {
+		if c.active(f.UserLowID) && c.active(f.UserHighID) {
+			c.friendshipsByUser[f.UserLowID] = append(c.friendshipsByUser[f.UserLowID], f)
+			c.friendshipsByUser[f.UserHighID] = append(c.friendshipsByUser[f.UserHighID], f)
+		}
+	}
+	return c
+}
+
+func (c *Checker) active(userID string) bool {
+	return c.users[userID].Status == "active"
+}
+
+// posts は user が days の各日にした投稿のうち、アプリが返すもの（削除されていないもの）。
+func (c *Checker) posts(user *dataset.User, days []int) []*dataset.Post {
+	var posts []*dataset.Post
+	for _, day := range days {
+		if p := c.world.PostOn(user, day); p != nil && p.DeletedAt == nil {
+			posts = append(posts, p)
+		}
+	}
+	return posts
+}
+
+// allDays は履歴のすべての日。
+func (c *Checker) allDays() []int {
+	days := make([]int, c.world.Config.Days)
+	for day := range days {
+		days[day] = day
+	}
+	return days
+}
+
+// Targets は検証するユーザーを選ぶ。友達の最も多い通常ユーザー（友達の一覧にページ送りが
+// 要る）と、各リージョンから無作為に選んだ通常ユーザー、無作為に選んだ認定公開アカウント
+// （RealMoji とコメントが多い）。対象を毎回変えるので、決まったユーザーだけを正しく返す
+// 実装では通らない。
+func (c *Checker) Targets() []*dataset.User {
+	var hub *dataset.User
+	var certified []*dataset.User
+	regular := map[string][]*dataset.User{}
+	for _, u := range c.world.Users {
+		if u.Status != "active" || u.Role != dataset.RoleHistory {
+			continue
+		}
+		if u.AccountType == "certified_public" {
+			certified = append(certified, u)
+			continue
+		}
+		regular[u.Region] = append(regular[u.Region], u)
+		if hub == nil || len(c.friendshipsByUser[u.ID]) > len(c.friendshipsByUser[hub.ID]) {
+			hub = u
+		}
+	}
+	targets := []*dataset.User{hub}
+	for _, region := range dataset.Regions {
+		if users := regular[region]; len(users) > 0 {
+			if u := users[rand.IntN(len(users))]; u != hub {
+				targets = append(targets, u)
+			}
+		}
+	}
+	return append(targets, certified[rand.IntN(len(certified))])
+}
+
+// HistoryUsers は region の、負荷走行で書き込まない有効な初期データのユーザー。負荷走行では
+// 思い出を見返すユーザーとしてログインし、履歴を読むだけにする。
+func (c *Checker) HistoryUsers(region string) []*dataset.User {
+	var users []*dataset.User
+	for _, u := range c.world.Users {
+		if u.Region == region && u.Status == "active" && u.Role == dataset.RoleHistory {
+			users = append(users, u)
+		}
+	}
+	return users
+}
+
+// CohortUsers は region の、負荷走行で書き込んでよい初期データのユーザー（有効な cohort）。
+func (c *Checker) CohortUsers(region string) []*dataset.User {
+	var users []*dataset.User
+	for _, u := range c.world.Users {
+		if u.Region == region && u.Status == "active" && u.Role == dataset.RoleCohort {
+			users = append(users, u)
+		}
+	}
+	return users
+}
+
+// Check は user としてログインし、そのユーザーの初期データをすべて確かめる。api は国を
+// 持たないクライアントでよく、ユーザーのリージョンの国はここで付ける。
+func (c *Checker) Check(ctx context.Context, api *client.Client, user *dataset.User) error {
+	a := agent.New(api, user.Region, 0)
+	a.ID, a.Username, a.SecretKey = user.ID, user.Username, user.SecretKey
+	if err := a.Login(ctx); err != nil {
+		return fmt.Errorf("初期データのユーザー %s としてログインできません: %w", user.Username, err)
+	}
+	u := &userCheck{Checker: c, a: a}
+	for _, check := range []func(context.Context) error{u.checkMemories, u.checkFriends, u.checkExport, u.fetchImages} {
+		if err := check(ctx); err != nil {
+			return fmt.Errorf("初期データのユーザー %s: %w", user.Username, err)
+		}
+	}
+	return nil
+}
+
+// userCheck は 1 人のユーザーの検証。画像は URL の署名をその場で確かめ、中身の取得は
+// 最後にまとめて並行に行う。sampleSignatures なら署名は確かめずに控えておき、最後に
+// 無作為に選んだものだけを確かめる。
+type userCheck struct {
+	*Checker
+	a                *agent.Agent
+	images           []imageFetch
+	sampleSignatures bool
+	signatures       []signatureCheck
+}
+
+// sampledSignatures は、負荷走行で履歴を 1 か月読むたびに確かめる署名の数。署名（HMAC を
+// 1000 回）は重く、1 か月分の投稿、RealMoji、プロフィールの画像をすべて確かめると bench の
+// CPU の大半を使う。署名の方式の誤りは数件で見つかり、ときどき誤る実装も走行中に何度も引く。
+const sampledSignatures = 8
+
+type signatureCheck struct {
+	url, imageID, secretKey string
+}
+
+// verify は url が imageID の画像を指し、secretKey の持ち主が署名したことを確かめる
+// （sampleSignatures なら控えておく）。
+func (u *userCheck) verify(url, imageID, secretKey string) error {
+	if u.sampleSignatures {
+		u.signatures = append(u.signatures, signatureCheck{url: url, imageID: imageID, secretKey: secretKey})
+		return nil
+	}
+	return imageurl.Verify(url, imageID, secretKey, time.Now())
+}
+
+// verifySampled は控えた署名から sampledSignatures 件を無作為に選んで確かめる。
+func (u *userCheck) verifySampled() error {
+	rand.Shuffle(len(u.signatures), func(i, j int) { u.signatures[i], u.signatures[j] = u.signatures[j], u.signatures[i] })
+	for _, sig := range u.signatures[:min(len(u.signatures), sampledSignatures)] {
+		if err := imageurl.Verify(sig.url, sig.imageID, sig.secretKey, time.Now()); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+type imageFetch struct {
+	url   string
+	image *dataset.Image
+}
+
+// checkImage は url が img の持ち主の署名した img を指すことを確かめ、中身の取得を予約する。
+func (u *userCheck) checkImage(url string, img *dataset.Image) error {
+	if err := u.verify(url, img.ID, u.users[img.OwnerID].SecretKey); err != nil {
+		return err
+	}
+	u.images = append(u.images, imageFetch{url: url, image: img})
+	return nil
+}
+
+// fetchImages は予約した画像を並行に取得し、中身が初期データと一致することを確かめる。
+func (u *userCheck) fetchImages(ctx context.Context) error {
+	ctx, cancel := context.WithCancelCause(ctx)
+	defer cancel(nil)
+	slots := make(chan struct{}, imageConcurrency)
+	var wg sync.WaitGroup
+	for _, fetch := range u.images {
+		slots <- struct{}{}
+		wg.Go(func() {
+			defer func() { <-slots }()
+			data, err := u.a.API.Image(ctx, fetch.url)
+			if err == nil && !bytes.Equal(data, u.world.ImageBytes(fetch.image)) {
+				err = fmt.Errorf("画像 %s の中身が初期データと違います", fetch.image.ID)
+			}
+			if err != nil {
+				cancel(err)
+			}
+		})
+	}
+	wg.Wait()
+	if err := context.Cause(ctx); err != nil && ctx.Err() != nil {
+		return err
+	}
+	return nil
+}
+
+// checkUser は埋め込まれたユーザーを確かめる。bio は見せるかどうかが場面で変わるので、
+// withBio のときだけ比べる。プロフィール画像は URL の署名だけを確かめる。
+func (u *userCheck) checkUser(got client.UserSummary, want *dataset.User, withBio bool) error {
+	if got.ID != want.ID || got.Username != want.Username || got.DisplayName != want.DisplayName || got.AccountType != want.AccountType {
+		return fmt.Errorf("ユーザー %s の情報が初期データと違います", want.Username)
+	}
+	if withBio && got.Bio != want.Bio {
+		return fmt.Errorf("ユーザー %s の自己紹介が初期データと違います", want.Username)
+	}
+	switch {
+	case want.ProfileImage == nil && got.ProfileImageURL != nil:
+		return fmt.Errorf("ユーザー %s にないはずのプロフィール画像があります", want.Username)
+	case want.ProfileImage != nil && got.ProfileImageURL == nil:
+		return fmt.Errorf("ユーザー %s のプロフィール画像がありません", want.Username)
+	case want.ProfileImage != nil:
+		return u.verify(*got.ProfileImageURL, want.ProfileImage.ID, want.SecretKey)
+	}
+	return nil
+}
+
+func (u *userCheck) checkPost(got client.Post, want *dataset.Post) error {
+	c := u.Checker
+	window := c.windows[want.WindowID]
+	onTime := !want.PostedAt.After(window.OnTimeDeadline)
+	var lateSeconds int64
+	if !onTime {
+		lateSeconds = int64(want.PostedAt.Sub(window.OnTimeDeadline) / time.Second)
+	}
+	switch {
+	case got.ID != want.ID || got.PostingWindowID != want.WindowID:
+		return fmt.Errorf("投稿 %s の ID か投稿期間が違います", want.ID)
+	case got.Caption != want.Caption || got.Visibility != want.Visibility:
+		return fmt.Errorf("投稿 %s のキャプションか公開範囲が初期データと違います", want.ID)
+	case !got.PostedAt.Equal(want.PostedAt) || got.OnTime != onTime || got.LateSeconds != lateSeconds:
+		return fmt.Errorf("投稿 %s の投稿時刻か遅延の情報が初期データと違います", want.ID)
+	case !sameLocation(got.Location, want.Location):
+		return fmt.Errorf("投稿 %s の位置情報が初期データと違います", want.ID)
+	}
+	return u.checkUser(got.Author, c.users[want.AuthorID], true)
+}
+
+func sameLocation(got client.Location, want dataset.Location) bool {
+	sameFloat := func(a, b *float64) bool {
+		return (a == nil) == (b == nil) && (a == nil || math.Abs(*a-*b) < 1e-9)
+	}
+	sameString := func(a, b *string) bool {
+		return (a == nil) == (b == nil) && (a == nil || *a == *b)
+	}
+	return got.Kind == want.Kind && sameFloat(got.Latitude, want.Latitude) && sameFloat(got.Longitude, want.Longitude) && sameString(got.Locality, want.Locality)
+}
+
+// newestFirst は (時刻, ID) の降順に並べる比較関数を作る。
+func newestFirst[T any](at func(T) time.Time, id func(T) string) func(a, b T) int {
+	return func(a, b T) int {
+		return cmp.Or(at(b).Compare(at(a)), cmp.Compare(id(b), id(a)))
+	}
+}
+
+// checkMemories は履歴のある月から MemoryMonths か月を選び、Memories を最後のページまで
+// 読んで、投稿、RealMoji、コメントを比べる。
+func (u *userCheck) checkMemories(ctx context.Context) error {
+	months := u.HistoryMonths()
+	if u.MemoryMonths > 0 {
+		rand.Shuffle(len(months), func(i, j int) { months[i], months[j] = months[j], months[i] })
+		months = months[:min(len(months), u.MemoryMonths)]
+	}
+	for _, month := range months {
+		if err := u.checkMonth(ctx, month, func(client.Post) bool { return false }); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// HistoryMonths は初期データの履歴がある月（各月の 1 日）。
+func (c *Checker) HistoryMonths() []time.Time {
+	cfg := c.world.Config
+	first := cfg.EndDate.AddDate(0, 0, -(cfg.Days - 1))
+	var months []time.Time
+	for month := time.Date(first.Year(), first.Month(), 1, 0, 0, 0, 0, time.UTC); !month.After(cfg.EndDate); month = month.AddDate(0, 1, 0) {
+		months = append(months, month)
+	}
+	return months
+}
+
+// CheckMemories は a の month の Memories を最後のページまで読み、初期データと比べる。images が
+// 0 なら画像の署名をすべて確かめ、中身もすべて取得して比べる。images が正なら、署名は無作為に
+// 選んだ sampledSignatures 件、中身は無作為に選んだ images 枚だけを確かめる（負荷走行用）。
+// 負荷走行で作られた投稿（isNew が true）は比べない。
+func (c *Checker) CheckMemories(ctx context.Context, a *agent.Agent, month time.Time, isNew func(client.Post) bool, images int) error {
+	u := &userCheck{Checker: c, a: a, sampleSignatures: images > 0}
+	if err := u.checkMonth(ctx, month, isNew); err != nil {
+		return err
+	}
+	if err := u.verifySampled(); err != nil {
+		return err
+	}
+	if images > 0 && len(u.images) > images {
+		rand.Shuffle(len(u.images), func(i, j int) { u.images[i], u.images[j] = u.images[j], u.images[i] })
+		u.images = u.images[:images]
+	}
+	return u.fetchImages(ctx)
+}
+
+// checkMonth は month の Memories を最後のページまで読み、初期データの投稿、RealMoji、
+// コメントと比べる。isNew が true を返す投稿は除いてから比べる。
+func (u *userCheck) checkMonth(ctx context.Context, month time.Time, isNew func(client.Post) bool) error {
+	c, a := u.Checker, u.a
+	want := c.posts(c.users[a.ID], c.world.DaysIn(month))
+	slices.SortFunc(want, newestFirst(func(p *dataset.Post) time.Time { return p.PostedAt }, func(p *dataset.Post) string { return p.ID }))
+
+	var got []client.MemoryPost
+	var before *client.Post
+	for {
+		page, err := a.API.MemoriesMonth(ctx, a.Token, month.Format("2006-01"), before)
+		if err != nil {
+			return err
+		}
+		for _, item := range page.Items {
+			if !isNew(item.Post) {
+				got = append(got, item)
+			}
+		}
+		if !page.HasMore || len(page.Items) == 0 {
+			break
+		}
+		before = &page.Items[len(page.Items)-1].Post
+	}
+	if len(got) != len(want) {
+		return fmt.Errorf("Memories（%s）の投稿が %d 件です（期待値 %d 件）", month.Format("2006-01"), len(got), len(want))
+	}
+	for i, item := range got {
+		if err := u.checkMemoryPost(item, want[i]); err != nil {
+			return fmt.Errorf("Memories（%s）: %w", month.Format("2006-01"), err)
+		}
+	}
+	return nil
+}
+
+func (u *userCheck) checkMemoryPost(got client.MemoryPost, want *dataset.Post) error {
+	c := u.Checker
+	if err := u.checkPost(got.Post, want); err != nil {
+		return err
+	}
+	if err := u.checkImage(got.ImageURL, want.Image); err != nil {
+		return err
+	}
+
+	var reactions []*dataset.RealMoji
+	for _, r := range want.RealMojis {
+		if r.ReplacedAt == nil && c.active(r.ReactorID) {
+			reactions = append(reactions, r)
+		}
+	}
+	slices.SortFunc(reactions, newestFirst(func(r *dataset.RealMoji) time.Time { return r.CreatedAt }, func(r *dataset.RealMoji) string { return r.ID }))
+	reactions = reactions[:min(len(reactions), pageSize)]
+	if len(got.RealMojis) != len(reactions) {
+		return fmt.Errorf("投稿 %s の RealMoji が %d 件です（期待値 %d 件）", want.ID, len(got.RealMojis), len(reactions))
+	}
+	for i, r := range got.RealMojis {
+		w := reactions[i]
+		if r.ID != w.ID || r.ReactionType != w.ReactionType || !r.CreatedAt.Equal(w.CreatedAt) {
+			return fmt.Errorf("投稿 %s の %d 件目の RealMoji が初期データと違います", want.ID, i+1)
+		}
+		if err := u.checkUser(r.Reactor, c.users[w.ReactorID], false); err != nil {
+			return fmt.Errorf("投稿 %s の RealMoji %s: %w", want.ID, w.ID, err)
+		}
+		if err := u.checkImage(r.ImageURL, w.Image); err != nil {
+			return fmt.Errorf("投稿 %s の RealMoji %s: %w", want.ID, w.ID, err)
+		}
+	}
+
+	var comments []*dataset.Comment
+	for _, cm := range want.Comments {
+		if cm.DeletedAt == nil && c.active(cm.AuthorID) {
+			comments = append(comments, cm)
+		}
+	}
+	slices.SortFunc(comments, func(x, y *dataset.Comment) int {
+		return cmp.Or(x.CreatedAt.Compare(y.CreatedAt), cmp.Compare(x.ID, y.ID))
+	})
+	comments = comments[:min(len(comments), pageSize)]
+	if len(got.Comments) != len(comments) {
+		return fmt.Errorf("投稿 %s のコメントが %d 件です（期待値 %d 件）", want.ID, len(got.Comments), len(comments))
+	}
+	for i, cm := range got.Comments {
+		w := comments[i]
+		if cm.ID != w.ID || cm.Body != w.Body || !cm.CreatedAt.Equal(w.CreatedAt) {
+			return fmt.Errorf("投稿 %s の %d 件目のコメントが初期データと違います", want.ID, i+1)
+		}
+		if err := u.checkUser(cm.Author, c.users[w.AuthorID], false); err != nil {
+			return fmt.Errorf("投稿 %s のコメント %s: %w", want.ID, w.ID, err)
+		}
+	}
+	return nil
+}
+
+// checkFriends は友達の一覧を最後のページまで読み、友達関係の新しい順に並ぶことを確かめる。
+func (u *userCheck) checkFriends(ctx context.Context) error {
+	c, a := u.Checker, u.a
+	want := slices.Clone(c.friendshipsByUser[a.ID])
+	slices.SortFunc(want, newestFirst(func(f *dataset.Friendship) time.Time { return f.CreatedAt }, func(f *dataset.Friendship) string { return f.ID }))
+
+	var got []client.Relationship
+	var before *client.Relationship
+	for {
+		page, err := a.API.Relationships(ctx, a.Token, "friends", before)
+		if err != nil {
+			return err
+		}
+		got = append(got, page.Items...)
+		if !page.HasMore || len(page.Items) == 0 {
+			break
+		}
+		before = &page.Items[len(page.Items)-1]
+	}
+	if len(got) != len(want) {
+		return fmt.Errorf("友達の一覧が %d 件です（期待値 %d 件）", len(got), len(want))
+	}
+	for i, r := range got {
+		f := want[i]
+		friendID := f.UserLowID
+		if friendID == a.ID {
+			friendID = f.UserHighID
+		}
+		if r.RelationID != f.ID || r.Status != "friends" || !r.UpdatedAt.Equal(f.CreatedAt) {
+			return fmt.Errorf("友達の一覧の %d 件目が初期データと違います", i+1)
+		}
+		if err := u.checkUser(r.User, c.users[friendID], true); err != nil {
+			return fmt.Errorf("友達の一覧: %w", err)
+		}
+	}
+	return nil
+}
+
+type exportedPost struct {
+	client.Post
+	ImagePath string `json:"imagePath"`
+}
+
+// checkExport は ZIP の posts.json が全投稿を古い順に並べ、各画像が中身どおりであることを
+// 確かめる。
+func (u *userCheck) checkExport(ctx context.Context) error {
+	c, a := u.Checker, u.a
+	data, err := a.API.Export(ctx, a.Token)
+	if err != nil {
+		return err
+	}
+	archive, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	if err != nil {
+		return fmt.Errorf("エクスポートの ZIP を開けません: %w", err)
+	}
+	files := map[string]*zip.File{}
+	for _, f := range archive.File {
+		files[f.Name] = f
+	}
+	var got []exportedPost
+	if err := decodeZipJSON(files["posts.json"], &got); err != nil {
+		return fmt.Errorf("エクスポートの posts.json を読めません: %w", err)
+	}
+	want := c.posts(c.users[a.ID], c.allDays())
+	slices.SortFunc(want, func(x, y *dataset.Post) int { return cmp.Or(x.PostedAt.Compare(y.PostedAt), cmp.Compare(x.ID, y.ID)) })
+	if len(got) != len(want) {
+		return fmt.Errorf("エクスポートの投稿が %d 件です（期待値 %d 件）", len(got), len(want))
+	}
+	for i, p := range got {
+		if err := u.checkPost(p.Post, want[i]); err != nil {
+			return fmt.Errorf("エクスポート: %w", err)
+		}
+		if err := imageurl.Verify(p.ImageURL, want[i].Image.ID, a.SecretKey, time.Now()); err != nil {
+			return fmt.Errorf("エクスポート: %w", err)
+		}
+		image, err := readZipFile(files[p.ImagePath])
+		if err != nil {
+			return fmt.Errorf("エクスポートの %s を読めません: %w", p.ImagePath, err)
+		}
+		if !bytes.Equal(image, c.world.ImageBytes(want[i].Image)) {
+			return fmt.Errorf("エクスポートの %s が投稿 %s の画像と違います", p.ImagePath, want[i].ID)
+		}
+	}
+	return nil
+}
+
+func readZipFile(f *zip.File) ([]byte, error) {
+	if f == nil {
+		return nil, fmt.Errorf("ファイルがありません")
+	}
+	r, err := f.Open()
+	if err != nil {
+		return nil, err
+	}
+	defer r.Close()
+	return io.ReadAll(r)
+}
+
+func decodeZipJSON(f *zip.File, out any) error {
+	data, err := readZipFile(f)
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal(data, out)
+}

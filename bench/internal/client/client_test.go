@@ -7,8 +7,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -43,8 +46,7 @@ func TestRegisterThenLogin(t *testing.T) {
 		}
 	}))
 	defer server.Close()
-	api := client.NewWithHost(server.URL, "app.127.0.0.1.nip.io")
-	api.SetCountry("DE")
+	api := client.NewWithHost(server.URL, "app.127.0.0.1.nip.io").WithCountry("DE")
 	registered, err := api.Register(t.Context(), "alice", "Alice", "europe")
 	if err != nil || registered.SecretKey != "secret" || registered.Token != "" {
 		t.Fatalf("registered=%+v err=%v", registered, err)
@@ -179,5 +181,214 @@ func TestNotificationCancellation(t *testing.T) {
 	cancel()
 	if _, err := stream.Receive(); !errors.Is(err, context.Canceled) {
 		t.Fatalf("want context.Canceled, got %v", err)
+	}
+}
+
+type recorder struct {
+	mu      sync.Mutex
+	records []client.Record
+}
+
+func (r *recorder) Observe(record client.Record) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.records = append(r.records, record)
+}
+
+func (r *recorder) all() []client.Record {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]client.Record(nil), r.records...)
+}
+
+func fastRetry(observer client.Observer, base string) *client.Client {
+	return client.NewClient(client.Config{
+		Base:     base,
+		Retry:    client.RetryPolicy{MaxRetries: 2, Base: time.Millisecond, MaxWait: 20 * time.Millisecond},
+		Observer: observer,
+	}).WithCountry("JP")
+}
+
+func TestRedirectIsNotFollowed(t *testing.T) {
+	var followed atomic.Bool
+	elsewhere := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		followed.Store(true)
+	}))
+	defer elsewhere.Close()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, elsewhere.URL+"/api/me", http.StatusTemporaryRedirect)
+	}))
+	defer server.Close()
+	_, err := client.New(server.URL).Me(t.Context(), "token")
+	var apiErr *client.APIError
+	if !errors.As(err, &apiErr) || apiErr.Status != http.StatusTemporaryRedirect {
+		t.Fatalf("err=%v", err)
+	}
+	if followed.Load() {
+		t.Fatal("redirect target was requested")
+	}
+}
+
+func TestRetry503ThenSuccess(t *testing.T) {
+	var calls atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		if string(body) != `{"body":"hi"}` {
+			t.Errorf("retried body=%q", body)
+		}
+		if calls.Add(1) < 3 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusCreated)
+	}))
+	defer server.Close()
+	observed := &recorder{}
+	if err := fastRetry(observed, server.URL).CreateComment(t.Context(), "token", "p1", "hi"); err != nil {
+		t.Fatal(err)
+	}
+	records := observed.all()
+	if len(records) != 1 {
+		t.Fatalf("records=%+v", records)
+	}
+	record := records[0]
+	if record.Route != "POST /api/posts/:postId/comments" || record.Attempts != 3 || !record.Saw503 || record.Err != nil || record.Status != 201 || record.Country != "JP" {
+		t.Fatalf("record=%+v", record)
+	}
+}
+
+func TestRetry503Exhausted(t *testing.T) {
+	var calls atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer server.Close()
+	observed := &recorder{}
+	_, err := fastRetry(observed, server.URL).Me(t.Context(), "token")
+	var apiErr *client.APIError
+	if !errors.As(err, &apiErr) || apiErr.Status != 503 || apiErr.Attempts != 3 || calls.Load() != 3 {
+		t.Fatalf("err=%v calls=%d", err, calls.Load())
+	}
+	if records := observed.all(); len(records) != 1 || records[0].Err == nil || !records[0].Saw503 {
+		t.Fatalf("records=%+v", records)
+	}
+}
+
+func TestRetryAfterIsCapped(t *testing.T) {
+	var calls atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if calls.Add(1) == 1 {
+			w.Header().Set("Retry-After", "30")
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		fmt.Fprint(w, `{"id":"u1"}`)
+	}))
+	defer server.Close()
+	start := time.Now()
+	if _, err := fastRetry(nil, server.URL).Me(t.Context(), "token"); err != nil {
+		t.Fatal(err)
+	}
+	if elapsed := time.Since(start); elapsed > time.Second {
+		t.Fatalf("Retry-After was not capped: %v", elapsed)
+	}
+}
+
+func TestOtherStatusesAreNotRetried(t *testing.T) {
+	var calls atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+	if _, err := fastRetry(nil, server.URL).Me(t.Context(), "token"); err == nil || calls.Load() != 1 {
+		t.Fatalf("err=%v calls=%d", err, calls.Load())
+	}
+}
+
+func TestCanceledOperationIsNotObserved(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-r.Context().Done()
+	}))
+	defer server.Close()
+	observed := &recorder{}
+	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Millisecond)
+	defer cancel()
+	if _, err := fastRetry(observed, server.URL).Me(ctx, "token"); err == nil {
+		t.Fatal("expected error")
+	}
+	if records := observed.all(); len(records) != 0 {
+		t.Fatalf("records=%+v", records)
+	}
+}
+
+func TestImageUsesSignedURLOnly(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "" {
+			t.Error("image request must not send Authorization")
+		}
+		if r.URL.Query().Get("sig") != "s" {
+			t.Errorf("query=%s", r.URL.RawQuery)
+		}
+		fmt.Fprint(w, "jpeg")
+	}))
+	defer server.Close()
+	observed := &recorder{}
+	data, err := fastRetry(observed, server.URL).Image(t.Context(), "/api/images/i1?exp=1&sig=s")
+	if err != nil || string(data) != "jpeg" {
+		t.Fatalf("data=%q err=%v", data, err)
+	}
+	if records := observed.all(); len(records) != 1 || records[0].Route != "GET /api/images/:imageId" {
+		t.Fatalf("records=%+v", records)
+	}
+}
+
+func TestOwnConnections(t *testing.T) {
+	var connections atomic.Int64
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"id":"u1"}`)
+	}))
+	server.Config.ConnState = func(_ net.Conn, state http.ConnState) {
+		if state == http.StateNew {
+			connections.Add(1)
+		}
+	}
+	server.Start()
+	defer server.Close()
+
+	base := client.New(server.URL)
+	alice := base.WithCountry("JP").WithOwnConnections()
+	bob := base.WithCountry("DE").WithOwnConnections()
+	for range 3 {
+		for _, api := range []*client.Client{alice, bob} {
+			if _, err := api.Me(t.Context(), "token"); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	// 各ユーザーは自分の keep-alive 接続を使い回し、他人の接続は使わない。
+	if got := connections.Load(); got != 2 {
+		t.Fatalf("connections=%d, want 2", got)
+	}
+}
+
+func TestMayFailWith(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+	}))
+	defer server.Close()
+	observed := &recorder{}
+	api := fastRetry(observed, server.URL)
+	// 許したステータスでも、呼び出し側にはエラーとして返る。
+	if err := api.CreateComment(client.MayFailWith(t.Context(), http.StatusForbidden), "token", "p1", "hi"); err == nil {
+		t.Fatal("expected error")
+	}
+	if err := api.CreateComment(t.Context(), "token", "p1", "hi"); err == nil {
+		t.Fatal("expected error")
+	}
+	records := observed.all()
+	if len(records) != 2 || !records[0].Allowed || records[1].Allowed {
+		t.Fatalf("records=%+v", records)
 	}
 }

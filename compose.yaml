@@ -153,6 +153,10 @@ services:
     image: envoyproxy/envoy:v1.32.2
     network_mode: service:router
     user: 101:101
+    ulimits:
+      nofile:
+        soft: 1048576
+        hard: 1048576
     command:
     - envoy
     - -c
@@ -224,6 +228,7 @@ services:
     - dev-postgres-data:/var/lib/postgresql/data
     - ./webapp/sql/001-schema.sql:/docker-entrypoint-initdb.d/001-schema.sql:ro
     - ./webapp/sql/002-seed.sql:/docker-entrypoint-initdb.d/002-seed.sql:ro
+    - ./webapp/sql/003-initial-snapshot.sql:/docker-entrypoint-initdb.d/003-initial-snapshot.sql:ro
     cpus: ${ISUREAL_DB_CPUS:-2.0}
     mem_limit: ${ISUREAL_DB_MEMORY:-2g}
     shm_size: 256m

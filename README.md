@@ -8,7 +8,10 @@
 
 ### 起動方法
 
+初期データ `webapp/sql/002-seed.sql` は生成物なので、初回（と `dataset` を変えたとき）は先に生成します（Go が必要です）。
+
 ```bash
+make datagen
 docker compose up
 ```
 
@@ -52,6 +55,6 @@ make vm-down
 ```bash
 make vm-benchmark
 
-# 開発用の固定 1 サイクル
-make vm-benchmark BENCH_ARGS='-users 2 -cycles 1'
+# 開発用の短い走行（各リージョンが 1〜2 回投稿期間を開く）
+make vm-benchmark BENCH_ARGS='-users 2 -duration 25s'
 ```

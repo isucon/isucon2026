@@ -19,7 +19,7 @@ RUN apk add --no-cache bash ca-certificates curl iproute2 nginx postgresql-clien
 WORKDIR /app/go
 COPY --from=go-build /out/isureal /usr/local/bin/isureal
 COPY --from=frontend-build /src/dist /usr/share/nginx/html
-COPY webapp/sql/ /app/sql/
+COPY webapp/sql/init.sh webapp/sql/reset.sql /app/sql/
 COPY deploy/dev/nginx.conf /etc/nginx/http.d/default.conf
 COPY deploy/dev/routes.sh deploy/dev/app-entrypoint.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/routes.sh /usr/local/bin/app-entrypoint.sh /app/sql/init.sh

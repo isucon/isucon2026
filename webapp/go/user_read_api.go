@@ -41,29 +41,25 @@ func searchUsersHandler(h *HandlerContext) echo.HandlerFunc {
 		}
 		ctx := c.Request().Context()
 		viewer := GetSession(c).UserID
-		var ids []string
-		if err := h.DB.SelectContext(ctx, &ids, `SELECT id FROM users WHERE status='active' AND id<>$1 AND ($2='' OR (username,id)>($2,$3)) ORDER BY username, id`, viewer, input.BeforeUsername, input.BeforeID); err != nil {
+		var users []User
+		if err := h.DB.SelectContext(ctx, &users, `SELECT `+strings.Join(userColumns, ", ")+` FROM users WHERE status='active' AND id<>$1 AND ($2='' OR (username,id)>($2,$3)) ORDER BY username, id`, viewer, input.BeforeUsername, input.BeforeID); err != nil {
+			return err
+		}
+		blocked, err := getBlockedUserIDs(ctx, h.DB, viewer)
+		if err != nil {
 			return err
 		}
 		query := normalizeSearchText(input.Q)
 		items := make([]relationshipUserResponse, 0)
-		for _, id := range ids {
-			user, err := getUser(ctx, h.DB, id)
-			if errors.Is(err, sql.ErrNoRows) {
-				continue
-			}
-			if err != nil {
-				return err
-			}
+		for _, user := range users {
 			if !strings.Contains(normalizeSearchText(user.Username), query) && !strings.Contains(normalizeSearchText(user.DisplayName), query) {
 				continue
 			}
-			blocked, err := isBlocked(ctx, h.DB, viewer, id)
-			if err != nil {
-				return err
-			}
-			if blocked {
+			if blocked[user.ID] {
 				continue
+			}
+			if err := user.setImageKey(); err != nil {
+				return err
 			}
 			if user.AccountType != "certified_public" {
 				user.Bio = ""

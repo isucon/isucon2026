@@ -1,4 +1,4 @@
-.PHONY: tools fmt vet build test frontend-install frontend-lint frontend-typecheck frontend-test frontend-e2e contract generate-api proto-lint proto-generate proto-build portal-fmt portal-vet portal-test portal-build portal-web-install portal-web-lint portal-web-typecheck portal-web-test portal-web-build portal-web-e2e portal-check router-fmt router-vet router-test router-build router-compose-check router-envoy-check router-e2e router-check provisioning-static provisioning-artifacts vm-preflight vm-up vm-deploy vm-provision vm-validate vm-status vm-logs vm-tls-ca vm-benchmark vm-reset-data vm-destroy image-validate image-build-base image-build-role image-promote aws-image-validate aws-image-build-role aws-infra-install aws-infra-check aws-infra-preview aws-infra-up aws-infra-validate aws-infra-destroy datagen datagen-test check
+.PHONY: tools fmt vet build test frontend-install frontend-lint frontend-typecheck frontend-test frontend-e2e contract generate-api proto-lint proto-generate proto-build portal-fmt portal-vet portal-test portal-build portal-web-install portal-web-lint portal-web-typecheck portal-web-test portal-web-build portal-web-e2e portal-check router-fmt router-vet router-test router-build router-compose-check router-envoy-check router-e2e router-check provisioning-static provisioning-artifacts vm-preflight vm-up vm-deploy vm-provision vm-validate vm-status vm-logs vm-tls-ca vm-benchmark vm-reset-data vm-destroy image-validate image-build-base image-build-role image-promote aws-image-validate aws-image-build-role aws-infra-install aws-infra-check aws-infra-preview aws-infra-up aws-infra-validate aws-infra-destroy datagen datagen-test datagen-load check
 
 tools:
 	mise install
@@ -36,10 +36,20 @@ contract:
 	npm --prefix frontend run test:contract
 
 datagen:
-	cd webapp/datagen && go run . all
+	cd webapp/datagen && go run .
 
 datagen-test:
+	cd dataset && go test ./...
 	cd webapp/datagen && go test ./...
+
+# Docker Compose の DB に、ファイルを経ずに初期データを入れ直す（SCALE=large で本番の規模）。
+# bench は同じ -scale で実行する。
+SCALE ?= small
+DB_PSQL = docker compose exec -T db-asia psql -U isureal -d isureal -v ON_ERROR_STOP=1 -q
+datagen-load:
+	$(DB_PSQL) < webapp/sql/001-schema.sql
+	cd webapp/datagen && go run . -scale $(SCALE) -out - | $(DB_PSQL)
+	$(DB_PSQL) < webapp/sql/003-initial-snapshot.sql
 
 generate-api:
 	npm --prefix frontend run generate:api

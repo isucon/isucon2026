@@ -1,8 +1,6 @@
 package isureal
 
 import (
-	"database/sql"
-	"errors"
 	"net/http"
 	"time"
 
@@ -64,24 +62,23 @@ func getRelationshipsHandler(h *HandlerContext) echo.HandlerFunc {
 		actor := GetSession(c).UserID
 		var records []struct {
 			ID        string    `db:"id"`
-			FirstID   string    `db:"first_id"`
-			SecondID  string    `db:"second_id"`
 			UpdatedAt time.Time `db:"updated_at"`
+			User      User      `db:"user"`
 		}
-		if err := h.DB.SelectContext(ctx, &records, `SELECT * FROM (`+query+`) relations WHERE ($2::timestamptz IS NULL OR (updated_at, id)<($2,$3)) ORDER BY updated_at DESC, id DESC`, actor, input.BeforeUpdatedAt, input.BeforeID); err != nil {
+		if err := h.DB.SelectContext(ctx, &records, `
+   SELECT relations.id, relations.updated_at, `+userColumnsAs("u", "user")+`
+   FROM (`+query+`) relations
+   JOIN users u ON u.status = 'active'
+               AND u.id = CASE WHEN relations.first_id = $1 THEN relations.second_id ELSE relations.first_id END
+   WHERE ($2::timestamptz IS NULL OR (relations.updated_at, relations.id) < ($2, $3))
+   ORDER BY relations.updated_at DESC, relations.id DESC LIMIT 51
+  `, actor, input.BeforeUpdatedAt, input.BeforeID); err != nil {
 			return err
 		}
-		items := make([]relationshipResponse, 0)
+		items := make([]relationshipResponse, 0, len(records))
 		for _, record := range records {
-			target := record.FirstID
-			if target == actor {
-				target = record.SecondID
-			}
-			user, err := getUser(ctx, h.DB, target)
-			if errors.Is(err, sql.ErrNoRows) {
-				continue
-			}
-			if err != nil {
+			user := record.User
+			if err := user.setImageKey(); err != nil {
 				return err
 			}
 			if user.AccountType != "certified_public" && input.Kind != "friends" {
@@ -95,9 +92,6 @@ func getRelationshipsHandler(h *HandlerContext) echo.HandlerFunc {
 				RelationID: record.ID, Status: status, UpdatedAt: record.UpdatedAt,
 				User: newRelationshipUserResponse(user),
 			})
-			if len(items) == 51 {
-				break
-			}
 		}
 		hasMore := len(items) > 50
 		if hasMore {

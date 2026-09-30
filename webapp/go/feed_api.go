@@ -1,13 +1,11 @@
 package isureal
 
 import (
-	"context"
 	"database/sql"
 	"errors"
 	"net/http"
 	"time"
 
-	"github.com/jmoiron/sqlx"
 	"github.com/labstack/echo/v5"
 )
 
@@ -37,47 +35,37 @@ func getFeedHandler(h *HandlerContext) echo.HandlerFunc {
 			return NewAPIError(http.StatusBadRequest, "invalid_pagination")
 		}
 		ctx := c.Request().Context()
-		viewerID := GetSession(c).UserID
-		var postIDs []string
-		if err := h.DB.SelectContext(ctx, &postIDs, `
-   SELECT id FROM posts
-   WHERE deleted_at IS NULL AND author_id <> $1
-     AND ($2::timestamptz IS NULL OR (posted_at, id) < ($2, $3))
-   ORDER BY posted_at DESC, id DESC
-  `, viewerID, input.BeforePostedAt, input.BeforeID); err != nil {
+		viewer, err := loadViewerContext(ctx, h.DB, GetSession(c).UserID)
+		if errors.Is(err, sql.ErrNoRows) {
+			return c.JSON(http.StatusOK, getFeedResponse{Items: []createPostResponse{}})
+		}
+		if err != nil {
+			return err
+		}
+		following := map[string]bool{}
+		if input.Feed == "following" {
+			var followeeIDs []string
+			if err := h.DB.SelectContext(ctx, &followeeIDs, `SELECT followee_id FROM follows WHERE follower_id = $1`, viewer.ID); err != nil {
+				return err
+			}
+			for _, id := range followeeIDs {
+				following[id] = true
+			}
+		}
+		posts, err := selectPostsWithAuthor(ctx, h.DB, `
+   AND p.author_id <> $1 AND w.ended_at IS NULL
+   AND ($2::timestamptz IS NULL OR (p.posted_at, p.id) < ($2, $3))
+   ORDER BY p.posted_at DESC, p.id DESC
+  `, viewer.ID, input.BeforePostedAt, input.BeforeID)
+		if err != nil {
 			return err
 		}
 		items := make([]createPostResponse, 0)
-		for _, postID := range postIDs {
-			allowed, err := canViewPost(ctx, h.DB, viewerID, postID)
-			if err != nil {
-				return err
-			}
-			if !allowed {
+		for _, post := range posts {
+			if !viewer.canView(post.Post) || !matchesFeed(viewer, following, post.Post, input.Feed) {
 				continue
 			}
-			post, err := getPost(ctx, h.DB, postID)
-			if errors.Is(err, sql.ErrNoRows) {
-				continue
-			}
-			if err != nil {
-				return err
-			}
-			matches, err := matchesFeed(ctx, h.DB, viewerID, post, input.Feed)
-			if err != nil {
-				return err
-			}
-			if !matches {
-				continue
-			}
-			author, err := getUser(ctx, h.DB, post.AuthorID)
-			if errors.Is(err, sql.ErrNoRows) {
-				continue
-			}
-			if err != nil {
-				return err
-			}
-			items = append(items, newPostResponse(post, author))
+			items = append(items, newPostResponse(post.Post, post.Author))
 			if len(items) == 51 {
 				break
 			}
@@ -90,45 +78,17 @@ func getFeedHandler(h *HandlerContext) echo.HandlerFunc {
 	}
 }
 
-func matchesFeed(ctx context.Context, db sqlx.QueryerContext, viewerID string, post Post, feed string) (bool, error) {
+func matchesFeed(viewer viewerContext, following map[string]bool, post Post, feed string) bool {
 	switch feed {
 	case "public":
-		return post.Visibility == "public", nil
+		return post.Visibility == "public"
 	case "following":
-		var followeeIDs []string
-		if err := sqlx.SelectContext(ctx, db, &followeeIDs, `SELECT followee_id FROM follows WHERE follower_id = $1`, viewerID); err != nil {
-			return false, err
-		}
-		for _, id := range followeeIDs {
-			if id == post.AuthorID {
-				return true, nil
-			}
-		}
-		return false, nil
-	case "friends", "friends-of-friends":
-		friends, err := getFriendIDs(ctx, db, viewerID)
-		if err != nil {
-			return false, err
-		}
-		for _, id := range friends {
-			if id == post.AuthorID {
-				return feed == "friends", nil
-			}
-		}
-		if feed == "friends" {
-			return false, nil
-		}
-		authorFriends, err := getFriendIDs(ctx, db, post.AuthorID)
-		if err != nil {
-			return false, err
-		}
-		for _, friendID := range friends {
-			for _, authorFriendID := range authorFriends {
-				if friendID == authorFriendID {
-					return true, nil
-				}
-			}
-		}
+		return following[post.AuthorID]
+	case "friends":
+		return viewer.Friends[post.AuthorID]
+	case "friends-of-friends":
+		return !viewer.Friends[post.AuthorID] && viewer.FriendsOfFriends[post.AuthorID]
+	default:
+		return false
 	}
-	return false, nil
 }

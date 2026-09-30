@@ -131,30 +131,13 @@ func getRealMojisHandler(h *HandlerContext) echo.HandlerFunc {
 		if !allowed {
 			return NewAPIError(http.StatusForbidden, "interaction_forbidden")
 		}
-		var ids []string
-		if err := h.DB.SelectContext(ctx, &ids, `SELECT id FROM realmojis WHERE post_id=$1 AND replaced_at IS NULL AND deleted_at IS NULL AND ($2::timestamptz IS NULL OR (created_at,id)<($2,$3)) ORDER BY created_at DESC,id DESC`, input.PostID, input.BeforeCreatedAt, input.BeforeID); err != nil {
+		reactions, err := selectCurrentRealMojis(ctx, h.DB, `AND r.post_id=$1 AND ($2::timestamptz IS NULL OR (r.created_at,r.id)<($2,$3)) ORDER BY r.created_at DESC,r.id DESC LIMIT 51`, input.PostID, input.BeforeCreatedAt, input.BeforeID)
+		if err != nil {
 			return err
 		}
-		items := make([]replaceRealMojiResponse, 0)
-		for _, id := range ids {
-			reaction, err := getRealMoji(ctx, h.DB, id)
-			if err != nil {
-				return err
-			}
-			if reaction.ReplacedAt != nil || reaction.DeletedAt != nil {
-				continue
-			}
-			user, err := getUser(ctx, h.DB, reaction.ReactorID)
-			if errors.Is(err, sql.ErrNoRows) {
-				continue
-			}
-			if err != nil {
-				return err
-			}
-			items = append(items, newRealMojiResponse(reaction, user))
-			if len(items) == 51 {
-				break
-			}
+		items := make([]replaceRealMojiResponse, 0, len(reactions))
+		for _, reaction := range reactions {
+			items = append(items, newRealMojiResponse(reaction.RealMoji, reaction.Reactor))
 		}
 		hasMore := len(items) > 50
 		if hasMore {
@@ -182,7 +165,7 @@ func deleteRealMojiHandler(h *HandlerContext) echo.HandlerFunc {
 		}
 		defer tx.Rollback()
 		var lockedID string
-		if err := tx.GetContext(ctx, &lockedID, `SELECT id FROM users WHERE id=$1 FOR UPDATE`, actor); err != nil {
+		if err := tx.GetContext(ctx, &lockedID, `SELECT id FROM users WHERE id=$1 FOR NO KEY UPDATE`, actor); err != nil {
 			return err
 		}
 		var record struct {

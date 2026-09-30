@@ -168,9 +168,11 @@ func TestUserAPIIntegration(t *testing.T) {
 	if created != 1 {
 		t.Fatalf("concurrent registrations=%d", created)
 	}
-	if _, err := db.Exec(`CREATE FUNCTION reject_user_session() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'insertion rejected'; END $$; CREATE TRIGGER reject_user_session BEFORE INSERT ON login_sessions FOR EACH ROW EXECUTE FUNCTION reject_user_session()`); err != nil {
+	if _, err := db.Exec(`CREATE OR REPLACE FUNCTION reject_user_session() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'insertion rejected'; END $$; CREATE TRIGGER reject_user_session BEFORE INSERT ON login_sessions FOR EACH ROW EXECUTE FUNCTION reject_user_session()`); err != nil {
 		t.Fatal(err)
 	}
+	// スキーマを作り直しても関数は残るので、次回のテストのために消す。
+	defer db.Exec(`DROP FUNCTION reject_user_session() CASCADE`)
 	independent := request("POST", "/api/auth/register", "", `{"username":"independent","displayName":"Independent","region":"asia"}`)
 	check(independent, http.StatusCreated)
 	independentSecret := decode(independent)["secretKey"].(string)
