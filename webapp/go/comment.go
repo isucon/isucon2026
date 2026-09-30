@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"slices"
 	"time"
 
 	"github.com/jmoiron/sqlx"
@@ -25,63 +24,50 @@ func getComment(ctx context.Context, db sqlx.QueryerContext, id string) (Comment
 	return comment, err
 }
 
-func canComment(ctx context.Context, db sqlx.QueryerContext, viewerID, postID string) (bool, error) {
-	allowed, err := canViewPost(ctx, db, viewerID, postID)
-	if err != nil || !allowed {
-		return false, err
+type CommentWithAuthor struct {
+	Comment
+	Author User `db:"author"`
+}
+
+func selectCommentsWithAuthor(ctx context.Context, db sqlx.QueryerContext, conditions string, args ...any) ([]CommentWithAuthor, error) {
+	var comments []CommentWithAuthor
+	if err := sqlx.SelectContext(ctx, db, &comments, `
+  SELECT c.id, c.post_id, c.author_id, c.body, c.created_at, c.deleted_at, `+userColumnsAs("u", "author")+`
+  FROM comments c JOIN users u ON u.id = c.author_id AND u.status = 'active'
+  WHERE c.deleted_at IS NULL `+conditions, args...); err != nil {
+		return nil, err
 	}
-	post, err := getPost(ctx, db, postID)
+	for i := range comments {
+		if err := comments[i].Author.setImageKey(); err != nil {
+			return nil, err
+		}
+	}
+	return comments, nil
+}
+
+func canComment(ctx context.Context, db sqlx.QueryerContext, viewerID, postID string) (bool, error) {
+	post, err := getPostWithAuthor(ctx, db, postID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil
 	}
 	if err != nil {
 		return false, err
 	}
-	window, err := getPostingWindow(ctx, db, post.PostingWindowID)
+	viewer, err := loadViewerContext(ctx, db, viewerID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
 	if err != nil {
 		return false, err
 	}
-	if window.EndedAt != nil {
+	if !viewer.canView(post.Post) || post.WindowEndedAt != nil {
 		return false, nil
 	}
-	if viewerID == post.AuthorID {
-		viewer, err := getUser(ctx, db, viewerID)
-		if err != nil {
-			return false, err
-		}
-		var currentWindowID string
-		err = sqlx.GetContext(ctx, db, &currentWindowID, `SELECT id FROM posting_windows WHERE region=$1 AND ended_at IS NULL`, viewer.Region)
-		if errors.Is(err, sql.ErrNoRows) {
-			return false, nil
-		}
-		if err != nil {
-			return false, err
-		}
-		currentWindow, err := getPostingWindow(ctx, db, currentWindowID)
-		if err != nil {
-			return false, err
-		}
-		var ownWindowIDs []string
-		if err := sqlx.SelectContext(ctx, db, &ownWindowIDs, `SELECT posting_window_id FROM posts WHERE author_id=$1 AND deleted_at IS NULL`, viewerID); err != nil {
-			return false, err
-		}
-		for _, id := range ownWindowIDs {
-			ownWindow, err := getPostingWindow(ctx, db, id)
-			if err != nil {
-				return false, err
-			}
-			if ownWindow.LocalDate.Equal(currentWindow.LocalDate) {
-				return true, nil
-			}
-		}
-		return false, nil
+	if viewer.ID == post.AuthorID {
+		return viewer.HasPostedToday, nil
 	}
 	if post.Visibility == "public" {
 		return true, nil
 	}
-	friends, err := getFriendIDs(ctx, db, viewerID)
-	if err != nil {
-		return false, err
-	}
-	return slices.Contains(friends, post.AuthorID), nil
+	return viewer.Friends[post.AuthorID], nil
 }

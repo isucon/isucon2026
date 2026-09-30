@@ -1,5 +1,7 @@
-// Command bench runs a basic ISUReal benchmark: initialize → pretest → load,
-// then prints the result JSON to stdout. Exit code 0 = pass, 1 = fail.
+// bench は ISUReal の基本ベンチマーク（initialize → pretest → load）を実行し、
+// 結果 JSON を標準出力へ出す。終了コードは pass=0、fail=1。
+// 負荷走行では 3 リージョンのユーザーを同時に動かし、各ユーザーは自分の
+// リージョンへルーターが振り分ける国を送る。
 package main
 
 import (
@@ -11,8 +13,10 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/isucon/isucon2026/bench/internal/scenario"
+	"github.com/isucon/isucon2026/dataset"
 )
 
 const (
@@ -23,9 +27,9 @@ const (
 func main() {
 	target := flag.String("target", defaultTarget, "base URL of the target application")
 	host := flag.String("host", "", "HTTP Host header override (empty uses the target host)")
-	region := flag.String("region", "asia", "user region: asia, europe, america")
-	users := flag.Int("users", defaultUsers, "number of concurrent load users")
-	cycles := flag.Int("cycles", 0, "run exactly this many posting cycles instead of the fixed 60s load (0 = 60s-bound)")
+	users := flag.Int("users", defaultUsers, "number of load users per region")
+	duration := flag.Duration("duration", 60*time.Second, "length of the load phase (shorter values are for development)")
+	scale := flag.String("scale", "small", "scale of the initial data in the target DB: small or large (must match datagen -scale)")
 	flag.Parse()
 
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
@@ -34,16 +38,22 @@ func main() {
 		os.Exit(2)
 	}
 
+	datasetConfig, ok := map[string]func() dataset.Config{"small": dataset.Small, "large": dataset.Large}[*scale]
+	if !ok {
+		logger.Error("unknown scale", "scale", *scale)
+		os.Exit(2)
+	}
+
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
 	runner, err := scenario.NewRunner(scenario.Config{
-		Target:    *target,
-		Host:      *host,
-		Region:    *region,
-		Users:     *users,
-		MaxCycles: *cycles,
-		Logger:    logger,
+		Target:   *target,
+		Host:     *host,
+		Users:    *users,
+		Duration: *duration,
+		Dataset:  dataset.Generate(datasetConfig()),
+		Logger:   logger,
 	})
 	if err != nil {
 		logger.Error("benchmarker setup failed", "error", err.Error())

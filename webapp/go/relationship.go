@@ -36,7 +36,7 @@ func beginRelationshipTx(ctx context.Context, db *sqlx.DB, actor, target string)
 	}
 	for _, id := range []string{min(actor, target), max(actor, target)} {
 		var lockedID string
-		if err := tx.GetContext(ctx, &lockedID, `SELECT id FROM users WHERE id=$1 AND status='active' FOR UPDATE`, id); err != nil {
+		if err := tx.GetContext(ctx, &lockedID, `SELECT id FROM users WHERE id=$1 AND status='active' FOR NO KEY UPDATE`, id); err != nil {
 			tx.Rollback()
 			if errors.Is(err, sql.ErrNoRows) {
 				return nil, NewAPIError(http.StatusNotFound, "relationship_not_found")

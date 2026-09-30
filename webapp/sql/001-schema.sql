@@ -143,6 +143,8 @@ CREATE TABLE posts (
   created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
   deleted_at timestamptz
 );
+CREATE INDEX posts_author_id ON posts(author_id);
+CREATE INDEX posts_posting_window_id ON posts(posting_window_id);
 
 CREATE TABLE friend_requests (
   id varchar(36) PRIMARY KEY,
@@ -164,6 +166,7 @@ CREATE TABLE realmojis (
   deleted_at timestamptz
 );
 CREATE UNIQUE INDEX realmojis_one_active ON realmojis(post_id,reactor_id) WHERE replaced_at IS NULL AND deleted_at IS NULL;
+CREATE INDEX realmojis_post_id ON realmojis(post_id);
 
 CREATE TABLE comments (
   id varchar(36) PRIMARY KEY,
@@ -173,6 +176,7 @@ CREATE TABLE comments (
   created_at timestamptz NOT NULL,
   deleted_at timestamptz
 );
+CREATE INDEX comments_post_id ON comments(post_id);
 
 CREATE TABLE notifications (
   id varchar(36) PRIMARY KEY,

@@ -28,7 +28,7 @@ func putProfileImageHandler(h *HandlerContext) echo.HandlerFunc {
 		}
 		defer tx.Rollback()
 		var oldID *string
-		if err := tx.GetContext(ctx, &oldID, `SELECT profile_image_id FROM users WHERE id=$1 FOR UPDATE`, userID); err != nil {
+		if err := tx.GetContext(ctx, &oldID, `SELECT profile_image_id FROM users WHERE id=$1 FOR NO KEY UPDATE`, userID); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				return NewAPIError(http.StatusNotFound, "account_not_found")
 			}
@@ -63,7 +63,7 @@ func deleteProfileImageHandler(h *HandlerContext) echo.HandlerFunc {
 		}
 		defer tx.Rollback()
 		var imageID *string
-		err = tx.GetContext(ctx, &imageID, `SELECT profile_image_id FROM users WHERE id=$1 FOR UPDATE`, userID)
+		err = tx.GetContext(ctx, &imageID, `SELECT profile_image_id FROM users WHERE id=$1 FOR NO KEY UPDATE`, userID)
 		if errors.Is(err, sql.ErrNoRows) {
 			return NewAPIError(http.StatusNotFound, "account_not_found")
 		}

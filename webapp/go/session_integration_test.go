@@ -73,9 +73,11 @@ func TestCreateLoginSessionIntegration(t *testing.T) {
 	if err := db.Get(&currentHash, `SELECT token_hash FROM login_sessions WHERE active`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(`CREATE FUNCTION reject_session() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'insertion rejected'; END $$; CREATE TRIGGER reject_session BEFORE INSERT ON login_sessions FOR EACH ROW EXECUTE FUNCTION reject_session()`); err != nil {
+	if _, err := db.Exec(`CREATE OR REPLACE FUNCTION reject_session() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'insertion rejected'; END $$; CREATE TRIGGER reject_session BEFORE INSERT ON login_sessions FOR EACH ROW EXECUTE FUNCTION reject_session()`); err != nil {
 		t.Fatal(err)
 	}
+	// スキーマを作り直しても関数は残るので、次回のテストのために消す。
+	defer db.Exec(`DROP FUNCTION reject_session() CASCADE`)
 	if _, err := CreateLoginSession(db, "user1"); err == nil {
 		t.Fatal("expected insertion failure")
 	}

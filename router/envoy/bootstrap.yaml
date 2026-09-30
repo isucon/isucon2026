@@ -77,6 +77,12 @@ static_resources:
     - name: app1
       type: STATIC
       connect_timeout: 2s
+      circuit_breakers:
+        thresholds:
+          - priority: DEFAULT
+            max_connections: 100000
+            max_pending_requests: 100000
+            max_requests: 100000
       load_assignment:
         cluster_name: app1
         endpoints:
@@ -89,6 +95,12 @@ static_resources:
     - name: app2
       type: STATIC
       connect_timeout: 2s
+      circuit_breakers:
+        thresholds:
+          - priority: DEFAULT
+            max_connections: 100000
+            max_pending_requests: 100000
+            max_requests: 100000
       load_assignment:
         cluster_name: app2
         endpoints:
@@ -101,6 +113,12 @@ static_resources:
     - name: app3
       type: STATIC
       connect_timeout: 2s
+      circuit_breakers:
+        thresholds:
+          - priority: DEFAULT
+            max_connections: 100000
+            max_pending_requests: 100000
+            max_requests: 100000
       load_assignment:
         cluster_name: app3
         endpoints:

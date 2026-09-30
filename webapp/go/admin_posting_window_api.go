@@ -43,7 +43,7 @@ func openPostingWindowHandler(h *HandlerContext) echo.HandlerFunc {
 			return err
 		}
 		defer tx.Rollback()
-		if _, err := tx.ExecContext(ctx, `LOCK TABLE users IN EXCLUSIVE MODE`); err != nil {
+		if _, err := tx.ExecContext(ctx, `LOCK TABLE users IN SHARE ROW EXCLUSIVE MODE`); err != nil {
 			return err
 		}
 		var conflict bool
@@ -67,14 +67,11 @@ func openPostingWindowHandler(h *HandlerContext) echo.HandlerFunc {
   `, windowID, region, localDate, startsAt, startsAt.Add(time.Duration(seconds)*time.Second)); err != nil {
 			return err
 		}
-		var userIDs []string
-		if err := tx.SelectContext(ctx, &userIDs, `SELECT id FROM users WHERE region = $1 AND status = 'active' ORDER BY id`, region); err != nil {
+		if _, err := tx.ExecContext(ctx, `
+   INSERT INTO notifications (id, user_id, posting_window_id, created_at)
+   SELECT gen_random_uuid()::text, id, $2, $3 FROM users WHERE region = $1 AND status = 'active'
+  `, region, windowID, startsAt); err != nil {
 			return err
-		}
-		for _, userID := range userIDs {
-			if _, err := tx.ExecContext(ctx, `INSERT INTO notifications (id, user_id, posting_window_id, created_at) VALUES ($1, $2, $3, $4)`, uuid.NewString(), userID, windowID, startsAt); err != nil {
-				return err
-			}
 		}
 		window, err := getPostingWindow(ctx, tx, windowID)
 		if err != nil {

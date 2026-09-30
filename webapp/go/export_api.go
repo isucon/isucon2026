@@ -3,9 +3,7 @@ package isureal
 import (
 	"archive/zip"
 	"bytes"
-	"database/sql"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 
@@ -25,11 +23,17 @@ func exportPostsHandler(h *HandlerContext) echo.HandlerFunc {
 		if err != nil {
 			return err
 		}
-		var postIDs []string
-		if err := h.DB.SelectContext(ctx, &postIDs, `
-   SELECT id FROM posts
-   WHERE author_id = $1 AND deleted_at IS NULL
-   ORDER BY posted_at, id
+		var posts []struct {
+			Post
+			ImageData []byte `db:"image_data"`
+		}
+		if err := h.DB.SelectContext(ctx, &posts, `
+   SELECT `+postColumns+`, i.data AS image_data
+   FROM posts p
+   JOIN posting_windows w ON w.id = p.posting_window_id
+   JOIN image_objects i ON i.id = p.image_id
+   WHERE p.author_id = $1 AND p.deleted_at IS NULL
+   ORDER BY p.posted_at, p.id
   `, userID); err != nil {
 			return err
 		}
@@ -37,28 +41,17 @@ func exportPostsHandler(h *HandlerContext) echo.HandlerFunc {
 		var body bytes.Buffer
 		writer := zip.NewWriter(&body)
 		defer writer.Close()
-		items := make([]exportPostResponse, 0)
-		for _, postID := range postIDs {
-			post, err := getPost(ctx, h.DB, postID)
-			if errors.Is(err, sql.ErrNoRows) {
-				continue
-			}
-			if err != nil {
-				return err
-			}
-			var data []byte
-			if err := h.DB.GetContext(ctx, &data, `SELECT data FROM image_objects WHERE id = $1`, post.ImageID); err != nil {
-				return err
-			}
+		items := make([]exportPostResponse, 0, len(posts))
+		for _, post := range posts {
 			imagePath := fmt.Sprintf("images/%06d.jpg", len(items)+1)
 			image, err := writer.CreateHeader(&zip.FileHeader{Name: imagePath, Method: zip.Store})
 			if err != nil {
 				return err
 			}
-			if _, err := image.Write(data); err != nil {
+			if _, err := image.Write(post.ImageData); err != nil {
 				return err
 			}
-			items = append(items, exportPostResponse{createPostResponse: newPostResponse(post, author), ImagePath: imagePath})
+			items = append(items, exportPostResponse{createPostResponse: newPostResponse(post.Post, author), ImagePath: imagePath})
 		}
 		manifest, err := writer.Create("posts.json")
 		if err != nil {
