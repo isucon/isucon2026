@@ -2,6 +2,13 @@ module github.com/isucon/isucon2026/bench
 
 go 1.26.5
 
-replace github.com/isucon/isucon2026/dataset => ../dataset
+require (
+	github.com/isucon/isucon2026/dataset v0.0.0-00010101000000-000000000000
+	github.com/isucon/isucon2026/portal v0.0.0
+	google.golang.org/protobuf v1.36.11
+)
 
-require github.com/isucon/isucon2026/dataset v0.0.0-00010101000000-000000000000
+replace (
+	github.com/isucon/isucon2026/dataset => ../dataset
+	github.com/isucon/isucon2026/portal => ../portal
+)

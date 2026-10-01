@@ -1,0 +1,35 @@
+name: Supervisor CI
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/supervisor-ci.yml"
+      - "supervisor/**"
+      - "bench/**"
+      - "portal/**"
+      - ".dockerignore"
+  pull_request:
+    paths:
+      - ".github/workflows/supervisor-ci.yml"
+      - "supervisor/**"
+      - "bench/**"
+      - "portal/**"
+      - ".dockerignore"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  supervisor-test-build:
+    runs-on: actions-runner-processor
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: make -C supervisor docker-test
+      - run: make -C supervisor docker-build
+

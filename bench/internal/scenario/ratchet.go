@@ -194,6 +194,7 @@ func (r *Runner) runRatchet(ctx context.Context, start time.Time, join func(regi
 				join(region, level, added, false)
 			}
 		}
+		r.progress()
 	}
 }
 

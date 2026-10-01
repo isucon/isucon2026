@@ -1,0 +1,4 @@
+---
+- name: deploy portal stack
+  command: 'docker stack deploy --prune --resolve-image {{ "never" if app.mode == "local" else "always" }} --with-registry-auth --detach=false -c /opt/portal/docker-compose.yml {{ app.stack }}'
+  no_log: true

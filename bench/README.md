@@ -73,11 +73,12 @@ go -C bench run . -users 8 -duration 25s
 
 | フラグ | 既定値 | 内容 |
 |---|---|---|
-| `-target` | `http://app.127.0.0.1.nip.io:18090` | 接続先 |
+| `-target` | `ISUXBENCH_TARGET`、なければ `http://app.127.0.0.1.nip.io:18090` | 接続先 |
 | `-host` | 空 | HTTP Host の上書き（VM の IP に接続する場合など） |
 | `-users` | `8` | asia の最初の負荷ユーザー数（海外はその 1/8）。以後はラチェットで増える |
 | `-duration` | `60s` | 負荷走行の長さ。短くするのは開発用 |
 | `-scale` | `small` | 対象の DB の初期データの規模（`small` か `large`）。`datagen -scale` と合わせる |
+| `-timeout` | `140s` | 全体の上限。詳しくは「supervisor からの実行」を参照 |
 
 1 回の走行で asia / europe / america の 3 リージョンを同時に扱う。各ユーザーは自分のリージョンに
 ルーターが振り分ける国（asia は JP / KR / CN / AU、europe は GB / DE / FR、america は US / CA / MX）を
@@ -214,3 +215,56 @@ notification=1、memory=1、follow=1。フィードの閲覧と画像の取得�
 ```sh
 go -C bench test -race ./...
 ```
+
+## supervisor からの実行
+
+supervisor は [`../supervisor`](../supervisor/README.md) に同梱している。
+`make -C supervisor docker-build`（リポジトリルート）で、ベンチを含むイメージをビルドできる。
+
+`ISUXBENCH_REPORT_FD` が渡された場合、ポータルと共有する `BenchmarkResult` の protobuf を専用パイプへ送る。
+起動時、各フェーズ（初期化、事前検証、初期データの検証、ユーザーの準備、負荷走行）の前、負荷走行中の観測窓
+（5 秒）が閉じるたびに途中報告し、終了前に最終結果を送る。途中報告の `passed` は false とし、正常に完走した
+最終報告だけを true にする。全体タイムアウトや SIGTERM による中断は失敗になる。パイプへの書き込みは 5 秒で
+タイムアウトし、報告エラーは終了コード 2 とする。
+
+```bash
+# リポジトリルートからビルドする。生成 protobuf は ../portal を参照する。
+go -C bench build -o /tmp/isureal-bench .
+
+# 接続先と秘密値は systemd の EnvironmentFile 等で設定しておく。
+# --target は supervisor がジョブから追加するため、ここでは指定しない。
+ISUXPORTAL_SUPERVISOR_HARD_TIMEOUT=150 \
+  /usr/local/bin/isuxportal-supervisor /tmp/isureal-bench --target-port 8080 --scale large
+```
+
+| 追加フラグ | 既定値 | 動作 |
+|---|---|---|
+| `-target-port` | `80` | ポートを含まない IP を `http://<IP>:<port>` に変換する際のポート。URL または明示ポート付きの対象には適用しない |
+| `-timeout` | `140s` | 初期化から走行後の整合性チェックまでの全体上限。超えたら中断して失敗にする |
+| `-only-post-validation` | `false` | 最終検証は未実装のため、対象へ接続せず失敗を報告して終了コード 1 で終了する |
+
+`-target` の指定がなければ `ISUXBENCH_TARGET` を参照し、それもなければ開発環境の入口
+（`http://app.127.0.0.1.nip.io:18090`）を使う。`ISUXBENCH_ALL_ADDRESSES` は使わない（3 リージョンへの振り分けは
+ルーターが行う）。
+
+全体上限の 140 秒は、Large の初期データで初期データの検証（約 30 秒）、負荷走行（60 秒）、走行後の整合性チェック
+（上限 30 秒）を含めた暫定値である。supervisor のハードタイムアウト（初期設定 150 秒）は、ベンチの全体上限と
+報告処理の余裕を含めて長く設定する。本番の時間予算は実測して確定する。
+
+supervisor 実行時の stdout は `pass` と `score` だけの JSON とする。採点内訳、言語、詳細な失敗理由は stderr に出し、
+ポータルへ送る選手向けの失敗理由は一般的な文面にする。単独実行時は従来どおり詳細 JSON を stdout に出す。
+減点はないので、`ScoreBreakdown` の素点（`raw`）はスコアと同じ値を送り、減点（`deduction`）は 0 とする。
+
+最終検証モードの検証内容は未定義であり、この対応だけでは本番の最終検証を実施できない。初期化してから通常ベンチを
+回す代替動作は行わない。残る supervisor 自体の修正と実行環境の準備は [結合要件](../docs/research/bench.md) を参照。
+
+### 接続実装のテスト
+
+```bash
+go -C bench test -race ./...
+go -C bench vet ./...
+go -C bench build ./...
+```
+
+子プロセスへ実際に FD を引き継ぐテストで、protobuf の途中報告と確定、公開出力の制限、最終検証指定時に対象へ
+接続しないことを確認する。フレーム長 65,535 / 65,536 バイトの境界、短い書き込み、不正 FD、書き込み失敗も検証する。
