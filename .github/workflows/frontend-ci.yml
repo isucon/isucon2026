@@ -1,0 +1,68 @@
+name: Frontend CI
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/frontend-ci.yml"
+      - "frontend/**"
+      - "mise.toml"
+      - "mise.lock"
+      - "specs/001-isureal-social-app/contracts/**"
+  pull_request:
+    paths:
+      - ".github/workflows/frontend-ci.yml"
+      - "frontend/**"
+      - "mise.toml"
+      - "mise.lock"
+      - "specs/001-isureal-social-app/contracts/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: 24.14.1
+  PLAYWRIGHT_CHROME_VERSION: 149.0.7827.55
+  PLAYWRIGHT_IMAGE: mcr.microsoft.com/playwright:v1.61.1-noble@sha256:5b8f294aff9041b7191c34a4bab3ac270157a28774d4b0660e9743297b697e48
+
+jobs:
+  frontend-unit-contract-build:
+    runs-on: actions-runner-processor
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+        working-directory: frontend
+      - run: npm run typecheck && npm run lint && npm test
+        working-directory: frontend
+      - run: npm run test:contract && npm run check:openapi
+        working-directory: frontend
+      - run: npm run build && test -f dist/service-worker.js
+        working-directory: frontend
+        env:
+          VITE_VAPID_PUBLIC_KEY: BOr6nQZxVwVGh5dY1cL0Qxq9v1rMVTg5Hf9P4Hd3JpM-nT7rF0wZ9H8vD1sK2aL3mN4oP5qR6sT7uV8wX9yZ0ab
+
+  frontend-chrome-e2e:
+    runs-on: actions-runner-processor
+    container:
+      image: mcr.microsoft.com/playwright:v1.61.1-noble@sha256:5b8f294aff9041b7191c34a4bab3ac270157a28774d4b0660e9743297b697e48
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+        working-directory: frontend
+      - run: npm run check:browser && npm run test:e2e
+        working-directory: frontend

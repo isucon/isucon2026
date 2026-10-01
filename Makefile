@@ -217,3 +217,36 @@ dev-logs:
 
 dev-check:
 	python3 deploy/dev/smoke.py
+
+# Isolated portal -> supervisor -> real webapp development environment.
+DEBUG_COMPOSE := docker compose -f deploy/local-debug/compose.yaml
+.PHONY: debug-up debug-down debug-register debug-bench debug-result debug-logs debug-loadfixture
+
+debug-up:
+	python3 deploy/local-debug/scripts/timing.py
+	$(DEBUG_COMPOSE) --env-file deploy/local-debug/.env.timing up -d --build --wait
+	$(DEBUG_COMPOSE) exec -T portal-db psql -U isuxportal -d isuxportal -v ON_ERROR_STOP=1 -c "INSERT INTO jobs (name, args) VALUES ('update_contestant_dashboard', '{}');"
+	@echo "Portal: http://localhost:$${DEBUG_PORTAL_PORT:-18081}; run make debug-register next"
+
+debug-down:
+	$(DEBUG_COMPOSE) down
+
+debug-register:
+	$(DEBUG_COMPOSE) exec -T portal /opt/portal/bin/local-debug register
+
+debug-bench: debug-register
+	$(DEBUG_COMPOSE) exec -T portal /opt/portal/bin/local-debug enqueue
+
+debug-result:
+	$(DEBUG_COMPOSE) exec -T portal /opt/portal/bin/local-debug status
+
+debug-logs:
+	$(DEBUG_COMPOSE) logs -f --tail=100 portal portal-worker supervisor
+
+# Append synthetic history to the running debug portal, preserving existing teams.
+debug-loadfixture:
+	bash deploy/local-debug/scripts/loadfixture.sh
+
+.PHONY: debug-refresh-scores
+debug-refresh-scores:
+	bash deploy/local-debug/scripts/loadfixture.sh --scores-only

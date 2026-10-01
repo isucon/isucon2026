@@ -58,3 +58,15 @@ make vm-benchmark
 # 開発用の短い走行（各リージョンが 1〜2 回投稿期間を開く）
 make vm-benchmark BENCH_ARGS='-users 2 -duration 25s'
 ```
+
+## ポータルと実ベンチの結合試験
+
+```bash
+make debug-up
+make debug-register
+make debug-bench
+make debug-result
+```
+
+ポータルは http://localhost:18081/ に起動します。
+試験用データ、運営ログイン、停止方法、APIごとの接続設定は [ローカル結合環境](deploy/local-debug/README.md) を参照してください。

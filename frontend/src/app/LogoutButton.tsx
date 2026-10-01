@@ -12,10 +12,13 @@ export function LogoutButton(): React.JSX.Element {
       await apiFetch('/auth/logout', { method: 'POST' });
     } finally {
       await clearToken();
-      navigate('/login', { replace: true });
-      requestAnimationFrame(() => document.querySelector<HTMLElement>('[data-login-focus]')?.focus());
+      navigate('/login', { replace: true, state: { focusUsername: true } });
       setBusy(false);
     }
   }
-  return <button type="button" className="logout-button" disabled={busy} onClick={() => void logout()}>{busy ? 'ログアウト中…' : 'ログアウト'}</button>;
+  return (
+    <button type="button" className="logout-button" disabled={busy} onClick={() => void logout()}>
+      {busy ? 'ログアウト中…' : 'ログアウト'}
+    </button>
+  );
 }

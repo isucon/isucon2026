@@ -56,6 +56,9 @@ type Config struct {
 	// Dataset は対象の DB に入っている初期データ。nil なら dataset.Small() から作る。
 	Dataset *dataset.World
 	Logger  *slog.Logger
+	// OnProgress は途中経過（暫定のスコアと内訳）を受け取る。フェーズの境目と、負荷走行の
+	// 観測窓が閉じるたびに呼ぶ。スーパーバイザーへの報告に使う。
+	OnProgress func(Result)
 }
 
 type Result struct {
@@ -193,19 +196,14 @@ func NewRunner(cfg Config) (*Runner, error) {
 
 func (r *Runner) Run(ctx context.Context) Result {
 	defer r.closeConnections()
-	reason := r.initialize(ctx)
-	if reason == "" {
-		reason = r.pretest(ctx)
+	reason := ""
+	for _, phase := range []func(context.Context) string{r.initialize, r.pretest, r.checkInitialData, r.prepareUsers, r.load} {
+		r.progress()
+		if reason = phase(ctx); reason != "" {
+			break
+		}
 	}
-	if reason == "" {
-		reason = r.checkInitialData(ctx)
-	}
-	if reason == "" {
-		reason = r.prepareUsers(ctx)
-	}
-	if reason == "" {
-		reason = r.load(ctx)
-	}
+	r.progress()
 	if reason == "" && r.board.CriticalCount() == 0 {
 		reason = r.finalCheck(ctx)
 	}
@@ -237,6 +235,13 @@ func (r *Runner) Run(ctx context.Context) Result {
 		result.Score = r.board.Total()
 	}
 	return result
+}
+
+// progress は途中経過を OnProgress に渡す。スコアは走行が終わるまで暫定。
+func (r *Runner) progress() {
+	if r.cfg.OnProgress != nil {
+		r.cfg.OnProgress(Result{Score: r.board.Total(), Language: r.language, Breakdown: r.board.Breakdown()})
+	}
 }
 
 func (r *Runner) closeConnections() {

@@ -15,7 +15,8 @@ import {
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { portalClient, type PortalMockClient } from '../rpc/client';
 
-export type ConnectionStatus = 'connecting' | 'connected' | 'reconnecting' | 'offline';
+export type ConnectionStatus =
+  'connecting' | 'connected' | 'reconnecting' | 'offline';
 
 export interface PortalStateController {
   state?: MockPortalState;
@@ -52,12 +53,15 @@ export function usePortalState({
 }: UsePortalStateOptions = {}): PortalStateController {
   const [state, setState] = useState<MockPortalState>();
   const [countries, setCountries] = useState<SupportedCountry[]>([]);
-  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('connecting');
+  const [connectionStatus, setConnectionStatus] =
+    useState<ConnectionStatus>('connecting');
   const [loading, setLoading] = useState(true);
   const [mutating, setMutating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const mounted = useRef(true);
+  // RPC snapshots must not overwrite a stream update received while awaiting them.
+  const streamRevision = useRef(0);
 
   const clearFeedback = useCallback(() => {
     setError(null);
@@ -70,20 +74,27 @@ export function usePortalState({
     let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
 
     const loadInitial = async () => {
+      const revision = streamRevision.current;
       try {
         const [stateResponse, countriesResponse] = await Promise.all([
           client.getState(create(GetStateRequestSchema)),
-          client.listSupportedCountries(create(ListSupportedCountriesRequestSchema)),
+          client.listSupportedCountries(
+            create(ListSupportedCountriesRequestSchema),
+          ),
         ]);
-        if (!mounted.current) return;
-        if (stateResponse.state) setState(stateResponse.state);
+        if (abort.signal.aborted || !mounted.current) return;
+        if (stateResponse.state) {
+          setState((current) =>
+            streamRevision.current === revision ? stateResponse.state : current,
+          );
+        }
         setCountries(countriesResponse.countries);
         setError(null);
       } catch (loadError) {
-        if (!mounted.current) return;
+        if (abort.signal.aborted || !mounted.current) return;
         setError(`初期状態を取得できません: ${errorMessage(loadError)}`);
       } finally {
-        if (mounted.current) setLoading(false);
+        if (!abort.signal.aborted && mounted.current) setLoading(false);
       }
     };
 
@@ -92,17 +103,22 @@ export function usePortalState({
       while (!abort.signal.aborted) {
         setConnectionStatus(firstAttempt ? 'connecting' : 'reconnecting');
         try {
-          const responses = client.streamState(create(StreamStateRequestSchema), {
-            signal: abort.signal,
-          });
+          const responses = client.streamState(
+            create(StreamStateRequestSchema),
+            {
+              signal: abort.signal,
+            },
+          );
           for await (const response of responses) {
             if (abort.signal.aborted || !mounted.current) return;
             firstAttempt = false;
             setConnectionStatus('connected');
             setError(null);
             if (response.state) {
+              streamRevision.current += 1;
               setState(response.state);
-              const embeddedCountries = response.state.portal?.supportedCountries ?? [];
+              const embeddedCountries =
+                response.state.portal?.supportedCountries ?? [];
               if (embeddedCountries.length > 0) setCountries(embeddedCountries);
             }
           }
@@ -111,7 +127,9 @@ export function usePortalState({
         } catch (streamError) {
           if (abort.signal.aborted || !mounted.current) return;
           setConnectionStatus('offline');
-          setError(`状態ストリームを再接続しています: ${errorMessage(streamError)}`);
+          setError(
+            `状態ストリームを再接続しています: ${errorMessage(streamError)}`,
+          );
           await new Promise<void>((resolve) => {
             reconnectTimer = setTimeout(resolve, reconnectDelayMs);
           });
@@ -130,7 +148,7 @@ export function usePortalState({
   }, [client, reconnectDelayMs]);
 
   const runMutation = useCallback(
-    async <T,>(operation: () => Promise<T>): Promise<T> => {
+    async <T>(operation: () => Promise<T>): Promise<T> => {
       setMutating(true);
       setError(null);
       setNotice(null);
@@ -149,6 +167,7 @@ export function usePortalState({
 
   const updateDesired = useCallback(
     async (patch: Partial<DesiredPatch>): Promise<boolean> => {
+      const revision = streamRevision.current;
       try {
         const response = await runMutation(() =>
           client.updateDesired(
@@ -159,7 +178,7 @@ export function usePortalState({
         );
         if (response.desired && state?.portal) {
           setState((current) =>
-            current?.portal
+            current?.portal && streamRevision.current === revision
               ? {
                   ...current,
                   portal: {
@@ -186,13 +205,16 @@ export function usePortalState({
   );
 
   const startBenchmark = useCallback(async () => {
+    const revision = streamRevision.current;
     try {
       const response = await runMutation(() =>
         client.startBenchmark(create(StartBenchmarkRequestSchema)),
       );
       if (response.benchmark) {
         setState((current) =>
-          current ? { ...current, benchmark: response.benchmark } : current,
+          current && streamRevision.current === revision
+            ? { ...current, benchmark: response.benchmark }
+            : current,
         );
       }
       setNotice('ベンチマークシミュレーションを開始しました。');
@@ -202,9 +224,16 @@ export function usePortalState({
   }, [client, runMutation]);
 
   const reset = useCallback(async () => {
+    const revision = streamRevision.current;
     try {
-      const response = await runMutation(() => client.reset(create(ResetRequestSchema)));
-      if (response.state) setState(response.state);
+      const response = await runMutation(() =>
+        client.reset(create(ResetRequestSchema)),
+      );
+      if (response.state) {
+        setState((current) =>
+          streamRevision.current === revision ? response.state : current,
+        );
+      }
       setNotice('モック状態を既知の初期状態へリセットしました。');
     } catch {
       // Error feedback is handled by runMutation.

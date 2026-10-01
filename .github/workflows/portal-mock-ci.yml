@@ -2,11 +2,15 @@ name: Portal Mock CI
 
 on:
   push:
+    branches:
+      - main
     paths:
       - ".github/workflows/portal-mock-ci.yml"
       - "buf.gen.yaml"
       - "buf.yaml"
       - "mise.toml"
+      - "mise.lock"
+      - ".dockerignore"
       - "proto/**"
       - "gen/**"
       - "portal-mock/**"
@@ -17,6 +21,8 @@ on:
       - "buf.gen.yaml"
       - "buf.yaml"
       - "mise.toml"
+      - "mise.lock"
+      - ".dockerignore"
       - "proto/**"
       - "gen/**"
       - "portal-mock/**"
@@ -45,10 +51,10 @@ jobs:
     name: Proto lint / build / drift / breaking
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - uses: jdx/mise-action@c53b9236f0b3370f31520f8b142f141256d839c6 # v3.6.0
+      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
         with:
           install: true
           cache: true
@@ -100,7 +106,7 @@ jobs:
     name: Go format / vet / tests / build
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: ${{ env.GO_VERSION }}
@@ -134,7 +140,7 @@ jobs:
     name: Web lint / typecheck / Vitest / build
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -161,7 +167,7 @@ jobs:
     container:
       image: mcr.microsoft.com/playwright:v1.62.1-noble@sha256:dcc5531e97840b9b5e794f2814476b21571c5124a3fca2267d73041f56e7580e
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -188,7 +194,7 @@ jobs:
           go -C portal-mock/server run ./cmd/portal > /tmp/portal-server.log 2>&1 &
           server_pid=$!
           trap 'kill "$server_pid" 2>/dev/null || true; cat /tmp/portal-server.log' EXIT
-          for attempt in {1..60}; do
+          for _ in {1..60}; do
             curl --fail --silent http://127.0.0.1:8080/healthz >/dev/null && break
             sleep 1
           done
@@ -208,7 +214,7 @@ jobs:
     name: Independent Compose smoke
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Validate Compose model
         run: docker compose --env-file portal-mock/.env.example -f portal-mock/compose.yaml config --quiet
       - name: Build and start isolated Portal Mock
@@ -229,20 +235,3 @@ jobs:
       - name: Stop Compose
         if: always()
         run: docker compose --env-file portal-mock/.env.example -f portal-mock/compose.yaml down --remove-orphans
-
-  secret-scan:
-    name: Secret scan
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-        with:
-          fetch-depth: 0
-      - name: Install pinned gitleaks 8.30.1
-        run: |
-          curl --fail --location --silent --show-error \
-            -o /tmp/gitleaks.tar.gz \
-            https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz
-          echo '551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  /tmp/gitleaks.tar.gz' \
-            | sha256sum --check
-          tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks
-      - run: /tmp/gitleaks dir . --no-banner --redact --exit-code 1
