@@ -1,41 +1,161 @@
-# 競技ポータルのデプロイ
+# AWS ECS Fargate へのデプロイ
 
-さくらのクラウド is1c の Ubuntu 26.04 LTS VM に、Ansible で Go ポータルを配置する。
-現在の開発 URL は `https://portal-dev.isucon.whywrite.it/`。
-API キーがない場合はコンソールで VM / LB / DNS を作成し、静的 inventory で接続する。
-レジストリを使わず、コミット済みのソースから VM 上でイメージをビルドできる。
+競技ポータルを ARM64 の ECS Fargate で実行します。
+webapp と同じ TypeScript の Pulumi が AWS 基盤を管理し、[ecspresso](https://github.com/kayac/ecspresso) が ECS タスク定義とサービスを管理します。
+ポータルと webapp は別の Pulumi project / stack として管理します。
+Pulumi は ECS サービスやタスク定義を作成しません。
+旧環境の state は流用せず、ポータル用の Pulumi stack を作成してください。
 
 ## 構成
 
-```text
-Internet → Sakura LB (TLS 終端・80→443) → nginx :80 → Swarm ingress :8080
-  Docker Swarm stack portal
-    portal :8081 / worker / notifyloop / bot（トークン設定時）
-    PostgreSQL 18.6   volume: portal_pgdata18
-    Redis 8.2.9      volume: portal_redisdata82
+```mermaid
+flowchart LR
+  Browser[ブラウザ / supervisor] --> ALB[ALB HTTPS]
+  ALB --> Web[portal × 2 / Fargate]
+  subgraph Private[非公開サブネット / 2 AZ]
+    Web
+    Worker[worker / Fargate]
+    Notify[notifyloop / Fargate]
+    Bot[bot / Fargate / 任意]
+    DB[(Aurora PostgreSQL Serverless v2\nwriter + reader)]
+    Cache[(ElastiCache Valkey\nprimary + replica)]
+    Web & Worker & Notify & Bot --> DB
+    Web & Worker & Notify & Bot --> Cache
+  end
+  ECR[ECR / immutable image] --> Web
+  Secrets[Secrets Manager] --> Web
+  Browser --> Avatars[S3 avatars]
+  Worker --> NAT[NAT Gateway / AZ ごと]
+  NAT --> External[Discord / GitHub / 選手 EC2]
 ```
 
-DB と Redis は同居構成で、外部には公開しない。
-VM の TCP 80 は LB の送信元だけに許可し、8080 はクラウド側のパケットフィルタで遮断する。
-nginx は公式 stable 1.30.5。PostgreSQL / Redis のイメージは digest で固定する。
-選手環境の EC2 / CloudFormation とアイコン保存先 S3 は AWS を使う。
+[ISUCON14 の Terraform](https://github.com/isucon/isucon14-portal/tree/4c2b99a/terraform/modules/isuxportal) と [ECS 定義](https://github.com/isucon/isucon14-portal/tree/4c2b99a/ecs)を参考に、サービス分割、ARM64 Fargate、ALB、マネージド DB/キャッシュ、ECR、S3 を引き継いでいます。
+現在の Go 実装に合わせ、非同期ジョブは PostgreSQL の `jobs` テーブルを使います。
+SQS、Rails、nginx サイドカー、選手用 benchmarker クラスタはこのデプロイの対象外です。
+ecspresso の Jsonnet 定義は `ecspresso/` に置きます。
+Pulumi はリソース ID、ARN、非秘密のアプリケーション設定を S3 の `infra.json` に出力します。
+デプロイ時にこのファイルを取得し、Jsonnet が読み込みます。
+CI は Pulumi の state や backend の認証情報にアクセスする必要がありません。
+ecspresso のバージョンは `.ecspresso-version` で固定します。
 
-## 手順と設定
+| 対象 | 既定値と選定理由 |
+|---|---|
+| Node.js | 24 LTS。SPA のビルド専用。[リリース表](https://nodejs.org/en/about/previous-releases) |
+| Go | 1.26 系。LTS 制度はないため、既存プロジェクトの系列を維持 |
+| 実行 OS | Debian 13 trixie。現行 stable。[サポート情報](https://www.debian.org/releases/) |
+| Aurora | PostgreSQL 17.7 LTS / Serverless v2。[AWS の LTS 表](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraPostgreSQLReleaseNotes/aurorapostgresql-release-calendar.html) |
+| キャッシュ | ElastiCache Valkey 8.2。TLS、保存時暗号化、Multi-AZ。[対応エンジン](https://docs.aws.amazon.com/AmazonElastiCache/latest/dg/engine-versions.html) |
+| Fargate | Linux platform 1.4.0、ARM64、各タスク 0.5 vCPU / 1 GiB |
 
-- [Ansible の実行・秘密情報・バックアップ・更新手順](ansible/README.md)
-- [外部連携に必要なアカウント・設定値・本番公開前の残タスク](external-integrations.md)
-- [Terraform によるクラウドリソース作成](terraform/README.md)（API キーを用意できる場合）
+Aurora は 2 AZ に `db.serverless` を 1 台ずつ配置します。
+各インスタンスの容量範囲は 2〜16 ACU で、自動停止を無効にしています。
+reader の昇格優先度は 1 とし、フェイルオーバーに備えます。
+アプリケーションは読み書きとも writer endpoint に接続します。
+`auroraMinAcu` と `auroraMaxAcu` は負荷試験後に調整してください。
+LTS のマイナーバージョンを維持するため、自動マイナー更新は無効です。
+セキュリティ修正は検証後に明示的に適用します。
 
-既定では日時を未設定とし、運営限定モードで起動する。
-開催日は **2026年10月31日（土）**。
-開始、凍結、終了などの時刻は未設定であり、確定後に `portal_overrides.timing` に RFC3339 で設定する。
-デプロイ例は Ansible README に集約している。
+## 初回構築
 
-GitHub Actions からのレジストリ配布は任意。
-`PORTAL_DEPLOY_ENABLED=true` と接続先・SSH ホスト鍵・各 secret を設定した場合に利用できる。
-開発は main の CI 成功後に配布、本番はイメージ作成とデプロイを手動起動する。
+1. [Pulumi README](pulumi/README.md) に従って AWS 基盤を作成します。
+2. [外部連携設定](external-integrations.md) に従って Secrets Manager の値を登録します。
+3. GitHub の `portal-develop` / `portal-production` Environment に、以下の Variables を登録します。
+4. `Deploy portal` workflow を `main` ブランチから手動実行します。
 
-## 本番投入前
+| GitHub Variable | 値 |
+|---|---|
+| `PORTAL_DEPLOY_ENABLED` | Repository Variable に `true` |
+| `AWS_REGION` | `ap-northeast-1` |
+| `PORTAL_DEPLOY_ROLE_ARN` | Pulumi output `deployRoleArn` |
+| `PORTAL_ECR_REPOSITORY` | Pulumi output `ecrRepositoryUrl` |
+| `PORTAL_CONFIG_URI` | Pulumi output `ecspressoConfigUri` |
 
-登録データ移行、外部連携の実接続試験、900 チーム以上の負荷試験、別障害領域へのバックアップと復元試験が必要。
-PostgreSQL のマネージド化は保留であり、この構成は HA を提供しない。
+Environment の deployment branch を `main` に制限してください。
+本番 Environment には required reviewers を設定します。
+OIDC の trust policy はリポジトリ名と Environment 名の完全一致に制限しています。
+AWS access key、レジストリパスワード、デプロイ用 SSH 鍵は不要です。
+
+workflow は対象コミットを ARM64 でビルドし、ECR に一意の immutable tag で push します。
+その後、digest を固定して `migrate` タスクを 1 回実行します。
+`ecspresso run --wait --watch-container migrate` が終了コードを検査します。
+成功した場合だけ各サービスを `ecspresso deploy --wait --wait-until deployed` で更新します。
+ECS の circuit breaker が旧 revision に戻した場合も、workflow は失敗します。
+初回サービス作成時は過去の正常 revision がないため、自動ロールバック先はありません。
+
+`portal` は既定 2 タスク、`worker` と `notifyloop` は 1 タスクです。
+`bot` は既定 0 タスクで、`enableBot: true` と token 設定後に有効化します。
+タスク数は `ecspresso/service.jsonnet` の `desiredCount` で管理し、更新時にその値を適用します。
+一時的に手動スケールした値も次回デプロイで定義の値に戻ります。
+`enableBot: false` のデプロイは bot を 0 タスクに戻します。
+`bot` と `notifyloop` は新旧の重複実行を避けるため、一度停止してから更新します。
+これらの desired count は 1 以下を維持してください。
+
+ローカルからも同じ経路を使えます。
+事前に対象 ECR に ARM64 イメージを push し、取得した digest を指定します。
+
+```sh
+export PORTAL_CONFIG_URI=s3://<config-bucket>/infra.json
+export IMAGE_DIGEST=sha256:<64桁のdigest>
+sh portal/deploy/deploy.sh
+```
+
+同じ環境へのローカル実行と workflow 実行を重ねないでください。
+workflow 同士は環境単位の concurrency で直列化します。
+
+## 更新と復旧
+
+Pulumi の設定を変更した場合、`pulumi up` 後にデプロイを実行すると S3 の新しい接続情報が反映されます。
+タスクの CPU、メモリ、プロセスの設定、更新方法は `ecspresso/` の Jsonnet を変更してデプロイします。
+秘密値の変更も既存タスクには反映されないため、同じ digest を指定して再デプロイしてください。
+Aurora 管理の DB パスワードは自動ローテーションされます。
+ローテーション後は新しい接続に新パスワードが必要になるため、運用で全サービスの再デプロイを行います。
+競技中のローテーションを避けるスケジュールを Secrets Manager で設定してください。
+
+アプリケーションを切り戻す場合は、workflow の `digest` に以前の正常な digest を指定します。
+タスク単位のログは `/ecs/<name>` の `portal` / `worker` / `bot` / `notifyloop` / `migrate` ストリームに出力されます。
+途中で失敗した場合、先に更新済みのサービスは新 revision のままです。
+修正後の再実行、または旧 digest での全サービス再デプロイで揃えてください。
+マイグレーションは下方向への変更を行いません。
+旧アプリケーションが新スキーマで動作することを確認してから切り戻します。
+ECR のイメージは自動削除しないため、復旧に必要な digest を保持したうえで手動整理します。
+
+Aurora は 14 日間の継続バックアップ、削除保護、削除時の最終スナップショットを有効にしています。
+Valkey は 7 日間のスナップショットを保持します。
+DB の復元は別クラスタに行い、接続先の更新と整合性確認を経て切り替えます。
+定期的に復元と Aurora フェイルオーバーを検証してください。
+ALB の監視は `/site/sha` によるプロセスの生存確認で、DB/キャッシュの継続的な疎通確認ではありません。
+ALB の HealthyHostCount/5xx と Aurora ACU 使用率には CloudWatch Alarm を用意しています。
+Pulumi output `alertsTopicArn` の SNS topic に通知先を登録し、購読を確認してください。
+TargetResponseTime、ECS タスク数、Aurora 接続数、Valkey メモリ、ジョブ滞留の閾値は負荷試験後に追加します。
+
+## 旧環境からの移行
+
+旧 Ansible/Swarm の適用や削除は実行しません。
+AWS 用の state と別の検証用 FQDN で構築し、[登録情報移行](../docs/registration-migration.md)と合わせてリハーサルしてください。
+既存 PostgreSQL 18 から Aurora 17 へ物理バックアップを復元することはできません。
+論理エクスポートとインポートを使い、使用型、SQL、件数、参照関係を検証します。
+Redis のセッションを移さない場合は利用者の再ログインが必要です。
+アイコンは旧バケットから新バケットへコピーします。
+
+切替時は旧環境の書き込みを停止し、最終データを移してから DNS を変更します。
+この Pulumi project は指定した FQDN の Route 53 レコードを管理するため、初期検証時に現行本番 FQDN を指定しないでください。
+新環境は `ISUXPORTAL_ADMIN_ONLY=1` で起動します。
+OAuth、Discord、S3、選手 SSH、bench/checker の確認、900 チーム以上の負荷試験、復元試験が済んでから公開モードへ切り替えます。
+開催日は 2026 年 10 月 31 日です。
+競技時刻は確定した値だけを `environment` に設定します。
+
+## 検証
+
+```sh
+# ecspresso は .ecspresso-version のバージョンを使用
+npm --prefix portal/deploy/pulumi ci
+npm --prefix portal/deploy/pulumi run typecheck
+npm --prefix portal/deploy/pulumi test
+python3 -m unittest discover -s portal/deploy/tests -v
+cd portal
+go test ./cmd/migrate ./internal/... ./tests/contract
+docker build -f deploy/Dockerfile -t isuxportal:local .
+```
+
+Pulumi のテストは runtime mocks を使い、AWS の作成や課金を発生させません。
+実アカウントでの IAM、エンジン提供状況、クォータ、疎通の検証は staging で別途行います。
