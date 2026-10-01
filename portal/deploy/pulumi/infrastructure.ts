@@ -524,6 +524,8 @@ export function createPortal(c: PortalConfig) {
       ISUXPORTAL_CLOUDFORMATION_STAGING: "1",
       ...c.environment,
       PORTAL_LISTEN: ":8081",
+      PORTAL_NOTIFYLOOP_TARGET:
+        `https://${c.domainName}/admin/long_running_check`,
       DEFAULT_URL_HOST: c.domainName,
       MONITOR_ENV: c.name,
       AWS_REGION: c.region,

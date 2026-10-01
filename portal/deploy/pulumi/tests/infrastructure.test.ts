@@ -122,6 +122,9 @@ describe("portal infrastructure", () => {
     });
     expect(data).not.toHaveProperty("tasks");
     expect(data).not.toHaveProperty("services");
+    expect(data.environment.PORTAL_NOTIFYLOOP_TARGET).toBe(
+      "https://portal.example.com/admin/long_running_check",
+    );
     expect(ofType("aws:secretsmanager/secretVersion:SecretVersion"))
       .toHaveLength(0);
   });
