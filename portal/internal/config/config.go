@@ -143,8 +143,8 @@ func Load() (*Config, error) {
 
 		IsuconAdminSSHKeyPath: os.Getenv("ISUXPORTAL_ISUCON_ADMIN_SSH_PRIVATE_KEY_PATH"),
 
-		TermsURL: getenv("ISUXPORTAL_TERMS_URL", "https://isucon.net/archives/58657108.html"),
-		RulesURL: getenv("ISUXPORTAL_RULES_URL", "https://isucon.net/archives/58657116.html"),
+		TermsURL: getenv("ISUXPORTAL_TERMS_URL", "https://isucon.net/archives/59967038.html"),
+		RulesURL: getenv("ISUXPORTAL_RULES_URL", "https://isucon.net/archives/59966826.html"),
 		DocsURL:  getenv("ISUXPORTAL_DOCS_URL", "https://gist.github.com/progfay/25edb2a9ede4ca478cb3e2422f1f12f6"),
 
 		AvailabilityZones: []string{"apne1-az1", "apne1-az2", "apne1-az4"},
