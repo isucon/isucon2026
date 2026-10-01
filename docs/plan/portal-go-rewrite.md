@@ -1,6 +1,6 @@
 # ポータルバックエンド Go rewrite 実装計画
 
-作成日: 2026-08-23。更新日: 2026-09-24。
+作成日: 2026-08-23。更新日: 2026-10-02。
 要件は [要件定義](portal-go-requirements.md)、移植元の調査記録は [portal 調査](../survey/portal/README.md) を参照する。
 本書は現在の構成と、開催までに必要な検証を記載する。
 
@@ -9,10 +9,10 @@
 | 項目 | 現在の方針 |
 |---|---|
 | 開催日 | **2026年10月31日（土）**。単一開催で、予選は行わない |
-| 開催時刻 | 開始、凍結、終了の時刻は未設定。確定後に `portal_overrides.timing` へ RFC3339 で設定する |
+| 開催時刻 | 開始、凍結、終了の時刻は未設定。確定後に Pulumi の `environment` に `ISUXPORTAL_TIMING_*` を RFC3339 で設定する |
 | 登録締切 | 既存要件の 2026-09-30 を維持する。締切時刻は公開前に設定する |
-| ポータルの配置 | さくらのクラウド is1c の単一 VM。Ansible と Docker Swarm で配置する |
-| DB / Redis | PostgreSQL と Redis を VM に同居させる。外部には公開しない |
+| ポータルの配置 | AWS ECS Fargate（ARM64）。ALB から非公開サブネットの portal タスクへ転送する |
+| DB / Redis | Aurora PostgreSQL Serverless v2 と ElastiCache Valkey。2 AZ に配置し、外部には公開しない |
 | 非同期ジョブ | PostgreSQL の `jobs` テーブル。SQS は使わない |
 | 選手環境 | 現行実装は AWS EC2 + CloudFormation、1 チーム 3 台。ポータルの配置とは別 |
 | 外部連携 | GitHub、Discord、Slack、Web Push、EC2、アイコン保存先 S3 |
@@ -28,14 +28,14 @@ protobuf の wire format、ルート、マスク値、スコアの意味を維�
 |---|---|
 | HTTP | Go、chi、`html/template` |
 | DB | PostgreSQL、`database/sql`、pgx、手書き SQL |
-| スキーマ | `internal/db/schema.sql`。`PORTAL_AUTO_MIGRATE=1` で起動時に適用する |
+| スキーマ | `internal/db/schema.sql` とバージョン付き migration。Fargate ではサービス更新前に `cmd/migrate` を 1 回実行する |
 | セッション | Redis に JSON を保存し、Cookie のセッション ID を HMAC-SHA256 で署名する |
 | キュー | `FOR UPDATE SKIP LOCKED` による取得。失敗時は指数バックオフで再試行し、上限到達後は `dead` に残す |
 | フロントエンド | React SPA、TypeScript、webpack、pnpm |
 | protobuf | buf で Go と TypeScript を生成する。受け入れテスト用 Ruby は別テンプレートで生成する |
 | 外部連携 | discordgo、AWS SDK for Go v2、webpush-go、`golang.org/x/crypto/ssh` |
 | 観測性 | slog、Sentry、Prometheus `/metrics`、`/site/sha` |
-| デプロイ | さくらの LB → nginx → Docker Swarm。Ansible で設定と更新を行う |
+| デプロイ | ALB → ECS Fargate。Pulumi で基盤を管理し、GitHub OIDC と ECR の digest を使って `ecspresso` で更新する |
 
 Rails のセッションとは互換しないため、切り替え後は全員の再ログインが必要になる。
 現行のセッションは認証情報に加えて CSRF トークンと OAuth state を保存する。
@@ -45,7 +45,7 @@ Rails のセッションとは互換しないため、切り替え後は全員�
 
 ```text
 portal/
-├── cmd/{portal,worker,bot,notifyloop}/
+├── cmd/{portal,worker,bot,notifyloop,migrate}/
 ├── internal/
 │   ├── app/             # 共有の依存初期化
 │   ├── config/          # 環境変数
@@ -63,7 +63,7 @@ portal/
 ├── gen/pb/              # Go バインディング
 ├── tests/               # contract、integration、concurrency
 ├── rspec/               # HTTP 受け入れテスト
-└── deploy/              # Dockerfile、Ansible、Terraform
+└── deploy/              # Dockerfile、Pulumi、ecspresso
 ```
 
 `portal/` で `buf generate` を実行すると `gen/pb` と `frontend/proto` を更新する。
@@ -120,7 +120,7 @@ Rails と Go を同一 MySQL に接続する差分テストは廃止した。
 1. PostgreSQL への登録データ移行をリハーサルし、件数、関連、同意記録を照合する。
 2. ステージングで HTTP 受け入れ、実接続、負荷、復元を検証する。
 3. 登録締切後の切り替え日を決め、再ログインが必要であることを事前に告知する。
-4. バックアップを取得し、[Ansible の手順](../../portal/deploy/ansible/README.md)で Go の各サービスを配置する。
+4. バックアップを取得し、[Fargate のデプロイ手順](../../portal/deploy/README.md)で Go の各サービスを配置する。
 5. 開催日時、公開 URL、外部連携を確認してから運営限定モードを解除する。
 6. 公開後のログ、ジョブ、登録状況、ダッシュボードを確認する。
 
@@ -135,22 +135,25 @@ DB 変更との互換性と復元後のデータ損失範囲は、事前に復�
 | 順位計算や可視性の誤り | 凍結前後、自チームと他チーム、競技終了後を HTTP 受け入れで検証する |
 | 感想戦用の挙動が残る | Issue #16 の修正と回帰テストを通常開催の条件で確認する |
 | 通知や OAuth の接続不備 | 実アカウントと実ブラウザで確認する |
-| 単一 VM 障害 | 別障害領域にバックアップし、復元を試験する。現行構成は HA を提供しない |
+| AZ 障害とデータ損失 | Web、Aurora、Valkey を 2 AZ に配置する。フェイルオーバーとバックアップ復元を試験する。worker と notifyloop は各 1 タスクのため、障害時の再配置も検証する |
 | 本番規模での性能不足 | 900 チーム以上のデータで測定する |
 | 移行と公開の同時実施 | 別日に分け、復元点を用意する |
 
 ## 9. 旧計画からの変更
 
 2026-09-14 に Rails への復帰を行わない方針とし、DB を PostgreSQL、キューを PostgreSQL の `jobs` テーブルに変更した。
-ポータルの配置はさくらのクラウドと Ansible / Docker Swarm に移行している。
-ECS / ecspresso、SQS、同一 DB 上の Rails 並走を前提にした旧手順は適用しない。
+2026-10-01 にポータルのデプロイ資材を AWS ECS Fargate 向けに変更した。
+2026-10-02 に基盤管理を webapp と同じ TypeScript の Pulumi、サービス更新を ecspresso に統一した。
+ISUCON14 のサービス分割を参考に、DB は Aurora PostgreSQL Serverless v2、キャッシュは ElastiCache Valkey を使用する。
+サービス更新は `ecspresso` で行い、旧 VM 向け手順、SQS、同一 DB 上の Rails 並走を前提とする手順は適用しない。
+AWS 上での構築と公開切り替えは未実施であり、デプロイ資材の更新とは区別する。
 旧システムの調査結果は `docs/survey/portal/` に履歴として残す。
 
 ## 10. 公開前の確認先
 
 - [portal README](../../portal/README.md): 開発、テスト、実装範囲。
 - [デプロイ README](../../portal/deploy/README.md): 構成と本番投入前の条件。
-- [Ansible README](../../portal/deploy/ansible/README.md): 設定、秘密情報、更新、バックアップ。
+- [Pulumi README](../../portal/deploy/pulumi/README.md): AWS 基盤の構築、state の分離、設定。
 - [外部連携一覧](../../portal/deploy/external-integrations.md): アカウントと設定値。
 
 ## 11. 実装メモ（コードを読んで確定させた仕様）
