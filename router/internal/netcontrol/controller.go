@@ -15,7 +15,7 @@ import (
 type Candidate struct {
 	Config     domain.Config
 	Interfaces map[domain.ServerID]string
-	TCBatches  map[domain.ServerID]string
+	TCBatches  map[string]string
 }
 
 type Controller struct {
@@ -84,8 +84,8 @@ func (c *Controller) Restore(ctx context.Context, candidate *Candidate) error {
 		if err := c.run(ctx, Command{Name: "nft", Args: []string{"delete", "table", "inet", nftTableName}}); err != nil {
 			restoreErr = errors.Join(restoreErr, err)
 		}
-		for _, server := range domain.ServerIDs() {
-			if err := c.run(ctx, Command{Name: "tc", Args: []string{"qdisc", "del", "dev", c.active.Interfaces[server], "root"}}); err != nil {
+		for _, device := range devices(c.active.Interfaces) {
+			if err := c.run(ctx, Command{Name: "tc", Args: []string{"qdisc", "del", "dev", device, "root"}}); err != nil {
 				restoreErr = errors.Join(restoreErr, err)
 			}
 		}
@@ -115,7 +115,7 @@ func (c *Controller) applyRaw(ctx context.Context, candidate Candidate) error {
 		return fmt.Errorf("enable IPv4 forwarding: %w", err)
 	}
 	tableExists := c.tableExists(ctx)
-	rules, err := RenderNFT(candidate.Interfaces, tableExists)
+	rules, err := RenderNFT(c.config.Servers, tableExists)
 	if err != nil {
 		return err
 	}
@@ -125,20 +125,20 @@ func (c *Controller) applyRaw(ctx context.Context, candidate Candidate) error {
 	if err := c.run(ctx, Command{Name: "nft", Args: []string{"-f", "-"}, Stdin: rules}); err != nil {
 		return fmt.Errorf("apply nft rules: %w", err)
 	}
-	for _, server := range domain.ServerIDs() {
-		batch, ok := candidate.TCBatches[server]
+	for _, device := range devices(candidate.Interfaces) {
+		batch, ok := candidate.TCBatches[device]
 		if !ok {
-			return fmt.Errorf("missing tc batch for %s", server)
+			return fmt.Errorf("missing tc batch for %s", device)
 		}
 		// HTB does not support replacing an existing root once it has child
 		// classes/qdiscs. Recreate the dedicated tree for every transaction;
 		// the caller reapplies the last-known-good candidate on failure.
-		_, _ = c.runOutput(ctx, Command{Name: "tc", Args: []string{"qdisc", "del", "dev", candidate.Interfaces[server], "root"}})
+		_, _ = c.runOutput(ctx, Command{Name: "tc", Args: []string{"qdisc", "del", "dev", device, "root"}})
 		if err := c.run(ctx, Command{Name: "tc", Args: []string{"-batch", "-"}, Stdin: batch}); err != nil {
-			return fmt.Errorf("apply tc for %s: %w", server, err)
+			return fmt.Errorf("apply tc for %s: %w", device, err)
 		}
-		if err := c.run(ctx, Command{Name: "tc", Args: []string{"qdisc", "show", "dev", candidate.Interfaces[server]}}); err != nil {
-			return fmt.Errorf("verify tc for %s: %w", server, err)
+		if err := c.run(ctx, Command{Name: "tc", Args: []string{"qdisc", "show", "dev", device}}); err != nil {
+			return fmt.Errorf("verify tc for %s: %w", device, err)
 		}
 	}
 	return nil

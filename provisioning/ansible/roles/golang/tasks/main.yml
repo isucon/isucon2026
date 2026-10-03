@@ -1,0 +1,41 @@
+---
+- name: Read installed Go version
+  ansible.builtin.slurp:
+    src: /home/isucon/local/go/VERSION
+  register: go_installed
+  failed_when: false
+
+- name: Install Go
+  when: >-
+    go_installed.content is not defined
+    or not (go_installed.content | b64decode).startswith('go' ~ go_version ~ '\n')
+  block:
+    - name: Remove old Go
+      ansible.builtin.file:
+        path: /home/isucon/local/go
+        state: absent
+
+    - name: Create /home/isucon/local
+      ansible.builtin.file:
+        path: /home/isucon/local
+        state: directory
+        owner: isucon
+        group: isucon
+        mode: "0755"
+
+    - name: Download and extract Go
+      ansible.builtin.unarchive:
+        src: "https://go.dev/dl/go{{ go_version }}.linux-amd64.tar.gz"
+        dest: /home/isucon/local
+        remote_src: true
+        owner: isucon
+        group: isucon
+
+- name: Add Go to PATH
+  ansible.builtin.lineinfile:
+    path: /home/isucon/.profile
+    line: 'export PATH=$HOME/local/go/bin:$HOME/go/bin:$PATH'
+    create: true
+    owner: isucon
+    group: isucon
+    mode: "0644"
