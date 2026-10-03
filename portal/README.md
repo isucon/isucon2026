@@ -5,7 +5,7 @@
 要件は [`../docs/plan/portal-go-requirements.md`](../docs/plan/portal-go-requirements.md) を参照。
 仕様の典拠は isucon14-portal @ `4c2b99a` の実装コード。
 開催日は **2026年10月31日（土）**。
-開始、凍結、終了時刻は未設定であり、確定後に `portal_overrides.timing` に設定する。
+開始、凍結、終了時刻は未設定であり、確定後に Pulumi の `environment` に設定する。
 
 ## 実装範囲
 
@@ -43,7 +43,7 @@ portal/
 │   ├── token/           # bypass / checker token
 │   ├── external/        # slack / discord / github / webpush / aws / ssh
 │   └── db/              # pgx 接続と初期スキーマ（schema.rb を PostgreSQL に移植、CT-8）
-├── deploy/              # さくらのクラウド（is1c）へのデプロイ: Dockerfile / terraform / ansible（deploy/README.md）
+├── deploy/              # AWS ECS Fargate へのデプロイ: Dockerfile / Pulumi / ecspresso（deploy/README.md）
 ├── frontend/            # React SPA（isucon14-portal 由来。webpack + pnpm）
 │   ├── app/javascript/  # SPA 本体（audience / contestant / admin / broadcast_view の 4 バンドル）
 │   ├── sw/              # Service Worker（Web Push 受信、CT-4）
@@ -139,16 +139,18 @@ bypass token の Ruby ⇔ Go 相互運用などを検証する。
 
 ## 運用
 
-- 本番はさくらのクラウド 石狩第 3 ゾーンに Docker Swarm で載せる。手順と構成は
-  [`deploy/README.md`](deploy/README.md)（isucon2026-portal-infra と同じ流儀）
+- 本番は AWS ECS Fargate（ARM64）に配置する。手順と構成は
+  [`deploy/README.md`](deploy/README.md) を参照。
 - DB は PostgreSQL（`ISUXPORTAL_DATABASE_URL`）。`PORTAL_AUTO_MIGRATE=1` で起動時に
   `internal/db/schema.sql` と未適用の `internal/db/migrations/*.sql` をトランザクション内で適用する。
-  適用済みバージョンは `schema_migrations` に記録する
+  適用済みバージョンは `schema_migrations` に記録する。
+  Fargate では `cmd/migrate` をサービス更新前に 1 回実行し、起動時の自動適用は無効にする
 - 非同期ジョブは PostgreSQL の `jobs` テーブルに積み、`cmd/worker` が
   `FOR UPDATE SKIP LOCKED` で 1 件ずつ取り出して実行する。失敗は指数バックオフで 5 回まで再試行し、
   それ以降は `status = 'dead'` に落として残す（`SELECT * FROM jobs WHERE status = 'dead'` で確認）。
   テストモード（`PORTAL_TEST_MODE=1`）では投入時に同期実行する
-- PostgreSQL と Redis はポータル VM に同居する。選手環境の EC2 とアイコン保存先 S3 は AWS を使う。
+- DB は Aurora PostgreSQL Serverless v2、キャッシュは ElastiCache Valkey を使う。
+  選手環境は EC2、アイコン保存先は S3 を使う。
   外部連携は GitHub / Discord / Slack など。非同期ジョブに SQS は使わない
 - セッションは Rails と互換しないため、切り替え時に全員のログインが切れる（計画書 §7）
 - SPA アセットは `ISUXPORTAL_PUBLIC_DIR=frontend/public` /

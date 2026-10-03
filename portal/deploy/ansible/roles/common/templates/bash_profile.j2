@@ -1,6 +1,0 @@
-{% if stage == "develop" %}
-  PS1='${debian_chroot:+($debian_chroot)}\[\033[0;32;47m\]\u@{{ inventory_hostname_short + '.' + stage }}\[\033[00m\]:\[\033[01;00m\]\w\[\033[00m\]\$ '
-{% endif %}
-{% if stage == "production" %}
-  PS1='${debian_chroot:+($debian_chroot)}\[\033[0;31;47m\]\u@{{ inventory_hostname_short + '.' + stage }}\[\033[00m\]:\[\033[01;00m\]\w\[\033[00m\]\$ '
-{% endif %}

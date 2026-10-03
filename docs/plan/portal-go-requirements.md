@@ -1,6 +1,6 @@
 # ポータルバックエンド Go rewrite 要件定義
 
-作成日: 2026-08-23。更新日: 2026-09-24。実装計画は [`portal-go-rewrite.md`](portal-go-rewrite.md)、
+作成日: 2026-08-23。更新日: 2026-10-02。実装計画は [`portal-go-rewrite.md`](portal-go-rewrite.md)、
 調査は [`../survey/portal/`](../survey/portal/README.md)。
 
 本書は「Go 実装が満たすべきこと」を ID 付きで列挙する。
@@ -16,7 +16,7 @@ ID 規約: FR = 機能要件 / CT = 互換契約 / DM = データ要件 / NF = �
 
 | # | 前提 |
 |---|---|
-| P-1 | ポータルはさくらのクラウド is1c の単一 VM（Ansible / Docker Swarm）。現行の選手環境は AWS、1 チーム 3 台（EC2 + CloudFormation） |
+| P-1 | ポータルは AWS ECS Fargate（ARM64）、Aurora PostgreSQL Serverless v2、ElastiCache Valkey を使用する。現行の選手環境は AWS、1 チーム 3 台（EC2 + CloudFormation） |
 | P-2 | supervisor は Rust、envcheck は Go を維持する。React SPA は流用し、表示と通常開催に必要な挙動を更新する |
 | P-3 | **単一開催（本選のみ）**。予選分岐 `ISUXPORTAL_FINAL` は実装しない |
 | P-4 | 競技日 **2026年10月31日（土）**、登録締切 2026-09-30。開始、凍結、終了時刻は未設定。切り替えは締切後のクリーンカットオーバー |
@@ -197,10 +197,10 @@ Discord bot（常駐）: アナウンス投稿の中継（app 複数台時の co
 | NF-2 | leaderboard 全体生成（935 チーム、history なし）が**数秒以内**。ベンチ確定のたびに走る。リハーサルで実測する（NF-7） |
 | NF-3 | ベンチ払い出しの排他が supervisor フリート同時ポーリング下で正しく 1 件ずつ払い出されること |
 | NF-4 | 公開 clarification の全選手通知（〜2,800 行 insert）が 150 件バッチで数秒以内 |
-| NF-5 | graceful shutdown: SIGTERM でヘルスを落とし、処理中リクエストと実行中ジョブを完了してから終了（Docker Swarm でのサービス更新時も同条件を満たす） |
+| NF-5 | graceful shutdown: SIGTERM でヘルスを落とし、処理中リクエストと実行中ジョブを完了してから終了（ECS Fargate でのサービス更新時も同条件を満たす） |
 | NF-6 | 観測性: `/site/sha`（git SHA）、Sentry、Prometheus `/metrics`（内部ポート）。構造化ログ（slog） |
 | NF-7 | リハーサルは**本番想定規模（900+ チーム相当のデータ）で実施**。数十チームでは NF-1 / NF-2 を検証できない |
-| NF-8 | 内部共有鍵は VM の `/opt/portal/secrets.json`（0600）で保持し、外部の秘密情報は Git 管理外の Ansible Vault から渡す。トークン比較は定数時間。セッション Cookie は署名 + Secure + HttpOnly |
+| NF-8 | 内部共有鍵と外部連携の秘密値は Secrets Manager で管理し、ECS の起動時に注入する。SSH 秘密鍵は worker だけに渡し、書き込み用 volume に mode 0600 で保存する。トークン比較は定数時間。セッション Cookie は署名 + Secure + HttpOnly |
 
 ## 6. 受け入れ条件
 
@@ -225,11 +225,12 @@ Discord bot（常駐）: アナウンス投稿の中継（app 複数台時の co
 | OQ-6 | Discord の `support_comm_channel_roles` 構成 | 運営の Discord 設計 |
 | OQ-7 | 解決済み: slog / Sentry / Prometheus を実装 | 本番の監視と通知の実接続確認は残る |
 | OQ-8 | `ISUXPORTAL_ADMIN_ONLY` をいつ落とすかの運用手順 | 運営手順として文書化 |
-| OQ-9 | 解決済み: さくら LB のヘルスチェック | Host ヘッダ付き `HEAD /site/sha`。Ansible README を参照 |
-| OQ-10 | 解決済み: Go アプリが静的アセットを配信 | nginx はアプリへ転送する。CT-3 の manifest とキャッシュを維持 |
+| OQ-9 | 解決済み: ALB のヘルスチェック定義 | HTTP `GET /site/sha`、成功コード 200。DB/キャッシュの継続的な疎通確認は含まない。実環境での確認は [デプロイ手順](../../portal/deploy/README.md)に従う |
+| OQ-10 | 解決済み: Go アプリが静的アセットを配信 | ALB は portal タスクへ直接転送する。CT-3 の manifest とキャッシュを維持 |
 | OQ-11 | Redis のキー全量（4 系統以外が無いか） | `Rails.cache` / `redis` の全参照を洗う |
 
-未解決項目は公開前のリハーサルまでに確認する。開始、凍結、終了時刻は `portal_overrides.timing` に RFC3339 で設定する。
+未解決項目は公開前のリハーサルまでに確認する。
+開始、凍結、終了時刻は Pulumi の `environment` に `ISUXPORTAL_TIMING_*` を RFC3339 で設定する。
 
 ## 8. 計画書への訂正
 
