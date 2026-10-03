@@ -88,14 +88,20 @@ class WorkflowRoutingTest(unittest.TestCase):
             )
         )
 
-    def test_image_build_follows_only_successful_portal_push(self):
-        image = workflows()["portal-image.yml"]
-        self.assertEqual(image["on"]["workflow_run"]["workflows"], ["Portal CI"])
-        self.assertEqual(image["on"]["workflow_run"]["branches"], ["main"])
-        condition = image["jobs"]["build_image"]["if"]
-        self.assertIn("github.event.workflow_run.event == 'push'", condition)
-        self.assertIn("github.event.workflow_run.conclusion == 'success'", condition)
-        self.assertIn("github.event_name == 'workflow_dispatch'", condition)
+    def test_portal_release_uses_protected_environment_and_serialization(self):
+        deploy = workflows()["portal-deploy.yml"]
+        self.assertEqual(set(deploy["on"]), {"workflow_dispatch"})
+        self.assertEqual(deploy["permissions"]["id-token"], "write")
+        self.assertEqual(deploy["concurrency"]["cancel-in-progress"], "false")
+        job = deploy["jobs"]["deploy"]
+        self.assertEqual(job["environment"], "portal-${{ inputs.stage }}")
+        self.assertIn("github.ref == 'refs/heads/main'", job["if"])
+        self.assertIn("vars.PORTAL_DEPLOY_ENABLED == 'true'", job["if"])
+        ci = workflows()["portal-ci.yml"]
+        for event in ("push", "pull_request"):
+            self.assertTrue(
+                triggered(ci, event, "main", ".github/workflows/portal-deploy.yml")
+            )
 
 
 if __name__ == "__main__":

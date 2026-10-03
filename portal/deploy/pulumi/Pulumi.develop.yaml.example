@@ -1,0 +1,23 @@
+config:
+  aws:region: ap-northeast-1
+  isucon2026-portal:name: portal-develop
+  isucon2026-portal:domainName: portal-dev.isucon.whywrite.it
+  isucon2026-portal:route53ZoneId: Z_REPLACE_ME
+  isucon2026-portal:githubRepository: isucon/isucon2026
+  isucon2026-portal:githubEnvironment: portal-develop
+  isucon2026-portal:githubOidcProviderArn: arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com
+  isucon2026-portal:availabilityZones:
+    - ap-northeast-1a
+    - ap-northeast-1c
+  isucon2026-portal:auroraEngineVersion: '17.7'
+  isucon2026-portal:auroraMinAcu: 2
+  isucon2026-portal:auroraMaxAcu: 16
+  isucon2026-portal:enableBot: false
+  isucon2026-portal:environment:
+    ISUXPORTAL_ADMIN_ONLY: '1'
+    ISUXPORTAL_ADMIN_LOGIN: admin
+    ISUXPORTAL_GITHUB_CLIENT_ID: REPLACE_ME
+    ISUXPORTAL_DISCORD_CLIENT_ID: REPLACE_ME
+    ISUXPORTAL_TEST_AMI_ID: ami-REPLACE_ME
+    ISUXPORTAL_QUALIFY_AMI_ID: ami-REPLACE_ME
+    ISUXPORTAL_CLOUDFORMATION_STAGING: '1'
