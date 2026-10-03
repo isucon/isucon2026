@@ -47,6 +47,10 @@ ACM の DNS 検証と ALB alias を Pulumi が作成します。
 stack 設定は Git 管理外で、設定例だけをコミットします。
 アプリケーションの秘密値は Secrets Manager に別途登録し、Pulumi に渡しません。
 `environment` には文字列の非秘密値、`secretKeys` には application secret の JSON キー名だけを指定します。
+開発環境の設定例は Slack 通知用の `ISUXPORTAL_SLACK_WEBHOOK_URL` を含みます。
+起動前に application secret の同名キーへ Webhook URL を登録してください。
+Slack 通知を利用しない環境では、このキーを `secretKeys` から除いてください。
+Webhook URL を `environment` や Git 管理下のファイルへ書かないでください。
 
 ```sh
 pulumi config set --path 'environment.ISUXPORTAL_ADMIN_ONLY' '1'

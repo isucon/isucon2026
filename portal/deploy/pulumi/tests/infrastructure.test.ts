@@ -1,7 +1,7 @@
 import * as pulumi from "@pulumi/pulumi";
 import { beforeAll, describe, expect, test } from "vitest";
 import { createPortal } from "../infrastructure";
-import { defaults, validateConfig } from "../config";
+import { defaults, type PortalConfig, validateConfig } from "../config";
 
 const resources: pulumi.runtime.MockResourceArgs[] = [];
 pulumi.runtime.setMocks(
@@ -44,6 +44,7 @@ pulumi.runtime.setMocks(
 );
 const config = {
   ...defaults,
+  secretKeys: [...defaults.secretKeys, "ISUXPORTAL_SLACK_WEBHOOK_URL"],
   name: "portal-test",
   region: "ap-northeast-1",
   domainName: "portal.example.com",
@@ -122,6 +123,8 @@ describe("portal infrastructure", () => {
     });
     expect(data).not.toHaveProperty("tasks");
     expect(data).not.toHaveProperty("services");
+    expect(data.secretKeys).toContain("ISUXPORTAL_SLACK_WEBHOOK_URL");
+    expect(data.environment).not.toHaveProperty("ISUXPORTAL_SLACK_WEBHOOK_URL");
     expect(data.environment.PORTAL_NOTIFYLOOP_TARGET).toBe(
       "https://portal.example.com/admin/long_running_check",
     );
@@ -150,14 +153,18 @@ describe("portal infrastructure", () => {
     expect(actions).not.toContain("secretsmanager:GetSecretValue");
   });
   test("rejects auto-pause, duplicate AZs and plaintext credentials", () => {
-    for (
-      const override of [
-        { auroraMinAcu: 0 },
-        { availabilityZones: ["ap-northeast-1a", "ap-northeast-1a"] },
-        { environment: { ISUXPORTAL_ADMIN_PASSWORD: "bad" } },
-        { enableBot: true },
-      ]
-    ) {
+    const overrides: Partial<PortalConfig>[] = [
+      { auroraMinAcu: 0 },
+      { availabilityZones: ["ap-northeast-1a", "ap-northeast-1a"] },
+      { environment: { ISUXPORTAL_ADMIN_PASSWORD: "bad" } },
+      {
+        environment: {
+          ISUXPORTAL_SLACK_WEBHOOK_URL: "https://example.com/webhook",
+        },
+      },
+      { enableBot: true },
+    ];
+    for (const override of overrides) {
       expect(() => validateConfig({ ...config, ...override })).toThrow();
     }
   });
