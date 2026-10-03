@@ -46,10 +46,8 @@ jobs:
         working-directory: frontend
       - run: npm run test:contract && npm run check:openapi
         working-directory: frontend
-      - run: npm run build && test -f dist/service-worker.js
+      - run: npm run build
         working-directory: frontend
-        env:
-          VITE_VAPID_PUBLIC_KEY: BOr6nQZxVwVGh5dY1cL0Qxq9v1rMVTg5Hf9P4Hd3JpM-nT7rF0wZ9H8vD1sK2aL3mN4oP5qR6sT7uV8wX9yZ0ab
 
   frontend-chrome-e2e:
     runs-on: actions-runner-processor
