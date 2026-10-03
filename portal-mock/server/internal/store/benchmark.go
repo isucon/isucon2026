@@ -26,12 +26,10 @@ func (s *Store) BeginBenchmark() (BenchmarkTicket, error) {
 	s.nextBenchmarkSequence++
 	now := s.clock.Now()
 	run := domain.BenchmarkRun{
-		ID:               s.id.New(),
-		Sequence:         s.nextBenchmarkSequence,
-		StartedAt:        now,
-		MainServer:       s.state.Applied.Config.MainServer,
-		MainServerRegion: s.state.Applied.Config.RegionFor(s.state.Applied.Config.MainServer),
-		TargetHostname:   s.state.Applied.Calculated.TargetHostname,
+		ID:             s.id.New(),
+		Sequence:       s.nextBenchmarkSequence,
+		StartedAt:      now,
+		TargetHostname: s.state.Applied.Calculated.TargetHostname,
 	}
 	s.state.Benchmark = domain.BenchmarkRuntime{
 		Status:      domain.BenchmarkPending,

@@ -3,7 +3,6 @@ import { TimestampSchema } from '@bufbuild/protobuf/wkt';
 import {
   ConfigSchema,
   Region,
-  ServerId,
   ServerRegionsSchema,
   TeamKeySchema,
 } from '@isucon/portal-proto/portal/v1/portal_pb';
@@ -52,14 +51,14 @@ export const countries: SupportedCountry[] = countryRows.map(([code, nameJa, reg
   create(SupportedCountrySchema, { code, nameJa, region }),
 );
 
-function calculated(mainServer: ServerId, countryRegion: Region) {
+function calculated(countryRegion: Region) {
   const hostnames = create(HostnamesSchema, {
     app: 'app.team1-a1b2c3.isucon2026.example',
-    target: `${mainServer === ServerId.SERVER3 ? 'server3' : 'server1'}.team1-a1b2c3.isucon2026.example`,
+    target: 'app.team1-a1b2c3.isucon2026.example',
     servers: create(ServerHostnamesSchema, {
-      server1: 'server1.team1-a1b2c3.isucon2026.example',
-      server2: 'server2.team1-a1b2c3.isucon2026.example',
-      server3: 'server3.team1-a1b2c3.isucon2026.example',
+      app1: 'app1.team1-a1b2c3.isucon2026.example',
+      app2: 'app2.team1-a1b2c3.isucon2026.example',
+      app3: 'app3.team1-a1b2c3.isucon2026.example',
     }),
   });
   return create(CalculatedConfigSchema, { hostnames, defaultCountryRegion: countryRegion });
@@ -70,8 +69,6 @@ export interface StateOverrides {
   reason?: string;
   converged?: boolean;
   applied?: boolean;
-  desiredServer2?: Region;
-  desiredMain?: ServerId;
   desiredCountry?: string;
   locked?: boolean;
   lockReason?: string;
@@ -81,43 +78,41 @@ export interface StateOverrides {
 }
 
 export function makeState(overrides: StateOverrides = {}): MockPortalState {
-  const desiredServer2 = overrides.desiredServer2 ?? Region.AP;
-  const desiredMain = overrides.desiredMain ?? ServerId.SERVER1;
   const desiredCountry = overrides.desiredCountry ?? 'JP';
   const appliedExists = overrides.applied ?? true;
-  const converged = overrides.converged ?? (appliedExists && desiredServer2 === Region.AP);
+  const converged = overrides.converged ?? (appliedExists && desiredCountry === 'JP');
   const applyState =
     overrides.applyState ??
     (appliedExists ? (converged ? ApplyState.CONVERGED : ApplyState.PENDING) : ApplyState.UNSYNCED);
   const desiredConfig = create(ConfigSchema, {
     serverRegions: create(ServerRegionsSchema, {
-      server1: Region.AP,
-      server2: desiredServer2,
-      server3: Region.AP,
+      app1: Region.AP,
+      app2: Region.EU,
+      app3: Region.US,
+      db1: Region.AP,
     }),
-    mainServer: desiredMain,
     defaultCountry: desiredCountry,
   });
   const appliedConfig = create(ConfigSchema, {
     serverRegions: create(ServerRegionsSchema, {
-      server1: Region.AP,
-      server2: Region.AP,
-      server3: Region.AP,
+      app1: Region.AP,
+      app2: Region.EU,
+      app3: Region.US,
+      db1: Region.AP,
     }),
-    mainServer: ServerId.SERVER1,
     defaultCountry: 'JP',
   });
   const desired = create(ConfigSnapshotSchema, {
     snapshotId: 'desired-snapshot-00000001',
     config: desiredConfig,
-    calculated: calculated(desiredMain, desiredCountry === 'US' ? Region.US : Region.AP),
+    calculated: calculated(countries.find((country) => country.code === desiredCountry)?.region ?? Region.AP),
     issuedAt: now,
   });
   const applied = appliedExists
     ? create(AppliedConfigSchema, {
         snapshotId: 'applied-snapshot-00000001',
         config: appliedConfig,
-        calculated: calculated(ServerId.SERVER1, Region.AP),
+        calculated: calculated(Region.AP),
         reportedAt: now,
       })
     : undefined;
@@ -146,9 +141,7 @@ export function makeState(overrides: StateOverrides = {}): MockPortalState {
           sequence: 2n,
           startedAt: now,
           completedAt: now,
-          mainServer: ServerId.SERVER1,
-          mainServerRegion: Region.AP,
-          targetHostname: 'server1.team1-a1b2c3.isucon2026.example',
+          targetHostname: 'app.team1-a1b2c3.isucon2026.example',
           score: 0n,
           result: BenchmarkResult.FAIL,
           logs: ['[ERROR] integrity check failed'],
@@ -158,9 +151,7 @@ export function makeState(overrides: StateOverrides = {}): MockPortalState {
           sequence: 1n,
           startedAt: now,
           completedAt: now,
-          mainServer: ServerId.SERVER1,
-          mainServerRegion: Region.AP,
-          targetHostname: 'server1.team1-a1b2c3.isucon2026.example',
+          targetHostname: 'app.team1-a1b2c3.isucon2026.example',
           score: 12_345n,
           result: BenchmarkResult.PASS,
           logs: ['[INFO] final score: 12345'],

@@ -1,7 +1,6 @@
 /// <reference types="vitest/config" />
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
-import { resolve } from 'node:path';
 
 export default defineConfig({
   plugins: [react()],
@@ -10,13 +9,7 @@ export default defineConfig({
     'Permissions-Policy': 'camera=(self)',
     'Referrer-Policy': 'no-referrer',
     'X-Content-Type-Options': 'nosniff',
-  }, proxy: { '/api': process.env.ISUREAL_API_PROXY_TARGET ?? 'http://127.0.0.1:8080' } },
-  build: {
-    rollupOptions: {
-      input: { app: resolve(import.meta.dirname, 'index.html'), 'service-worker': resolve(import.meta.dirname, 'src/service-worker/push.ts') },
-      output: { entryFileNames: (chunk) => chunk.name === 'service-worker' ? 'service-worker.js' : 'assets/[name]-[hash].js' },
-    },
-  },
+  }, proxy: { '/api': { target: process.env.ISUREAL_API_PROXY_TARGET ?? 'http://127.0.0.1:8080', changeOrigin: true } } },
   test: {
     environment: 'jsdom',
     include: ['src/**/*.test.{ts,tsx}', 'tests/unit/**/*.test.{ts,tsx}'],

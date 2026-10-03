@@ -1,4 +1,9 @@
+> **廃止**: この文書は旧 backend（仮想時計、冪等性キー、Push モック、サイクル制の負荷）向けの設計記録であり、
+> 現行のベンチマーカーとは一致しない。現行の仕様は [spec-bench.md](spec-bench.md)、実行方法は [README](README.md) を参照する。
+
 # ISUReal ベンチマーカー 設計ドキュメント
+
+> 2026-09-24: この文書は旧 backend 向けの設計記録です。Go 版への移行で仮想時計・自動スケジュール等を廃止しました。現行ベンチマーカーの仕様と実行手順は [README.md](README.md) を参照してください。
 
 **Status**: Draft（未承認）
 
@@ -251,7 +256,7 @@ Memories上の日付は投稿期間開始日時を地域オフセットで表し
 
 #### アプリ側の実装方針（競技仕様承認後の作業）
 
-- `backend/internal/httpapi`へハンドラーを追加し、`backend/internal/migrate`の`Reset`と
+- `backend/internal/httpapi`へハンドラーを追加し、`backend/internal/schema`の`Reset`と
   競技用fixtureの投入処理を再利用する。`backend/cmd/reset`および`backend/cmd/seed`と共通の
   内部関数を経由させ、CLIとHTTPで初期化結果が一致することを保証する。
 - 画像ファイル領域（`ISUREAL_IMAGE_ROOT`）のクリアと初期データセット由来の画像配置を、

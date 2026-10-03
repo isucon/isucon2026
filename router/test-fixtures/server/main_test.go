@@ -12,7 +12,7 @@ import (
 
 func TestIdentityAndBlob(t *testing.T) {
 	t.Parallel()
-	server := httptest.NewServer(newHandler(serverConfig{ID: "server2", MaxBlobBytes: 1024, MaxFetchBytes: 1024}))
+	server := httptest.NewServer(newHandler(serverConfig{ID: "app2", MaxBlobBytes: 1024, MaxFetchBytes: 1024}))
 	defer server.Close()
 
 	request, err := http.NewRequest(http.MethodGet, server.URL+"/identity", nil)
@@ -29,7 +29,7 @@ func TestIdentityAndBlob(t *testing.T) {
 	if err := json.NewDecoder(response.Body).Decode(&identity); err != nil {
 		t.Fatal(err)
 	}
-	if identity.Server != "server2" || len(identity.CountryValues) != 1 || identity.CountryValues[0] != "JP" {
+	if identity.Server != "app2" || len(identity.CountryValues) != 1 || identity.CountryValues[0] != "JP" {
 		t.Fatalf("unexpected identity: %+v", identity)
 	}
 
@@ -54,7 +54,7 @@ func TestFetchAndRouteAreBounded(t *testing.T) {
 	}))
 	defer peer.Close()
 	handler := newHandler(serverConfig{
-		ID: "server1", MaxBlobBytes: 1024, MaxFetchBytes: 256,
+		ID: "app1", MaxBlobBytes: 1024, MaxFetchBytes: 256,
 		AllowedPeerHosts: map[string]struct{}{"127.0.0.1": {}, "172.31.2.10": {}},
 		RouteLookup: func(_ context.Context, target string) (string, error) {
 			return target + " via 172.31.1.2 dev eth1", nil
@@ -84,7 +84,7 @@ func TestFetchAndRouteAreBounded(t *testing.T) {
 func TestFetchAndRouteRejectUnapprovedTargets(t *testing.T) {
 	t.Parallel()
 	handler := newHandler(serverConfig{
-		ID: "server1", MaxBlobBytes: 64, MaxFetchBytes: 64,
+		ID: "app1", MaxBlobBytes: 64, MaxFetchBytes: 64,
 		AllowedPeerHosts: map[string]struct{}{"172.31.2.10": {}},
 		RouteLookup:      func(context.Context, string) (string, error) { return "", nil },
 	})
@@ -105,7 +105,7 @@ func TestFetchAndRouteRejectUnapprovedTargets(t *testing.T) {
 
 func TestBlobRejectsInvalidSize(t *testing.T) {
 	t.Parallel()
-	handler := newHandler(serverConfig{ID: "server1", MaxBlobBytes: 64, MaxFetchBytes: 64})
+	handler := newHandler(serverConfig{ID: "app1", MaxBlobBytes: 64, MaxFetchBytes: 64})
 	for _, target := range []string{"/blob", "/blob?bytes=-1", "/blob?bytes=65", "/blob?bytes=nope"} {
 		recorder := httptest.NewRecorder()
 		handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, target, nil))

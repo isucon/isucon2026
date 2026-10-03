@@ -9,9 +9,10 @@ test.beforeEach(async ({ page }) => {
 });
 
 test('設定変更が desired へ反映され applied へ収束する', async ({ page }) => {
-  await page.getByLabel('server2 の desired リージョン').selectOption({ label: 'EU' });
+  await expect(page.getByRole('radio')).toHaveCount(0);
+  await page.getByLabel('望ましい設定').selectOption('DE');
   await expect(page.getByRole('status').filter({ hasText: /反映待ち|反映済み/ })).toBeVisible();
-  await expect(page.getByLabel('server2 の desired リージョン')).toHaveValue('3');
+  await expect(page.getByLabel('望ましい設定')).toHaveValue('DE');
   await expect(page.getByRole('status').filter({ hasText: '反映済み' })).toBeVisible({
     timeout: 10_000,
   });
@@ -29,7 +30,9 @@ test('同値更新、10か国表示、reset の既知初期値', async ({ page }
   await expect(page.getByLabel('望ましい設定')).toHaveValue('US');
   await page.getByRole('button', { name: /全モック状態を初期状態へリセット/ }).click();
   await expect(page.getByLabel('望ましい設定')).toHaveValue('JP');
-  await expect(page.getByLabel('server1 の desired リージョン')).toHaveValue('2');
-  await expect(page.getByLabel('server2 の desired リージョン')).toHaveValue('2');
-  await expect(page.getByLabel('server3 の desired リージョン')).toHaveValue('2');
+  await expect(page.getByLabel('app1 の固定リージョン')).toHaveText('AP');
+  await expect(page.getByLabel('app2 の固定リージョン')).toHaveText('EU');
+  await expect(page.getByLabel('app3 の固定リージョン')).toHaveText('US');
+  await expect(page.getByLabel('db1 の固定リージョン')).toHaveText('AP');
+  await expect(page.getByLabel(/desired リージョン/)).toHaveCount(0);
 });

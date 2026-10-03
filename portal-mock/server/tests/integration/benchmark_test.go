@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
-	portalv1 "github.com/isucon/isucon2026/gen/go/portal/v1"
 	portalmockv1 "github.com/isucon/isucon2026/gen/go/portal_mock/v1"
 	"github.com/isucon/isucon2026/portal-mock/server/tests/testkit"
 )
@@ -22,9 +21,9 @@ func TestBenchmarkLifecycleLockHistoryAndDeterminism(t *testing.T) {
 	if started.Msg.Benchmark.Status != portalmockv1.BenchmarkStatus_BENCHMARK_STATUS_PENDING {
 		t.Fatalf("unexpected start: %+v", started.Msg.Benchmark)
 	}
-	main := portalv1.ServerId_SERVER_ID_SERVER2
+	main := "DE"
 	_, err = server.Mock.UpdateDesired(ctx, connect.NewRequest(&portalmockv1.UpdateDesiredRequest{
-		Patch: &portalmockv1.DesiredPatch{MainServer: &main},
+		Patch: &portalmockv1.DesiredPatch{DefaultCountry: &main},
 	}))
 	if connect.CodeOf(err) != connect.CodeFailedPrecondition {
 		t.Fatalf("update during benchmark: %v", err)
@@ -54,9 +53,9 @@ func TestBenchmarkLifecycleLockHistoryAndDeterminism(t *testing.T) {
 
 func TestPendingConfigurationBlocksBenchmark(t *testing.T) {
 	server := testkit.NewServer(t, nil)
-	main := portalv1.ServerId_SERVER_ID_SERVER2
+	main := "DE"
 	_, err := server.Mock.UpdateDesired(context.Background(), connect.NewRequest(&portalmockv1.UpdateDesiredRequest{
-		Patch: &portalmockv1.DesiredPatch{MainServer: &main},
+		Patch: &portalmockv1.DesiredPatch{DefaultCountry: &main},
 	}))
 	if err != nil {
 		t.Fatal(err)

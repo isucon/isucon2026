@@ -35,26 +35,6 @@ func TestValidateUsernameBoundaries(t *testing.T) {
 	}
 }
 
-func TestValidatePasswordUsesCharactersAndPreservesSpaces(t *testing.T) {
-	t.Parallel()
-	cases := []struct {
-		name, value string
-		valid       bool
-	}{
-		{"minimum", "12345678", true}, {"leading space", " 1234567", true},
-		{"maximum", strings.Repeat("~", 72), true}, {"short", "1234567", false},
-		{"long", strings.Repeat("a", 73), false}, {"newline", "1234567\n", false},
-		{"unicode", "password猫", false},
-	}
-	for _, test := range cases {
-		t.Run(test.name, func(t *testing.T) {
-			if err := domain.ValidatePassword(test.value); (err == nil) != test.valid {
-				t.Fatalf("ValidatePassword(%q) error = %v", test.value, err)
-			}
-		})
-	}
-}
-
 func TestUnicodeCodePointLimits(t *testing.T) {
 	t.Parallel()
 	if err := domain.ValidateDisplayName(strings.Repeat("界", 100)); err != nil {

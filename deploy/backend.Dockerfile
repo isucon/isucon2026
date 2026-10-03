@@ -3,14 +3,14 @@ WORKDIR /src/backend
 COPY backend/go.mod backend/go.sum ./
 RUN go mod download
 COPY backend/ ./
-RUN for command in api worker image-sanitizer migrate reset seed; do \
+RUN for command in api worker image-sanitizer reset seed; do \
       CGO_ENABLED=0 go build -trimpath -o "/out/$command" "./cmd/$command"; \
     done
 
 FROM alpine:3.23@sha256:fd791d74b68913cbb027c6546007b3f0d3bc45125f797758156952bc2d6daf40
 RUN addgroup -S isureal && adduser -S -G isureal isureal
 COPY --from=build /out/* /usr/local/bin/
-COPY backend/migrations/ /usr/local/share/isureal/migrations/
+COPY backend/schema/schema.sql /usr/local/share/isureal/schema.sql
 COPY specs/001-isureal-social-app/contracts/openapi.yaml /usr/local/share/isureal/openapi.yaml
 RUN mkdir -p /var/lib/isureal/images && chown -R isureal:isureal /var/lib/isureal
 USER isureal

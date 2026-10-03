@@ -78,24 +78,27 @@ type ServerId int32
 
 const (
 	ServerId_SERVER_ID_UNSPECIFIED ServerId = 0
-	ServerId_SERVER_ID_SERVER1     ServerId = 1
-	ServerId_SERVER_ID_SERVER2     ServerId = 2
-	ServerId_SERVER_ID_SERVER3     ServerId = 3
+	ServerId_SERVER_ID_APP1        ServerId = 1
+	ServerId_SERVER_ID_APP2        ServerId = 2
+	ServerId_SERVER_ID_APP3        ServerId = 3
+	ServerId_SERVER_ID_DB1         ServerId = 4
 )
 
 // Enum value maps for ServerId.
 var (
 	ServerId_name = map[int32]string{
 		0: "SERVER_ID_UNSPECIFIED",
-		1: "SERVER_ID_SERVER1",
-		2: "SERVER_ID_SERVER2",
-		3: "SERVER_ID_SERVER3",
+		1: "SERVER_ID_APP1",
+		2: "SERVER_ID_APP2",
+		3: "SERVER_ID_APP3",
+		4: "SERVER_ID_DB1",
 	}
 	ServerId_value = map[string]int32{
 		"SERVER_ID_UNSPECIFIED": 0,
-		"SERVER_ID_SERVER1":     1,
-		"SERVER_ID_SERVER2":     2,
-		"SERVER_ID_SERVER3":     3,
+		"SERVER_ID_APP1":        1,
+		"SERVER_ID_APP2":        2,
+		"SERVER_ID_APP3":        3,
+		"SERVER_ID_DB1":         4,
 	}
 )
 
@@ -171,10 +174,12 @@ func (x *TeamKey) GetTeamNumber() uint32 {
 }
 
 type ServerRegions struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Server1       Region                 `protobuf:"varint,1,opt,name=server1,proto3,enum=portal.v1.Region" json:"server1,omitempty"`
-	Server2       Region                 `protobuf:"varint,2,opt,name=server2,proto3,enum=portal.v1.Region" json:"server2,omitempty"`
-	Server3       Region                 `protobuf:"varint,3,opt,name=server3,proto3,enum=portal.v1.Region" json:"server3,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// 固定配置: app1=AP、app2=EU、app3=US、db1=AP。ユーザーは変更できない。
+	App1          Region `protobuf:"varint,1,opt,name=app1,proto3,enum=portal.v1.Region" json:"app1,omitempty"`
+	App2          Region `protobuf:"varint,2,opt,name=app2,proto3,enum=portal.v1.Region" json:"app2,omitempty"`
+	App3          Region `protobuf:"varint,3,opt,name=app3,proto3,enum=portal.v1.Region" json:"app3,omitempty"`
+	Db1           Region `protobuf:"varint,4,opt,name=db1,proto3,enum=portal.v1.Region" json:"db1,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -209,31 +214,38 @@ func (*ServerRegions) Descriptor() ([]byte, []int) {
 	return file_portal_v1_portal_proto_rawDescGZIP(), []int{1}
 }
 
-func (x *ServerRegions) GetServer1() Region {
+func (x *ServerRegions) GetApp1() Region {
 	if x != nil {
-		return x.Server1
+		return x.App1
 	}
 	return Region_REGION_UNSPECIFIED
 }
 
-func (x *ServerRegions) GetServer2() Region {
+func (x *ServerRegions) GetApp2() Region {
 	if x != nil {
-		return x.Server2
+		return x.App2
 	}
 	return Region_REGION_UNSPECIFIED
 }
 
-func (x *ServerRegions) GetServer3() Region {
+func (x *ServerRegions) GetApp3() Region {
 	if x != nil {
-		return x.Server3
+		return x.App3
+	}
+	return Region_REGION_UNSPECIFIED
+}
+
+func (x *ServerRegions) GetDb1() Region {
+	if x != nil {
+		return x.Db1
 	}
 	return Region_REGION_UNSPECIFIED
 }
 
 type Config struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	ServerRegions *ServerRegions         `protobuf:"bytes,1,opt,name=server_regions,json=serverRegions,proto3" json:"server_regions,omitempty"`
-	MainServer    ServerId               `protobuf:"varint,2,opt,name=main_server,json=mainServer,proto3,enum=portal.v1.ServerId" json:"main_server,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// 固定配置の確認用。固定値に一致しない snapshot/report は拒否する。
+	ServerRegions *ServerRegions `protobuf:"bytes,1,opt,name=server_regions,json=serverRegions,proto3" json:"server_regions,omitempty"`
 	// ISO 3166-1 alpha-2。
 	DefaultCountry string `protobuf:"bytes,3,opt,name=default_country,json=defaultCountry,proto3" json:"default_country,omitempty"`
 	unknownFields  protoimpl.UnknownFields
@@ -275,13 +287,6 @@ func (x *Config) GetServerRegions() *ServerRegions {
 		return x.ServerRegions
 	}
 	return nil
-}
-
-func (x *Config) GetMainServer() ServerId {
-	if x != nil {
-		return x.MainServer
-	}
-	return ServerId_SERVER_ID_UNSPECIFIED
 }
 
 func (x *Config) GetDefaultCountry() string {
@@ -676,16 +681,15 @@ const file_portal_v1_portal_proto_rawDesc = "" +
 	"\x16portal/v1/portal.proto\x12\tportal.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"*\n" +
 	"\aTeamKey\x12\x1f\n" +
 	"\vteam_number\x18\x01 \x01(\rR\n" +
-	"teamNumber\"\x96\x01\n" +
-	"\rServerRegions\x12+\n" +
-	"\aserver1\x18\x01 \x01(\x0e2\x11.portal.v1.RegionR\aserver1\x12+\n" +
-	"\aserver2\x18\x02 \x01(\x0e2\x11.portal.v1.RegionR\aserver2\x12+\n" +
-	"\aserver3\x18\x03 \x01(\x0e2\x11.portal.v1.RegionR\aserver3\"\xa8\x01\n" +
+	"teamNumber\"\xa9\x01\n" +
+	"\rServerRegions\x12%\n" +
+	"\x04app1\x18\x01 \x01(\x0e2\x11.portal.v1.RegionR\x04app1\x12%\n" +
+	"\x04app2\x18\x02 \x01(\x0e2\x11.portal.v1.RegionR\x04app2\x12%\n" +
+	"\x04app3\x18\x03 \x01(\x0e2\x11.portal.v1.RegionR\x04app3\x12#\n" +
+	"\x03db1\x18\x04 \x01(\x0e2\x11.portal.v1.RegionR\x03db1\"\x85\x01\n" +
 	"\x06Config\x12?\n" +
-	"\x0eserver_regions\x18\x01 \x01(\v2\x18.portal.v1.ServerRegionsR\rserverRegions\x124\n" +
-	"\vmain_server\x18\x02 \x01(\x0e2\x13.portal.v1.ServerIdR\n" +
-	"mainServer\x12'\n" +
-	"\x0fdefault_country\x18\x03 \x01(\tR\x0edefaultCountry\"\x95\x01\n" +
+	"\x0eserver_regions\x18\x01 \x01(\v2\x18.portal.v1.ServerRegionsR\rserverRegions\x12'\n" +
+	"\x0fdefault_country\x18\x03 \x01(\tR\x0edefaultCountryJ\x04\b\x02\x10\x03R\vmain_server\"\x95\x01\n" +
 	"\x0eConfigSnapshot\x12\x1f\n" +
 	"\vsnapshot_id\x18\x01 \x01(\tR\n" +
 	"snapshotId\x12)\n" +
@@ -713,12 +717,13 @@ const file_portal_v1_portal_proto_rawDesc = "" +
 	"\x12REGION_UNSPECIFIED\x10\x00\x12\r\n" +
 	"\tREGION_US\x10\x01\x12\r\n" +
 	"\tREGION_AP\x10\x02\x12\r\n" +
-	"\tREGION_EU\x10\x03*j\n" +
+	"\tREGION_EU\x10\x03*t\n" +
 	"\bServerId\x12\x19\n" +
-	"\x15SERVER_ID_UNSPECIFIED\x10\x00\x12\x15\n" +
-	"\x11SERVER_ID_SERVER1\x10\x01\x12\x15\n" +
-	"\x11SERVER_ID_SERVER2\x10\x02\x12\x15\n" +
-	"\x11SERVER_ID_SERVER3\x10\x032\xbf\x01\n" +
+	"\x15SERVER_ID_UNSPECIFIED\x10\x00\x12\x12\n" +
+	"\x0eSERVER_ID_APP1\x10\x01\x12\x12\n" +
+	"\x0eSERVER_ID_APP2\x10\x02\x12\x12\n" +
+	"\x0eSERVER_ID_APP3\x10\x03\x12\x11\n" +
+	"\rSERVER_ID_DB1\x10\x042\xbf\x01\n" +
 	"\x13PortalRouterService\x12T\n" +
 	"\rStreamDesired\x12\x1f.portal.v1.StreamDesiredRequest\x1a .portal.v1.StreamDesiredResponse0\x01\x12R\n" +
 	"\rReportApplied\x12\x1f.portal.v1.ReportAppliedRequest\x1a .portal.v1.ReportAppliedResponseB\x99\x01\n" +
@@ -755,11 +760,11 @@ var file_portal_v1_portal_proto_goTypes = []any{
 	(*timestamppb.Timestamp)(nil), // 12: google.protobuf.Timestamp
 }
 var file_portal_v1_portal_proto_depIdxs = []int32{
-	0,  // 0: portal.v1.ServerRegions.server1:type_name -> portal.v1.Region
-	0,  // 1: portal.v1.ServerRegions.server2:type_name -> portal.v1.Region
-	0,  // 2: portal.v1.ServerRegions.server3:type_name -> portal.v1.Region
-	3,  // 3: portal.v1.Config.server_regions:type_name -> portal.v1.ServerRegions
-	1,  // 4: portal.v1.Config.main_server:type_name -> portal.v1.ServerId
+	0,  // 0: portal.v1.ServerRegions.app1:type_name -> portal.v1.Region
+	0,  // 1: portal.v1.ServerRegions.app2:type_name -> portal.v1.Region
+	0,  // 2: portal.v1.ServerRegions.app3:type_name -> portal.v1.Region
+	0,  // 3: portal.v1.ServerRegions.db1:type_name -> portal.v1.Region
+	3,  // 4: portal.v1.Config.server_regions:type_name -> portal.v1.ServerRegions
 	4,  // 5: portal.v1.ConfigSnapshot.config:type_name -> portal.v1.Config
 	12, // 6: portal.v1.ConfigSnapshot.issued_at:type_name -> google.protobuf.Timestamp
 	2,  // 7: portal.v1.StreamDesiredRequest.team:type_name -> portal.v1.TeamKey

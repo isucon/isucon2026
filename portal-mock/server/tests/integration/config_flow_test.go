@@ -15,10 +15,9 @@ import (
 func TestStandInProfilesAndDesiredDiagnostics(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		server := testkit.NewServer(t, nil)
-		server3 := portalv1.ServerId_SERVER_ID_SERVER3
 		country := "US"
 		response, err := server.Mock.UpdateDesired(context.Background(), connect.NewRequest(&portalmockv1.UpdateDesiredRequest{
-			Patch: &portalmockv1.DesiredPatch{MainServer: &server3, DefaultCountry: &country},
+			Patch: &portalmockv1.DesiredPatch{DefaultCountry: &country},
 		}))
 		if err != nil {
 			t.Fatal(err)
@@ -34,8 +33,8 @@ func TestStandInProfilesAndDesiredDiagnostics(t *testing.T) {
 		testkit.Eventually(t, time.Second, func() bool {
 			state := server.App.Store.Snapshot()
 			return state.Converged && state.Applied != nil &&
-				state.Applied.Config.MainServer == server3 &&
-				state.Applied.Calculated.TargetHostname == "server3.team1-testhash.example.test" &&
+				state.Applied.Config.DefaultCountry == country &&
+				state.Applied.Calculated.TargetHostname == "app.team1-testhash.example.test" &&
 				state.Applied.Calculated.DefaultCountryRegion == portalv1.Region_REGION_US
 		})
 	})
@@ -44,9 +43,9 @@ func TestStandInProfilesAndDesiredDiagnostics(t *testing.T) {
 		server := testkit.NewServer(t, func(cfg *config.Config) {
 			cfg.StandInProfile = config.StandInFailOnceThenSuccess
 		})
-		server2 := portalv1.ServerId_SERVER_ID_SERVER2
+		app2 := "DE"
 		_, err := server.Mock.UpdateDesired(context.Background(), connect.NewRequest(&portalmockv1.UpdateDesiredRequest{
-			Patch: &portalmockv1.DesiredPatch{MainServer: &server2},
+			Patch: &portalmockv1.DesiredPatch{DefaultCountry: &app2},
 		}))
 		if err != nil {
 			t.Fatal(err)
@@ -73,9 +72,9 @@ func TestStandInProfilesAndDesiredDiagnostics(t *testing.T) {
 		server := testkit.NewServer(t, func(cfg *config.Config) {
 			cfg.StandInProfile = config.StandInNoReport
 		})
-		server2 := portalv1.ServerId_SERVER_ID_SERVER2
+		app2 := "DE"
 		response, err := server.Mock.UpdateDesired(context.Background(), connect.NewRequest(&portalmockv1.UpdateDesiredRequest{
-			Patch: &portalmockv1.DesiredPatch{MainServer: &server2},
+			Patch: &portalmockv1.DesiredPatch{DefaultCountry: &app2},
 		}))
 		if err != nil {
 			t.Fatal(err)
@@ -85,7 +84,7 @@ func TestStandInProfilesAndDesiredDiagnostics(t *testing.T) {
 			state := server.App.Store.Snapshot()
 			return state.Apply.Delayed &&
 				state.Desired.SnapshotID == response.Msg.Desired.SnapshotId &&
-				state.Applied.Config.MainServer == portalv1.ServerId_SERVER_ID_SERVER1
+				state.Applied.Config.DefaultCountry == "JP"
 		})
 	})
 }

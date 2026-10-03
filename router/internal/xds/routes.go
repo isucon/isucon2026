@@ -34,7 +34,7 @@ func BuildRoutes(name string, hosts config.Hostnames, routerConfig domain.Config
 	if err := profile.Validate(); err != nil {
 		return nil, fmt.Errorf("traffic profile: %w", err)
 	}
-	hostValues := []string{hosts.App, hosts.Server1, hosts.Server2, hosts.Server3}
+	hostValues := []string{hosts.App, hosts.App1, hosts.App2, hosts.App3}
 	seen := make(map[string]struct{}, len(hostValues))
 	for _, host := range hostValues {
 		if host == "" {
@@ -51,10 +51,10 @@ func BuildRoutes(name string, hosts config.Hostnames, routerConfig domain.Config
 		host   string
 		server domain.ServerID
 	}{
-		{name: "app", host: hosts.App, server: routerConfig.MainServer},
-		{name: string(domain.Server1), host: hosts.Server1, server: domain.Server1},
-		{name: string(domain.Server2), host: hosts.Server2, server: domain.Server2},
-		{name: string(domain.Server3), host: hosts.Server3, server: domain.Server3},
+		{name: "app", host: hosts.App},
+		{name: string(domain.App1), host: hosts.App1, server: domain.App1},
+		{name: string(domain.App2), host: hosts.App2, server: domain.App2},
+		{name: string(domain.App3), host: hosts.App3, server: domain.App3},
 	}
 
 	virtualHosts := make([]*routev3.VirtualHost, 0, len(targets)+1)
@@ -62,7 +62,11 @@ func BuildRoutes(name string, hosts config.Hostnames, routerConfig domain.Config
 		routes := make([]*routev3.Route, 0, len(domain.Countries())+2)
 		for _, country := range domain.Countries() {
 			countryRegion, _ := domain.CountryRegion(country)
-			route, err := buildUpstreamRoute(target.name+"-"+country, target.server, routerConfig.RegionFor(target.server), countryRegion, profile, []*routev3.HeaderMatcher{{
+			server := target.server
+			if server == "" {
+				server = domain.ServerForRegion(countryRegion)
+			}
+			route, err := buildUpstreamRoute(target.name+"-"+country, server, routerConfig.RegionFor(server), countryRegion, profile, []*routev3.HeaderMatcher{{
 				Name: "x-country-code",
 				HeaderMatchSpecifier: &routev3.HeaderMatcher_StringMatch{StringMatch: &matcherv3.StringMatcher{
 					MatchPattern: &matcherv3.StringMatcher_Exact{Exact: country},
@@ -74,7 +78,11 @@ func BuildRoutes(name string, hosts config.Hostnames, routerConfig domain.Config
 			routes = append(routes, route)
 		}
 		defaultRegion, _ := domain.CountryRegion(routerConfig.DefaultCountry)
-		defaultRoute, err := buildUpstreamRoute(target.name+"-default", target.server, routerConfig.RegionFor(target.server), defaultRegion, profile, []*routev3.HeaderMatcher{{
+		server := target.server
+		if server == "" {
+			server = domain.ServerForRegion(defaultRegion)
+		}
+		defaultRoute, err := buildUpstreamRoute(target.name+"-default", server, routerConfig.RegionFor(server), defaultRegion, profile, []*routev3.HeaderMatcher{{
 			Name:                 "x-country-code",
 			HeaderMatchSpecifier: &routev3.HeaderMatcher_PresentMatch{PresentMatch: true},
 			InvertMatch:          true,

@@ -27,16 +27,16 @@ describe("AWS topology", () => {
   });
 
   test("uses distinct VPCs, subnets, and fixed addresses", () => {
-    expect(new Set(serverNetworks.map((item) => item.vpcCidr)).size).toBe(3);
-    expect(new Set(serverNetworks.map((item) => item.serviceIp)).size).toBe(3);
-    expect(new Set(serverNetworks.map((item) => item.routerIp)).size).toBe(3);
+    expect(new Set(serverNetworks.map((item) => item.vpcCidr)).size).toBe(4);
+    expect(new Set(serverNetworks.map((item) => item.serviceIp)).size).toBe(4);
+    expect(new Set(serverNetworks.map((item) => item.routerIp)).size).toBe(4);
     for (const network of serverNetworks) {
       expect(network.serviceSubnetCidr).not.toBe(network.routerSubnetCidr);
       expect(network.serviceIp).not.toBe(network.routerIp);
     }
   });
 
-  test("service user data installs routes to both peer VPCs", () => {
+  test("service user data shares db1 and keeps initialization role-specific", () => {
     for (const current of serverNetworks) {
       const rendered = Buffer.from(
         serviceUserData(
@@ -48,8 +48,23 @@ describe("AWS topology", () => {
         ),
       ).toString();
       expect(rendered).not.toContain("ip route replace");
+      const files = [...rendered.matchAll(/    content: ([A-Za-z0-9+/=]+)/g)]
+        .map((match) => Buffer.from(match[1], "base64").toString());
+      expect(files.some((content) => content.includes(
+        "@192.168.63.6:5432/isureal?sslmode=disable",
+      ))).toBe(true);
+      const initialize = files.find((content) => content.includes("pg_createcluster"))!;
+      expect(initialize).toContain(`if [ "${current.id}" = db1 ]; then`);
+      const [database, application] = initialize.split("\nelse\n");
+      expect(database).toContain("/opt/isucon/bin/seed --if-empty");
+      expect(application).not.toContain("/opt/isucon/bin/seed");
+      expect(database).not.toContain("enable --now isureal-api");
+      expect(application).toContain("disable --now postgresql.service");
+      for (const app of serverNetworks.filter((item) => item.id !== "db1")) {
+        expect(database).toContain(`host isureal isureal ${app.serviceIp}/32 scram-sha-256`);
+      }
       expect(rendered).toContain(
-        Buffer.from("ISUREAL_MIGRATIONS_DIR=/opt/isucon/share/migrations").toString(
+        Buffer.from("ISUREAL_SCHEMA_PATH=/opt/isucon/share/schema.sql").toString(
           "base64",
         ),
       );
@@ -59,7 +74,7 @@ describe("AWS topology", () => {
   test("allows every protocol only from Router-mediated internal sources", () => {
     for (const destination of serverNetworks) {
       const ingressCidrs = routerMediatedIngressCidrs(destination);
-      expect(ingressCidrs).toHaveLength(3);
+      expect(ingressCidrs).toHaveLength(4);
       expect(ingressCidrs).toContain(`${destination.routerIp}/32`);
       expect(ingressCidrs).not.toContain(destination.vpcCidr);
       for (const source of serverNetworks) {
@@ -106,7 +121,7 @@ describe("AWS topology", () => {
       "example.invalid",
       "192.168.60.69",
       "02:00:00:00:00:01",
-      ["02:00:00:00:00:11", "02:00:00:00:00:12", "02:00:00:00:00:13"],
+      ["02:00:00:00:00:11", "02:00:00:00:00:12", "02:00:00:00:00:13", "02:00:00:00:00:14"],
       "certificate",
       "private-key",
     );

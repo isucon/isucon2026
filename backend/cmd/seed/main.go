@@ -12,8 +12,8 @@ import (
 
 func main() {
 	fixture := flag.String("fixture", "minimal", "seed fixture")
-	directory := flag.String("dir", "migrations", "migration directory")
-	ifEmpty := flag.Bool("if-empty", false, "seed only when the migrated database has no application data")
+	schemaPath := flag.String("schema", "schema/schema.sql", "path to schema.sql")
+	ifEmpty := flag.Bool("if-empty", false, "seed only when the database has no application data")
 	flag.Parse()
 	if *fixture != "minimal" {
 		fmt.Fprintln(os.Stderr, "only the minimal fixture is supported")
@@ -24,9 +24,9 @@ func main() {
 	if err == nil {
 		defer pool.Close()
 		if *ifEmpty {
-			err = seed.MinimalIfEmpty(ctx, pool, *directory)
+			err = seed.MinimalIfEmpty(ctx, pool, *schemaPath)
 		} else {
-			err = seed.Minimal(ctx, pool, *directory)
+			err = seed.Minimal(ctx, pool, *schemaPath)
 		}
 	}
 	if err != nil {

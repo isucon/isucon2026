@@ -76,10 +76,9 @@ func (h *MockHandler) UpdateDesired(
 		return nil, connect.NewError(connect.CodeInvalidArgument, store.ErrInvalidArgument)
 	}
 	patch := store.Patch{
-		Server1Region:  protoPatch.Server1Region,
-		Server2Region:  protoPatch.Server2Region,
-		Server3Region:  protoPatch.Server3Region,
-		MainServer:     protoPatch.MainServer,
+		App1Region:     protoPatch.App1Region,
+		App2Region:     protoPatch.App2Region,
+		App3Region:     protoPatch.App3Region,
 		DefaultCountry: protoPatch.DefaultCountry,
 	}
 	changed, desired, diagnostic, err := h.store.UpdateDesired(patch)

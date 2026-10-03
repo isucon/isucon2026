@@ -18,9 +18,9 @@ func TestUS5PushSubscriptionRetryAndPermanentFailure(t *testing.T) {
 	fake := clock.NewFake(us1Now)
 	db := &postgres.DB{Pool: pool}
 	sessions := postgres.NewSessionRepository(db, domain.RandomIDGenerator{}, fake)
-	hash, _ := service.HashPassword("password-1")
-	_, _ = pool.Exec(context.Background(), `UPDATE users SET password_hash=$2 WHERE id=$1`, user, hash)
-	login, err := service.NewSessionService(sessions).Login(context.Background(), service.LoginInput{Username: "u" + user.String()[:8], Password: "password-1"})
+	hash := service.HashCredential("password-1")
+	_, _ = pool.Exec(context.Background(), `UPDATE users SET secret_key_hash=$2 WHERE id=$1`, user, hash)
+	login, err := service.NewSessionService(sessions).Login(context.Background(), service.LoginInput{Username: "u" + user.String()[:8], SecretKey: "password-1"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,10 +81,10 @@ func TestUS5PushSuccessPermanentInvalidationAndStaleSessionSuppression(t *testin
 	create := func(endpoint string) fixture {
 		user := uuid.New()
 		addUser(t, pool, user, "asia")
-		hash, _ := service.HashPassword("password-1")
-		_, _ = pool.Exec(context.Background(), `UPDATE users SET password_hash=$2 WHERE id=$1`, user, hash)
+		hash := service.HashCredential("password-1")
+		_, _ = pool.Exec(context.Background(), `UPDATE users SET secret_key_hash=$2 WHERE id=$1`, user, hash)
 		sessions := postgres.NewSessionRepository(db, domain.RandomIDGenerator{}, fake)
-		login, err := service.NewSessionService(sessions).Login(context.Background(), service.LoginInput{Username: "u" + user.String()[:8], Password: "password-1"})
+		login, err := service.NewSessionService(sessions).Login(context.Background(), service.LoginInput{Username: "u" + user.String()[:8], SecretKey: "password-1"})
 		if err != nil {
 			t.Fatal(err)
 		}

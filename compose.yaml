@@ -1,92 +1,282 @@
-name: isureal
-
-x-backend-build: &backend-build
-  context: .
-  dockerfile: deploy/backend.Dockerfile
-
+name: isureal-dev
 x-app-environment: &app-environment
-  ISUREAL_DATABASE_URL: postgres://isureal:local-development-only@postgres:5432/isureal?sslmode=disable
-  ISUREAL_OPENAPI_PATH: /usr/local/share/isureal/openapi.yaml
-  ISUREAL_MIGRATIONS_DIR: /usr/local/share/isureal/migrations
-  ISUREAL_PUBLIC_ORIGIN: http://localhost:${ISUREAL_FRONTEND_PORT:-5173}
+  ISUREAL_DB_HOST: 172.29.4.10
+  ISUREAL_DB_PORT: '5432'
+  ISUREAL_DB_USER: isureal
+  ISUREAL_DB_PASSWORD: local-development-only
+  ISUREAL_DB_NAME: isureal
+
+x-app: &app
+  build:
+    context: .
+    dockerfile: deploy/dev/app.Dockerfile
+  image: isureal-dev-app:local
+  cpus: ${ISUREAL_APP_CPUS:-1.0}
+  mem_limit: ${ISUREAL_APP_MEMORY:-1g}
+  cap_add:
+  - NET_ADMIN
+  depends_on:
+    router:
+      condition: service_healthy
+    db-asia:
+      condition: service_healthy
+  healthcheck:
+    test:
+    - CMD
+    - curl
+    - --fail
+    - --silent
+    - http://127.0.0.1:80/healthz
+    interval: 2s
+    timeout: 2s
+    retries: 30
+    start_period: 10s
+  init: true
+  restart: unless-stopped
 
 services:
-  postgres:
-    image: postgres:16.9-alpine@sha256:7c688148e5e156d0e86df7ba8ae5a05a2386aaec1e2ad8e6d11bdf10504b1fb7
+  portal:
+    build:
+      context: .
+      dockerfile: portal-mock/server/Dockerfile
+    environment:
+      PORTAL_TEAM_NUMBER: '1'
+      PORTAL_TEAM_HASH: abc123
+      PORTAL_DOMAIN_SUFFIX: isucon2026.westens.tokyo
+      PORTAL_ROUTER_MODE: external-router
+      PORTAL_APPLY_TIMEOUT_MS: '3000'
+      PORTAL_LISTEN_ADDRESS: 0.0.0.0:8080
+      PORTAL_WEB_DIR: ''
+    networks:
+      control:
+        ipv4_address: 172.28.20.10
+    healthcheck:
+      test:
+      - CMD
+      - wget
+      - -q
+      - -O
+      - /dev/null
+      - http://127.0.0.1:8080/healthz
+      interval: 2s
+      timeout: 2s
+      retries: 30
+      start_period: 2s
+    init: true
+    read_only: true
+    tmpfs:
+    - /tmp
+    security_opt:
+    - no-new-privileges:true
+    cpus: ${ISUREAL_CONTROL_CPUS:-1.0}
+    mem_limit: ${ISUREAL_CONTROL_MEMORY:-512m}
+    ports:
+    - 127.0.0.1:${ISUREAL_PORTAL_PORT:-18082}:8080
+  router:
+    build:
+      context: .
+      dockerfile: router/Dockerfile
+    environment:
+      ROUTER_PORTAL_ENDPOINT: http://portal:8080
+      ROUTER_TEAM_NUMBER: '1'
+      ROUTER_XDS_LISTEN_ADDRESS: 0.0.0.0:18000
+      ROUTER_STATUS_LISTEN_ADDRESS: 0.0.0.0:18081
+      ROUTER_ENVOY_NODE_ID: isureal-router-envoy
+      ROUTER_ROUTE_CONFIG_NAME: isureal_routes
+      ROUTER_APP_HOST: app.127.0.0.1.nip.io
+      ROUTER_APP1_HOST: asia.127.0.0.1.nip.io
+      ROUTER_APP2_HOST: europe.127.0.0.1.nip.io
+      ROUTER_APP3_HOST: america.127.0.0.1.nip.io
+      ROUTER_APP1_SUBNET: 172.29.1.0/24
+      ROUTER_APP1_REGION_LOCAL_IP: 172.29.1.2
+      ROUTER_APP1_IP: 172.29.1.10
+      ROUTER_APP2_SUBNET: 172.29.2.0/24
+      ROUTER_APP2_REGION_LOCAL_IP: 172.29.2.2
+      ROUTER_APP2_IP: 172.29.2.10
+      ROUTER_APP3_SUBNET: 172.29.3.0/24
+      ROUTER_APP3_REGION_LOCAL_IP: 172.29.3.2
+      ROUTER_APP3_IP: 172.29.3.10
+      ROUTER_DB1_SUBNET: 172.29.4.0/24
+      ROUTER_DB1_REGION_LOCAL_IP: 172.29.4.2
+      ROUTER_DB1_IP: 172.29.4.10
+      ROUTER_SAME_REGION_DELAY: 0s
+      ROUTER_CROSS_REGION_DELAY: ${ISUREAL_CROSS_REGION_DELAY:-200ms}
+      ROUTER_SAME_REGION_BANDWIDTH_BPS: ${ISUREAL_SAME_REGION_BANDWIDTH_BPS:-1000000000}
+      ROUTER_CROSS_REGION_BANDWIDTH_BPS: ${ISUREAL_CROSS_REGION_BANDWIDTH_BPS:-200000000}
+      ROUTER_XDS_ACK_TIMEOUT: 8s
+      ROUTER_COMMAND_TIMEOUT: 5s
+      ROUTER_REPORT_RETRY_INTERVAL: 250ms
+      ROUTER_PORTAL_RECONNECT_MIN_BACKOFF: 100ms
+      ROUTER_PORTAL_RECONNECT_MAX_BACKOFF: 2s
+    depends_on:
+      portal:
+        condition: service_healthy
+    cap_drop:
+    - ALL
+    cap_add:
+    - NET_ADMIN
+    sysctls:
+      net.ipv4.ip_forward: '1'
+    security_opt:
+    - no-new-privileges:true
+    networks:
+      control:
+        ipv4_address: 172.28.20.2
+      edge:
+        ipv4_address: 172.28.10.2
+      app-asia_net:
+        ipv4_address: 172.29.1.2
+      app-europe_net:
+        ipv4_address: 172.29.2.2
+      app-america_net:
+        ipv4_address: 172.29.3.2
+      db-asia_net:
+        ipv4_address: 172.29.4.2
+    healthcheck:
+      test:
+      - CMD
+      - wget
+      - -q
+      - -O
+      - /dev/null
+      - http://127.0.0.1:18081/healthz
+      interval: 2s
+      timeout: 2s
+      retries: 30
+      start_period: 2s
+    init: true
+    cpus: ${ISUREAL_CONTROL_CPUS:-1.0}
+    mem_limit: ${ISUREAL_CONTROL_MEMORY:-512m}
+    ports:
+    - 127.0.0.1:${ISUREAL_HTTP_PORT:-18090}:8080
+  envoy:
+    image: envoyproxy/envoy:v1.32.2
+    network_mode: service:router
+    user: 101:101
+    ulimits:
+      nofile:
+        soft: 1048576
+        hard: 1048576
+    command:
+    - envoy
+    - -c
+    - /etc/envoy/envoy.yaml
+    - --log-level
+    - info
+    volumes:
+    - ./deploy/dev/envoy.yaml:/etc/envoy/envoy.yaml:ro
+    depends_on:
+      router:
+        condition: service_healthy
+      app-asia:
+        condition: service_healthy
+      app-europe:
+        condition: service_healthy
+      app-america:
+        condition: service_healthy
+    cap_drop:
+    - ALL
+    security_opt:
+    - no-new-privileges:true
+    init: true
+    cpus: ${ISUREAL_CONTROL_CPUS:-1.0}
+    mem_limit: ${ISUREAL_CONTROL_MEMORY:-512m}
+  app-asia:
+    <<: *app
+    environment:
+      <<: *app-environment
+      ISUREAL_REGION: asia
+      ROUTER_GATEWAY: 172.29.1.2
+      PEER_SUBNETS: 172.29.2.0/24 172.29.3.0/24 172.29.4.0/24
+    networks:
+      app-asia_net:
+        ipv4_address: 172.29.1.10
+
+  app-europe:
+    <<: *app
+    environment:
+      <<: *app-environment
+      ISUREAL_REGION: europe
+      ROUTER_GATEWAY: 172.29.2.2
+      PEER_SUBNETS: 172.29.1.0/24 172.29.3.0/24 172.29.4.0/24
+    networks:
+      app-europe_net:
+        ipv4_address: 172.29.2.10
+
+  app-america:
+    <<: *app
+    environment:
+      <<: *app-environment
+      ISUREAL_REGION: america
+      ROUTER_GATEWAY: 172.29.3.2
+      PEER_SUBNETS: 172.29.1.0/24 172.29.2.0/24 172.29.4.0/24
+    networks:
+      app-america_net:
+        ipv4_address: 172.29.3.10
+
+  db-asia:
+    build:
+      context: .
+      dockerfile: deploy/dev/db.Dockerfile
     environment:
       POSTGRES_DB: isureal
       POSTGRES_USER: isureal
       POSTGRES_PASSWORD: local-development-only
-    ports:
-      - "${ISUREAL_POSTGRES_PORT:-5432}:5432"
+      ROUTER_GATEWAY: 172.29.4.2
+      PEER_SUBNETS: 172.29.1.0/24 172.29.2.0/24 172.29.3.0/24
     volumes:
-      - postgres-data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U isureal -d isureal"]
-      interval: 2s
-      timeout: 2s
-      retries: 20
-
-  init:
-    build: *backend-build
-    entrypoint: ["/usr/local/bin/seed"]
-    command: ["--fixture", "minimal", "--dir", "/usr/local/share/isureal/migrations", "--if-empty"]
-    environment: *app-environment
+    - dev-postgres-data:/var/lib/postgresql/data
+    - ./webapp/sql/001-schema.sql:/docker-entrypoint-initdb.d/001-schema.sql:ro
+    - ./webapp/sql/002-seed.sql:/docker-entrypoint-initdb.d/002-seed.sql:ro
+    - ./webapp/sql/003-initial-snapshot.sql:/docker-entrypoint-initdb.d/003-initial-snapshot.sql:ro
+    cpus: ${ISUREAL_DB_CPUS:-2.0}
+    mem_limit: ${ISUREAL_DB_MEMORY:-2g}
+    shm_size: 256m
+    cap_add:
+    - NET_ADMIN
     depends_on:
-      postgres:
+      router:
         condition: service_healthy
-    restart: "no"
-
-  api:
-    build: *backend-build
-    env_file:
-      - deploy/config/app.env.example
-    environment: *app-environment
-    depends_on:
-      init:
-        condition: service_completed_successfully
-    ports:
-      - "${ISUREAL_API_PORT:-8080}:8080"
-    volumes:
-      - image-data:/var/lib/isureal/images
+    networks:
+      db-asia_net:
+        ipv4_address: 172.29.4.10
     healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/health/ready"]
+      test:
+      - CMD-SHELL
+      - pg_isready -h 127.0.0.1 -U isureal -d isureal
       interval: 2s
       timeout: 2s
-      retries: 20
+      retries: 30
+      start_period: 10s
     restart: unless-stopped
-
-  worker:
-    build: *backend-build
-    entrypoint: ["/usr/local/bin/worker"]
-    env_file:
-      - deploy/config/app.env.example
-    environment: *app-environment
-    depends_on:
-      init:
-        condition: service_completed_successfully
-    volumes:
-      - image-data:/var/lib/isureal/images
-    restart: unless-stopped
-
-  frontend:
-    build:
-      context: .
-      dockerfile: deploy/frontend.Dockerfile
-      args:
-        VITE_VAPID_PUBLIC_KEY: ${ISUREAL_VAPID_PUBLIC_KEY:-}
-    depends_on:
-      api:
-        condition: service_healthy
-    ports:
-      - "${ISUREAL_FRONTEND_PORT:-5173}:5173"
-    healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:5173/"]
-      interval: 2s
-      timeout: 2s
-      retries: 20
-    restart: unless-stopped
-
+networks:
+  control:
+    ipam:
+      config:
+      - subnet: 172.28.20.0/24
+  edge:
+    ipam:
+      config:
+      - subnet: 172.28.10.0/24
+  app-asia_net:
+    internal: true
+    ipam:
+      config:
+      - subnet: 172.29.1.0/24
+  app-europe_net:
+    internal: true
+    ipam:
+      config:
+      - subnet: 172.29.2.0/24
+  app-america_net:
+    internal: true
+    ipam:
+      config:
+      - subnet: 172.29.3.0/24
+  db-asia_net:
+    internal: true
+    ipam:
+      config:
+      - subnet: 172.29.4.0/24
 volumes:
-  postgres-data:
-  image-data:
+  dev-postgres-data: {}

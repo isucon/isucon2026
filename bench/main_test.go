@@ -61,7 +61,7 @@ func TestSupervisorIntegration(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer read.Close()
-			args := []string{"--target", server.URL, "--cycles", "1"}
+			args := []string{"--target", server.URL, "--duration", "1s"}
 			if post {
 				args = append(args, "--only-post-validation")
 			}
@@ -121,11 +121,11 @@ func TestSupervisorIntegration(t *testing.T) {
 				if len(public) != 2 || public["pass"] != false || public["score"] != float64(0) {
 					t.Fatalf("public: %s", &stdout)
 				}
-				if !strings.Contains(stderr.String(), "expected 200, got 500") {
+				if !strings.Contains(stderr.String(), "ステータスコード 500 が返りました（期待値 200") {
 					t.Fatalf("missing private diagnostic: %s", &stderr)
 				}
 			}
-			if strings.Contains(stdout.String(), "expected 200, got 500") || strings.Contains(final.Execution.Reason, "expected 200, got 500") {
+			if strings.Contains(stdout.String(), "ステータスコード 500 が返りました（期待値 200") || strings.Contains(final.Execution.Reason, "ステータスコード 500 が返りました（期待値 200") {
 				t.Fatal("private diagnostic leaked")
 			}
 		})

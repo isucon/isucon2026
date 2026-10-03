@@ -573,16 +573,21 @@ export interface components {
         ReactionType: "like" | "smile" | "surprise" | "heart" | "laugh" | "instant";
         RegisterRequest: {
             username: string;
-            password: string;
             displayName: string;
             region: components["schemas"]["Region"];
         };
         LoginRequest: {
             username: string;
+            secretKey: string;
+        };
+        AdminLoginRequest: {
+            username: string;
             password: string;
         };
         Session: {
             token: string;
+            /** @description ユーザー作成時の応答にだけ含める */
+            secretKey?: string;
             user: components["schemas"]["UserDetail"];
         };
         AdminSession: {
@@ -876,7 +881,7 @@ export interface operations {
         };
         responses: {
             200: components["responses"]["SessionCreated"];
-            /** @description ユーザー不存在とパスワード不一致で同一応答 */
+            /** @description ユーザー不存在とSecretKey不一致で同一応答 */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -1842,7 +1847,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["LoginRequest"];
+                "application/json": components["schemas"]["AdminLoginRequest"];
             };
         };
         responses: {

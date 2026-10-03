@@ -14,7 +14,7 @@ portal = topology["portal"]
 base = f"team{portal['teamNumber']}-{portal['teamHash']}.{topology['domain']}"
 print(topology["environmentId"])
 print(f"app.{base}")
-for server in ("server1", "server2", "server3"):
+for server in ("app1", "app2", "app3"):
     print(f"{server}.{base}")
 PY
 )
@@ -25,9 +25,9 @@ if [[ ! "${environment_id}" =~ ^[a-z][a-z0-9-]{2,31}$ ]]; then
   exit 2
 fi
 app_host="${values[1]}"
-server1_host="${values[2]}"
-server2_host="${values[3]}"
-server3_host="${values[4]}"
+app1_host="${values[2]}"
+app2_host="${values[3]}"
+app3_host="${values[4]}"
 ca_dir="${repo_root}/provisioning/.state/tls"
 tls_dir="${repo_root}/provisioning/.state/${environment_id}/tls"
 ca_key="${ca_dir}/local-ca.key"
@@ -35,7 +35,7 @@ ca_cert="${ca_dir}/local-ca.crt"
 server_key="${tls_dir}/server.key"
 server_cert="${tls_dir}/server.crt"
 hosts_file="${tls_dir}/hosts"
-expected_hosts="$(printf '%s\n' "${app_host}" "${server1_host}" "${server2_host}" "${server3_host}")"
+expected_hosts="$(printf '%s\n' "${app_host}" "${app1_host}" "${app2_host}" "${app3_host}")"
 
 install -d -m 0700 "${ca_dir}" "${tls_dir}"
 umask 077
@@ -68,7 +68,7 @@ if [[ ! -f "${server_key}" || ! -f "${server_cert}" || "${current_hosts}" != "${
 basicConstraints=critical,CA:FALSE
 keyUsage=critical,digitalSignature,keyEncipherment
 extendedKeyUsage=serverAuth
-subjectAltName=DNS:${app_host},DNS:${server1_host},DNS:${server2_host},DNS:${server3_host}
+subjectAltName=DNS:${app_host},DNS:${app1_host},DNS:${app2_host},DNS:${app3_host}
 EOF
   openssl x509 -req -sha256 -days 365 \
     -in "${temporary}/server.csr" \

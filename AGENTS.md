@@ -1,1 +1,1 @@
-This repository is used to develop an ISUCON challenge, where teams optimize a web application on three identical VMs to maximize its benchmark score.
+This repository is used to develop an ISUCON challenge, where teams optimize a web application on three identical VMs to maximize its benchmark scor

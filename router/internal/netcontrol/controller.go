@@ -34,7 +34,7 @@ func (c *Controller) Prepare(routerConfig domain.Config) (Candidate, error) {
 	if err := routerConfig.Validate(); err != nil {
 		return Candidate{}, err
 	}
-	interfaces := make(map[domain.ServerID]string, 3)
+	interfaces := make(map[domain.ServerID]string, len(domain.ServerIDs()))
 	for _, server := range domain.ServerIDs() {
 		name, err := c.resolver.NameByIPv4(c.config.Servers[server].RouterIP)
 		if err != nil {

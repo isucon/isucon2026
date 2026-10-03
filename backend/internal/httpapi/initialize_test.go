@@ -35,7 +35,7 @@ func (f *fakeOffsetStore) SaveVirtualOffset(_ context.Context, offset time.Durat
 func TestInitializeHandler(t *testing.T) {
 	pool := testkit.Database(t)
 	_, filename, _, _ := runtime.Caller(0)
-	t.Setenv("ISUREAL_MIGRATIONS_DIR", filepath.Join(filepath.Dir(filename), "..", "..", "migrations"))
+	t.Setenv("ISUREAL_SCHEMA_PATH", filepath.Join(filepath.Dir(filename), "..", "..", "schema", "schema.sql"))
 	clk := clock.NewVirtual()
 	store := &fakeOffsetStore{}
 	handler := httpapi.NewInitializeHandler(pool, clk, store)

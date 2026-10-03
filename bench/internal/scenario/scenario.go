@@ -1,7 +1,3 @@
-// Package scenario drives the benchmark phases: initialize → pretest → load.
-// Phase structure follows spec-bench.md §5.2; the load model is the basic
-// posting-cycle described in §3.3 (schedule → window → post → interact →
-// advance to the next calendar day).
 package scenario
 
 import (
@@ -9,477 +5,497 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"math"
+	"math/rand/v2"
 	"net/http"
 	"sync"
 	"time"
 
+	"github.com/isucon/isucon2026/bench/internal/agent"
 	"github.com/isucon/isucon2026/bench/internal/client"
+	"github.com/isucon/isucon2026/bench/internal/geo"
 	"github.com/isucon/isucon2026/bench/internal/imagegen"
+	"github.com/isucon/isucon2026/bench/internal/initialdata"
+	"github.com/isucon/isucon2026/bench/internal/metrics"
+	"github.com/isucon/isucon2026/bench/internal/model"
 	"github.com/isucon/isucon2026/bench/internal/score"
-	"github.com/isucon/isucon2026/bench/internal/vt"
+	"github.com/isucon/isucon2026/dataset"
 )
 
 const (
-	adminUsername = "root"
-	adminPassword = "admin-password"
-	seedUsername  = "alice"
-	seedPassword  = "password"
-
-	benchUserPassword = "bench-password-1"
-	benchUserRegion   = "asia"
-	asiaUTCOffset     = 9 * time.Hour
-
-	initializeTimeout = 30 * time.Second // INIT-10 provisional limit
-	// loadDuration is fixed at 60 seconds like every past ISUCON (D-008,
-	// docs/research/isucon-benchmarker-termination.md).
-	loadDuration = 60 * time.Second
-	// abortErrorThreshold aborts the load phase as fail once the total
-	// error count reaches it (D-009, fixed-count style like ISUCON 11/12/14).
-	abortErrorThreshold = 100
-	scheduleLead        = 3 * time.Second // virtual delay until the window opens
-	windowPollEvery     = 500 * time.Millisecond
-	windowPollTimeout   = 20 * time.Second
-	offsetSyncWait      = 2 * time.Second // D-006: wait for worker clock sync
-	virtualDay          = 24 * time.Hour
-
-	postImageSize       = 64
-	realMojiImageSize   = 32
-	interactionsPerUser = 2 // posts each user reacts to per cycle
-
-	// 503 (e.g. image_sanitizer_unavailable) is documented as retryable and
-	// is never recorded by the idempotency layer, so retrying is safe.
-	retryAttempts  = 4
-	retryBaseDelay = 300 * time.Millisecond
+	initializeTimeout = 30 * time.Second
+	loadDuration      = 60 * time.Second
+	sloCheckInterval  = time.Second
+	maxMessages       = 20
 )
 
-var reactionTypes = []string{"like", "heart", "laugh", "smile", "surprise", "instant"}
+// schedule は投稿期間の時間割。負荷走行の開始から warmup 後（ユーザーが通知を購読し
+// 終えるのを待つ）に始め、リージョンごとに period ごとに開き、リージョンどうしは offset
+// ずつずらす（P-102 の 20 秒周期、7 秒ずらし）。
+type schedule struct {
+	warmup time.Duration
+	period time.Duration
+	offset time.Duration
+}
+
+var defaultSchedule = schedule{warmup: time.Second, period: 10 * time.Second, offset: 3 * time.Second}
 
 type Config struct {
 	Target string
-	// Host overrides the HTTP Host header while Target remains the connection
-	// endpoint. It is used by environments whose ingress routes by hostname.
-	Host  string
+	Host   string
+	// Users はリージョンあたりの負荷ユーザー数。
 	Users int
-	// MaxCycles > 0 runs exactly that many posting cycles instead of the
-	// fixed 60-second load duration, so repeated runs score identically.
-	MaxCycles int
-	Logger    *slog.Logger
-	// OnProgress is called synchronously at phase and completed-cycle boundaries.
+	// Duration は負荷走行の長さ。0 なら 60 秒。
+	Duration time.Duration
+	Weights  score.Weights
+	SLO      metrics.SLO
+	Retry    client.RetryPolicy
+	// Staleness は書き込みが読み取りに反映されるまでに許す遅れ。
+	Staleness time.Duration
+	// Ratchet はレベルの昇格の設定。ゼロ値なら DefaultRatchet。
+	Ratchet RatchetConfig
+	// Dataset は対象の DB に入っている初期データ。nil なら dataset.Small() から作る。
+	Dataset *dataset.World
+	Logger  *slog.Logger
+	// OnProgress は途中経過（暫定のスコアと内訳）を受け取る。フェーズの境目と、負荷走行の
+	// 観測窓が閉じるたびに呼ぶ。スーパーバイザーへの報告に使う。
 	OnProgress func(Result)
 }
 
 type Result struct {
-	Pass      bool             `json:"pass"`
-	Score     int64            `json:"score"`
-	RawScore  int64            `json:"rawScore"`
-	Deduction int64            `json:"deduction"`
-	Language  string           `json:"language"`
-	BaseTime  time.Time        `json:"baseTime"`
-	Cycles    int              `json:"cycles"`
+	Pass     bool   `json:"pass"`
+	Score    int64  `json:"score"`
+	Language string `json:"language"`
+	Reason   string `json:"reason,omitempty"`
+	// Messages は参加者に見せる。失格の理由のあとに、正しさの違反とエラーを並べる。
+	Messages []string `json:"messages"`
+
+	// 以下は運営向け（D-005）。
 	Breakdown map[string]int64 `json:"breakdown"`
-	Errors    []string         `json:"errors"`
-	Reason    string           `json:"reason,omitempty"`
+	// OpenedWindows はリージョンごとに開いた投稿期間の数。
+	OpenedWindows map[string]int `json:"openedWindows"`
+	// Levels はリージョンごとに到達したレベル、Users は最後の負荷ユーザーの数、Buzzes は
+	// リージョンが話題になった回数。
+	Levels   map[string]int  `json:"levels"`
+	Users    map[string]int  `json:"users"`
+	Buzzes   map[string]int  `json:"buzzes"`
+	Critical []string        `json:"critical"`
+	Errors   []string        `json:"errors"`
+	Windows  []metrics.Stats `json:"windows"`
 }
 
 type Runner struct {
-	cfg         Config
-	api         *client.Client
-	clock       *vt.Clock
-	board       *score.Board
-	adminToken  string
-	users       []client.User
-	postImage   []byte
-	mojiImage   []byte
-	language    string
-	baseTime    time.Time
-	cycles      int
-	abortReason string
+	cfg      Config
+	api      *client.Client
+	admin    *client.Client
+	board    *score.Board
+	recorder *metrics.Recorder
+	initial  *initialdata.Checker
+	dataset  *dataset.World
+	// model は bench が知っているアプリの状態。フィードの検証に使う。
+	model *model.Model
+
+	adminToken string
+	agents     map[string][]*agent.Agent
+	postImage  []byte
+	mojiImage  []byte
+	language   string
+	firstDate  time.Time
+	// deleteRate と changeRate は、投稿後に投稿を削除する確率と公開範囲を変える確率。
+	deleteRate float64
+	changeRate float64
+	// visibility は投稿の公開範囲を選ぶ。
+	visibility func() string
+	schedule   schedule
+	// acceptRate は閲覧の合間に届いた友達申請を確認する確率。
+	acceptRate    float64
+	ratchetConfig RatchetConfig
+	ratchet       *ratchet
+
+	mu          sync.Mutex
+	opened      map[string]int
+	friendCount map[string]int
+	newcomers   int
+	// cohort は負荷ユーザーのうち初期データのユーザー。準備のあとは読み取り専用。
+	cohort map[string]bool
+	// historyRate は cohort のユーザーが閲覧の合間に履歴を読む確率。
+	historyRate float64
+	// historyImages は履歴を 1 か月読むたびに中身を取得して比べる画像の数。
+	historyImages int
+	// returningRatio は、思い出を見返すユーザーを負荷ユーザー何人につき 1 人置くか。
+	returningRatio int
+	returningCount map[string]int
+	// revisiting は思い出を見返すユーザーが今ログインしている初期データのユーザー。
+	revisiting map[string]bool
+	// loadStart は負荷走行の開始時刻、join は流入したユーザーを登録させる（負荷走行の間だけ）。
+	loadStart time.Time
+	join      func(region string, level, users int, buzz bool)
 }
 
 func NewRunner(cfg Config) (*Runner, error) {
-	postImage, err := imagegen.JPEG(postImageSize, postImageSize, 1)
-	if err != nil {
-		return nil, fmt.Errorf("generate post image: %w", err)
+	if cfg.Users < 1 || cfg.Duration < 0 {
+		return nil, fmt.Errorf("users must be positive and duration must be nonnegative")
 	}
-	mojiImage, err := imagegen.JPEG(realMojiImageSize, realMojiImageSize, 2)
-	if err != nil {
-		return nil, fmt.Errorf("generate realmoji image: %w", err)
+	if cfg.Duration == 0 {
+		cfg.Duration = loadDuration
 	}
+	if cfg.Logger == nil {
+		cfg.Logger = slog.Default()
+	}
+	if cfg.SLO == (metrics.SLO{}) {
+		cfg.SLO = metrics.DefaultSLO
+	}
+	if cfg.Retry == (client.RetryPolicy{}) {
+		cfg.Retry = client.DefaultRetryPolicy
+	}
+	if cfg.Ratchet == (RatchetConfig{}) {
+		cfg.Ratchet = DefaultRatchet
+	}
+	postImage, err := imagegen.JPEG(64, 64, 1)
+	if err != nil {
+		return nil, err
+	}
+	mojiImage, err := imagegen.JPEG(32, 32, 2)
+	if err != nil {
+		return nil, err
+	}
+	if cfg.Dataset == nil {
+		cfg.Dataset = dataset.Generate(dataset.Small())
+	}
+	m := model.New()
+	m.Staleness = cfg.Staleness
+	m.LoadDataset(cfg.Dataset)
+	api := client.NewClient(client.Config{Base: cfg.Target, Host: cfg.Host, Retry: cfg.Retry})
 	return &Runner{
-		cfg:       cfg,
-		api:       client.NewWithHost(cfg.Target, cfg.Host),
-		clock:     vt.NewClock(),
-		board:     score.NewBoard(),
-		postImage: postImage,
-		mojiImage: mojiImage,
+		cfg:            cfg,
+		api:            api,
+		admin:          api.WithCountry(geo.Country(geo.Asia, 0)),
+		board:          score.NewBoard(cfg.Weights),
+		initial:        initialdata.New(cfg.Dataset),
+		dataset:        cfg.Dataset,
+		model:          m,
+		agents:         make(map[string][]*agent.Agent),
+		postImage:      postImage,
+		mojiImage:      mojiImage,
+		deleteRate:     0.05,
+		changeRate:     0.1,
+		visibility:     func() string { return visibilities[rand.IntN(len(visibilities))] },
+		schedule:       defaultSchedule,
+		acceptRate:     0.1,
+		ratchetConfig:  cfg.Ratchet,
+		ratchet:        newRatchet(),
+		opened:         make(map[string]int),
+		friendCount:    make(map[string]int),
+		cohort:         make(map[string]bool),
+		historyRate:    0.02,
+		historyImages:  4,
+		returningRatio: 8,
+		returningCount: make(map[string]int),
+		revisiting:     make(map[string]bool),
 	}, nil
 }
 
-// Run executes all phases. Cancellation and incomplete load execution cannot pass.
 func (r *Runner) Run(ctx context.Context) Result {
-	r.progress()
-	if reason, ok := r.initialize(ctx); !ok {
-		return r.failResult(reason)
-	}
-	r.progress()
-	if reason, ok := r.pretest(ctx); !ok {
-		return r.failResult(reason)
-	}
-	r.progress()
-	r.load(ctx)
-	if ctx.Err() != nil {
-		return r.failResult("benchmark interrupted: " + ctx.Err().Error())
-	}
-	if r.abortReason != "" {
-		return r.failResult(r.abortReason)
-	}
-	result := r.snapshot()
-	result.Pass = true
-	return result
-}
-
-func (r *Runner) snapshot() Result {
-	raw, deduction := r.board.Totals()
-	return Result{Score: max(raw-deduction, 0), RawScore: raw, Deduction: deduction,
-		Language: r.language, BaseTime: r.baseTime, Cycles: r.cycles, Breakdown: r.board.Breakdown(), Errors: r.board.Errors()}
-}
-
-func (r *Runner) progress() {
-	if r.cfg.OnProgress != nil {
-		r.cfg.OnProgress(r.snapshot())
-	}
-}
-
-func (r *Runner) failResult(reason string) Result {
-	result := r.snapshot()
-	result.Score = 0
-	result.Reason = reason
-	return result
-}
-
-// --- phase 1: initialize (spec-bench.md §6) ---
-
-func (r *Runner) initialize(ctx context.Context) (string, bool) {
-	r.cfg.Logger.Info("phase: initialize")
-	initCtx, cancel := context.WithTimeout(ctx, initializeTimeout)
-	defer cancel()
-	result, err := r.api.Initialize(initCtx)
-	if err != nil {
-		return fmt.Sprintf("initialize failed: %v", err), false
-	}
-	if result.Language == "" {
-		return "initialize response has empty language (INIT-04)", false
-	}
-	if result.BaseTime.IsZero() {
-		return "initialize response has zero base_time (VT-003)", false
-	}
-	r.language = result.Language
-	r.baseTime = result.BaseTime
-	r.clock.SetBase(result.BaseTime)
-	r.cfg.Logger.Info("initialized", "language", result.Language, "baseTime", result.BaseTime.Format(time.RFC3339))
-	// Give the worker time to pick up the reset virtual offset (D-006).
-	sleepCtx(ctx, offsetSyncWait)
-	return "", true
-}
-
-// --- phase 2: pretest (spec-bench.md §7) ---
-
-func (r *Runner) pretest(ctx context.Context) (string, bool) {
-	r.cfg.Logger.Info("phase: pretest")
-
-	adminToken, err := r.api.AdminLogin(ctx, adminUsername, adminPassword)
-	if err != nil {
-		return fmt.Sprintf("admin login failed (PRE-004): %v", err), false
-	}
-	r.adminToken = adminToken
-
-	seedUser, err := r.api.Login(ctx, seedUsername, seedPassword)
-	if err != nil {
-		return fmt.Sprintf("seeded user login failed: %v", err), false
-	}
-
-	if _, err := r.api.Login(ctx, seedUsername, "wrong-password-000"); !isStatus(err, http.StatusUnauthorized) {
-		return fmt.Sprintf("login with wrong password: expected 401, got %v", err), false
-	}
-
-	checkUsername := "bench_pretest_user"
-	registered, err := r.api.Register(ctx, checkUsername, benchUserPassword, "Pretest User", benchUserRegion)
-	if err != nil {
-		return fmt.Sprintf("register failed: %v", err), false
-	}
-	if _, err := r.api.Register(ctx, checkUsername, benchUserPassword, "Pretest User", benchUserRegion); !isStatus(err, http.StatusConflict) {
-		return fmt.Sprintf("duplicate register: expected 409, got %v", err), false
-	}
-
-	profile, err := r.api.Me(ctx, registered.Token)
-	if err != nil {
-		return fmt.Sprintf("GET /me failed: %v", err), false
-	}
-	if profile.Username != checkUsername || profile.Region != benchUserRegion {
-		return fmt.Sprintf("GET /me returned username=%q region=%q, want %q/%q", profile.Username, profile.Region, checkUsername, benchUserRegion), false
-	}
-
-	// FR-012: before posting, the feed must not expose other posts.
-	feed, err := r.api.Feed(ctx, seedUser.Token, "public", "")
-	if err != nil {
-		return fmt.Sprintf("feed before posting failed: %v", err), false
-	}
-	if len(feed.Items) != 0 {
-		return fmt.Sprintf("feed before posting: expected 0 items (FR-012), got %d", len(feed.Items)), false
-	}
-
-	r.cfg.Logger.Info("pretest passed")
-	return "", true
-}
-
-// --- phase 3: load (spec-bench.md §8, basic cycle) ---
-
-func (r *Runner) load(ctx context.Context) {
-	r.cfg.Logger.Info("phase: load", "users", r.cfg.Users, "duration", loadDuration.String(), "maxCycles", r.cfg.MaxCycles)
-	if reason := r.prepareUsers(ctx); reason != "" {
-		r.board.Errorf("%s", reason)
-		r.abortReason = reason
-		return
-	}
-	deadline := time.Now().Add(loadDuration)
-	for cycle := 0; r.hasNextCycle(cycle, deadline); cycle++ {
-		if ctx.Err() != nil {
-			return
-		}
-		if ok := r.runCycle(ctx, cycle); !ok {
-			if r.abortReason == "" {
-				r.abortReason = "load cycle did not complete"
-			}
-			return
-		}
-		r.cycles++
+	defer r.closeConnections()
+	reason := ""
+	for _, phase := range []func(context.Context) string{r.initialize, r.pretest, r.checkInitialData, r.prepareUsers, r.load} {
 		r.progress()
-		if r.shouldAbort() {
-			return
-		}
-		if !r.hasNextCycle(cycle+1, deadline.Add(-offsetSyncWait)) {
+		if reason = phase(ctx); reason != "" {
 			break
 		}
-		if !r.advanceToNextDay(ctx, cycle) {
-			r.abortReason = "virtual time advance failed"
-			return
+	}
+	r.progress()
+	if reason == "" && r.board.CriticalCount() == 0 {
+		reason = r.finalCheck(ctx)
+	}
+	if ctx.Err() != nil {
+		reason = "ベンチマークが中断されました: " + ctx.Err().Error()
+	}
+	if reason == "" && r.board.CriticalCount() > 0 {
+		reason = "整合性の違反: " + r.board.Critical()[0]
+	}
+	result := Result{
+		Pass:          reason == "",
+		Language:      r.language,
+		Reason:        reason,
+		Breakdown:     r.board.Breakdown(),
+		OpenedWindows: r.openedCounts(),
+		Levels:        r.ratchet.levels(),
+		Users:         r.ratchet.population(),
+		Buzzes:        r.ratchet.buzzCounts(),
+		Critical:      r.board.Critical(),
+		Errors:        r.board.Errors(),
+	}
+	result.Messages = messages(reason, result.Critical, result.Errors)
+	if r.recorder != nil {
+		for _, window := range r.recorder.Windows() {
+			result.Windows = append(result.Windows, r.recorder.Regions(window)...)
+		}
+	}
+	if result.Pass {
+		result.Score = r.board.Total()
+	}
+	return result
+}
+
+// progress は途中経過を OnProgress に渡す。スコアは走行が終わるまで暫定。
+func (r *Runner) progress() {
+	if r.cfg.OnProgress != nil {
+		r.cfg.OnProgress(Result{Score: r.board.Total(), Language: r.language, Breakdown: r.board.Breakdown()})
+	}
+}
+
+func (r *Runner) closeConnections() {
+	for _, agents := range r.agents {
+		for _, user := range agents {
+			user.API.CloseIdleConnections()
 		}
 	}
 }
 
-// hasNextCycle decides whether cycle should run: a fixed cycle count when
-// MaxCycles is set, otherwise the real-time deadline.
-func (r *Runner) hasNextCycle(cycle int, deadline time.Time) bool {
-	if r.cfg.MaxCycles > 0 {
-		return cycle < r.cfg.MaxCycles
+func messages(reason string, groups ...[]string) []string {
+	out := []string{}
+	if reason != "" {
+		out = append(out, reason)
 	}
-	return time.Now().Before(deadline)
-}
-
-// shouldAbort marks the run as fail once the total error count reaches the
-// threshold (D-009). The abort survives into the final Result.
-func (r *Runner) shouldAbort() bool {
-	if r.abortReason != "" {
-		return true
-	}
-	if count := r.board.ErrorCount(); count >= abortErrorThreshold {
-		r.abortReason = fmt.Sprintf("load aborted: error count reached %d (threshold %d, D-009)", count, abortErrorThreshold)
-		r.cfg.Logger.Error("load aborted", "errorCount", count, "threshold", abortErrorThreshold)
-		return true
-	}
-	return false
-}
-
-func (r *Runner) prepareUsers(ctx context.Context) string {
-	r.users = make([]client.User, 0, r.cfg.Users)
-	for index := range r.cfg.Users {
-		username := fmt.Sprintf("bench_user_%03d", index)
-		user, err := r.api.Register(ctx, username, benchUserPassword, fmt.Sprintf("Bench User %03d", index), benchUserRegion)
-		if err != nil {
-			return fmt.Sprintf("load user registration failed: %v", err)
+	for _, group := range groups {
+		for _, message := range group {
+			if len(out) >= maxMessages {
+				return out
+			}
+			if message != reason {
+				out = append(out, message)
+			}
 		}
-		r.users = append(r.users, user)
+	}
+	return out
+}
+
+func (r *Runner) openedCounts() map[string]int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make(map[string]int, len(r.opened))
+	for region, count := range r.opened {
+		out[region] = count
+	}
+	return out
+}
+
+func (r *Runner) initialize(ctx context.Context) string {
+	r.cfg.Logger.Info("phase: initialize")
+	ctx, cancel := context.WithTimeout(ctx, initializeTimeout)
+	defer cancel()
+	result, err := r.admin.Initialize(ctx)
+	if err != nil {
+		return fmt.Sprintf("初期化に失敗しました: %v", err)
+	}
+	if result.Language == "" {
+		return "初期化の応答の language が空です"
+	}
+	r.language = result.Language
+	// localDate は投稿期間のラベルで、サーバーの時計は進めない。初期データの投稿期間と
+	// 日付が重ならないよう、履歴の最終日より後から始める。
+	now := time.Now().UTC()
+	r.firstDate = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+	if next := r.dataset.Config.EndDate.AddDate(0, 0, 1); r.firstDate.Before(next) {
+		r.firstDate = next
 	}
 	return ""
 }
 
-func (r *Runner) runCycle(ctx context.Context, cycle int) bool {
-	scheduledAt := r.clock.Now().Add(scheduleLead)
-	if err := r.api.SetSchedule(ctx, r.adminToken, benchUserRegion, scheduledAt); err != nil {
-		r.board.Errorf("set schedule (cycle %d): %v", cycle, err)
-		return false
+// checkInitialData は初期データのユーザーとしてログインし、アプリが初期データどおりの
+// 内容を返すことを確かめる。
+func (r *Runner) checkInitialData(ctx context.Context) string {
+	r.cfg.Logger.Info("phase: initial data")
+	targets := r.initial.Targets()
+	failures := make([]error, len(targets))
+	parallel(len(targets), func(i int) {
+		start := time.Now()
+		failures[i] = r.initial.Check(ctx, r.api, targets[i])
+		r.cfg.Logger.Info("initial user checked", "username", targets[i].Username, "region", targets[i].Region, "elapsed", time.Since(start).Round(time.Millisecond))
+	})
+	if err := errors.Join(failures...); err != nil {
+		return "初期データの検証に失敗しました: " + err.Error()
 	}
-	window, ok := r.waitForWindow(ctx, r.clock.LocalDate(asiaUTCOffset))
-	if !ok {
-		r.board.Errorf("posting window did not open within %s (cycle %d, FR-003)", windowPollTimeout, cycle)
-		return false
-	}
-	r.cfg.Logger.Info("cycle window open", "cycle", cycle, "localDate", window.LocalDate)
-
-	r.checkNotifications(ctx, window.ID)
-	r.fanOutUsers(ctx, cycle)
-	if r.shouldAbort() {
-		return false
-	}
-	if cycle > 0 {
-		r.checkMemories(ctx)
-	}
-	return true
+	return ""
 }
 
-func (r *Runner) waitForWindow(ctx context.Context, wantLocalDate string) (client.Window, bool) {
-	pollCtx, cancel := context.WithTimeout(ctx, windowPollTimeout)
-	defer cancel()
-	ticker := time.NewTicker(windowPollEvery)
-	defer ticker.Stop()
-	probe := r.users[0]
-	for {
-		status, err := r.api.CurrentWindow(pollCtx, probe.Token)
-		if err == nil && status.Window != nil && status.Window.LocalDate == wantLocalDate {
-			return *status.Window, true
-		}
-		select {
-		case <-pollCtx.Done():
-			return client.Window{}, false
-		case <-ticker.C:
-		}
+func (r *Runner) pretest(ctx context.Context) string {
+	r.cfg.Logger.Info("phase: pretest")
+	token, err := r.admin.AdminLogin(ctx, "admin", "password1234")
+	if err != nil || token == "" {
+		return fmt.Sprintf("管理者としてログインできません: %v", err)
 	}
-}
-
-func (r *Runner) checkNotifications(ctx context.Context, windowID string) {
-	page, err := r.api.Notifications(ctx, r.users[0].Token)
+	r.adminToken = token
+	user := agent.New(r.api, geo.Asia, 0)
+	if err := user.Register(ctx, "bench_pretest_user", "bench_pretest_user"); err != nil {
+		return fmt.Sprintf("ユーザーの登録またはログインに失敗しました: %v", err)
+	}
+	if _, err := user.API.Register(ctx, user.Username, "duplicate", user.Region); !isStatus(err, http.StatusConflict) {
+		return fmt.Sprintf("登録済みのユーザー名での登録が 409 になりません: %v", err)
+	}
+	if _, err := user.API.Login(ctx, user.Username, "wrong-secret"); !isStatus(err, http.StatusUnauthorized) {
+		return fmt.Sprintf("誤ったシークレットキーでのログインが 401 になりません: %v", err)
+	}
+	profile, err := user.API.Me(ctx, user.Token)
 	if err != nil {
-		r.board.Errorf("notifications: %v", err)
-		return
+		return fmt.Sprintf("プロフィールを取得できません: %v", err)
 	}
-	for _, notification := range page.Items {
-		if notification.PostingWindowID == windowID {
-			r.board.Add(score.TagNotification)
-			return
-		}
+	if profile.ID != user.ID || profile.Username != user.Username || profile.Region != user.Region {
+		return fmt.Sprintf("プロフィールの内容が登録した内容と違います: %+v", profile)
 	}
-	r.board.Errorf("GET /api/v1/notifications: expected a notification for window %s (FR-002), got none", windowID)
+	feed, err := user.API.Feed(ctx, user.Token, "public", nil)
+	if err != nil || len(feed.Items) != 0 || feed.HasMore {
+		return fmt.Sprintf("投稿前のフィードが空ではありません: 投稿 %d 件, %v", len(feed.Items), err)
+	}
+	previous := user.Token
+	if err := user.Login(ctx); err != nil {
+		return fmt.Sprintf("2 回目のログインに失敗しました: %v", err)
+	}
+	if _, err := user.API.Me(ctx, previous); !isStatus(err, http.StatusUnauthorized) {
+		return fmt.Sprintf("再ログイン前のセッションが無効になっていません: %v", err)
+	}
+	if err := user.API.Logout(ctx, user.Token); err != nil {
+		return fmt.Sprintf("ログアウトに失敗しました: %v", err)
+	}
+	if _, err := user.API.Me(ctx, user.Token); !isStatus(err, http.StatusUnauthorized) {
+		return fmt.Sprintf("ログアウトしたセッションが無効になっていません: %v", err)
+	}
+	return ""
 }
 
-func (r *Runner) fanOutUsers(ctx context.Context, cycle int) {
+func (r *Runner) load(ctx context.Context) string {
+	r.cfg.Logger.Info("phase: load", "usersPerRegion", r.cfg.Users, "duration", r.cfg.Duration)
+	start := time.Now()
+	// ラチェットは観測窓ごとの集計で昇格を判定するので、観測窓の長さをそろえる。
+	r.recorder = metrics.New(start, r.ratchetConfig.Window)
+	for _, agents := range r.agents {
+		for _, user := range agents {
+			user.API = user.API.WithObserver(r.recorder)
+		}
+	}
+	ctx, cancel := context.WithTimeout(ctx, r.cfg.Duration)
+	defer cancel()
+	ctx, abort := context.WithCancelCause(ctx)
+	defer abort(nil)
+
+	monitorDone := make(chan struct{})
+	go func() {
+		defer close(monitorDone)
+		r.monitor(ctx, abort)
+	}()
+
 	var wg sync.WaitGroup
-	wg.Add(len(r.users))
-	for index, user := range r.users {
-		go func() {
-			defer wg.Done()
-			r.runUserTurn(ctx, cycle, index, user)
-		}()
+	r.loadStart = start
+	r.join = func(region string, level, users int, buzz bool) {
+		r.ensureReturning(ctx, &wg, region, r.ratchet.population()[region])
+		// 実際のユーザーは同時には来ないので、次の観測窓のあいだに均等に散らして登録する。
+		// まとめて登録すると、その瞬間だけ接続やロックが集中する。
+		now := time.Now()
+		for i := range users {
+			at := now.Add(r.ratchetConfig.Window * time.Duration(i) / time.Duration(users))
+			wg.Go(func() {
+				if sleepUntil(ctx, at) == nil {
+					r.runNewcomer(ctx, region, level, buzz)
+				}
+			})
+		}
+	}
+	r.ratchet.mu.Lock()
+	for _, user := range r.agentsSnapshot() {
+		r.ratchet.users[user.Region]++
+	}
+	r.ratchet.mu.Unlock()
+	for index, region := range geo.Regions {
+		wg.Go(func() {
+			if reason := r.runSchedule(ctx, start.Add(r.schedule.warmup), region, index); reason != "" {
+				abort(errors.New(reason))
+			}
+		})
+		for _, user := range r.agentsSnapshot() {
+			if user.Region == region {
+				wg.Go(func() { r.runUser(ctx, user, false) })
+			}
+		}
+	}
+	for region, users := range r.ratchet.population() {
+		r.ensureReturning(ctx, &wg, region, users)
+	}
+	wg.Go(func() { r.runRatchet(ctx, start, r.join) })
+	wg.Wait()
+	abort(nil)
+	<-monitorDone
+
+	if cause := context.Cause(ctx); cause != nil && !errors.Is(cause, context.Canceled) && !errors.Is(cause, context.DeadlineExceeded) {
+		return cause.Error()
+	}
+	if reason := r.recorder.Violation(r.cfg.SLO, r.recorder.WindowAt(time.Now())+1); reason != "" {
+		return "負荷走行を打ち切りました: " + reason
+	}
+	return ""
+}
+
+// monitor は、閉じた観測窓が SLO を破るか正しさの違反が記録されたら、
+// ただちに負荷走行を打ち切る。
+func (r *Runner) monitor(ctx context.Context, abort context.CancelCauseFunc) {
+	ticker := time.NewTicker(sloCheckInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case now := <-ticker.C:
+			if reason := r.recorder.Violation(r.cfg.SLO, r.recorder.WindowAt(now)); reason != "" {
+				abort(errors.New("負荷走行を打ち切りました: " + reason))
+				return
+			}
+			if r.board.CriticalCount() > 0 {
+				abort(errors.New("整合性の違反: " + r.board.Critical()[0]))
+				return
+			}
+		}
+	}
+}
+
+func parallel(count int, fn func(int)) {
+	var wg sync.WaitGroup
+	for index := range count {
+		wg.Go(func() { fn(index) })
 	}
 	wg.Wait()
 }
 
-func (r *Runner) runUserTurn(ctx context.Context, cycle, index int, user client.User) {
-	caption := fmt.Sprintf("cycle %d from %s", cycle, user.Username)
-	err := retryOn503(ctx, func() error {
-		_, postErr := r.api.CreatePost(ctx, user.Token, r.postImage, caption, "public")
-		return postErr
-	})
-	if err != nil {
-		r.board.Errorf("create post (%s): %v", user.Username, err)
-		return
-	}
-	r.board.Add(score.TagPost)
-
-	page, err := r.api.Feed(ctx, user.Token, "public", "")
-	if err != nil {
-		r.board.Errorf("feed (%s): %v", user.Username, err)
-		return
-	}
-	r.board.Add(score.TagFeed)
-
-	interacted := 0
-	for _, post := range page.Items {
-		if post.Author.ID == user.ID {
-			r.board.Errorf("GET /api/v1/feeds/public: expected feed to exclude own posts, got post %s by %s", post.ID, user.Username)
-			continue
-		}
-		if interacted >= interactionsPerUser {
-			break
-		}
-		reaction := reactionTypes[(cycle+index+interacted)%len(reactionTypes)]
-		mojiErr := retryOn503(ctx, func() error {
-			return r.api.ReplaceRealMoji(ctx, user.Token, post.ID, reaction, r.mojiImage)
-		})
-		if mojiErr != nil {
-			r.board.Errorf("realmoji (%s): %v", user.Username, mojiErr)
-		} else {
-			r.board.Add(score.TagRealMoji)
-		}
-		comment := fmt.Sprintf("nice one! (cycle %d, %s)", cycle, user.Username)
-		if err := r.api.CreateComment(ctx, user.Token, post.ID, comment); err != nil {
-			r.board.Errorf("comment (%s): %v", user.Username, err)
-		} else {
-			r.board.Add(score.TagComment)
-		}
-		interacted++
+// requestError は失敗したリクエストを記録する。失敗としての集計は metrics の
+// Observer が済ませている。
+func (r *Runner) requestError(ctx context.Context, format string, args ...any) {
+	if ctx.Err() == nil {
+		r.board.Errorf(format, args...)
 	}
 }
 
-func (r *Runner) checkMemories(ctx context.Context) {
-	month := r.clock.Now().Add(asiaUTCOffset).Format("2006-01")
-	page, err := r.api.MemoriesMonth(ctx, r.users[0].Token, month)
-	if err != nil {
-		r.board.Errorf("memories: %v", err)
-		return
+// invalid は、届いたが検証に失敗したレスポンスを記録し、リージョンの
+// エラー率に数える。
+func (r *Runner) invalid(ctx context.Context, region, format string, args ...any) {
+	if ctx.Err() == nil {
+		r.board.Errorf(format, args...)
+		r.recorder.AddFailure(region, time.Now())
 	}
-	if len(page.Items) == 0 {
-		r.board.Errorf("GET /api/v1/memories?month=%s: expected past windows to appear (FR-016), got 0 items", month)
-		return
-	}
-	r.board.Add(score.TagMemory)
 }
 
-// advanceToNextDay moves the virtual clock so the next cycle lands on the
-// following calendar day at 00:00 UTC (VT-API-05: only between cycles).
-func (r *Runner) advanceToNextDay(ctx context.Context, cycle int) bool {
-	nextBase := r.baseTime.Add(time.Duration(cycle+1) * virtualDay)
-	delta := nextBase.Sub(r.clock.Now())
-	offsetSeconds := int64(math.Ceil(delta.Seconds()))
-	if offsetSeconds <= 0 {
-		offsetSeconds = 1
+// settle は書き込みの結果をモデルに記録する。4xx は拒否（反映されていない）、それ以外の
+// 失敗（5xx、タイムアウト、通信エラー）は結果不明として扱う。
+func settle(w *model.Write, err error) {
+	var apiErr *client.APIError
+	switch {
+	case err == nil:
+		w.Applied()
+	case errors.As(err, &apiErr) && apiErr.Status >= 400 && apiErr.Status < 500:
+		w.Rejected()
+	default:
+		w.Unknown()
 	}
-	if _, err := r.api.AdvanceVirtualTime(ctx, offsetSeconds); err != nil {
-		r.board.Errorf("advance virtual time (cycle %d): %v", cycle, err)
-		return false
-	}
-	r.clock.Advance(time.Duration(offsetSeconds) * time.Second)
-	// D-006: wait until every application process reflects the new offset.
-	sleepCtx(ctx, offsetSyncWait)
-	return ctx.Err() == nil
 }
 
 func isStatus(err error, status int) bool {
 	var apiErr *client.APIError
 	return errors.As(err, &apiErr) && apiErr.Status == status
-}
-
-// retryOn503 retries fn with linear backoff while it fails with 503.
-func retryOn503(ctx context.Context, fn func() error) error {
-	var err error
-	for attempt := range retryAttempts {
-		err = fn()
-		if err == nil || !isStatus(err, http.StatusServiceUnavailable) {
-			return err
-		}
-		sleepCtx(ctx, retryBaseDelay*time.Duration(attempt+1))
-		if ctx.Err() != nil {
-			return err
-		}
-	}
-	return err
-}
-
-func sleepCtx(ctx context.Context, d time.Duration) {
-	timer := time.NewTimer(d)
-	defer timer.Stop()
-	select {
-	case <-ctx.Done():
-	case <-timer.C:
-	}
 }

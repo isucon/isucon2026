@@ -36,7 +36,7 @@ CallerScope (User/Administrator/UnauthenticatedCredential) ──< IdempotencyRe
 | id | UUID PK | ユーザーID |
 | username | varchar(64) | 表示用、`[A-Za-z0-9_.-]{1,64}`、変更不可 |
 | username_normalized | varchar(64) UNIQUE | ASCII大文字を小文字化、完全削除まで占有 |
-| password_hash | varchar | bcrypt cost 12。平文を保存しない |
+| secret_key_hash | text | ユーザー作成時に発行するSecretKeyの照合用の値。平文は保存しない |
 | display_name | text | 1〜100コードポイント |
 | display_name_search | text | NFC + Unicode Default Case Folding |
 | bio | text | 0〜500コードポイント |

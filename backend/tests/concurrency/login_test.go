@@ -11,8 +11,8 @@ import (
 
 	"github.com/isucon/isucon2026/backend/internal/clock"
 	"github.com/isucon/isucon2026/backend/internal/domain"
-	"github.com/isucon/isucon2026/backend/internal/migrate"
 	"github.com/isucon/isucon2026/backend/internal/repository/postgres"
+	"github.com/isucon/isucon2026/backend/internal/schema"
 	"github.com/isucon/isucon2026/backend/internal/service"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -33,14 +33,14 @@ func TestConcurrentLoginLeavesOneActiveSession(t *testing.T) {
 	}
 	defer pool.Exec(ctx, `SELECT pg_advisory_unlock(20260719)`)
 	_, filename, _, _ := runtime.Caller(0)
-	if err := migrate.Reset(ctx, pool, filepath.Join(filepath.Dir(filename), "..", "..", "migrations")); err != nil {
+	if err := schema.Reset(ctx, pool, filepath.Join(filepath.Dir(filename), "..", "..", "schema", "schema.sql")); err != nil {
 		t.Fatal(err)
 	}
 
 	db := &postgres.DB{Pool: pool}
 	repository := postgres.NewSessionRepository(db, domain.RandomIDGenerator{}, clock.NewFake(time.Date(2026, 7, 19, 12, 0, 0, 0, time.UTC)))
 	sessions := service.NewSessionService(repository)
-	registered, err := sessions.Register(ctx, service.RegistrationInput{Username: "racer", Password: "password 1", DisplayName: "Racer", Region: "america"})
+	registered, err := sessions.Register(ctx, service.RegistrationInput{Username: "racer", DisplayName: "Racer", Region: "america"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,7 +57,7 @@ func TestConcurrentLoginLeavesOneActiveSession(t *testing.T) {
 		go func() {
 			defer group.Done()
 			<-start
-			result, err := sessions.Login(ctx, service.LoginInput{Username: "RACER", Password: "password 1"})
+			result, err := sessions.Login(ctx, service.LoginInput{Username: "RACER", SecretKey: registered.SecretKey})
 			if err != nil {
 				errors <- err
 				return

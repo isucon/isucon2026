@@ -7,8 +7,6 @@ import {
   benchmarkResultLabel,
   formatDateTime,
   formatScore,
-  regionLabel,
-  serverLabel,
 } from '../app/format';
 
 export interface BenchmarkHistoryProps {
@@ -51,8 +49,7 @@ export function BenchmarkHistory({ history }: BenchmarkHistoryProps) {
                     <td className="mono">{run.sequence.toString()}</td>
                     <td className="mono">{formatDateTime(run.completedAt)}</td>
                     <td>
-                      <span className="mono">{serverLabel(run.mainServer)}</span>
-                      <small>{regionLabel(run.mainServerRegion)}</small>
+                      <span>全3台（国別自動ルーティング）</span>
                     </td>
                     <td className="mono">{failed ? '—' : formatScore(run.score)}</td>
                     <td>

@@ -12,7 +12,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file portal/v1/portal.proto.
  */
 export const file_portal_v1_portal: GenFile = /*@__PURE__*/
-  fileDesc("ChZwb3J0YWwvdjEvcG9ydGFsLnByb3RvEglwb3J0YWwudjEiHgoHVGVhbUtleRITCgt0ZWFtX251bWJlchgBIAEoDSJ7Cg1TZXJ2ZXJSZWdpb25zEiIKB3NlcnZlcjEYASABKA4yES5wb3J0YWwudjEuUmVnaW9uEiIKB3NlcnZlcjIYAiABKA4yES5wb3J0YWwudjEuUmVnaW9uEiIKB3NlcnZlcjMYAyABKA4yES5wb3J0YWwudjEuUmVnaW9uIn0KBkNvbmZpZxIwCg5zZXJ2ZXJfcmVnaW9ucxgBIAEoCzIYLnBvcnRhbC52MS5TZXJ2ZXJSZWdpb25zEigKC21haW5fc2VydmVyGAIgASgOMhMucG9ydGFsLnYxLlNlcnZlcklkEhcKD2RlZmF1bHRfY291bnRyeRgDIAEoCSJ3Cg5Db25maWdTbmFwc2hvdBITCgtzbmFwc2hvdF9pZBgBIAEoCRIhCgZjb25maWcYAiABKAsyES5wb3J0YWwudjEuQ29uZmlnEi0KCWlzc3VlZF9hdBgDIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXAiOAoUU3RyZWFtRGVzaXJlZFJlcXVlc3QSIAoEdGVhbRgBIAEoCzISLnBvcnRhbC52MS5UZWFtS2V5IkMKFVN0cmVhbURlc2lyZWRSZXNwb25zZRIqCgdkZXNpcmVkGAEgASgLMhkucG9ydGFsLnYxLkNvbmZpZ1NuYXBzaG90IpoBChRSZXBvcnRBcHBsaWVkUmVxdWVzdBIgCgR0ZWFtGAEgASgLMhIucG9ydGFsLnYxLlRlYW1LZXkSKgoHc3VjY2VzcxgCIAEoCzIXLnBvcnRhbC52MS5BcHBseVN1Y2Nlc3NIABIqCgdmYWlsdXJlGAMgASgLMhcucG9ydGFsLnYxLkFwcGx5RmFpbHVyZUgAQggKBnJlc3VsdCJHCgxBcHBseVN1Y2Nlc3MSEwoLc25hcHNob3RfaWQYASABKAkSIgoHYXBwbGllZBgCIAEoCzIRLnBvcnRhbC52MS5Db25maWciMwoMQXBwbHlGYWlsdXJlEhMKC3NuYXBzaG90X2lkGAEgASgJEg4KBnJlYXNvbhgCIAEoCSIXChVSZXBvcnRBcHBsaWVkUmVzcG9uc2UqTQoGUmVnaW9uEhYKElJFR0lPTl9VTlNQRUNJRklFRBAAEg0KCVJFR0lPTl9VUxABEg0KCVJFR0lPTl9BUBACEg0KCVJFR0lPTl9FVRADKmoKCFNlcnZlcklkEhkKFVNFUlZFUl9JRF9VTlNQRUNJRklFRBAAEhUKEVNFUlZFUl9JRF9TRVJWRVIxEAESFQoRU0VSVkVSX0lEX1NFUlZFUjIQAhIVChFTRVJWRVJfSURfU0VSVkVSMxADMr8BChNQb3J0YWxSb3V0ZXJTZXJ2aWNlElQKDVN0cmVhbURlc2lyZWQSHy5wb3J0YWwudjEuU3RyZWFtRGVzaXJlZFJlcXVlc3QaIC5wb3J0YWwudjEuU3RyZWFtRGVzaXJlZFJlc3BvbnNlMAESUgoNUmVwb3J0QXBwbGllZBIfLnBvcnRhbC52MS5SZXBvcnRBcHBsaWVkUmVxdWVzdBogLnBvcnRhbC52MS5SZXBvcnRBcHBsaWVkUmVzcG9uc2VCmQEKDWNvbS5wb3J0YWwudjFCC1BvcnRhbFByb3RvUAFaNmdpdGh1Yi5jb20vaXN1Y29uL2lzdWNvbjIwMjYvZ2VuL2dvL3BvcnRhbC92MTtwb3J0YWx2MaICA1BYWKoCCVBvcnRhbC5WMcoCCVBvcnRhbFxWMeICFVBvcnRhbFxWMVxHUEJNZXRhZGF0YeoCClBvcnRhbDo6VjFiBnByb3RvMw", [file_google_protobuf_timestamp]);
+  fileDesc("ChZwb3J0YWwvdjEvcG9ydGFsLnByb3RvEglwb3J0YWwudjEiHgoHVGVhbUtleRITCgt0ZWFtX251bWJlchgBIAEoDSKSAQoNU2VydmVyUmVnaW9ucxIfCgRhcHAxGAEgASgOMhEucG9ydGFsLnYxLlJlZ2lvbhIfCgRhcHAyGAIgASgOMhEucG9ydGFsLnYxLlJlZ2lvbhIfCgRhcHAzGAMgASgOMhEucG9ydGFsLnYxLlJlZ2lvbhIeCgNkYjEYBCABKA4yES5wb3J0YWwudjEuUmVnaW9uImYKBkNvbmZpZxIwCg5zZXJ2ZXJfcmVnaW9ucxgBIAEoCzIYLnBvcnRhbC52MS5TZXJ2ZXJSZWdpb25zEhcKD2RlZmF1bHRfY291bnRyeRgDIAEoCUoECAIQA1ILbWFpbl9zZXJ2ZXIidwoOQ29uZmlnU25hcHNob3QSEwoLc25hcHNob3RfaWQYASABKAkSIQoGY29uZmlnGAIgASgLMhEucG9ydGFsLnYxLkNvbmZpZxItCglpc3N1ZWRfYXQYAyABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wIjgKFFN0cmVhbURlc2lyZWRSZXF1ZXN0EiAKBHRlYW0YASABKAsyEi5wb3J0YWwudjEuVGVhbUtleSJDChVTdHJlYW1EZXNpcmVkUmVzcG9uc2USKgoHZGVzaXJlZBgBIAEoCzIZLnBvcnRhbC52MS5Db25maWdTbmFwc2hvdCKaAQoUUmVwb3J0QXBwbGllZFJlcXVlc3QSIAoEdGVhbRgBIAEoCzISLnBvcnRhbC52MS5UZWFtS2V5EioKB3N1Y2Nlc3MYAiABKAsyFy5wb3J0YWwudjEuQXBwbHlTdWNjZXNzSAASKgoHZmFpbHVyZRgDIAEoCzIXLnBvcnRhbC52MS5BcHBseUZhaWx1cmVIAEIICgZyZXN1bHQiRwoMQXBwbHlTdWNjZXNzEhMKC3NuYXBzaG90X2lkGAEgASgJEiIKB2FwcGxpZWQYAiABKAsyES5wb3J0YWwudjEuQ29uZmlnIjMKDEFwcGx5RmFpbHVyZRITCgtzbmFwc2hvdF9pZBgBIAEoCRIOCgZyZWFzb24YAiABKAkiFwoVUmVwb3J0QXBwbGllZFJlc3BvbnNlKk0KBlJlZ2lvbhIWChJSRUdJT05fVU5TUEVDSUZJRUQQABINCglSRUdJT05fVVMQARINCglSRUdJT05fQVAQAhINCglSRUdJT05fRVUQAyp0CghTZXJ2ZXJJZBIZChVTRVJWRVJfSURfVU5TUEVDSUZJRUQQABISCg5TRVJWRVJfSURfQVBQMRABEhIKDlNFUlZFUl9JRF9BUFAyEAISEgoOU0VSVkVSX0lEX0FQUDMQAxIRCg1TRVJWRVJfSURfREIxEAQyvwEKE1BvcnRhbFJvdXRlclNlcnZpY2USVAoNU3RyZWFtRGVzaXJlZBIfLnBvcnRhbC52MS5TdHJlYW1EZXNpcmVkUmVxdWVzdBogLnBvcnRhbC52MS5TdHJlYW1EZXNpcmVkUmVzcG9uc2UwARJSCg1SZXBvcnRBcHBsaWVkEh8ucG9ydGFsLnYxLlJlcG9ydEFwcGxpZWRSZXF1ZXN0GiAucG9ydGFsLnYxLlJlcG9ydEFwcGxpZWRSZXNwb25zZUKZAQoNY29tLnBvcnRhbC52MUILUG9ydGFsUHJvdG9QAVo2Z2l0aHViLmNvbS9pc3Vjb24vaXN1Y29uMjAyNi9nZW4vZ28vcG9ydGFsL3YxO3BvcnRhbHYxogIDUFhYqgIJUG9ydGFsLlYxygIJUG9ydGFsXFYx4gIVUG9ydGFsXFYxXEdQQk1ldGFkYXRh6gIKUG9ydGFsOjpWMWIGcHJvdG8z", [file_google_protobuf_timestamp]);
 
 /**
  * @generated from message portal.v1.TeamKey
@@ -36,19 +36,26 @@ export const TeamKeySchema: GenMessage<TeamKey> = /*@__PURE__*/
  */
 export type ServerRegions = Message<"portal.v1.ServerRegions"> & {
   /**
-   * @generated from field: portal.v1.Region server1 = 1;
+   * 固定配置: app1=AP、app2=EU、app3=US、db1=AP。ユーザーは変更できない。
+   *
+   * @generated from field: portal.v1.Region app1 = 1;
    */
-  server1: Region;
+  app1: Region;
 
   /**
-   * @generated from field: portal.v1.Region server2 = 2;
+   * @generated from field: portal.v1.Region app2 = 2;
    */
-  server2: Region;
+  app2: Region;
 
   /**
-   * @generated from field: portal.v1.Region server3 = 3;
+   * @generated from field: portal.v1.Region app3 = 3;
    */
-  server3: Region;
+  app3: Region;
+
+  /**
+   * @generated from field: portal.v1.Region db1 = 4;
+   */
+  db1: Region;
 };
 
 /**
@@ -63,14 +70,11 @@ export const ServerRegionsSchema: GenMessage<ServerRegions> = /*@__PURE__*/
  */
 export type Config = Message<"portal.v1.Config"> & {
   /**
+   * 固定配置の確認用。固定値に一致しない snapshot/report は拒否する。
+   *
    * @generated from field: portal.v1.ServerRegions server_regions = 1;
    */
   serverRegions?: ServerRegions | undefined;
-
-  /**
-   * @generated from field: portal.v1.ServerId main_server = 2;
-   */
-  mainServer: ServerId;
 
   /**
    * ISO 3166-1 alpha-2。
@@ -280,19 +284,24 @@ export enum ServerId {
   UNSPECIFIED = 0,
 
   /**
-   * @generated from enum value: SERVER_ID_SERVER1 = 1;
+   * @generated from enum value: SERVER_ID_APP1 = 1;
    */
-  SERVER1 = 1,
+  APP1 = 1,
 
   /**
-   * @generated from enum value: SERVER_ID_SERVER2 = 2;
+   * @generated from enum value: SERVER_ID_APP2 = 2;
    */
-  SERVER2 = 2,
+  APP2 = 2,
 
   /**
-   * @generated from enum value: SERVER_ID_SERVER3 = 3;
+   * @generated from enum value: SERVER_ID_APP3 = 3;
    */
-  SERVER3 = 3,
+  APP3 = 3,
+
+  /**
+   * @generated from enum value: SERVER_ID_DB1 = 4;
+   */
+  DB1 = 4,
 }
 
 /**

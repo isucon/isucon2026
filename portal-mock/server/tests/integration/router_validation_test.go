@@ -32,7 +32,7 @@ func TestInvalidReportThenValidMismatchRecovery(t *testing.T) {
 		t.Fatal("missing invalid report diagnostic")
 	}
 	mismatch := desired.Config
-	mismatch.MainServer = domain.Server2
+	mismatch.DefaultCountry = "DE"
 	_, err = server.Router.ReportApplied(context.Background(), connect.NewRequest(&portalv1.ReportAppliedRequest{
 		Team: &portalv1.TeamKey{TeamNumber: 1},
 		Result: &portalv1.ReportAppliedRequest_Success{Success: &portalv1.ApplySuccess{
@@ -59,7 +59,7 @@ func TestEmptySnapshotIDIsInvalidReport(t *testing.T) {
 	// Establish an applied value so the rejected report can also prove that it
 	// does not overwrite the last valid Router state.
 	appliedConfig := desired.Config
-	appliedConfig.MainServer = domain.Server2
+	appliedConfig.DefaultCountry = "DE"
 	_, err := server.Router.ReportApplied(ctx, connect.NewRequest(&portalv1.ReportAppliedRequest{
 		Team: &portalv1.TeamKey{TeamNumber: 1},
 		Result: &portalv1.ReportAppliedRequest_Success{Success: &portalv1.ApplySuccess{

@@ -29,7 +29,7 @@ func RenderTC(interfaces map[domain.ServerID]string, networks map[domain.ServerI
 		}
 	}
 
-	batches := make(map[domain.ServerID]string, 3)
+	batches := make(map[domain.ServerID]string, len(domain.ServerIDs()))
 	for _, destination := range domain.ServerIDs() {
 		device := interfaces[destination]
 		destinationRegion := routerConfig.RegionFor(destination)

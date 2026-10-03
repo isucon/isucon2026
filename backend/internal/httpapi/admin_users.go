@@ -20,7 +20,7 @@ func NewAdminUserHandler(service *service.AdminService, logger *slog.Logger) *Ad
 	return &AdminUserHandler{service: service, logger: logger}
 }
 func (h *AdminUserHandler) Login(c *echo.Context) error {
-	var input loginRequest
+	var input struct{ Username, Password string }
 	if err := DecodeJSON(c, &input); err != nil {
 		return err
 	}

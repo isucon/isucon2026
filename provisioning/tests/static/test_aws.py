@@ -61,7 +61,7 @@ class AWSProvisioningContractTest(unittest.TestCase):
         self.assertIn("nft_packet_count", script)
         self.assertIn("tc_packet_count", script)
         self.assertIn("cloneIdentityUniqueness", script)
-        self.assertEqual(3, script.count("peer_http_all"))
+        self.assertEqual(3, script.count("peer_connect_all"))
         self.assertIn("global_ip_isolation_all", script)
         self.assertIn("servicePublicAddresses", script)
         self.assertIn("globalIpEgressIdentity", script)
@@ -79,7 +79,7 @@ class AWSProvisioningContractTest(unittest.TestCase):
         self.assertIn("userDataBase64", source)
         self.assertIn("gzipSync", source)
         self.assertIn('"t3.small"', source)
-        self.assertIn('"c8in.large"', source)
+        self.assertIn('"c8in.4xlarge"', source)
         self.assertIn("cidrBlocks: [network.vpcCidr]", source)
         self.assertIn("routerMediatedIngressCidrs(network)", source)
         self.assertIn(

@@ -15,11 +15,8 @@ func TestUS4DeletionRestorePurgeAndUsernameReuse(t *testing.T) {
 	pool, _ := us1Database(t)
 	user := uuid.New()
 	addUser(t, pool, user, "america")
-	hash, err := service.HashPassword("password-1")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := pool.Exec(context.Background(), `UPDATE users SET password_hash=$2 WHERE id=$1`, user, hash); err != nil {
+	hash := service.HashCredential("password-1")
+	if _, err := pool.Exec(context.Background(), `UPDATE users SET secret_key_hash=$2 WHERE id=$1`, user, hash); err != nil {
 		t.Fatal(err)
 	}
 	fake := clock.NewFake(us1Now)
@@ -36,7 +33,7 @@ func TestUS4DeletionRestorePurgeAndUsernameReuse(t *testing.T) {
 		t.Fatal("account remained active")
 	}
 	sessionService := service.NewSessionService(sessions)
-	if _, err := sessionService.Login(context.Background(), service.LoginInput{Username: "u" + user.String()[:8], Password: "password-1"}); err != nil {
+	if _, err := sessionService.Login(context.Background(), service.LoginInput{Username: "u" + user.String()[:8], SecretKey: "password-1"}); err != nil {
 		t.Fatalf("restore login=%v", err)
 	}
 	_ = pool.QueryRow(context.Background(), `SELECT status FROM users WHERE id=$1`, user).Scan(&status)
@@ -59,7 +56,7 @@ func TestUS4DeletionRestorePurgeAndUsernameReuse(t *testing.T) {
 	}
 	oldName := "u" + user.String()[:8]
 	replacement := uuid.New()
-	if _, err := pool.Exec(context.Background(), `INSERT INTO users(id,username,username_normalized,password_hash,display_name,display_name_search,region)VALUES($1,$2::varchar,$2::varchar,'hash',$2::text,$2::text,'america')`, replacement, oldName); err != nil {
+	if _, err := pool.Exec(context.Background(), `INSERT INTO users(id,username,username_normalized,secret_key_hash,display_name,display_name_search,region)VALUES($1,$2::varchar,$2::varchar,'hash',$2::text,$2::text,'america')`, replacement, oldName); err != nil {
 		t.Fatalf("username was not released: %v", err)
 	}
 }

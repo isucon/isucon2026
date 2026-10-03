@@ -8,6 +8,7 @@ Requires=isureal-router.service
 Type=simple
 User=isureal-router
 Group=isureal-router
+LimitNOFILE=1048576
 ExecStartPre=/opt/isucon/bin/envoy --mode validate -c /etc/isucon/envoy/bootstrap.yaml
 ExecStart=/opt/isucon/bin/envoy -c /etc/isucon/envoy/bootstrap.yaml --disable-hot-restart
 Restart=on-failure

@@ -8,15 +8,18 @@
 
 ### 起動方法
 
+初期データ `webapp/sql/002-seed.sql` は生成物なので、初回（と `dataset` を変えたとき）は先に生成します（Go が必要です）。
+
 ```bash
+make datagen
 docker compose up
 ```
 
-初回はコンテナをbuildし、PostgreSQLの起動後にmigrationとminimal fixtureの投入を行ってから、API、worker、frontendを依存順に起動します。
+初回はコンテナをbuildし、PostgreSQLの起動後に `schema/schema.sql` とminimal fixtureの投入を行ってから、API、worker、frontendを依存順に起動します。
 
 - Web: <http://localhost:5173>
 - API readiness: <http://localhost:8080/health/ready>
-- seed user: `alice` / `password`（`bob`、`carol`、`dave`も同じパスワード）
+- seed user: `alice` / SecretKey `password`（`bob`、`carol`、`dave`も同じSecretKey）
 - seed administrator: `root` / `admin-password`
 
 バックグラウンドで起動する場合は`docker compose up -d`、停止は`docker compose down`です。通常の再起動ではDBと画像のvolumeを保持し、minimal fixtureを再投入しません。ローカルデータも削除して完全に初期化する場合だけ、意図を確認したうえで`docker compose down --volumes`を使用してください。
@@ -44,7 +47,7 @@ make vm-up
 make vm-down
 ```
 
-起動後は http://127.0.0.1:15174/ からポータルに、https://server1.team1-local.127.0.0.1.nip.io:18443 からアプリケーションにアクセスする。
+起動後は http://127.0.0.1:15174/ からポータルに、https://app.team1-local.127.0.0.1.nip.io:18443 からアプリケーションにアクセスする。app1〜3 は共有 PostgreSQL の db1（AP 固定）を利用する。
 
 ベンチマーカーは Vagrant の HTTP Client forward と Router を経由して実行する。
 実行すると initialize phase で対象アプリのデータが初期化される。
@@ -52,8 +55,8 @@ make vm-down
 ```bash
 make vm-benchmark
 
-# 開発用の固定 1 サイクル
-make vm-benchmark BENCH_ARGS='-users 2 -cycles 1'
+# 開発用の短い走行（各リージョンが 1〜2 回投稿期間を開く）
+make vm-benchmark BENCH_ARGS='-users 2 -duration 25s'
 ```
 
 ## ポータルと実ベンチの結合試験

@@ -1,8 +1,8 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
 
-const me = { id: '10000000-0000-0000-0000-000000000001', username: 'alice', displayName: 'Alice', profileImageUrl: null, bio: 'bio', region: 'asia', pendingRegion: null, accountType: 'regular', status: 'active' };
+const me = { id: '10000000-0000-0000-0000-000000000001', username: 'alice', displayName: 'Alice', profileImageUrl: null, bio: 'bio', region: 'asia', accountType: 'regular', status: 'active' };
 const other = { ...me, id: '10000000-0000-0000-0000-000000000002', username: 'bob', displayName: 'Bob', accountType: 'certified_public' };
-const post = { id: '20000000-0000-0000-0000-000000000001', author: other, postingWindowId: '30000000-0000-0000-0000-000000000001', imageUrl: '/image.jpg', caption: 'today', visibility: 'friends', location: { kind: 'none' }, postedAt: '2026-07-19T12:00:00Z', onTime: true, lateSeconds: 0 };
+const post = { id: '20000000-0000-0000-0000-000000000001', author: other, postingWindowId: '30000000-0000-0000-0000-000000000001', imageUrl: '/image.jpg', caption: 'today', visibility: 'friends', location: { kind: 'none' }, postedAt: '2026-07-19T12:00:00Z', onTime: true, lateSeconds: 0, comments: [], realmojis: [] };
 const notification = { id: '40000000-0000-0000-0000-000000000001', postingWindowId: post.postingWindowId, region: 'asia', createdAt: post.postedAt, read: false };
 
 async function tabTo(page: Page, target: Locator): Promise<void> {
@@ -28,19 +28,20 @@ async function seedSession(page: Page): Promise<void> {
 }
 
 async function mockAPI(page: Page): Promise<void> {
-  await page.route('**/api/v1/**', async (route) => {
+  await page.route('**://*/api/**', async (route) => {
     const request = route.request();
     const path = new URL(request.url()).pathname;
-    if (path === '/api/v1/auth/register' || path === '/api/v1/auth/login') return route.fulfill({ json: { token: 'keyboard-token', user: me } });
-    if (path === '/api/v1/me') return route.fulfill({ json: me });
-    if (path === '/api/v1/users') return route.fulfill({ json: { items: [other], nextCursor: null } });
-    if (path === `/api/v1/users/${other.id}`) return route.fulfill({ json: other });
-    if (path === '/api/v1/posts' && request.method() === 'POST') return route.fulfill({ status: 201, json: post });
-    if (path === `/api/v1/posts/${post.id}` || path === '/api/v1/posts/me/current') return route.fulfill({ json: post });
-    if (path.startsWith('/api/v1/feeds/')) return route.fulfill({ json: { items: [post], nextCursor: null } });
-    if (path.endsWith('/comments') || path.endsWith('/realmojis')) return route.fulfill({ json: { items: [], nextCursor: null } });
-    if (path === '/api/v1/memories') return route.fulfill({ json: { items: [post], nextCursor: null } });
-    if (path === '/api/v1/notifications') return route.fulfill({ json: { items: [notification], nextCursor: null } });
+    if (path === '/api/auth/register') return route.fulfill({ status: 201, json: { token: 'keyboard-token', secretKey: 'keyboard-secret', user: me } });
+    if (path === '/api/auth/login') return route.fulfill({ json: { token: 'keyboard-token', user: me } });
+    if (path === '/api/me') return route.fulfill({ json: me });
+    if (path === '/api/users') return route.fulfill({ json: { items: [other], hasMore: false } });
+    if (path === `/api/users/${other.id}`) return route.fulfill({ json: other });
+    if (path === '/api/posts' && request.method() === 'POST') return route.fulfill({ status: 201, json: post });
+    if (path === `/api/posts/${post.id}` || path === '/api/posts/me/current') return route.fulfill({ json: post });
+    if (path.startsWith('/api/feeds/')) return route.fulfill({ json: { items: [post], hasMore: false } });
+    if (path.endsWith('/comments') || path.endsWith('/realmojis')) return route.fulfill({ json: { items: [], hasMore: false } });
+    if (path === '/api/memories') return route.fulfill({ json: { items: [post], hasMore: false } });
+    if (path === '/api/notifications') return route.fulfill({ contentType: 'text/event-stream', body: `data: ${JSON.stringify(notification)}\n\n` });
     if (path.endsWith(`/notifications/${notification.id}/open`)) return route.fulfill({ json: { destination: 'create-post', path: '/posts/new' } });
     return route.fulfill({ status: 204 });
   });
@@ -52,17 +53,19 @@ test('登録・ログイン・ログアウトをキーボードだけで完了�
   await tabTo(page, page.getByLabel('ユーザー名'));
   await page.keyboard.type('alice');
   await page.keyboard.press('Tab'); await page.keyboard.type('Alice');
-  await page.keyboard.press('Tab'); await page.keyboard.type('password-1');
   await page.keyboard.press('Tab'); await page.keyboard.press('End');
   await page.keyboard.press('Tab');
   await expect(page.getByRole('button', { name: '登録' })).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(page.getByLabel('保存した鍵')).toHaveText('keyboard-secret');
+  await page.getByRole('button', { name: 'はじめる' }).focus();
   await page.keyboard.press('Enter');
   await expect(page).toHaveURL('/');
   await tabTo(page, page.getByRole('button', { name: 'ログアウト' }));
   await page.keyboard.press('Enter');
   await expect(page).toHaveURL('/login');
   await expect(page.getByLabel('ユーザー名')).toBeFocused();
-  await page.keyboard.type('alice'); await page.keyboard.press('Tab'); await page.keyboard.type('password-1'); await page.keyboard.press('Tab');
+  await page.keyboard.type('alice'); await page.keyboard.press('Tab'); await page.keyboard.press('Control+A'); await page.keyboard.type('keyboard-secret'); await page.keyboard.press('Tab');
   await expect(page.getByRole('button', { name: 'ログイン' })).toBeFocused();
   await page.keyboard.press('Enter');
   await expect(page).toHaveURL('/');
@@ -111,9 +114,9 @@ test('FR-038の投稿・フィード・関係・交流・プロフィール・Me
 
   await page.goto('/memories');
   await tabTo(page, page.getByLabel('月'));
-  await tabTo(page, page.getByRole('link').filter({ has: page.getByAltText('過去の投稿画像') }));
+  await tabTo(page, page.locator('summary'));
   await page.keyboard.press('Enter');
-  await expect(page).toHaveURL(`/memories/posts/${post.id}`);
+  await expect(page.locator('details')).toHaveAttribute('open', '');
 
   await page.goto('/notifications');
   await tabTo(page, page.getByText(/asia の投稿時間/));

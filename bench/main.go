@@ -1,4 +1,8 @@
-// Command bench runs ISUReal either standalone or as a supervisor child.
+// Command bench は ISUReal のベンチマーク（初期化 → 事前検証 → 初期データの検証 → 負荷走行 →
+// 走行後の整合性チェック）を実行する。単独でも、スーパーバイザーの子プロセスとしても動く。
+// 単独では結果 JSON を標準出力へ出す。スーパーバイザーの下では途中経過と結果を報告用の
+// パイプへ送り、詳しい結果（運営向け）は標準エラー出力、参加者に見える標準出力には pass と
+// score だけを出す。終了コードは pass=0、fail=1、設定の誤りなど=2。
 package main
 
 import (
@@ -19,8 +23,12 @@ import (
 
 	"github.com/isucon/isucon2026/bench/internal/benchrun"
 	"github.com/isucon/isucon2026/bench/internal/scenario"
+	"github.com/isucon/isucon2026/dataset"
 	pb "github.com/isucon/isucon2026/portal/gen/pb/isuxportal/resources"
 )
+
+// devTarget は Docker Compose の開発環境の入口。
+const devTarget = "http://app.127.0.0.1.nip.io:18090"
 
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -42,21 +50,23 @@ func run(parent context.Context, args []string, stdout, stderr io.Writer) int {
 	flags.SetOutput(stderr)
 	defaultTarget := os.Getenv("ISUXBENCH_TARGET")
 	if defaultTarget == "" {
-		defaultTarget = "http://localhost:8080"
+		defaultTarget = devTarget
 	}
 	target := flags.String("target", defaultTarget, "target URL or supervisor IP")
 	host := flags.String("host", "", "HTTP Host header override (empty uses the target host)")
 	port := flags.Int("target-port", 80, "HTTP port for targets without an explicit port")
-	users := flags.Int("users", 8, "concurrent load users")
-	cycles := flags.Int("cycles", 0, "fixed cycle count for development (0 = 60s load)")
-	timeout := flags.Duration("timeout", 120*time.Second, "overall benchmark deadline; supervisor hard timeout must be longer")
+	users := flags.Int("users", 8, "initial load users in asia (overseas start with 1/8)")
+	duration := flags.Duration("duration", 60*time.Second, "length of the load phase (shorter values are for development)")
+	scale := flags.String("scale", "small", "scale of the initial data in the target DB: small or large (must match datagen -scale)")
+	timeout := flags.Duration("timeout", 140*time.Second, "overall benchmark deadline; supervisor hard timeout must be longer")
 	postValidation := flags.Bool("only-post-validation", false, "reserved: report unsupported without initializing the application")
 	report := func(result scenario.Result, finished bool, reason string) error {
 		if reporter == nil {
 			return nil
 		}
+		// 減点はないので、素点がそのままスコアになる。
 		p := &pb.BenchmarkResult{Finished: finished, Passed: finished && result.Pass, Score: result.Score,
-			ScoreBreakdown: &pb.BenchmarkResult_ScoreBreakdown{Raw: result.RawScore, Deduction: result.Deduction},
+			ScoreBreakdown: &pb.BenchmarkResult_ScoreBreakdown{Raw: result.Score},
 			SurveyResponse: &pb.SurveyResponse{Language: result.Language}}
 		if finished {
 			p.Execution = &pb.BenchmarkResult_Execution{Reason: reason}
@@ -77,7 +87,8 @@ func run(parent context.Context, args []string, stdout, stderr io.Writer) int {
 		}
 		return fail("invalid benchmark arguments", 2)
 	}
-	if flags.NArg() != 0 || *users < 1 || *cycles < 0 || *timeout <= 0 {
+	datasetConfig, ok := map[string]func() dataset.Config{"small": dataset.Small, "large": dataset.Large}[*scale]
+	if flags.NArg() != 0 || *users < 1 || *duration <= 0 || *timeout <= 0 || !ok {
 		return fail("invalid benchmark arguments", 2)
 	}
 	if *postValidation {
@@ -90,7 +101,9 @@ func run(parent context.Context, args []string, stdout, stderr io.Writer) int {
 	ctx, cancel := context.WithTimeout(parent, *timeout)
 	defer cancel()
 	var reportErr error
-	runner, err := scenario.NewRunner(scenario.Config{Target: normalized, Host: *host, Users: *users, MaxCycles: *cycles, Logger: logger,
+	runner, err := scenario.NewRunner(scenario.Config{
+		Target: normalized, Host: *host, Users: *users, Duration: *duration,
+		Dataset: dataset.Generate(datasetConfig()), Logger: logger,
 		OnProgress: func(result scenario.Result) {
 			if reportErr != nil {
 				return
@@ -109,7 +122,7 @@ func run(parent context.Context, args []string, stdout, stderr io.Writer) int {
 		logger.Error("progress report failed", "error", reportErr)
 		return 2
 	}
-	// Full diagnostics are operator-only under supervisor; stdout is visible to contestants.
+	// スーパーバイザーの下では詳しい結果は運営だけが見る。標準出力は参加者に見える。
 	output := stdout
 	if reporter != nil {
 		output = stderr

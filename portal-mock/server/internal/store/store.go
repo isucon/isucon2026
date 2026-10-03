@@ -138,22 +138,23 @@ func (s *Store) SubscribeState(ctx context.Context) Subscription[domain.State] {
 }
 
 type Patch struct {
-	Server1Region  *domain.Region
-	Server2Region  *domain.Region
-	Server3Region  *domain.Region
-	MainServer     *domain.ServerID
+	App1Region     *domain.Region
+	App2Region     *domain.Region
+	App3Region     *domain.Region
 	DefaultCountry *string
 }
 
 func (p Patch) Empty() bool {
-	return p.Server1Region == nil &&
-		p.Server2Region == nil &&
-		p.Server3Region == nil &&
-		p.MainServer == nil &&
+	return p.App1Region == nil &&
+		p.App2Region == nil &&
+		p.App3Region == nil &&
 		p.DefaultCountry == nil
 }
 
 func (s *Store) UpdateDesired(patch Patch) (bool, domain.ConfigSnapshot, domain.ApplyDiagnostic, error) {
+	if patch.App1Region != nil || patch.App2Region != nil || patch.App3Region != nil {
+		return false, domain.ConfigSnapshot{}, domain.ApplyDiagnostic{}, fmt.Errorf("%w: server regions are fixed and cannot be configured", ErrInvalidArgument)
+	}
 	if patch.Empty() {
 		return false, domain.ConfigSnapshot{}, domain.ApplyDiagnostic{}, fmt.Errorf("%w: patch must contain at least one field", ErrInvalidArgument)
 	}
@@ -164,34 +165,6 @@ func (s *Store) UpdateDesired(patch Patch) (bool, domain.ConfigSnapshot, domain.
 		return false, domain.ConfigSnapshot{}, domain.ApplyDiagnostic{}, fmt.Errorf("%w: benchmark is in progress", ErrFailedPrecondition)
 	}
 	cfg := s.state.Desired.Config
-	if patch.Server1Region != nil {
-		if !domain.ValidRegion(*patch.Server1Region) {
-			s.mu.Unlock()
-			return false, domain.ConfigSnapshot{}, domain.ApplyDiagnostic{}, fmt.Errorf("%w: server1 region is invalid", ErrInvalidArgument)
-		}
-		cfg.Server1Region = *patch.Server1Region
-	}
-	if patch.Server2Region != nil {
-		if !domain.ValidRegion(*patch.Server2Region) {
-			s.mu.Unlock()
-			return false, domain.ConfigSnapshot{}, domain.ApplyDiagnostic{}, fmt.Errorf("%w: server2 region is invalid", ErrInvalidArgument)
-		}
-		cfg.Server2Region = *patch.Server2Region
-	}
-	if patch.Server3Region != nil {
-		if !domain.ValidRegion(*patch.Server3Region) {
-			s.mu.Unlock()
-			return false, domain.ConfigSnapshot{}, domain.ApplyDiagnostic{}, fmt.Errorf("%w: server3 region is invalid", ErrInvalidArgument)
-		}
-		cfg.Server3Region = *patch.Server3Region
-	}
-	if patch.MainServer != nil {
-		if !domain.ValidServer(*patch.MainServer) {
-			s.mu.Unlock()
-			return false, domain.ConfigSnapshot{}, domain.ApplyDiagnostic{}, fmt.Errorf("%w: main server is invalid", ErrInvalidArgument)
-		}
-		cfg.MainServer = *patch.MainServer
-	}
 	if patch.DefaultCountry != nil {
 		if err := domain.ValidateCountryCode(*patch.DefaultCountry); err != nil {
 			s.mu.Unlock()

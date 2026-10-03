@@ -24,9 +24,9 @@ func TestMockConfigurationContract(t *testing.T) {
 	if err != nil || len(countries.Msg.Countries) != 10 {
 		t.Fatalf("countries=%d err=%v", len(countries.Msg.Countries), err)
 	}
-	main := portalv1.ServerId_SERVER_ID_SERVER1
+	main := "JP"
 	noOp, err := server.Mock.UpdateDesired(ctx, connect.NewRequest(&portalmockv1.UpdateDesiredRequest{
-		Patch: &portalmockv1.DesiredPatch{MainServer: &main},
+		Patch: &portalmockv1.DesiredPatch{DefaultCountry: &main},
 	}))
 	if err != nil || noOp.Msg.Changed || noOp.Msg.Desired.SnapshotId != initial.Msg.State.Portal.Desired.SnapshotId {
 		t.Fatalf("bad no-op response: %v %v", noOp, err)
@@ -48,5 +48,47 @@ func assertCode(t *testing.T, err error, code connect.Code) {
 	t.Helper()
 	if err == nil || connect.CodeOf(err) != code {
 		t.Fatalf("got error %v, want code %s", err, code)
+	}
+}
+
+func TestFixedRegionsRejectUserConfiguration(t *testing.T) {
+	server := testkit.NewServer(t, nil)
+	ctx := context.Background()
+	initial, err := server.Mock.GetState(ctx, connect.NewRequest(&portalmockv1.GetStateRequest{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := initial.Msg.State.Portal.Desired
+	regions := want.Config.ServerRegions
+	if regions.App1 != portalv1.Region_REGION_AP || regions.App2 != portalv1.Region_REGION_EU || regions.App3 != portalv1.Region_REGION_US {
+		t.Fatalf("unexpected fixed regions: %v", regions)
+	}
+	for _, region := range []portalv1.Region{portalv1.Region_REGION_UNSPECIFIED, portalv1.Region_REGION_AP, portalv1.Region_REGION_EU, portalv1.Region_REGION_US, 99} {
+		for _, patch := range []*portalmockv1.DesiredPatch{
+			{App1Region: region.Enum()},
+			{App2Region: region.Enum()},
+			{App3Region: region.Enum()},
+		} {
+			// A rejected region must also prevent other fields from changing.
+			country := "US"
+			patch.DefaultCountry = &country
+			_, err := server.Mock.UpdateDesired(ctx, connect.NewRequest(&portalmockv1.UpdateDesiredRequest{Patch: patch}))
+			assertCode(t, err, connect.CodeInvalidArgument)
+		}
+	}
+	after, err := server.Mock.GetState(ctx, connect.NewRequest(&portalmockv1.GetStateRequest{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.Msg.State.Portal.Desired.SnapshotId != want.SnapshotId || after.Msg.State.Portal.Desired.Config.DefaultCountry != want.Config.DefaultCountry {
+		t.Fatal("rejected region update changed desired state")
+	}
+	reset, err := server.Mock.Reset(ctx, connect.NewRequest(&portalmockv1.ResetRequest{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resetRegions := reset.Msg.State.Portal.Desired.Config.ServerRegions
+	if resetRegions.App1 != regions.App1 || resetRegions.App2 != regions.App2 || resetRegions.App3 != regions.App3 {
+		t.Fatalf("reset changed fixed regions: %v", resetRegions)
 	}
 }

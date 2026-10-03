@@ -26,7 +26,7 @@ func TestSupportedCountriesAndCalculation(t *testing.T) {
 		t.Fatal(err)
 	}
 	if calculated.AppHostname != "app.team1-abc123.example.test" ||
-		calculated.TargetHostname != "server1.team1-abc123.example.test" ||
+		calculated.TargetHostname != "app.team1-abc123.example.test" ||
 		calculated.DefaultCountryRegion != RegionAP {
 		t.Fatalf("unexpected calculated config: %+v", calculated)
 	}
@@ -38,9 +38,10 @@ func TestConfigValidation(t *testing.T) {
 		t.Fatal(err)
 	}
 	invalid := []Config{
-		{Server1Region: 99, Server2Region: RegionAP, Server3Region: RegionAP, MainServer: Server1, DefaultCountry: "JP"},
-		{Server1Region: RegionAP, Server2Region: RegionAP, Server3Region: RegionAP, MainServer: 99, DefaultCountry: "JP"},
-		{Server1Region: RegionAP, Server2Region: RegionAP, Server3Region: RegionAP, MainServer: Server1, DefaultCountry: "XX"},
+		{App1Region: 99, App2Region: RegionEU, App3Region: RegionUS, DefaultCountry: "JP"},
+		{App1Region: RegionAP, App2Region: RegionEU, App3Region: RegionUS, DefaultCountry: "XX"},
+		{App1Region: RegionAP, App2Region: RegionAP, App3Region: RegionAP, DefaultCountry: "JP"},
+		{App1Region: RegionAP, App2Region: RegionUS, App3Region: RegionEU, DefaultCountry: "JP"},
 	}
 	for _, cfg := range invalid {
 		if cfg.Validate() == nil {

@@ -16,7 +16,7 @@ RealMoji・コメント、Memories、アプリ内通知とWeb Pushを提供す�
 
 **Language/Version**: Go 1.26.5（API・ワーカー）、TypeScript/React（Webクライアント）、SQL
 
-**Primary Dependencies**: Echo v5 (`github.com/labstack/echo/v5`)、pgx、bcrypt、Go標準`image/jpeg`、Web Pushライブラリ、
+**Primary Dependencies**: Echo v5 (`github.com/labstack/echo/v5`)、pgx、Go標準`image/jpeg`、Web Pushライブラリ、
 React、Vite、Service Worker / Push API
 
 **Storage**: PostgreSQL 16以降（正規データ・セッション・ジョブ状態）、ローカル永続ファイル領域
@@ -35,7 +35,7 @@ React、Vite、Service Worker / Push API
 
 **Constraints**: 内部ワーカーを除く全状態変更HTTP操作は24時間の冪等性、投稿・関係・通知の競合時も一意性を維持、単一有効
 セッション/Push購読、論理Push通知ごとに初回+最大3再試行とクライアント重複排除、JPEG 10 MiBまたは2 MiB、
-画像寸法による拒否禁止と隔離サニタイザの資源障害時503・無変更、bcrypt cost 12、
+画像寸法による拒否禁止と隔離サニタイザの資源障害時503・無変更、
 固定UTCオフセット、1ページ50件のキーセットページング、アプリ内レート制限なし、機微情報をログに残さない、
 FR-044のBearer限定・同一Origin・非キャッシュ・SPAセキュリティポリシー・IndexedDBトークン境界
 
