@@ -20,7 +20,7 @@ test('pending/running、設定ロック、完了履歴とログを表示する',
       (element) => /実行待ち|実行中/.test(element.textContent ?? ''),
     );
     const region = document.querySelector<HTMLSelectElement>(
-      '#server1-region',
+      '#default-country',
     );
     const progress = document.querySelector('[role="progressbar"]');
     return (

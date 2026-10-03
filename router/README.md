@@ -1,5 +1,7 @@
 # Router
 
+構成は app1=AP、app2=EU、app3=US、db1=AP の4台で固定です。db1 は共有 PostgreSQL 専用で HTTP routing の対象外です。
+
 Portal の desired config に追従し、Envoy の HTTP routing/shaping と Linux の server 間 routing/shaping を一体で管理する
 擬似地理分散 Router である。実装の構成と rollback 境界は [設計文書](../docs/router.md) を参照する。
 
@@ -39,7 +41,7 @@ docker compose --project-name isureal-router-e2e -f router/compose.e2e.yaml \
 ```text
 cmd/router/             process wiring
 internal/config/        strict environment/topology configuration
-internal/domain/        region/server/country/snapshot invariants
+internal/domain/        fixed region/server/country/snapshot invariants
 internal/netcontrol/    interface discovery, nftables, HTB/netem, rollback
 internal/xds/           RDS builder, xDS server, ACK/NACK correlation
 internal/reconcile/     Portal stream, latest-wins apply, report retry
@@ -80,9 +82,9 @@ duration は Go duration 形式で指定する。
 | Environment variable | Default |
 |---|---|
 | `ROUTER_APP_HOST` | `app.team1-abc123.isucon2026.westens.tokyo` |
-| `ROUTER_SERVER1_HOST` | `server1.team1-abc123.isucon2026.westens.tokyo` |
-| `ROUTER_SERVER2_HOST` | `server2.team1-abc123.isucon2026.westens.tokyo` |
-| `ROUTER_SERVER3_HOST` | `server3.team1-abc123.isucon2026.westens.tokyo` |
+| `ROUTER_APP1_HOST` | `app1.team1-abc123.isucon2026.westens.tokyo` |
+| `ROUTER_APP2_HOST` | `app2.team1-abc123.isucon2026.westens.tokyo` |
+| `ROUTER_APP3_HOST` | `app3.team1-abc123.isucon2026.westens.tokyo` |
 
 4値は妥当な小文字 hostname かつ相互に異なる必要がある。Envoy はvirtual-host照合時にHostのportを無視するため、同じhostnameを任意の公開port経由で利用できる。
 
@@ -90,7 +92,7 @@ duration は Go duration 形式で指定する。
 
 各 `N` は `1`、`2`、`3` のいずれかである。
 
-| Environment variable | server1 default | server2 default | server3 default |
+| Environment variable | app1 default | app2 default | app3 default |
 |---|---|---|---|
 | `ROUTER_SERVERN_SUBNET` | `172.31.1.0/24` | `172.31.2.0/24` | `172.31.3.0/24` |
 | `ROUTER_SERVERN_REGION_LOCAL_IP` | `172.31.1.2` | `172.31.2.2` | `172.31.3.2` |

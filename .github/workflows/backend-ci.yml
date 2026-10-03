@@ -46,7 +46,7 @@ jobs:
         working-directory: backend
       - run: |
           mkdir -p build
-          for command in api worker image-sanitizer migrate reset seed; do
+          for command in api worker image-sanitizer reset seed; do
             CGO_ENABLED=0 go build -trimpath -o "build/$command" "./cmd/$command"
           done
         working-directory: backend

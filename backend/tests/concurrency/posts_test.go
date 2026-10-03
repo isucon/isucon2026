@@ -121,7 +121,7 @@ func concurrencyFixture(t *testing.T, pool *pgxpool.Pool) (*postgres.PostReposit
 	t.Helper()
 	user, window := uuid.New(), uuid.New()
 	name := "u" + user.String()[:8]
-	if _, err := pool.Exec(context.Background(), `INSERT INTO users(id,username,username_normalized,password_hash,display_name,display_name_search,region) VALUES($1,$2::varchar,$2::varchar,'hash',$2::text,$2::text,'america')`, user, name); err != nil {
+	if _, err := pool.Exec(context.Background(), `INSERT INTO users(id,username,username_normalized,secret_key_hash,display_name,display_name_search,region) VALUES($1,$2::varchar,$2::varchar,'hash',$2::text,$2::text,'america')`, user, name); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := pool.Exec(context.Background(), `INSERT INTO posting_windows(id,region,local_date,utc_offset_minutes,starts_at,on_time_deadline) VALUES($1,'america','2026-07-19',-300,$2,$3)`, window, concurrencyNow.Add(-time.Minute), concurrencyNow.Add(time.Minute)); err != nil {

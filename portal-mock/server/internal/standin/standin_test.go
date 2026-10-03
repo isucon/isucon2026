@@ -34,8 +34,8 @@ func TestResetCancelsOldStandInWork(t *testing.T) {
 		cancel()
 		worker.Close()
 	}()
-	main := domain.Server2
-	_, oldDesired, _, err := stateStore.UpdateDesired(store.Patch{MainServer: &main})
+	main := "DE"
+	_, oldDesired, _, err := stateStore.UpdateDesired(store.Patch{DefaultCountry: &main})
 	if err != nil {
 		t.Fatal(err)
 	}

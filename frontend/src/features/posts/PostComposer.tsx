@@ -113,7 +113,7 @@ export function PostComposer(): React.JSX.Element {
 
   async function submit(event: React.FormEvent): Promise<void> {
     event.preventDefault();
-    if (!image) { setError('写真を撮影してください。'); return; }
+    if (!image) { setError('写真を撮影するか画像ファイルを選択してください。'); return; }
     if (locationKind === 'exact' && !coordinates) { setError('GPSから位置情報を取得してください。'); return; }
     setSubmitting(true); setError('');
     try {
@@ -125,6 +125,7 @@ export function PostComposer(): React.JSX.Element {
 
   return <section className="panel"><h1>今日の一枚を投稿</h1><form onSubmit={(event) => { void submit(event); }}>
     <fieldset><legend>投稿写真</legend>
+      <label>画像ファイル<input type="file" accept="image/jpeg" onChange={event => { cameraRequest.current += 1; stopCamera(); setImage(event.target.files?.[0] ?? null); setCameraState('captured'); }} /></label>
       {cameraState === 'starting' && <p aria-live="polite">カメラを起動しています…</p>}
       {cameraState === 'ready' && <><video className="post-preview" ref={video} autoPlay muted playsInline aria-label="投稿用カメラ" /><button type="button" onClick={() => { void capture(); }}>撮影する</button></>}
       {cameraState === 'unavailable' && <p role="alert">カメラを利用できません。</p>}

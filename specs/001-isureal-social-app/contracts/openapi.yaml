@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: ISUReal API
-  version: 0.1.2
+  version: 0.1.3
   description: |
     ISURealアプリの公開HTTP契約。時刻はRFC 3339 UTC、IDはUUID、一覧上限は常に50件。
     読み取り専用操作を除くすべてのPOST/PUT/PATCH/DELETEはIdempotency-Keyを必須とする。
@@ -65,7 +65,7 @@ paths:
       responses:
         '200': { $ref: '#/components/responses/SessionCreated' }
         '401':
-          description: ユーザー不存在とパスワード不一致で同一応答
+          description: ユーザー不存在とSecretKey不一致で同一応答
           content:
             application/problem+json:
               schema: { $ref: '#/components/schemas/Problem' }
@@ -590,7 +590,7 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/LoginRequest' }
+            schema: { $ref: '#/components/schemas/AdminLoginRequest' }
       responses:
         '200': { $ref: '#/components/responses/AdminSessionCreated' }
         '401': { $ref: '#/components/responses/Unauthorized' }
@@ -787,13 +787,19 @@ components:
     RegisterRequest:
       type: object
       additionalProperties: false
-      required: [username, password, displayName, region]
+      required: [username, displayName, region]
       properties:
         username: { type: string, minLength: 1, maxLength: 64, pattern: '^[A-Za-z0-9_.-]+$' }
-        password: { type: string, minLength: 8, maxLength: 72, pattern: '^[\x20-\x7E]+$' }
         displayName: { type: string, minLength: 1, maxLength: 100 }
         region: { $ref: '#/components/schemas/Region' }
     LoginRequest:
+      type: object
+      additionalProperties: false
+      required: [username, secretKey]
+      properties:
+        username: { type: string }
+        secretKey: { type: string, minLength: 1 }
+    AdminLoginRequest:
       type: object
       additionalProperties: false
       required: [username, password]
@@ -805,6 +811,7 @@ components:
       required: [token, user]
       properties:
         token: { type: string }
+        secretKey: { type: string, description: ユーザー作成時の応答にだけ含める }
         user: { $ref: '#/components/schemas/UserDetail' }
     AdminSession:
       type: object

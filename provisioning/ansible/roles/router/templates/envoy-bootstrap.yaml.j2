@@ -121,10 +121,16 @@ static_resources:
                     socket_address:
                       address: 127.0.0.1
                       port_value: 18000
-{% for server in ['server1', 'server2', 'server3'] %}
+{% for server in ['app1', 'app2', 'app3'] %}
     - name: {{ server }}
       type: STATIC
       connect_timeout: 2s
+      circuit_breakers:
+        thresholds:
+          - priority: DEFAULT
+            max_connections: 100000
+            max_pending_requests: 100000
+            max_requests: 100000
       load_assignment:
         cluster_name: {{ server }}
         endpoints:

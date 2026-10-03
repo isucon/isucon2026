@@ -1,0 +1,44 @@
+# From repository root:
+# docker compose -f compose.yaml -f webapp-optimized/compose.yaml up --build -d
+services:
+  app-asia:
+    build:
+      context: .
+      dockerfile: webapp-optimized/app.Dockerfile
+    image: isureal-dev-app-optimized:local
+    sysctls:
+      # Keep the congestion window of idle connections across the 200 ms link.
+      net.ipv4.tcp_slow_start_after_idle: 0
+    environment:
+      # The other regions' apps, which receive hot state changes.
+      ISUREAL_PEERS: http://172.29.2.10:8080,http://172.29.3.10:8080
+  app-europe:
+    build:
+      context: .
+      dockerfile: webapp-optimized/app.Dockerfile
+    image: isureal-dev-app-optimized:local
+    sysctls:
+      # Keep the congestion window of idle connections across the 200 ms link.
+      net.ipv4.tcp_slow_start_after_idle: 0
+    environment:
+      # The other regions' apps, which receive hot state changes.
+      ISUREAL_PEERS: http://172.29.1.10:8080,http://172.29.3.10:8080
+      # Bound by round trips to the database in asia, not by CPU.
+      ISUREAL_DB_MAX_CONNS: '64'
+  app-america:
+    build:
+      context: .
+      dockerfile: webapp-optimized/app.Dockerfile
+    image: isureal-dev-app-optimized:local
+    sysctls:
+      # Keep the congestion window of idle connections across the 200 ms link.
+      net.ipv4.tcp_slow_start_after_idle: 0
+    environment:
+      # The other regions' apps, which receive hot state changes.
+      ISUREAL_PEERS: http://172.29.1.10:8080,http://172.29.2.10:8080
+      ISUREAL_DB_MAX_CONNS: '64'
+  db-asia:
+    sysctls:
+      net.ipv4.tcp_slow_start_after_idle: 0
+    volumes:
+      - ./webapp-optimized/sql/001-schema.sql:/docker-entrypoint-initdb.d/001-schema.sql:ro

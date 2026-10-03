@@ -1,5 +1,7 @@
 # ISUCON2026 Portal Mock
 
+構成は app1=AP、app2=EU、app3=US、db1=AP の4台で固定です。db1 は共有 PostgreSQL 専用で HTTP routing の対象外です。
+
 `docs/geometrics-distribution.md` の開発確認用に、1チーム分の desired/applied 設定と
 決定的なベンチマーク UI を提供する独立モックです。ISUReal 本体の `compose.yaml`、
 認証、画面、API ルーティングには組み込みません。
@@ -158,13 +160,11 @@ desired stream:
 router_rpc StreamDesired '{"team":{"teamNumber":1}}'
 ```
 
-設定変更:
+設定変更（配置は app1=AP、app2=EU、app3=US に固定。リージョン更新は同値でも `invalid_argument`）:
 
 ```bash
 mock_rpc UpdateDesired '{
   "patch": {
-    "server2Region": "REGION_EU",
-    "mainServer": "SERVER_ID_SERVER3",
     "defaultCountry": "US"
   }
 }' | jq
@@ -180,11 +180,10 @@ cat >/tmp/report-applied.json <<'JSON'
     "snapshotId": "<StreamDesiredから受信した値>",
     "applied": {
       "serverRegions": {
-        "server1": "REGION_AP",
-        "server2": "REGION_EU",
-        "server3": "REGION_AP"
+        "app1": "REGION_AP",
+        "app2": "REGION_EU",
+        "app3": "REGION_US"
       },
-      "mainServer": "SERVER_ID_SERVER3",
       "defaultCountry": "US"
     }
   }
@@ -210,8 +209,8 @@ mock_rpc Reset '{}' | jq
 
 reset はベンチマークと stand-in の処理より優先され、処理をキャンセルして次へ戻します。
 
-- server1/server2/server3 = AP
-- main = server1
+- app1/app2/app3 = AP
+- main = app1
 - default country = JP
 - benchmark = idle / progress 0
 - history = 空、実行回数 = 0、最高/直近スコア = 未設定

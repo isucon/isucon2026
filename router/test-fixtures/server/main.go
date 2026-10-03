@@ -152,8 +152,8 @@ func loadConfig() (serverConfig, error) {
 		MaxFetchBytes:    8 << 20,
 		AllowedPeerHosts: make(map[string]struct{}),
 	}
-	if config.ID != "server1" && config.ID != "server2" && config.ID != "server3" {
-		return serverConfig{}, fmt.Errorf("FIXTURE_SERVER_ID must be server1, server2, or server3")
+	if config.ID != "app1" && config.ID != "app2" && config.ID != "app3" && config.ID != "db1" {
+		return serverConfig{}, fmt.Errorf("FIXTURE_SERVER_ID must be app1, app2, app3, or db1")
 	}
 	for _, host := range strings.Split(envOr("FIXTURE_PEER_HOSTS", "172.31.1.10,172.31.2.10,172.31.3.10"), ",") {
 		address, err := netip.ParseAddr(host)

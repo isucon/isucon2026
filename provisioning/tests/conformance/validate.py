@@ -22,7 +22,7 @@ DEFAULT_TOPOLOGY = REPO_ROOT / "provisioning" / "config" / "topology.yml"
 DEFAULT_RELEASE = REPO_ROOT / "provisioning" / "config" / "release.json"
 DEFAULT_STATE = REPO_ROOT / "provisioning" / ".state"
 PORTAL_GET_STATE_PATH = "/portal_mock.v1.PortalMockService/GetState"
-PORTAL_SERVER_IDS = ("server1", "server2", "server3")
+PORTAL_SERVER_IDS = ("app1", "app2", "app3")
 
 
 def run(
@@ -118,7 +118,7 @@ def colon_mac(value: str) -> str:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Validate the running four-node local VM environment")
+    parser = argparse.ArgumentParser(description="Validate the running five-node local VM environment")
     parser.add_argument("--topology", type=Path, default=DEFAULT_TOPOLOGY)
     parser.add_argument("--release", type=Path, default=DEFAULT_RELEASE)
     args = parser.parse_args()
@@ -171,7 +171,7 @@ def main() -> int:
             failures.append(f"{node} health failed: {exc}")
 
     server_segments = {
-        "server1": "server1Data", "server2": "server2Data", "server3": "server3Data",
+        "app1": "app1Data", "app2": "app2Data", "app3": "app3Data", "db1": "db1Data",
     }
     for source, source_segment in server_segments.items():
         router_address = topology["networks"][source_segment]["routerAddress"]

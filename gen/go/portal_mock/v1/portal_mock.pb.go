@@ -288,9 +288,9 @@ func (ApplyState) EnumDescriptor() ([]byte, []int) {
 
 type ServerHostnames struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Server1       string                 `protobuf:"bytes,1,opt,name=server1,proto3" json:"server1,omitempty"`
-	Server2       string                 `protobuf:"bytes,2,opt,name=server2,proto3" json:"server2,omitempty"`
-	Server3       string                 `protobuf:"bytes,3,opt,name=server3,proto3" json:"server3,omitempty"`
+	App1          string                 `protobuf:"bytes,1,opt,name=app1,proto3" json:"app1,omitempty"`
+	App2          string                 `protobuf:"bytes,2,opt,name=app2,proto3" json:"app2,omitempty"`
+	App3          string                 `protobuf:"bytes,3,opt,name=app3,proto3" json:"app3,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -325,23 +325,23 @@ func (*ServerHostnames) Descriptor() ([]byte, []int) {
 	return file_portal_mock_v1_portal_mock_proto_rawDescGZIP(), []int{0}
 }
 
-func (x *ServerHostnames) GetServer1() string {
+func (x *ServerHostnames) GetApp1() string {
 	if x != nil {
-		return x.Server1
+		return x.App1
 	}
 	return ""
 }
 
-func (x *ServerHostnames) GetServer2() string {
+func (x *ServerHostnames) GetApp2() string {
 	if x != nil {
-		return x.Server2
+		return x.App2
 	}
 	return ""
 }
 
-func (x *ServerHostnames) GetServer3() string {
+func (x *ServerHostnames) GetApp3() string {
 	if x != nil {
-		return x.Server3
+		return x.App3
 	}
 	return ""
 }
@@ -975,19 +975,17 @@ func (x *BenchmarkRuntime) GetLockReason() string {
 }
 
 type BenchmarkRun struct {
-	state            protoimpl.MessageState `protogen:"open.v1"`
-	Id               string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	Sequence         uint64                 `protobuf:"varint,2,opt,name=sequence,proto3" json:"sequence,omitempty"`
-	StartedAt        *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=started_at,json=startedAt,proto3" json:"started_at,omitempty"`
-	CompletedAt      *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=completed_at,json=completedAt,proto3" json:"completed_at,omitempty"`
-	MainServer       v1.ServerId            `protobuf:"varint,5,opt,name=main_server,json=mainServer,proto3,enum=portal.v1.ServerId" json:"main_server,omitempty"`
-	MainServerRegion v1.Region              `protobuf:"varint,6,opt,name=main_server_region,json=mainServerRegion,proto3,enum=portal.v1.Region" json:"main_server_region,omitempty"`
-	TargetHostname   string                 `protobuf:"bytes,7,opt,name=target_hostname,json=targetHostname,proto3" json:"target_hostname,omitempty"`
-	Score            uint64                 `protobuf:"varint,8,opt,name=score,proto3" json:"score,omitempty"`
-	Result           BenchmarkResult        `protobuf:"varint,9,opt,name=result,proto3,enum=portal_mock.v1.BenchmarkResult" json:"result,omitempty"`
-	Logs             []string               `protobuf:"bytes,10,rep,name=logs,proto3" json:"logs,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	Id             string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Sequence       uint64                 `protobuf:"varint,2,opt,name=sequence,proto3" json:"sequence,omitempty"`
+	StartedAt      *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=started_at,json=startedAt,proto3" json:"started_at,omitempty"`
+	CompletedAt    *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=completed_at,json=completedAt,proto3" json:"completed_at,omitempty"`
+	TargetHostname string                 `protobuf:"bytes,7,opt,name=target_hostname,json=targetHostname,proto3" json:"target_hostname,omitempty"`
+	Score          uint64                 `protobuf:"varint,8,opt,name=score,proto3" json:"score,omitempty"`
+	Result         BenchmarkResult        `protobuf:"varint,9,opt,name=result,proto3,enum=portal_mock.v1.BenchmarkResult" json:"result,omitempty"`
+	Logs           []string               `protobuf:"bytes,10,rep,name=logs,proto3" json:"logs,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *BenchmarkRun) Reset() {
@@ -1046,20 +1044,6 @@ func (x *BenchmarkRun) GetCompletedAt() *timestamppb.Timestamp {
 		return x.CompletedAt
 	}
 	return nil
-}
-
-func (x *BenchmarkRun) GetMainServer() v1.ServerId {
-	if x != nil {
-		return x.MainServer
-	}
-	return v1.ServerId(0)
-}
-
-func (x *BenchmarkRun) GetMainServerRegion() v1.Region {
-	if x != nil {
-		return x.MainServerRegion
-	}
-	return v1.Region(0)
 }
 
 func (x *BenchmarkRun) GetTargetHostname() string {
@@ -1476,12 +1460,13 @@ func (x *ListSupportedCountriesResponse) GetCountries() []*SupportedCountry {
 
 // 指定したフィールドだけを更新する。
 type DesiredPatch struct {
-	state          protoimpl.MessageState `protogen:"open.v1"`
-	Server1Region  *v1.Region             `protobuf:"varint,1,opt,name=server1_region,json=server1Region,proto3,enum=portal.v1.Region,oneof" json:"server1_region,omitempty"`
-	Server2Region  *v1.Region             `protobuf:"varint,2,opt,name=server2_region,json=server2Region,proto3,enum=portal.v1.Region,oneof" json:"server2_region,omitempty"`
-	Server3Region  *v1.Region             `protobuf:"varint,3,opt,name=server3_region,json=server3Region,proto3,enum=portal.v1.Region,oneof" json:"server3_region,omitempty"`
-	MainServer     *v1.ServerId           `protobuf:"varint,4,opt,name=main_server,json=mainServer,proto3,enum=portal.v1.ServerId,oneof" json:"main_server,omitempty"`
-	DefaultCountry *string                `protobuf:"bytes,5,opt,name=default_country,json=defaultCountry,proto3,oneof" json:"default_country,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// 互換性のためフィールドを保持するが、リージョンの指定は同値でも invalid_argument。
+	// 固定配置: app1=AP、app2=EU、app3=US。
+	App1Region     *v1.Region `protobuf:"varint,1,opt,name=app1_region,json=app1Region,proto3,enum=portal.v1.Region,oneof" json:"app1_region,omitempty"`
+	App2Region     *v1.Region `protobuf:"varint,2,opt,name=app2_region,json=app2Region,proto3,enum=portal.v1.Region,oneof" json:"app2_region,omitempty"`
+	App3Region     *v1.Region `protobuf:"varint,3,opt,name=app3_region,json=app3Region,proto3,enum=portal.v1.Region,oneof" json:"app3_region,omitempty"`
+	DefaultCountry *string    `protobuf:"bytes,5,opt,name=default_country,json=defaultCountry,proto3,oneof" json:"default_country,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -1516,32 +1501,25 @@ func (*DesiredPatch) Descriptor() ([]byte, []int) {
 	return file_portal_mock_v1_portal_mock_proto_rawDescGZIP(), []int{19}
 }
 
-func (x *DesiredPatch) GetServer1Region() v1.Region {
-	if x != nil && x.Server1Region != nil {
-		return *x.Server1Region
+func (x *DesiredPatch) GetApp1Region() v1.Region {
+	if x != nil && x.App1Region != nil {
+		return *x.App1Region
 	}
 	return v1.Region(0)
 }
 
-func (x *DesiredPatch) GetServer2Region() v1.Region {
-	if x != nil && x.Server2Region != nil {
-		return *x.Server2Region
+func (x *DesiredPatch) GetApp2Region() v1.Region {
+	if x != nil && x.App2Region != nil {
+		return *x.App2Region
 	}
 	return v1.Region(0)
 }
 
-func (x *DesiredPatch) GetServer3Region() v1.Region {
-	if x != nil && x.Server3Region != nil {
-		return *x.Server3Region
+func (x *DesiredPatch) GetApp3Region() v1.Region {
+	if x != nil && x.App3Region != nil {
+		return *x.App3Region
 	}
 	return v1.Region(0)
-}
-
-func (x *DesiredPatch) GetMainServer() v1.ServerId {
-	if x != nil && x.MainServer != nil {
-		return *x.MainServer
-	}
-	return v1.ServerId(0)
 }
 
 func (x *DesiredPatch) GetDefaultCountry() string {
@@ -1819,11 +1797,11 @@ var File_portal_mock_v1_portal_mock_proto protoreflect.FileDescriptor
 
 const file_portal_mock_v1_portal_mock_proto_rawDesc = "" +
 	"\n" +
-	" portal_mock/v1/portal_mock.proto\x12\x0eportal_mock.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x16portal/v1/portal.proto\"_\n" +
-	"\x0fServerHostnames\x12\x18\n" +
-	"\aserver1\x18\x01 \x01(\tR\aserver1\x12\x18\n" +
-	"\aserver2\x18\x02 \x01(\tR\aserver2\x12\x18\n" +
-	"\aserver3\x18\x03 \x01(\tR\aserver3\"p\n" +
+	" portal_mock/v1/portal_mock.proto\x12\x0eportal_mock.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x16portal/v1/portal.proto\"M\n" +
+	"\x0fServerHostnames\x12\x12\n" +
+	"\x04app1\x18\x01 \x01(\tR\x04app1\x12\x12\n" +
+	"\x04app2\x18\x02 \x01(\tR\x04app2\x12\x12\n" +
+	"\x04app3\x18\x03 \x01(\tR\x04app3\"p\n" +
 	"\tHostnames\x12\x10\n" +
 	"\x03app\x18\x01 \x01(\tR\x03app\x129\n" +
 	"\aservers\x18\x02 \x01(\v2\x1f.portal_mock.v1.ServerHostnamesR\aservers\x12\x16\n" +
@@ -1881,21 +1859,18 @@ const file_portal_mock_v1_portal_mock_proto_rawDesc = "" +
 	"\n" +
 	"started_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\tstartedAt\x12\x1f\n" +
 	"\vlock_reason\x18\x05 \x01(\tR\n" +
-	"lockReason\"\xb7\x03\n" +
+	"lockReason\"\xed\x02\n" +
 	"\fBenchmarkRun\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1a\n" +
 	"\bsequence\x18\x02 \x01(\x04R\bsequence\x129\n" +
 	"\n" +
 	"started_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\tstartedAt\x12=\n" +
-	"\fcompleted_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\vcompletedAt\x124\n" +
-	"\vmain_server\x18\x05 \x01(\x0e2\x13.portal.v1.ServerIdR\n" +
-	"mainServer\x12?\n" +
-	"\x12main_server_region\x18\x06 \x01(\x0e2\x11.portal.v1.RegionR\x10mainServerRegion\x12'\n" +
+	"\fcompleted_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\vcompletedAt\x12'\n" +
 	"\x0ftarget_hostname\x18\a \x01(\tR\x0etargetHostname\x12\x14\n" +
 	"\x05score\x18\b \x01(\x04R\x05score\x127\n" +
 	"\x06result\x18\t \x01(\x0e2\x1f.portal_mock.v1.BenchmarkResultR\x06result\x12\x12\n" +
 	"\x04logs\x18\n" +
-	" \x03(\tR\x04logs\"\x8e\x01\n" +
+	" \x03(\tR\x04logsJ\x04\b\x05\x10\x06J\x04\b\x06\x10\aR\vmain_serverR\x12main_server_region\"\x8e\x01\n" +
 	"\fScoreSummary\x12\x1d\n" +
 	"\n" +
 	"has_scores\x18\x01 \x01(\bR\thasScores\x12\x1d\n" +
@@ -1918,19 +1893,19 @@ const file_portal_mock_v1_portal_mock_proto_rawDesc = "" +
 	"\x05state\x18\x01 \x01(\v2\x1f.portal_mock.v1.MockPortalStateR\x05state\"\x1f\n" +
 	"\x1dListSupportedCountriesRequest\"`\n" +
 	"\x1eListSupportedCountriesResponse\x12>\n" +
-	"\tcountries\x18\x01 \x03(\v2 .portal_mock.v1.SupportedCountryR\tcountries\"\x91\x03\n" +
-	"\fDesiredPatch\x12=\n" +
-	"\x0eserver1_region\x18\x01 \x01(\x0e2\x11.portal.v1.RegionH\x00R\rserver1Region\x88\x01\x01\x12=\n" +
-	"\x0eserver2_region\x18\x02 \x01(\x0e2\x11.portal.v1.RegionH\x01R\rserver2Region\x88\x01\x01\x12=\n" +
-	"\x0eserver3_region\x18\x03 \x01(\x0e2\x11.portal.v1.RegionH\x02R\rserver3Region\x88\x01\x01\x129\n" +
-	"\vmain_server\x18\x04 \x01(\x0e2\x13.portal.v1.ServerIdH\x03R\n" +
-	"mainServer\x88\x01\x01\x12,\n" +
-	"\x0fdefault_country\x18\x05 \x01(\tH\x04R\x0edefaultCountry\x88\x01\x01B\x11\n" +
-	"\x0f_server1_regionB\x11\n" +
-	"\x0f_server2_regionB\x11\n" +
-	"\x0f_server3_regionB\x0e\n" +
-	"\f_main_serverB\x12\n" +
-	"\x10_default_country\"J\n" +
+	"\tcountries\x18\x01 \x03(\v2 .portal_mock.v1.SupportedCountryR\tcountries\"\xbe\x02\n" +
+	"\fDesiredPatch\x127\n" +
+	"\vapp1_region\x18\x01 \x01(\x0e2\x11.portal.v1.RegionH\x00R\n" +
+	"app1Region\x88\x01\x01\x127\n" +
+	"\vapp2_region\x18\x02 \x01(\x0e2\x11.portal.v1.RegionH\x01R\n" +
+	"app2Region\x88\x01\x01\x127\n" +
+	"\vapp3_region\x18\x03 \x01(\x0e2\x11.portal.v1.RegionH\x02R\n" +
+	"app3Region\x88\x01\x01\x12,\n" +
+	"\x0fdefault_country\x18\x05 \x01(\tH\x03R\x0edefaultCountry\x88\x01\x01B\x0e\n" +
+	"\f_app1_regionB\x0e\n" +
+	"\f_app2_regionB\x0e\n" +
+	"\f_app3_regionB\x12\n" +
+	"\x10_default_countryJ\x04\b\x04\x10\x05R\vmain_server\"J\n" +
 	"\x14UpdateDesiredRequest\x122\n" +
 	"\x05patch\x18\x01 \x01(\v2\x1c.portal_mock.v1.DesiredPatchR\x05patch\"\xa2\x01\n" +
 	"\x15UpdateDesiredResponse\x12\x18\n" +
@@ -2030,7 +2005,6 @@ var file_portal_mock_v1_portal_mock_proto_goTypes = []any{
 	(*v1.Config)(nil),                      // 32: portal.v1.Config
 	(*timestamppb.Timestamp)(nil),          // 33: google.protobuf.Timestamp
 	(*v1.TeamKey)(nil),                     // 34: portal.v1.TeamKey
-	(v1.ServerId)(0),                       // 35: portal.v1.ServerId
 }
 var file_portal_mock_v1_portal_mock_proto_depIdxs = []int32{
 	5,  // 0: portal_mock.v1.Hostnames.servers:type_name -> portal_mock.v1.ServerHostnames
@@ -2057,43 +2031,40 @@ var file_portal_mock_v1_portal_mock_proto_depIdxs = []int32{
 	33, // 21: portal_mock.v1.BenchmarkRuntime.started_at:type_name -> google.protobuf.Timestamp
 	33, // 22: portal_mock.v1.BenchmarkRun.started_at:type_name -> google.protobuf.Timestamp
 	33, // 23: portal_mock.v1.BenchmarkRun.completed_at:type_name -> google.protobuf.Timestamp
-	35, // 24: portal_mock.v1.BenchmarkRun.main_server:type_name -> portal.v1.ServerId
-	31, // 25: portal_mock.v1.BenchmarkRun.main_server_region:type_name -> portal.v1.Region
-	3,  // 26: portal_mock.v1.BenchmarkRun.result:type_name -> portal_mock.v1.BenchmarkResult
-	13, // 27: portal_mock.v1.MockPortalState.runtime:type_name -> portal_mock.v1.MockRuntime
-	12, // 28: portal_mock.v1.MockPortalState.portal:type_name -> portal_mock.v1.PortalState
-	14, // 29: portal_mock.v1.MockPortalState.benchmark:type_name -> portal_mock.v1.BenchmarkRuntime
-	16, // 30: portal_mock.v1.MockPortalState.scores:type_name -> portal_mock.v1.ScoreSummary
-	15, // 31: portal_mock.v1.MockPortalState.history:type_name -> portal_mock.v1.BenchmarkRun
-	17, // 32: portal_mock.v1.GetStateResponse.state:type_name -> portal_mock.v1.MockPortalState
-	17, // 33: portal_mock.v1.StreamStateResponse.state:type_name -> portal_mock.v1.MockPortalState
-	11, // 34: portal_mock.v1.ListSupportedCountriesResponse.countries:type_name -> portal_mock.v1.SupportedCountry
-	31, // 35: portal_mock.v1.DesiredPatch.server1_region:type_name -> portal.v1.Region
-	31, // 36: portal_mock.v1.DesiredPatch.server2_region:type_name -> portal.v1.Region
-	31, // 37: portal_mock.v1.DesiredPatch.server3_region:type_name -> portal.v1.Region
-	35, // 38: portal_mock.v1.DesiredPatch.main_server:type_name -> portal.v1.ServerId
-	24, // 39: portal_mock.v1.UpdateDesiredRequest.patch:type_name -> portal_mock.v1.DesiredPatch
-	8,  // 40: portal_mock.v1.UpdateDesiredResponse.desired:type_name -> portal_mock.v1.ConfigSnapshot
-	10, // 41: portal_mock.v1.UpdateDesiredResponse.apply:type_name -> portal_mock.v1.ApplyDiagnostic
-	14, // 42: portal_mock.v1.StartBenchmarkResponse.benchmark:type_name -> portal_mock.v1.BenchmarkRuntime
-	17, // 43: portal_mock.v1.ResetResponse.state:type_name -> portal_mock.v1.MockPortalState
-	18, // 44: portal_mock.v1.PortalMockService.GetState:input_type -> portal_mock.v1.GetStateRequest
-	20, // 45: portal_mock.v1.PortalMockService.StreamState:input_type -> portal_mock.v1.StreamStateRequest
-	22, // 46: portal_mock.v1.PortalMockService.ListSupportedCountries:input_type -> portal_mock.v1.ListSupportedCountriesRequest
-	25, // 47: portal_mock.v1.PortalMockService.UpdateDesired:input_type -> portal_mock.v1.UpdateDesiredRequest
-	27, // 48: portal_mock.v1.PortalMockService.StartBenchmark:input_type -> portal_mock.v1.StartBenchmarkRequest
-	29, // 49: portal_mock.v1.PortalMockService.Reset:input_type -> portal_mock.v1.ResetRequest
-	19, // 50: portal_mock.v1.PortalMockService.GetState:output_type -> portal_mock.v1.GetStateResponse
-	21, // 51: portal_mock.v1.PortalMockService.StreamState:output_type -> portal_mock.v1.StreamStateResponse
-	23, // 52: portal_mock.v1.PortalMockService.ListSupportedCountries:output_type -> portal_mock.v1.ListSupportedCountriesResponse
-	26, // 53: portal_mock.v1.PortalMockService.UpdateDesired:output_type -> portal_mock.v1.UpdateDesiredResponse
-	28, // 54: portal_mock.v1.PortalMockService.StartBenchmark:output_type -> portal_mock.v1.StartBenchmarkResponse
-	30, // 55: portal_mock.v1.PortalMockService.Reset:output_type -> portal_mock.v1.ResetResponse
-	50, // [50:56] is the sub-list for method output_type
-	44, // [44:50] is the sub-list for method input_type
-	44, // [44:44] is the sub-list for extension type_name
-	44, // [44:44] is the sub-list for extension extendee
-	0,  // [0:44] is the sub-list for field type_name
+	3,  // 24: portal_mock.v1.BenchmarkRun.result:type_name -> portal_mock.v1.BenchmarkResult
+	13, // 25: portal_mock.v1.MockPortalState.runtime:type_name -> portal_mock.v1.MockRuntime
+	12, // 26: portal_mock.v1.MockPortalState.portal:type_name -> portal_mock.v1.PortalState
+	14, // 27: portal_mock.v1.MockPortalState.benchmark:type_name -> portal_mock.v1.BenchmarkRuntime
+	16, // 28: portal_mock.v1.MockPortalState.scores:type_name -> portal_mock.v1.ScoreSummary
+	15, // 29: portal_mock.v1.MockPortalState.history:type_name -> portal_mock.v1.BenchmarkRun
+	17, // 30: portal_mock.v1.GetStateResponse.state:type_name -> portal_mock.v1.MockPortalState
+	17, // 31: portal_mock.v1.StreamStateResponse.state:type_name -> portal_mock.v1.MockPortalState
+	11, // 32: portal_mock.v1.ListSupportedCountriesResponse.countries:type_name -> portal_mock.v1.SupportedCountry
+	31, // 33: portal_mock.v1.DesiredPatch.app1_region:type_name -> portal.v1.Region
+	31, // 34: portal_mock.v1.DesiredPatch.app2_region:type_name -> portal.v1.Region
+	31, // 35: portal_mock.v1.DesiredPatch.app3_region:type_name -> portal.v1.Region
+	24, // 36: portal_mock.v1.UpdateDesiredRequest.patch:type_name -> portal_mock.v1.DesiredPatch
+	8,  // 37: portal_mock.v1.UpdateDesiredResponse.desired:type_name -> portal_mock.v1.ConfigSnapshot
+	10, // 38: portal_mock.v1.UpdateDesiredResponse.apply:type_name -> portal_mock.v1.ApplyDiagnostic
+	14, // 39: portal_mock.v1.StartBenchmarkResponse.benchmark:type_name -> portal_mock.v1.BenchmarkRuntime
+	17, // 40: portal_mock.v1.ResetResponse.state:type_name -> portal_mock.v1.MockPortalState
+	18, // 41: portal_mock.v1.PortalMockService.GetState:input_type -> portal_mock.v1.GetStateRequest
+	20, // 42: portal_mock.v1.PortalMockService.StreamState:input_type -> portal_mock.v1.StreamStateRequest
+	22, // 43: portal_mock.v1.PortalMockService.ListSupportedCountries:input_type -> portal_mock.v1.ListSupportedCountriesRequest
+	25, // 44: portal_mock.v1.PortalMockService.UpdateDesired:input_type -> portal_mock.v1.UpdateDesiredRequest
+	27, // 45: portal_mock.v1.PortalMockService.StartBenchmark:input_type -> portal_mock.v1.StartBenchmarkRequest
+	29, // 46: portal_mock.v1.PortalMockService.Reset:input_type -> portal_mock.v1.ResetRequest
+	19, // 47: portal_mock.v1.PortalMockService.GetState:output_type -> portal_mock.v1.GetStateResponse
+	21, // 48: portal_mock.v1.PortalMockService.StreamState:output_type -> portal_mock.v1.StreamStateResponse
+	23, // 49: portal_mock.v1.PortalMockService.ListSupportedCountries:output_type -> portal_mock.v1.ListSupportedCountriesResponse
+	26, // 50: portal_mock.v1.PortalMockService.UpdateDesired:output_type -> portal_mock.v1.UpdateDesiredResponse
+	28, // 51: portal_mock.v1.PortalMockService.StartBenchmark:output_type -> portal_mock.v1.StartBenchmarkResponse
+	30, // 52: portal_mock.v1.PortalMockService.Reset:output_type -> portal_mock.v1.ResetResponse
+	47, // [47:53] is the sub-list for method output_type
+	41, // [41:47] is the sub-list for method input_type
+	41, // [41:41] is the sub-list for extension type_name
+	41, // [41:41] is the sub-list for extension extendee
+	0,  // [0:41] is the sub-list for field type_name
 }
 
 func init() { file_portal_mock_v1_portal_mock_proto_init() }

@@ -104,11 +104,11 @@ func ReceiveWithin[T any](t *testing.T, ctx context.Context, receive func() bool
 func ConfigProto(config domain.Config) *portalv1.Config {
 	return &portalv1.Config{
 		ServerRegions: &portalv1.ServerRegions{
-			Server1: config.Server1Region,
-			Server2: config.Server2Region,
-			Server3: config.Server3Region,
+			App1: config.App1Region,
+			App2: config.App2Region,
+			App3: config.App3Region,
+			Db1:  domain.RegionAP,
 		},
-		MainServer:     config.MainServer,
 		DefaultCountry: config.DefaultCountry,
 	}
 }

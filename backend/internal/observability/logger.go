@@ -10,7 +10,7 @@ import (
 )
 
 var forbiddenKeys = []string{
-	"password", "token", "authorization", "cookie", "idempotency", "image", "caption", "comment",
+	"password", "secret", "token", "authorization", "cookie", "idempotency", "image", "caption", "comment",
 	"body", "bio", "latitude", "longitude", "endpoint", "p256dh", "auth_secret", "vapid_private",
 }
 

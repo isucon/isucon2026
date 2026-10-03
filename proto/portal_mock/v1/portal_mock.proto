@@ -63,9 +63,9 @@ enum ApplyState {
 }
 
 message ServerHostnames {
-  string server1 = 1;
-  string server2 = 2;
-  string server3 = 3;
+  string app1 = 1;
+  string app2 = 2;
+  string app3 = 3;
 }
 
 message Hostnames {
@@ -138,8 +138,8 @@ message BenchmarkRun {
   uint64 sequence = 2;
   google.protobuf.Timestamp started_at = 3;
   google.protobuf.Timestamp completed_at = 4;
-  portal.v1.ServerId main_server = 5;
-  portal.v1.Region main_server_region = 6;
+  reserved 5, 6;
+  reserved "main_server", "main_server_region";
   string target_hostname = 7;
   uint64 score = 8;
   BenchmarkResult result = 9;
@@ -178,10 +178,13 @@ message ListSupportedCountriesResponse {
 
 // 指定したフィールドだけを更新する。
 message DesiredPatch {
-  optional portal.v1.Region server1_region = 1;
-  optional portal.v1.Region server2_region = 2;
-  optional portal.v1.Region server3_region = 3;
-  optional portal.v1.ServerId main_server = 4;
+  // 互換性のためフィールドを保持するが、リージョンの指定は同値でも invalid_argument。
+  // 固定配置: app1=AP、app2=EU、app3=US。
+  optional portal.v1.Region app1_region = 1;
+  optional portal.v1.Region app2_region = 2;
+  optional portal.v1.Region app3_region = 3;
+  reserved 4;
+  reserved "main_server";
   optional string default_country = 5;
 }
 

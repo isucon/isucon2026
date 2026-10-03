@@ -7,8 +7,15 @@
     - role: common
     - role: runtime_network
 
-- name: Configure PostgreSQL and native application stack
-  hosts: problem_servers
+- name: Configure shared Asia database before applications
+  hosts: db_servers
+  become: true
+  gather_facts: false
+  roles:
+    - role: problem_server
+
+- name: Configure native application stack
+  hosts: app_servers
   become: true
   gather_facts: false
   roles:

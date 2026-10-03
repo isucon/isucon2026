@@ -17,6 +17,7 @@ FROM golang:1.26.5-alpine@sha256:0178a641fbb4858c5f1b48e34bdaabe0350a330a1b1149a
 WORKDIR /src/bench
 COPY bench/ ./
 COPY portal/ /src/portal/
+COPY dataset/ /src/dataset/
 RUN CGO_ENABLED=0 go build -trimpath -o /out/isureal-bench .
 
 FROM debian:bookworm-slim@sha256:3783cc01769c7b2b1b83a5c5ad96c815348e28ed7da68e2e3687004faa906251 AS runtime

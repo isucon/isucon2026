@@ -50,11 +50,11 @@ func NewRouter(dependencies RouterDependencies) *echo.Echo {
 		return c.JSON(http.StatusOK, map[string]any{"status": "ok"})
 	})
 	e.GET("/health/ready", func(c *echo.Context) error {
-		var version int64
-		if err := dependencies.DB.Pool.QueryRow(c.Request().Context(), `SELECT COALESCE(max(version),0) FROM schema_migrations`).Scan(&version); err != nil {
+		var one int
+		if err := dependencies.DB.Pool.QueryRow(c.Request().Context(), `SELECT 1`).Scan(&one); err != nil {
 			return ServiceUnavailable("database_unavailable", err)
 		}
-		return c.JSON(http.StatusOK, map[string]any{"status": "ready", "migrationVersion": version})
+		return c.JSON(http.StatusOK, map[string]any{"status": "ready"})
 	})
 
 	if dependencies.Initialize != nil {

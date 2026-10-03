@@ -1,6 +1,6 @@
-// Package imagegen produces deterministic JPEG fixtures for load generation.
-// The application accepts JPEG only (leading FF D8 and decodable by Go's
-// image/jpeg), so the fixtures are encoded with the same standard library.
+// Package imagegen は負荷生成用の決定的な JPEG を作る。アプリは JPEG
+// （先頭が FF D8 で Go の image/jpeg でデコードできるもの）しか受け付けないので、
+// 同じ標準ライブラリでエンコードする。
 package imagegen
 
 import (
@@ -13,8 +13,8 @@ import (
 
 const encodeQuality = 80
 
-// JPEG renders a width x height gradient-with-noise image. The same seed
-// always produces identical bytes so runs are reproducible (CAL-01).
+// JPEG は width x height のノイズ入りグラデーション画像を作る。同じ seed なら
+// 常に同じバイト列になるので、走行を再現できる（CAL-01）。
 func JPEG(width, height int, seed uint64) ([]byte, error) {
 	random := rand.New(rand.NewPCG(seed, seed))
 	picture := image.NewRGBA(image.Rect(0, 0, width, height))

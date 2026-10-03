@@ -75,7 +75,7 @@ remove_stale_vm_folders() {
     return 0
   fi
   local node name folder
-  for node in server1 server2 server3 router; do
+  for node in app1 app2 app3 db1 router; do
     name="${environment_id}-${node}"
     if VBoxManage showvminfo "${name}" >/dev/null 2>&1; then
       continue
@@ -178,7 +178,7 @@ case "${action}" in
     fi
     ;;
   logs)
-    for node in server1 server2 server3 router; do
+    for node in app1 app2 app3 db1 router; do
       printf '\n[%s]\n' "${node}"
       vagrant_cmd ssh "${node}" -c "sudo journalctl --no-pager -n ${VM_LOG_LINES:-200} -u 'isureal-*' -u nginx -u postgresql" 2>&1 || true
     done | sed -E 's#(postgresql://[^:[:space:]]+:)[^@[:space:]]+#\1[REDACTED]#g; s/(HMAC|TOKEN|PASSWORD|PRIVATE_KEY)=([^[:space:]]+)/\1=[REDACTED]/g'

@@ -138,15 +138,18 @@
     "sshPorts": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["server1", "server2", "server3", "router"],
+      "required": ["app1", "app2", "app3", "db1", "router"],
       "properties": {
-        "server1": {
+        "app1": {
           "$ref": "#/$defs/tcpPort"
         },
-        "server2": {
+        "app2": {
           "$ref": "#/$defs/tcpPort"
         },
-        "server3": {
+        "app3": {
+          "$ref": "#/$defs/tcpPort"
+        },
+        "db1": {
           "$ref": "#/$defs/tcpPort"
         },
         "router": {
@@ -178,15 +181,18 @@
     "networks": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["server1Data", "server2Data", "server3Data", "control"],
+      "required": ["app1Data", "app2Data", "app3Data", "db1Data", "control"],
       "properties": {
-        "server1Data": {
+        "app1Data": {
           "$ref": "#/$defs/internalSegment"
         },
-        "server2Data": {
+        "app2Data": {
           "$ref": "#/$defs/internalSegment"
         },
-        "server3Data": {
+        "app3Data": {
+          "$ref": "#/$defs/internalSegment"
+        },
+        "db1Data": {
           "$ref": "#/$defs/internalSegment"
         },
         "control": {
@@ -197,15 +203,18 @@
     "nodes": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["server1", "server2", "server3", "router"],
+      "required": ["app1", "app2", "app3", "db1", "router"],
       "properties": {
-        "server1": {
+        "app1": {
           "$ref": "#/$defs/problemNode"
         },
-        "server2": {
+        "app2": {
           "$ref": "#/$defs/problemNode"
         },
-        "server3": {
+        "app3": {
+          "$ref": "#/$defs/problemNode"
+        },
+        "db1": {
           "$ref": "#/$defs/problemNode"
         },
         "router": {
@@ -315,13 +324,13 @@
       "required": ["role", "mode", "segment", "macAddress"],
       "properties": {
         "role": {
-          "enum": ["data0", "data1", "data2", "data3", "control0"]
+          "enum": ["data0", "data1", "data2", "data3", "data4", "control0"]
         },
         "mode": {
           "enum": ["intnet", "hostonly"]
         },
         "segment": {
-          "enum": ["server1Data", "server2Data", "server3Data", "control"]
+          "enum": ["app1Data", "app2Data", "app3Data", "db1Data", "control"]
         },
         "macAddress": {
           "$ref": "#/$defs/mac"
@@ -385,11 +394,14 @@
             },
             {
               "$ref": "#/$defs/segmentInterface"
+            },
+            {
+              "$ref": "#/$defs/segmentInterface"
             }
           ],
           "items": false,
-          "minItems": 5,
-          "maxItems": 5
+          "minItems": 6,
+          "maxItems": 6
         }
       }
     }

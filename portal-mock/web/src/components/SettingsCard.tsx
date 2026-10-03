@@ -4,30 +4,23 @@ import { useState } from 'react';
 import { regionLabel, serverLabel } from '../app/format';
 
 const SERVERS = [
-  { id: ServerId.SERVER1, key: 'server1' as const },
-  { id: ServerId.SERVER2, key: 'server2' as const },
-  { id: ServerId.SERVER3, key: 'server3' as const },
+  { id: ServerId.APP1, key: 'app1' as const },
+  { id: ServerId.APP2, key: 'app2' as const },
+  { id: ServerId.APP3, key: 'app3' as const },
 ];
-
-const REGIONS = [Region.US, Region.AP, Region.EU];
 
 export interface SettingsCardProps {
   desired?: Config;
   applied?: Config;
   desiredCalculated?: CalculatedConfig;
   appliedCalculated?: CalculatedConfig;
-  locked: boolean;
-  busy: boolean;
-  lockReason?: string;
-  onMainServerChange: (server: ServerId) => void;
-  onRegionChange: (server: 'server1' | 'server2' | 'server3', region: Region) => void;
 }
 
-function getRegion(config: Config | undefined, key: 'server1' | 'server2' | 'server3') {
+function getRegion(config: Config | undefined, key: 'app1' | 'app2' | 'app3' | 'db1') {
   return config?.serverRegions?.[key] ?? Region.UNSPECIFIED;
 }
 
-function hostnameFor(calculated: CalculatedConfig | undefined, key: 'server1' | 'server2' | 'server3') {
+function hostnameFor(calculated: CalculatedConfig | undefined, key: 'app1' | 'app2' | 'app3') {
   return calculated?.hostnames?.servers?.[key] ?? '—';
 }
 
@@ -36,14 +29,8 @@ export function SettingsCard({
   applied,
   desiredCalculated,
   appliedCalculated,
-  locked,
-  busy,
-  lockReason,
-  onMainServerChange,
-  onRegionChange,
 }: SettingsCardProps) {
   const [copied, setCopied] = useState<string | null>(null);
-  const disabled = locked || busy || !desired;
 
   const copy = async (key: string, value: string) => {
     if (!value || value === '—') return;
@@ -58,62 +45,28 @@ export function SettingsCard({
 
   return (
     <>
-      <section className="card settings-card" aria-labelledby="main-server-heading">
+      <section className="card settings-card" aria-labelledby="routing-heading">
         <div className="settings-card__heading">
           <div>
-            <h2 id="main-server-heading">メイン接続先</h2>
-            <p>Router が報告した applied の接続先がベンチ実行対象です</p>
+            <h2 id="routing-heading">国別自動ルーティング</h2>
+            <p>ユーザーの国に対応するリージョンのサーバーへ接続します</p>
           </div>
-          {desired?.mainServer !== applied?.mainServer && (
-            <span className="pending-label">反映待ち</span>
-          )}
-        </div>
-        <div className="server-choice" role="radiogroup" aria-label="メイン接続先サーバー">
-          {SERVERS.map(({ id }) => {
-            const desiredSelected = desired?.mainServer === id;
-            const appliedSelected = applied?.mainServer === id;
-            return (
-              <button
-                type="button"
-                role="radio"
-                aria-checked={desiredSelected}
-                key={id}
-                disabled={disabled}
-                className={[
-                  'server-choice__button',
-                  desiredSelected ? 'is-desired' : '',
-                  appliedSelected ? 'is-applied' : '',
-                  desiredSelected && !appliedSelected ? 'is-pending' : '',
-                ].join(' ')}
-                onClick={() => onMainServerChange(id)}
-              >
-                <span>{serverLabel(id)}</span>
-                <small>{appliedSelected ? 'applied' : desiredSelected ? 'desired' : ' '}</small>
-              </button>
-            );
-          })}
         </div>
         <div className="hostname-row">
-          <span className="mono" title={appliedCalculated?.hostnames?.target || undefined}>
-            {appliedCalculated?.hostnames?.target || 'applied の接続先は未同期です'}
-          </span>
-          <button
-            type="button"
-            className="copy-button"
-            disabled={!appliedCalculated?.hostnames?.target}
-            onClick={() => void copy('target', appliedCalculated?.hostnames?.target ?? '')}
-          >
-            {copied === 'target' ? 'コピー済' : 'コピー'}
+          <span className="mono">{appliedCalculated?.hostnames?.app || '接続先は未同期です'}</span>
+          <button type="button" className="copy-button"
+            disabled={!appliedCalculated?.hostnames?.app}
+            onClick={() => void copy('app', appliedCalculated?.hostnames?.app ?? '')}>
+            {copied === 'app' ? 'コピー済' : 'コピー'}
           </button>
         </div>
-        {locked && lockReason && <p className="lock-note">{lockReason}</p>}
       </section>
 
       <section className="card settings-card settings-card--servers" aria-labelledby="server-regions-heading">
         <div className="settings-card__heading">
           <div>
-            <h2 id="server-regions-heading">サーバー個別設定</h2>
-            <p>各サーバーを配置するリージョンを選択します</p>
+            <h2 id="server-regions-heading">サーバー配置</h2>
+            <p>app1=AP、app2=EU、app3=US、db1=AP に固定されています</p>
           </div>
         </div>
         <div className="server-settings">
@@ -145,22 +98,7 @@ export function SettingsCard({
                   {hostname}
                 </div>
                 <div className="server-setting__controls">
-                  <label htmlFor={`${key}-region`}>{serverLabel(id)} の desired リージョン</label>
-                  <select
-                    id={`${key}-region`}
-                    className={pending ? 'control control--pending' : 'control'}
-                    value={desiredRegion}
-                    disabled={disabled}
-                    onChange={(event) =>
-                      onRegionChange(key, Number(event.target.value) as Region)
-                    }
-                  >
-                    {REGIONS.map((region) => (
-                      <option key={region} value={region}>
-                        {regionLabel(region)}
-                      </option>
-                    ))}
-                  </select>
+                  <span aria-label={`${key} の固定リージョン`}>{regionLabel(desiredRegion)}</span>
                   <span className="applied-value">
                     applied: <strong>{regionLabel(appliedRegion)}</strong>
                   </span>
@@ -168,6 +106,11 @@ export function SettingsCard({
               </div>
             );
           })}
+          <div className="server-setting">
+            <span className="mono server-name">db1</span>
+            <span aria-label="db1 の固定リージョン">{regionLabel(getRegion(desired, 'db1'))}</span>
+            <p>データベース専用（HTTP ルーティング対象外）</p>
+          </div>
         </div>
       </section>
     </>

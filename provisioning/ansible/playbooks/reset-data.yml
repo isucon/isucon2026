@@ -1,26 +1,24 @@
 ---
 - name: Explicitly reset deterministic PostgreSQL application data
-  hosts: problem_servers
+  hosts: db_servers
   become: true
   gather_facts: false
-  serial: 1
   tasks:
     - name: Reset application data while guaranteeing service recovery
       block:
         - name: Stop native application services for reset
           ansible.builtin.systemd_service:
-            name: "{{ item }}"
+            name: "{{ item.1 }}"
             state: stopped
-          loop:
-            - isureal-api.service
-            - isureal-worker.service
+          delegate_to: "{{ item.0 }}"
+          loop: "{{ groups['app_servers'] | product(['isureal-api.service', 'isureal-worker.service']) | list }}"
 
         - name: Reset schema and deterministic fixture
           ansible.builtin.command:
             argv:
               - /opt/isucon/bin/seed
-              - --dir
-              - /opt/isucon/share/migrations
+              - --schema
+              - /opt/isucon/share/schema.sql
           environment:
             ISUREAL_DATABASE_URL: "postgresql://isureal:{{ isucon_database_password }}@127.0.0.1:5432/isureal?sslmode=disable"
           no_log: true
@@ -28,8 +26,7 @@
       always:
         - name: Restore native application services after reset attempt
           ansible.builtin.systemd_service:
-            name: "{{ item }}"
+            name: "{{ item.1 }}"
             state: started
-          loop:
-            - isureal-api.service
-            - isureal-worker.service
+          delegate_to: "{{ item.0 }}"
+          loop: "{{ groups['app_servers'] | product(['isureal-api.service', 'isureal-worker.service']) | list }}"

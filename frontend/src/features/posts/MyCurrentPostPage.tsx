@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { APIError } from '../../api/client';
 import { deletePost, getMyCurrentPost, updatePost, type Post, type Visibility } from '../../api/posts';
-import { AuthenticatedImage } from '../../app/AuthenticatedImage';
 
 export function MyCurrentPostPage(): React.JSX.Element {
   const [post, setPost] = useState<Post | null>(null);
@@ -25,7 +24,7 @@ export function MyCurrentPostPage(): React.JSX.Element {
     try { await deletePost(post.id); setPost(null); }
     catch { setError('投稿を削除できませんでした。'); }
   }
-  return <section className="panel"><h1>自分の現在の投稿</h1><AuthenticatedImage className="post-image" src={post.imageUrl} alt="自分の投稿画像" />
+  return <section className="panel"><h1>自分の現在の投稿</h1><img className="post-image" src={post.imageUrl} alt="自分の投稿画像" />
     <p>{post.onTime ? '時間内の投稿' : `${post.lateSeconds}秒遅れ`}</p>
     <label>キャプション<textarea maxLength={1000} value={caption} onChange={(event) => setCaption(event.target.value)} /></label>
     <label>公開範囲<select value={visibility} onChange={(event) => setVisibility(event.target.value as Visibility)}><option value="friends">友達</option><option value="friends_of_friends">友達の友達</option><option value="public">公開</option></select></label>

@@ -18,11 +18,11 @@
 docker compose up
 ```
 
-PostgreSQLのhealth check後に、`init`サービスがmigrationと初回だけのminimal fixture投入を完了し、API、worker、Webクライアントが依存順に起動する。バックグラウンド起動は`docker compose up -d`、停止は`docker compose down`を使う。
+PostgreSQLのhealth check後に、`init`サービスが`schema.sql`と初回だけのminimal fixture投入を完了し、API、worker、Webクライアントが依存順に起動する。バックグラウンド起動は`docker compose up -d`、停止は`docker compose down`を使う。
 
 期待結果:
 
-- `GET /health/ready`が成功し、DBマイグレーション版を返す。
+- `GET /health/ready`が成功する。
 - WebクライアントがAPIとService Workerを読み込む。
 - 同じ起動コマンドを再実行しても既存データは保持される。完全初期化が必要な場合だけ`docker compose down --volumes`後に再起動する。
 

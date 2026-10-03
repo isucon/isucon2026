@@ -1,10 +1,10 @@
 import { expect, test } from '@playwright/test';
 
 test('検索から関係操作をキーボードで実行できる', async ({ page }) => {
-  await page.route('**/api/v1/**', async (route) => {
+  await page.route('**://*/api/**', async (route) => {
     const url = new URL(route.request().url());
     const user = { id: '10000000-0000-0000-0000-000000000001', username: 'bob', displayName: 'Bob', profileImageUrl: null, bio: 'public', accountType: 'certified_public' };
-    if (url.pathname === '/api/v1/users') { await route.fulfill({ json: { items: [user], nextCursor: null } }); return; }
+    if (url.pathname === '/api/users') { await route.fulfill({ json: { items: [user], hasMore: false } }); return; }
     if (url.pathname.includes('/users/')) { await route.fulfill({ json: user }); return; }
     await route.fulfill({ status: 204 });
   });

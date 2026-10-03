@@ -5,6 +5,10 @@ import { MemoryRouter } from "react-router-dom";
 import { expect, test, vi } from "vitest";
 import { LoginPage } from "../../src/features/auth/LoginPage";
 
+vi.mock("../../src/app/auth", () => ({
+  getSecretKey: () => Promise.resolve(null),
+}));
+
 test("ログアウト後のログイン画面はマウント時にユーザー名へフォーカスする", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const container = document.createElement("div");

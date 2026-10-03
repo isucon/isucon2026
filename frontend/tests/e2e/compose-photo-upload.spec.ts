@@ -5,32 +5,32 @@ test.skip(process.env.ISUREAL_COMPOSE_E2E !== '1', 'composeで起動した実環
 test('compose実環境でカメラ撮影とGPS位置を含む写真を投稿して配信できる', async ({ page, request }) => {
   const suffix = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
   const username = `compose${suffix}`;
-  const password = 'compose-password-1';
 
-  const registration = await request.post('/api/v1/auth/register', {
-    headers: { 'Idempotency-Key': crypto.randomUUID() },
-    data: { username, password, displayName: `Compose ${suffix}`, region: 'asia' },
+  const registration = await request.post('/api/auth/register', {
+    data: { username, displayName: `Compose ${suffix}`, region: 'asia' },
   });
   expect(registration.status()).toBe(201);
-  const { token } = await registration.json() as { token: string };
+  const { secretKey } = await registration.json() as { secretKey: string };
+  const login = await request.post('/api/auth/login', { data: { username, secretKey } });
+  expect(login.status()).toBe(200);
+  const { token } = await login.json() as { token: string };
   const authorization = { Authorization: `Bearer ${token}` };
 
-  let currentWindow = await request.get('/api/v1/posting-window/current', { headers: authorization });
+  let currentWindow = await request.get('/api/posting-window/current', { headers: authorization });
   const currentWindowBody = await currentWindow.json() as { window: unknown };
   if (currentWindowBody.window === null) {
-    const adminLogin = await request.post('/api/v1/admin/auth/login', {
-      headers: { 'Idempotency-Key': crypto.randomUUID() },
-      data: { username: 'root', password: 'admin-password' },
+    const adminLogin = await request.post('/api/admin/auth/login', {
+        data: { username: 'admin', password: 'password1234' },
     });
     expect(adminLogin.status()).toBe(200);
     const { token: adminToken } = await adminLogin.json() as { token: string };
-    const schedule = await request.put('/api/v1/admin/regions/asia/schedule', {
-      headers: { Authorization: `Bearer ${adminToken}`, 'Idempotency-Key': crypto.randomUUID() },
-      data: { scheduledAt: new Date(Date.now() + 1_000).toISOString() },
+    const schedule = await request.post('/api/admin/posting-window', {
+      headers: { Authorization: `Bearer ${adminToken}` },
+      data: { region: 'asia', localDate: new Date().toISOString().slice(0, 10) },
     });
-    expect(schedule.status()).toBe(200);
+    expect(schedule.status()).toBe(201);
     await expect.poll(async () => {
-      currentWindow = await request.get('/api/v1/posting-window/current', { headers: authorization });
+      currentWindow = await request.get('/api/posting-window/current', { headers: authorization });
       return currentWindow.status();
     }, { timeout: 10_000 }).toBe(200);
   } else {
@@ -71,7 +71,7 @@ test('compose実環境でカメラ撮影とGPS位置を含む写真を投稿し�
   await expect(page.locator('input[type=number]')).toHaveCount(0);
 
   const postResponsePromise = page.waitForResponse((response) =>
-    response.url().endsWith('/api/v1/posts') && response.request().method() === 'POST',
+    response.url().endsWith('/api/posts') && response.request().method() === 'POST',
   );
   await page.getByRole('button', { name: '投稿する' }).click();
   const postResponse = await postResponsePromise;
