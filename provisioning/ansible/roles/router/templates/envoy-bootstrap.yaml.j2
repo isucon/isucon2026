@@ -35,8 +35,8 @@ static_resources:
                 merge_slashes: true
                 internal_address_config:
                   cidr_ranges:
-                    - address_prefix: {{ isucon_topology.baseCidr.split('/')[0] }}
-                      prefix_len: {{ isucon_topology.baseCidr.split('/')[1] }}
+                    - address_prefix: {{ internal_cidr.split('/')[0] }}
+                      prefix_len: {{ internal_cidr.split('/')[1] }}
                 rds:
                   route_config_name: isureal_routes
                   config_source:
@@ -82,8 +82,8 @@ static_resources:
                 merge_slashes: true
                 internal_address_config:
                   cidr_ranges:
-                    - address_prefix: {{ isucon_topology.baseCidr.split('/')[0] }}
-                      prefix_len: {{ isucon_topology.baseCidr.split('/')[1] }}
+                    - address_prefix: {{ internal_cidr.split('/')[0] }}
+                      prefix_len: {{ internal_cidr.split('/')[1] }}
                 rds:
                   route_config_name: isureal_routes
                   config_source:
@@ -121,8 +121,8 @@ static_resources:
                     socket_address:
                       address: 127.0.0.1
                       port_value: 18000
-{% for server in ['app1', 'app2', 'app3'] %}
-    - name: {{ server }}
+{% for server in servers if server.name != 'db1' %}
+    - name: {{ server.name }}
       type: STATIC
       connect_timeout: 2s
       circuit_breakers:
@@ -132,12 +132,12 @@ static_resources:
             max_pending_requests: 100000
             max_requests: 100000
       load_assignment:
-        cluster_name: {{ server }}
+        cluster_name: {{ server.name }}
         endpoints:
           - lb_endpoints:
               - endpoint:
                   address:
                     socket_address:
-                      address: {{ isucon_topology.networks[server + 'Data'].peerAddress }}
-                      port_value: 8080
+                      address: {{ server.address }}
+                      port_value: {{ app_http_port }}
 {% endfor %}

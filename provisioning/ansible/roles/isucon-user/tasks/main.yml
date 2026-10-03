@@ -1,0 +1,42 @@
+---
+- name: Create isucon group
+  ansible.builtin.group:
+    name: isucon
+    gid: 1100
+
+- name: Create isucon user
+  ansible.builtin.user:
+    name: isucon
+    uid: 1100
+    group: isucon
+    home: /home/isucon
+    shell: /bin/bash
+
+- name: Allow other users to read the home directory
+  ansible.builtin.file:
+    path: /home/isucon
+    mode: "0755"
+
+- name: Create .ssh directory
+  ansible.builtin.file:
+    path: /home/isucon/.ssh
+    state: directory
+    owner: isucon
+    group: isucon
+    mode: "0700"
+
+- name: Grant passwordless sudo
+  ansible.builtin.copy:
+    content: "isucon ALL=(ALL) NOPASSWD:ALL\n"
+    dest: /etc/sudoers.d/99-isucon
+    mode: "0440"
+    validate: visudo -cf %s
+
+# ISUREAL_REGION は起動時に user-data が書き換える
+- name: Write /home/isucon/env.sh
+  ansible.builtin.template:
+    src: env.sh.j2
+    dest: /home/isucon/env.sh
+    owner: isucon
+    group: isucon
+    mode: "0644"

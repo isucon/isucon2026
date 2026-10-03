@@ -1,4 +1,4 @@
-.PHONY: tools fmt vet build test frontend-install frontend-lint frontend-typecheck frontend-test frontend-e2e contract generate-api proto-lint proto-generate proto-build portal-fmt portal-vet portal-test portal-build portal-web-install portal-web-lint portal-web-typecheck portal-web-test portal-web-build portal-web-e2e portal-check router-fmt router-vet router-test router-build router-compose-check router-envoy-check router-e2e router-check provisioning-static provisioning-artifacts vm-preflight vm-up vm-deploy vm-provision vm-validate vm-status vm-logs vm-tls-ca vm-benchmark vm-reset-data vm-destroy image-validate image-build-base image-build-role image-promote aws-image-validate aws-image-build-role aws-infra-install aws-infra-check aws-infra-preview aws-infra-up aws-infra-validate aws-infra-destroy datagen datagen-test datagen-load check
+.PHONY: tools fmt vet build test frontend-install frontend-lint frontend-typecheck frontend-test frontend-e2e contract generate-api proto-lint proto-generate proto-build portal-fmt portal-vet portal-test portal-build portal-web-install portal-web-lint portal-web-typecheck portal-web-test portal-web-build portal-web-e2e portal-check router-fmt router-vet router-test router-build router-compose-check router-envoy-check router-e2e router-check ami aws-infra-install aws-infra-check aws-infra-preview aws-infra-up aws-infra-destroy aws-benchmark datagen datagen-test datagen-load check
 
 tools:
 	mise install
@@ -126,81 +126,36 @@ router-e2e:
 
 router-check: router-vet router-test router-build router-compose-check router-envoy-check
 
-provisioning-static:
-	provisioning/tests/static/run.sh
+AWS_SDK_ENV = AWS_CONFIG_FILE=$(CURDIR)/provisioning/aws-sdk.config AWS_PROFILE=default AWS_SDK_LOAD_CONFIG=1
 
-provisioning-artifacts:
-	provisioning/scripts/build-artifacts.sh
-
-vm-preflight:
-	provisioning/scripts/vm.sh preflight
-
-vm-up:
-	provisioning/scripts/vm.sh up
-
-vm-deploy:
-	mise exec -- python provisioning/scripts/deploy.py --component "$(or $(COMPONENT),app)"
-
-vm-provision:
-	provisioning/scripts/vm.sh provision
-
-vm-validate:
-	provisioning/scripts/vm.sh validate
-
-vm-status:
-	provisioning/scripts/vm.sh status
-
-vm-logs:
-	provisioning/scripts/vm.sh logs
-
-vm-tls-ca:
-	provisioning/scripts/tls.sh
-
-vm-benchmark:
-	@provisioning/scripts/vm-benchmark.sh $(BENCH_ARGS)
-
-vm-reset-data:
-	provisioning/scripts/vm.sh reset-data
-
-vm-destroy:
-	provisioning/scripts/vm.sh destroy
-
-image-validate:
-	provisioning/scripts/image.sh validate
-
-image-build-base:
-	provisioning/scripts/image.sh build-base "$(or $(ARCH),amd64)"
-
-image-build-role:
-	provisioning/scripts/image.sh build-role "$(ROLE)" "$(or $(ARCH),amd64)"
-
-image-promote:
-	provisioning/scripts/image.sh promote "$(ROLE)" "$(or $(ARCH),amd64)" "$(ARTIFACT_ID)"
-
-aws-image-validate:
-	provisioning/scripts/aws-image.sh validate
-
-aws-image-build-role:
-	provisioning/scripts/aws-image.sh build-role "$(ROLE)"
+ami:
+	cd provisioning/ansible && ansible-playbook prepare.yml
+	packer init provisioning/packer
+	$(AWS_SDK_ENV) packer build $(if $(ROLE),-only=amazon-ebs.$(ROLE)) provisioning/packer
 
 aws-infra-install:
 	npm --prefix provisioning/aws ci
 
 aws-infra-check:
+	npm --prefix provisioning/aws run format:check
+	npm --prefix provisioning/aws run lint
 	npm --prefix provisioning/aws run typecheck
-	npm --prefix provisioning/aws test
 
 aws-infra-preview:
-	cd provisioning/aws && pulumi preview --stack "$(or $(STACK),dev)"
+	cd provisioning/aws && $(AWS_SDK_ENV) pulumi preview --stack "$(or $(STACK),dev)"
 
 aws-infra-up:
-	cd provisioning/aws && pulumi up --stack "$(or $(STACK),dev)"
-
-aws-infra-validate:
-	STACK="$(or $(STACK),dev)" provisioning/scripts/aws-validate.sh
+	cd provisioning/aws && $(AWS_SDK_ENV) pulumi up --stack "$(or $(STACK),dev)"
 
 aws-infra-destroy:
-	cd provisioning/aws && pulumi destroy --stack "$(or $(STACK),dev)"
+	cd provisioning/aws && $(AWS_SDK_ENV) pulumi destroy --stack "$(or $(STACK),dev)"
+
+aws-benchmark:
+	go -C bench run . \
+		-target "http://$$(cd provisioning/aws && pulumi stack output routerPublicAddress --stack "$(or $(STACK),dev)"):8080" \
+		-host "$$(cd provisioning/aws && pulumi stack output appHostname --stack "$(or $(STACK),dev)")" \
+		-scale large \
+		$(BENCH_ARGS)
 
 check: proto-lint vet frontend-lint frontend-typecheck contract test build
 

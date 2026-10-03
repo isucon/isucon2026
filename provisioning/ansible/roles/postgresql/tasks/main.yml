@@ -1,0 +1,64 @@
+---
+- name: Install PostgreSQL 16
+  ansible.builtin.apt:
+    name: postgresql-16
+
+- name: Listen on all addresses
+  ansible.builtin.copy:
+    src: isucon.conf
+    dest: /etc/postgresql/16/main/conf.d/isucon.conf
+    owner: postgres
+    group: postgres
+    mode: "0644"
+  notify: Restart PostgreSQL
+
+- name: Allow the application user from other servers
+  ansible.builtin.lineinfile:
+    path: /etc/postgresql/16/main/pg_hba.conf
+    line: "host {{ isureal_db_name }} {{ isureal_db_user }} 0.0.0.0/0 scram-sha-256"
+  notify: Restart PostgreSQL
+
+- name: Apply configuration before creating the database
+  ansible.builtin.meta: flush_handlers
+
+- name: Start PostgreSQL
+  ansible.builtin.systemd_service:
+    name: postgresql
+    state: started
+    enabled: true
+
+# 初期化の reset.sql が session_replication_role を変えるので superuser にする
+- name: Check application role
+  ansible.builtin.command:
+    argv: [psql, -tAc, "SELECT rolsuper FROM pg_roles WHERE rolname = '{{ isureal_db_user }}'"]
+  become_user: postgres
+  register: db_role
+  changed_when: false
+
+- name: Create application role
+  ansible.builtin.command:
+    argv:
+      - psql
+      - -c
+      - "{{ 'CREATE' if db_role.stdout == '' else 'ALTER' }} ROLE {{ isureal_db_user }} SUPERUSER LOGIN PASSWORD '{{ isureal_db_password }}'"
+  become_user: postgres
+  when: db_role.stdout != 't'
+  changed_when: true
+
+- name: Check application database
+  ansible.builtin.command:
+    argv: [psql, -tAc, "SELECT 1 FROM pg_database WHERE datname = '{{ isureal_db_name }}'"]
+  become_user: postgres
+  register: db_database
+  changed_when: false
+
+- name: Create application database
+  ansible.builtin.command:
+    argv:
+      - createdb
+      - --owner={{ isureal_db_user }}
+      - --encoding=UTF8
+      - "{{ isureal_db_name }}"
+  become_user: postgres
+  when: db_database.stdout != '1'
+  changed_when: true

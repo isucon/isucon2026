@@ -1,0 +1,47 @@
+---
+# 003-initial-snapshot.sql が作るテーブルの有無で、投入済みかを判定する
+- name: Check whether initial data is loaded
+  ansible.builtin.command:
+    argv:
+      - psql
+      - --host=127.0.0.1
+      - --username={{ isureal_db_user }}
+      - --dbname={{ isureal_db_name }}
+      - -tAc
+      - SELECT to_regclass('public.initial_data_boundary') IS NOT NULL
+  environment:
+    PGPASSWORD: "{{ isureal_db_password }}"
+  register: initial_data
+  changed_when: false
+
+# seed は十数 GB あるので、ファイルにせず datagen の出力をそのまま psql へ流す
+- name: Load schema, seed and snapshot
+  when: initial_data.stdout != 't'
+  block:
+    - name: Upload datagen
+      ansible.builtin.copy:
+        src: "{{ build_dir }}/datagen"
+        dest: /usr/local/bin/isureal-datagen
+        mode: "0755"
+
+    - name: Run SQL files and stream the generated seed
+      ansible.builtin.shell: |
+        set -euo pipefail
+        psql() { command psql --host=127.0.0.1 --username={{ isureal_db_user }} --dbname={{ isureal_db_name }} --no-psqlrc --set=ON_ERROR_STOP=1 --quiet "$@"; }
+        psql --file=001-schema.sql
+        /usr/local/bin/isureal-datagen -scale large -out - | psql
+        psql --file=003-initial-snapshot.sql
+      args:
+        chdir: /home/isucon/webapp/sql
+        executable: /bin/bash
+      environment:
+        PGPASSWORD: "{{ isureal_db_password }}"
+      async: 7200
+      poll: 30
+      changed_when: true
+
+  always:
+    - name: Remove datagen
+      ansible.builtin.file:
+        path: /usr/local/bin/isureal-datagen
+        state: absent
