@@ -1,5 +1,5 @@
 ---
-# ENI の割り当てと TLS 証明書は起動時に決まるので、サービスの起動は user-data が行う
+# アドレスと TLS 証明書はチームごとに違うので、設定ファイルの配置とサービスの起動は user-data が行う
 - name: Create Router account
   ansible.builtin.user:
     name: isureal-router
@@ -24,17 +24,6 @@
     dest: /opt/isucon/bin/{{ item }}
     mode: "0755"
   loop: [isureal-router, isureal-portal, envoy]
-
-- name: Install configuration
-  ansible.builtin.template:
-    src: "{{ item.src }}"
-    dest: "{{ item.dest }}"
-    group: "{{ item.group | default('root') }}"
-    mode: "{{ item.mode | default('0644') }}"
-  loop:
-    - {src: router.env.j2, dest: /etc/isucon/router.env, group: isureal-router, mode: "0640"}
-    - {src: portal.env.j2, dest: /etc/isucon/portal.env, group: isureal-router, mode: "0640"}
-    - {src: envoy-bootstrap.yaml.j2, dest: /etc/isucon/envoy/bootstrap.yaml}
 
 - name: Install systemd units
   ansible.builtin.copy:

@@ -9,42 +9,69 @@ export interface ServerNetwork {
 	serviceIp: string;
 }
 
-// provisioning/ansible/group_vars/all.yml と一致させる
-export const teamDomain = "team1-aws.127.0.0.1.nip.io";
+export interface Team {
+	number: number;
+	domain: string;
+	servers: readonly ServerNetwork[];
+	routerDataSubnetCidr: string;
+	routerDataIp: string;
+	routerPublicSubnetCidr: string;
+	routerPublicIp: string;
+}
+
+// VPC と EC2 Instance Connect Endpoint は全チームで共有する
 export const vpcCidr = "192.168.0.0/16";
-export const routerDataSubnetCidr = "192.168.10.0/24";
-export const routerDataIp = "192.168.10.10";
-export const routerPublicSubnetCidr = "192.168.20.0/24";
-export const routerPublicIp = "192.168.20.10";
-export const eiceSubnetCidr = "192.168.30.0/24";
+export const eiceSubnetCidr = "192.168.240.0/24";
+// Router の Envoy が転送する app の nginx のポート（provisioning/ansible の app_http_port と一致させる）
+export const appHttpPort = 80;
+// チームごとに 16 個の /24 を使うので、EIC Endpoint のサブネットと重ならない上限
+export const maxTeams = 15;
 
-export const serverNetworks: readonly ServerNetwork[] = [
-	{
-		id: "app1",
-		region: "asia",
-		subnetCidr: "192.168.1.0/24",
-		serviceIp: "192.168.1.10",
-	},
-	{
-		id: "app2",
-		region: "europe",
-		subnetCidr: "192.168.2.0/24",
-		serviceIp: "192.168.2.10",
-	},
-	{
-		id: "app3",
-		region: "america",
-		subnetCidr: "192.168.3.0/24",
-		serviceIp: "192.168.3.10",
-	},
-	{ id: "db1", subnetCidr: "192.168.4.0/24", serviceIp: "192.168.4.10" },
-] as const;
+const nodes: readonly { id: NodeId; region?: Region }[] = [
+	{ id: "app1", region: "asia" },
+	{ id: "app2", region: "europe" },
+	{ id: "app3", region: "america" },
+	{ id: "db1" },
+];
 
-// 他のサーバーからの通信は Router が NAT せずに折り返すので、送信元は相手のサブネットになる
-export function serverIngressCidrs(destination: ServerNetwork): string[] {
+// チーム n（1 始まり）は 192.168.(16(n-1)+k).0/24 を使う。
+// k = 1〜4 がサーバー、10 が Router のデータ用、11 が Router のパブリック用
+export function team(number: number): Team {
+	const base = 16 * (number - 1);
+	const subnet = (k: number) => `192.168.${base + k}.0/24`;
+	const host = (k: number) => `192.168.${base + k}.10`;
+	return {
+		number,
+		domain: `team${number}-aws.127.0.0.1.nip.io`,
+		servers: nodes.map((node, index) => ({
+			...node,
+			subnetCidr: subnet(index + 1),
+			serviceIp: host(index + 1),
+		})),
+		routerDataSubnetCidr: subnet(10),
+		routerDataIp: host(10),
+		routerPublicSubnetCidr: subnet(11),
+		routerPublicIp: host(11),
+	};
+}
+
+export function databaseIp(t: Team): string {
+	const db = t.servers.find((server) => server.region === undefined);
+	if (db === undefined) {
+		throw new Error("team has no database server");
+	}
+	return db.serviceIp;
+}
+
+// 他のサーバーからの通信は Router が NAT せずに折り返すので、送信元は相手のサブネットになる。
+// 同じ VPC の他チームのサブネットは許可しない
+export function serverIngressCidrs(
+	t: Team,
+	destination: ServerNetwork,
+): string[] {
 	return [
-		`${routerDataIp}/32`,
-		...serverNetworks
+		`${t.routerDataIp}/32`,
+		...t.servers
 			.filter((source) => source.id !== destination.id)
 			.map((source) => source.subnetCidr),
 	];
@@ -59,33 +86,27 @@ export interface AclRule {
 	toPort: 0;
 }
 
-// Router の公開側（EIP とパブリック用サブネット）へサーバーから送らせない。
+// Router の公開側（パブリック IP とパブリック用サブネット）へサーバーから送らせない。
 // 開いていると Envoy 経由で同一リージョン扱いになり、遅延のないサーバー間通信ができてしまう
-export function serverEgressRules(routerEip: string): AclRule[] {
+export function serverEgressRules(
+	t: Team,
+	routerPublicAddress: string,
+): AclRule[] {
+	const rule = (
+		ruleNo: number,
+		action: "allow" | "deny",
+		cidrBlock: string,
+	): AclRule => ({
+		protocol: "-1",
+		ruleNo,
+		action,
+		cidrBlock,
+		fromPort: 0,
+		toPort: 0,
+	});
 	return [
-		{
-			protocol: "-1",
-			ruleNo: 100,
-			action: "deny",
-			cidrBlock: `${routerEip}/32`,
-			fromPort: 0,
-			toPort: 0,
-		},
-		{
-			protocol: "-1",
-			ruleNo: 110,
-			action: "deny",
-			cidrBlock: routerPublicSubnetCidr,
-			fromPort: 0,
-			toPort: 0,
-		},
-		{
-			protocol: "-1",
-			ruleNo: 1000,
-			action: "allow",
-			cidrBlock: "0.0.0.0/0",
-			fromPort: 0,
-			toPort: 0,
-		},
+		rule(100, "deny", `${routerPublicAddress}/32`),
+		rule(110, "deny", t.routerPublicSubnetCidr),
+		rule(1000, "allow", "0.0.0.0/0"),
 	];
 }
