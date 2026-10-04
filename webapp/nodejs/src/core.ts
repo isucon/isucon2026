@@ -103,6 +103,31 @@ export function validDate(value: string, month = false) {
     parsed.toISOString().slice(0, 10) === date
   );
 }
+// Validates an RFC 3339 timestamp like Go's time.Time: the regex checks the
+// layout, and Temporal rejects out-of-range fields such as Feb 30 or 24:00.
+export function validTimestamp(value: string) {
+  const m =
+    /^(\d{4})-(\d\d)-(\d\d)T(\d\d):(\d\d):(\d\d)(?:\.\d+)?(?:Z|[+-](\d\d):(\d\d))$/.exec(
+      value,
+    );
+  if (!m) return false;
+  const [, year, month, day, hour, minute, second, offsetHour, offsetMinute] =
+    m.map(Number);
+  try {
+    Temporal.PlainDateTime.from(
+      { year, month, day, hour, minute, second },
+      { overflow: "reject" },
+    );
+    if (m[7] !== undefined)
+      Temporal.PlainTime.from(
+        { hour: offsetHour, minute: offsetMinute },
+        { overflow: "reject" },
+      );
+    return true;
+  } catch {
+    return false;
+  }
+}
 export interface User {
   id: string;
   username: string;

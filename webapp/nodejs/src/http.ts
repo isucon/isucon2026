@@ -1,7 +1,7 @@
 import type { Context } from "hono";
 import { createMiddleware } from "hono/factory";
 import type pg from "pg";
-import { fail, hash } from "./core.js";
+import { fail, hash, validTimestamp } from "./core.js";
 import { first } from "./db.js";
 export interface Session {
   user_id: string;
@@ -58,14 +58,7 @@ export async function readJSON<S extends Record<string, FieldType>>(
 export function cursor(c: C, timeKey: string, idKey: string) {
   const at = c.req.query(timeKey) ?? null,
     id = c.req.query(idKey) ?? "";
-  if (
-    at !== null &&
-    (!/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?(?:Z|[+-]\d\d:\d\d)$/.test(
-      at,
-    ) ||
-      Number.isNaN(Date.parse(at)))
-  )
-    fail(400, "invalid timestamp");
+  if (at !== null && !validTimestamp(at)) fail(400, "invalid timestamp");
   if ((at === null) !== (id === "")) fail(400, "invalid_pagination");
   return { at, id };
 }
