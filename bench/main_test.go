@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
-	"fmt"
 	pb "github.com/isucon/isucon2026/portal/gen/pb/isuxportal/resources"
 	"google.golang.org/protobuf/proto"
 	"io"
@@ -53,8 +52,16 @@ func TestSupervisorIntegration(t *testing.T) {
 		http.Error(w, "operator-only-detail", 500)
 	}))
 	defer server.Close()
-	for _, post := range []bool{false, true} {
-		t.Run(fmt.Sprint("post=", post), func(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		option   string
+		wantExit int
+	}{
+		{name: "contestant failure"},
+		{name: "unsupported post validation", option: "--only-post-validation", wantExit: 1},
+		{name: "invalid configuration", option: "--users=0", wantExit: 2},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
 			before := requests.Load()
 			read, write, err := os.Pipe()
 			if err != nil {
@@ -62,8 +69,8 @@ func TestSupervisorIntegration(t *testing.T) {
 			}
 			defer read.Close()
 			args := []string{"--target", server.URL, "--duration", "1s"}
-			if post {
-				args = append(args, "--only-post-validation")
+			if tc.option != "" {
+				args = append(args, tc.option)
 			}
 			cmd := exec.Command(os.Args[0], "-test.run=^TestSupervisorChild$")
 			cmd.Env = append(os.Environ(), "BENCH_TEST_CHILD=1", "ISUXBENCH_REPORT_FD=3", "BENCH_TEST_ARGS="+strings.Join(args, "\n"))
@@ -96,7 +103,7 @@ func TestSupervisorIntegration(t *testing.T) {
 				reports = append(reports, p)
 			}
 			err = cmd.Wait()
-			if err == nil || cmd.ProcessState.ExitCode() != 1 {
+			if cmd.ProcessState.ExitCode() != tc.wantExit {
 				t.Fatalf("exit: %v stderr=%s", err, &stderr)
 			}
 			if len(reports) == 0 {
@@ -106,26 +113,41 @@ func TestSupervisorIntegration(t *testing.T) {
 			if !final.Finished || final.Passed || final.Score != 0 || final.Execution == nil || final.MarkedAt == nil {
 				t.Fatalf("final: %v", final)
 			}
-			if post {
+			if tc.option != "" {
 				if requests.Load() != before {
-					t.Fatal("post-validation touched target")
+					t.Fatal("configuration failure touched target")
 				}
 			} else {
 				if len(reports) < 2 || reports[0].Finished {
 					t.Fatal("missing progress")
 				}
 				var public map[string]any
-				if err := json.Unmarshal(stdout.Bytes(), &public); err != nil {
+				lines := strings.Split(strings.TrimSpace(stdout.String()), "\n")
+				if len(lines) < 2 || !strings.Contains(lines[0], `msg="phase: initialize"`) {
+					t.Fatalf("missing public progress: %s", &stdout)
+				}
+				if strings.Contains(stderr.String(), `msg="phase: initialize"`) {
+					t.Fatalf("progress sent to stderr: %s", &stderr)
+				}
+				if err := json.Unmarshal([]byte(lines[len(lines)-1]), &public); err != nil {
 					t.Fatal(err)
 				}
-				if len(public) != 2 || public["pass"] != false || public["score"] != float64(0) {
+				if len(public) != 3 || public["pass"] != false || public["score"] != float64(0) {
 					t.Fatalf("public: %s", &stdout)
 				}
-				if !strings.Contains(stderr.String(), "ステータスコード 500 が返りました（期待値 200") {
+				diagnostic := "ステータスコード 500 が返りました（期待値 200"
+				if !strings.Contains(final.Execution.Reason, diagnostic) {
+					t.Fatalf("missing contestant reason: %q", final.Execution.Reason)
+				}
+				messages, ok := public["messages"].([]any)
+				if !ok || len(messages) == 0 || messages[0] != final.Execution.Reason {
+					t.Fatalf("missing contestant messages: %s", &stdout)
+				}
+				if !strings.Contains(stderr.String(), diagnostic) {
 					t.Fatalf("missing private diagnostic: %s", &stderr)
 				}
 			}
-			if strings.Contains(stdout.String(), "ステータスコード 500 が返りました（期待値 200") || strings.Contains(final.Execution.Reason, "ステータスコード 500 が返りました（期待値 200") {
+			if strings.Contains(stdout.String(), "operator-only-detail") || strings.Contains(final.Execution.Reason, "operator-only-detail") {
 				t.Fatal("private diagnostic leaked")
 			}
 		})

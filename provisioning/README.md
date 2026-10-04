@@ -274,3 +274,8 @@ AMIを昇格する前に、4台のservice health、5台それぞれのEIP送信�
 12方向のPrivate peer通信、Routerのnft/tc counter、Router停止中の新規peer通信失敗、復旧後の再接続、
 clone identityの一意性を確認します。合格レポートは
 `provisioning/.state/aws/<stack>/reports/`へ保存され、検証した2つのAMI artifactを`validated`へ遷移させます。
+
+## 試し解き用Supervisor
+
+実ポータルからベンチジョブを受け取るチーム専用Fargate環境は、[Supervisor構築手順](aws/supervisor/README.md)を参照してください。
+`provisioning/aws/supervisor`の独立Pulumi stackで管理します。

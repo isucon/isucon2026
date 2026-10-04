@@ -39,26 +39,34 @@ export function createPortal(c: PortalConfig) {
     vpcId: vpc.id,
     routes: [{ cidrBlock: "0.0.0.0/0", gatewayId: igw.id }],
   }, opts);
-  const natIps = publicSubnets.map((subnet, i) => {
+  publicSubnets.forEach((subnet, i) => {
     new aws.ec2.RouteTableAssociation(`public-${i}`, {
       subnetId: subnet.id,
       routeTableId: publicRoutes.id,
     }, opts);
+  });
+  const nats = publicSubnets.slice(0, c.natGatewayCount).map((subnet, i) => {
     const eip = new aws.ec2.Eip(`nat-${i}`, { domain: "vpc" }, opts);
     const nat = new aws.ec2.NatGateway(`portal-${i}`, {
       subnetId: subnet.id,
       allocationId: eip.id,
     }, { ...opts, dependsOn: [igw] });
+    return { nat, eip };
+  });
+  privateSubnets.forEach((subnet, i) => {
     const routes = new aws.ec2.RouteTable(`private-${i}`, {
       vpcId: vpc.id,
-      routes: [{ cidrBlock: "0.0.0.0/0", natGatewayId: nat.id }],
+      routes: [{
+        cidrBlock: "0.0.0.0/0",
+        natGatewayId: nats[i % nats.length].nat.id,
+      }],
     }, opts);
     new aws.ec2.RouteTableAssociation(`private-${i}`, {
-      subnetId: privateSubnets[i].id,
+      subnetId: subnet.id,
       routeTableId: routes.id,
     }, opts);
-    return eip.publicIp;
   });
+  const natIps = nats.map(({ eip }) => eip.publicIp);
   // Keep all ALB rules standalone; mixing inline and standalone rules causes drift.
   const albSg = new aws.ec2.SecurityGroup("alb", { vpcId: vpc.id }, opts);
   for (const port of [80, 443]) {
@@ -601,6 +609,8 @@ export function createPortal(c: PortalConfig) {
     databaseEndpoint: database.endpoint,
     url: `https://${c.domainName}`,
     natPublicIps: natIps,
+    vpcId: vpc.id,
+    privateSubnetIds: privateSubnets.map((subnet) => subnet.id),
     alertsTopicArn: alerts.arn,
   };
 }
