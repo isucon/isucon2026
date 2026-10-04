@@ -2,7 +2,7 @@ import type pg from "pg";
 import { zipSync, strToU8, type Zippable } from "fflate";
 import { type C, cursor } from "./http.js";
 import { fail, validDate, postResponse, page, type Post } from "./core.js";
-import { rows } from "./db.js";
+import { must, rows } from "./db.js";
 import {
   selectPostsWithAuthor,
   placeholders,
@@ -27,7 +27,7 @@ export function memoryHandlers(db: pg.Pool) {
         end = new Date(start);
       if (day === undefined) end.setUTCMonth(end.getUTCMonth() + 1);
       else end.setUTCDate(end.getUTCDate() + 1);
-      const [at, id] = cursor(c, "beforePostedAt", "beforeId");
+      const { at, id } = cursor(c, "beforePostedAt", "beforeId");
       const posts = await selectPostsWithAuthor(
         db,
         `AND p.author_id = $1 AND w.local_date >= $2 AND w.local_date < $3 AND ($4::timestamptz IS NULL OR (p.posted_at, p.id) < ($4, $5)) ORDER BY p.posted_at DESC, p.id DESC LIMIT 51`,
@@ -72,7 +72,7 @@ export function memoryHandlers(db: pg.Pool) {
     },
     export: async (c: C) => {
       const userID = c.var.session.user_id,
-        author = await getUser(db, userID);
+        author = must(await getUser(db, userID));
       const posts = await rows<Post & { image_data: Buffer }>(
         db,
         `SELECT ${postColumns}, i.data AS image_data FROM posts p JOIN posting_windows w ON w.id = p.posting_window_id JOIN image_objects i ON i.id = p.image_id WHERE p.author_id = $1 AND p.deleted_at IS NULL ORDER BY p.posted_at, p.id`,
@@ -86,14 +86,13 @@ export function memoryHandlers(db: pg.Pool) {
         items.push({ ...postResponse(post, author), imagePath });
       }
       files["posts.json"] = strToU8(JSON.stringify(items) + "\n");
-      const data = zipSync(files);
-      c.header(
-        "Content-Disposition",
-        'attachment; filename="isureal-posts.zip"',
-      );
-      c.header("Cache-Control", "no-store");
-      c.header("Content-Type", "application/zip");
-      return c.body(new Uint8Array(data));
+      return new Response(zipSync(files), {
+        headers: {
+          "Content-Disposition": 'attachment; filename="isureal-posts.zip"',
+          "Cache-Control": "no-store",
+          "Content-Type": "application/zip",
+        },
+      });
     },
   };
 }

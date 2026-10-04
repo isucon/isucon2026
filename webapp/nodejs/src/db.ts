@@ -1,5 +1,5 @@
 import pg from "pg";
-import { APIError, timestamp } from "./core.js";
+import { timestamp } from "./core.js";
 
 pg.types.setTypeParser(1184, timestamp);
 pg.types.setTypeParser(1700, Number);
@@ -17,11 +17,6 @@ export type DB = pg.Pool | pg.PoolClient;
 export function createPool(config: Config) {
   return new pg.Pool({ ...config, max: 30 });
 }
-export class NoRows extends Error {
-  constructor() {
-    super("sql: no rows in result set");
-  }
-}
 export async function rows<T extends pg.QueryResultRow>(
   db: DB,
   sql: string,
@@ -29,14 +24,25 @@ export async function rows<T extends pg.QueryResultRow>(
 ): Promise<T[]> {
   return (await db.query<T>(sql, args)).rows;
 }
+// Returns the first row, or undefined when the query matched nothing.
+export async function first<T extends pg.QueryResultRow>(
+  db: DB,
+  sql: string,
+  ...args: unknown[]
+): Promise<T | undefined> {
+  return (await rows<T>(db, sql, ...args))[0];
+}
+// For rows that must exist; a missing row is a server error (500).
+export function must<T>(value: T | undefined): T {
+  if (value === undefined) throw new Error("sql: no rows in result set");
+  return value;
+}
 export async function one<T extends pg.QueryResultRow>(
   db: DB,
   sql: string,
   ...args: unknown[]
 ): Promise<T> {
-  const result = await rows<T>(db, sql, ...args);
-  if (!result.length) throw new NoRows();
-  return result[0];
+  return must(await first<T>(db, sql, ...args));
 }
 export async function scalar<T>(
   db: DB,
@@ -44,6 +50,15 @@ export async function scalar<T>(
   ...args: unknown[]
 ): Promise<T> {
   return Object.values(await one(db, sql, ...args))[0] as T;
+}
+// Like scalar, but returns undefined when the query matched nothing.
+export async function firstScalar<T>(
+  db: DB,
+  sql: string,
+  ...args: unknown[]
+): Promise<T | undefined> {
+  const row = await first(db, sql, ...args);
+  return row && (Object.values(row)[0] as T);
 }
 export async function exec(db: DB, sql: string, ...args: unknown[]) {
   return (await db.query(sql, args)).rowCount ?? 0;
@@ -63,19 +78,5 @@ export async function transaction<T>(
     throw error;
   } finally {
     tx.release();
-  }
-}
-export async function notFound<T>(
-  fn: () => Promise<T>,
-  status: number,
-  code: string,
-): Promise<T> {
-  try {
-    return await fn();
-  } catch (e) {
-    if (e instanceof NoRows) {
-      throw new APIError(status, code);
-    }
-    throw e;
   }
 }

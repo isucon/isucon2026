@@ -1,8 +1,14 @@
 import type pg from "pg";
 import { stream } from "hono/streaming";
 import { type C } from "./http.js";
-import { one, scalar, NoRows } from "./db.js";
+import { first, scalar } from "./db.js";
 import { getUser } from "./models.js";
+interface Notification {
+  id: string;
+  posting_window_id: string;
+  region: string;
+  created_at: string;
+}
 export const notificationsHandler = (db: pg.Pool) => async (c: C) => {
   const session = c.var.session,
     connectedAt = await scalar<string>(db, "SELECT clock_timestamp()");
@@ -19,19 +25,14 @@ export const notificationsHandler = (db: pg.Pool) => async (c: C) => {
     try {
       while (!stopped) {
         const user = await getUser(db, session.user_id);
-        if (user.region !== session.region) return;
-        try {
-          const n = await one<{
-            id: string;
-            posting_window_id: string;
-            region: string;
-            created_at: string;
-          }>(
-            db,
-            `SELECT n.id, n.posting_window_id, w.region, n.created_at FROM notifications n JOIN posting_windows w ON w.id = n.posting_window_id WHERE n.user_id = $1 AND n.created_at > $2 AND w.ended_at IS NULL ORDER BY n.created_at, n.id LIMIT 1`,
-            session.user_id,
-            connectedAt,
-          );
+        if (user?.region !== session.region) return;
+        const n = await first<Notification>(
+          db,
+          `SELECT n.id, n.posting_window_id, w.region, n.created_at FROM notifications n JOIN posting_windows w ON w.id = n.posting_window_id WHERE n.user_id = $1 AND n.created_at > $2 AND w.ended_at IS NULL ORDER BY n.created_at, n.id LIMIT 1`,
+          session.user_id,
+          connectedAt,
+        );
+        if (n) {
           await output.write(
             "data: " +
               JSON.stringify({
@@ -43,8 +44,6 @@ export const notificationsHandler = (db: pg.Pool) => async (c: C) => {
               "\n\n",
           );
           return;
-        } catch (e) {
-          if (!(e instanceof NoRows)) throw e;
         }
         if (!stopped)
           await new Promise<void>((resolve) => {
@@ -53,8 +52,7 @@ export const notificationsHandler = (db: pg.Pool) => async (c: C) => {
         wake = undefined;
       }
     } catch (e) {
-      if (!(e instanceof NoRows) && !stopped)
-        console.error("notification failed", e);
+      if (!stopped) console.error("notification failed", e);
     } finally {
       clearInterval(ticker);
     }

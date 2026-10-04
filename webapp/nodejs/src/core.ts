@@ -1,17 +1,12 @@
 import { createHash, createHmac } from "node:crypto";
+import { HTTPException } from "hono/http-exception";
+import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { caseFold } from "unicode-case-folding";
 
-export class APIError extends Error {
-  constructor(
-    public status: number,
-    code: string,
-  ) {
-    super(code);
-  }
+// The error code becomes the `{ "error": ... }` body in server.ts's onError.
+export function fail(status: ContentfulStatusCode, code: string): never {
+  throw new HTTPException(status, { message: code });
 }
-export const fail = (status: number, code: string): never => {
-  throw new APIError(status, code);
-};
 export const hash = (value: string) =>
   createHash("sha256").update(value).digest("hex");
 export const usernamePattern = /^[a-z0-9_.-]{1,64}$/;

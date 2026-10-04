@@ -1,11 +1,16 @@
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import { spawn } from "node:child_process";
+import { once } from "node:events";
 import { Hono } from "hono";
+import { HTTPException } from "hono/http-exception";
 import { logger } from "hono/logger";
 import type pg from "pg";
-import type { ContentfulStatusCode } from "hono/utils/http-status";
-import { APIError, validRegion } from "./core.js";
-import { type Env, sessionMiddleware, regionMiddleware } from "./http.js";
+import { validRegion } from "./core.js";
+import {
+  type Env,
+  sessionMiddleware,
+  adminSessionMiddleware,
+  regionMiddleware,
+} from "./http.js";
 import { userHandlers } from "./user_api.js";
 import { postHandlers } from "./post_api.js";
 import { relationshipHandlers } from "./relationship_api.js";
@@ -23,14 +28,14 @@ export function createApp(
   const app = new Hono<Env>();
   if (options.logging !== false) app.use(logger());
   app.onError((error, c) => {
-    const status = error instanceof APIError ? error.status : 500;
+    const status = error instanceof HTTPException ? error.status : 500;
     if (status >= 500) console.error(error);
-    return c.json({ error: error.message }, status as ContentfulStatusCode);
+    return c.json({ error: error.message }, status);
   });
   app.notFound((c) => c.json({ error: "Not Found" }, 404));
   const auth = sessionMiddleware(db),
     regional = regionMiddleware(region),
-    adminAuth = sessionMiddleware(db, true);
+    adminAuth = adminSessionMiddleware(db);
   const u = userHandlers(db),
     p = postHandlers(db),
     r = relationshipHandlers(db),
@@ -39,10 +44,9 @@ export function createApp(
     a = adminHandlers(db),
     m = memoryHandlers(db);
   app.post("/api/initialize", async (c) => {
-    const child = promisify(execFile)("../sql/init.sh");
-    child.child.stdout?.pipe(process.stdout);
-    child.child.stderr?.pipe(process.stderr);
-    await child;
+    const child = spawn("../sql/init.sh", { stdio: "inherit" });
+    const [code] = await once(child, "exit");
+    if (code !== 0) throw new Error(`init.sh exited with code ${code}`);
     return c.json({ language: "nodejs" });
   });
   app.post("/api/auth/register", u.register);

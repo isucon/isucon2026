@@ -1,16 +1,16 @@
 import { randomUUID } from "node:crypto";
 import type pg from "pg";
-import { type C, body, string, cursor } from "./http.js";
+import { type C, readJSON, cursor, noContent } from "./http.js";
 import { fail, relationshipUserResponse, page } from "./core.js";
 import {
   type DB,
   exec,
-  one,
+  first,
+  firstScalar,
+  must,
   rows,
   scalar,
   transaction,
-  notFound,
-  NoRows,
 } from "./db.js";
 import { getUser, getFriendIDs, userColumnsAs, joinedUser } from "./models.js";
 export const isBlocked = (db: DB, a: string, b: string) =>
@@ -29,16 +29,14 @@ export async function relationshipTx<T>(
   if (actor === target || target === "") fail(400, "invalid_relationship");
   return transaction(db, async (tx) => {
     for (const id of [actor, target].sort())
-      await notFound(
-        () =>
-          one(
-            tx,
-            "SELECT id FROM users WHERE id=$1 AND status='active' FOR NO KEY UPDATE",
-            id,
-          ),
-        404,
-        "relationship_not_found",
-      );
+      if (
+        !(await first(
+          tx,
+          "SELECT id FROM users WHERE id=$1 AND status='active' FOR NO KEY UPDATE",
+          id,
+        ))
+      )
+        fail(404, "relationship_not_found");
     return fn(tx);
   });
 }
@@ -51,7 +49,7 @@ interface FriendRequest {
   updated_at: string;
 }
 const getFriendRequest = (db: DB, id: string) =>
-  one<FriendRequest>(
+  first<FriendRequest>(
     db,
     "SELECT id, requester_id, recipient_id, status, created_at, updated_at FROM friend_requests WHERE id=$1",
     id,
@@ -72,28 +70,24 @@ const response = (r: FriendRequest) => ({
 export function relationshipHandlers(db: pg.Pool) {
   return {
     createRequest: async (c: C) => {
-      const b = await body(c, { recipientId: "string" }),
-        actor = c.var.session.user_id,
-        target = string(b, "recipientId");
+      const { recipientId: target = "" } = await readJSON(c, {
+          recipientId: "string",
+        }),
+        actor = c.var.session.user_id;
       const result = await relationshipTx(db, actor, target, async (tx) => {
         if (await isBlocked(tx, actor, target))
           fail(409, "relationship_conflict");
         if ((await getFriendIDs(tx, actor)).includes(target))
           fail(409, "relationship_conflict");
-        let existing: string | undefined;
-        try {
-          existing = await scalar(
-            tx,
-            "SELECT id FROM friend_requests WHERE status='pending' AND ((requester_id=$1 AND recipient_id=$2) OR (requester_id=$2 AND recipient_id=$1))",
-            actor,
-            target,
-          );
-        } catch (e) {
-          if (!(e instanceof NoRows)) throw e;
-        }
+        const existing = await firstScalar<string>(
+          tx,
+          "SELECT id FROM friend_requests WHERE status='pending' AND ((requester_id=$1 AND recipient_id=$2) OR (requester_id=$2 AND recipient_id=$1))",
+          actor,
+          target,
+        );
         let id: string;
         if (existing) {
-          const r = await getFriendRequest(tx, existing);
+          const r = must(await getFriendRequest(tx, existing));
           if (r.requester_id === actor) fail(409, "relationship_conflict");
           await exec(
             tx,
@@ -112,7 +106,7 @@ export function relationshipHandlers(db: pg.Pool) {
             target,
           );
         }
-        return getFriendRequest(tx, id);
+        return must(await getFriendRequest(tx, id));
       });
       return c.json(response(result), 201);
     },
@@ -128,11 +122,8 @@ export function relationshipHandlers(db: pg.Pool) {
       if (!status) fail(403, "relationship_action_forbidden");
       const actor = c.var.session.user_id,
         id = c.req.param("requestId")!;
-      const initial = await notFound(
-        () => getFriendRequest(db, id),
-        404,
-        "relationship_not_found",
-      );
+      const initial =
+        (await getFriendRequest(db, id)) ?? fail(404, "relationship_not_found");
       if (
         (status === "cancelled" && actor !== initial.requester_id) ||
         (status !== "cancelled" && actor !== initial.recipient_id)
@@ -143,7 +134,7 @@ export function relationshipHandlers(db: pg.Pool) {
         initial.requester_id,
         initial.recipient_id,
         async (tx) => {
-          const r = await getFriendRequest(tx, id);
+          const r = must(await getFriendRequest(tx, id));
           if (r.status !== "pending")
             fail(403, "relationship_action_forbidden");
           if (status === "accepted") {
@@ -157,7 +148,7 @@ export function relationshipHandlers(db: pg.Pool) {
             r.id,
             status,
           );
-          return getFriendRequest(tx, r.id);
+          return must(await getFriendRequest(tx, r.id));
         },
       );
       return c.json(response(result));
@@ -179,7 +170,7 @@ export function relationshipHandlers(db: pg.Pool) {
           )
             fail(409, "relationship_conflict");
         } else if (kind === "follows" && put) {
-          const user = await getUser(tx, target);
+          const user = must(await getUser(tx, target));
           if (user.account_type !== "certified_public")
             fail(409, "relationship_conflict");
           if (await isBlocked(tx, actor, user.id))
@@ -254,10 +245,10 @@ export function relationshipHandlers(db: pg.Pool) {
         )
           fail(403, "relationship_action_forbidden");
       });
-      return c.body(null, 204);
+      return noContent();
     },
     list: async (c: C) => {
-      const [at, id] = cursor(c, "beforeUpdatedAt", "beforeId"),
+      const { at, id } = cursor(c, "beforeUpdatedAt", "beforeId"),
         kind = c.req.param("kind")!;
       const queries: Record<string, string> = {
         friends:

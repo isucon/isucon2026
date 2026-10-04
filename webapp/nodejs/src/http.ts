@@ -1,7 +1,8 @@
-import type { Context, MiddlewareHandler } from "hono";
+import type { Context } from "hono";
+import { createMiddleware } from "hono/factory";
 import type pg from "pg";
 import { fail, hash } from "./core.js";
-import { one, NoRows } from "./db.js";
+import { first } from "./db.js";
 export interface Session {
   user_id: string;
   region: string;
@@ -17,89 +18,93 @@ export type Env = {
   Variables: { session: Session; adminSession: AdminSession };
 };
 export type C = Context<Env>;
-export async function body(
+type FieldType = "string" | "number";
+type JSONBody<S extends Record<string, FieldType>> = {
+  [K in keyof S]?: S[K] extends "string" ? string : number;
+};
+// Reads a JSON object body like echo's Bind: an empty body or `null` yields {},
+// and a field of the wrong type is rejected like Go's json.Unmarshal.
+export async function readJSON<S extends Record<string, FieldType>>(
   c: C,
-  fields: Record<string, "string" | "number">,
-): Promise<Record<string, unknown>> {
+  fields: S,
+): Promise<JSONBody<S>> {
   const text = await c.req.text();
   if (!text) return {};
-  if (!c.req.header("Content-Type")?.split(";")[0].includes("application/json"))
-    return fail(415, "Unsupported Media Type");
+  if (!c.req.header("Content-Type")?.startsWith("application/json"))
+    fail(415, "Unsupported Media Type");
   let value: unknown;
   try {
     value = JSON.parse(text);
   } catch {
-    return fail(400, "invalid JSON");
+    fail(400, "invalid JSON");
   }
   if (value === null) return {};
   if (typeof value !== "object" || Array.isArray(value))
-    return fail(400, "invalid JSON");
-  const data = value as Record<string, unknown>;
-  for (const [key, type] of Object.entries(fields))
+    fail(400, "invalid JSON");
+  const data = value as Record<string, unknown>,
+    body: Record<string, unknown> = {};
+  for (const [key, type] of Object.entries(fields)) {
+    // As in Go, a null field is the same as an absent one.
+    if (data[key] == null) continue;
     if (
-      data[key] != null &&
-      (typeof data[key] !== type ||
-        (type === "number" && !Number.isSafeInteger(data[key])))
+      typeof data[key] !== type ||
+      (type === "number" && !Number.isSafeInteger(data[key]))
     )
       fail(400, "invalid JSON field: " + key);
-  return data;
-}
-export const string = (b: Record<string, unknown>, key: string) =>
-  (b[key] as string) ?? "";
-export function cursor(c: C, timeKey: string, idKey: string) {
-  const raw = c.req.query(timeKey),
-    id = c.req.query(idKey) ?? "";
-  let at: string | null = null;
-  if (raw !== undefined) {
-    if (
-      !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?(?:Z|[+-]\d\d:\d\d)$/.test(
-        raw,
-      ) ||
-      Number.isNaN(Date.parse(raw))
-    )
-      fail(400, "invalid timestamp");
-    at = raw;
+    body[key] = data[key];
   }
+  return body as JSONBody<S>;
+}
+export function cursor(c: C, timeKey: string, idKey: string) {
+  const at = c.req.query(timeKey) ?? null,
+    id = c.req.query(idKey) ?? "";
+  if (
+    at !== null &&
+    (!/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?(?:Z|[+-]\d\d:\d\d)$/.test(
+      at,
+    ) ||
+      Number.isNaN(Date.parse(at)))
+  )
+    fail(400, "invalid timestamp");
   if ((at === null) !== (id === "")) fail(400, "invalid_pagination");
-  return [at, id] as const;
+  return { at, id };
 }
-export function sessionMiddleware(
-  db: pg.Pool,
-  admin = false,
-): MiddlewareHandler<Env> {
-  return async (c, next) => {
-    const code = admin ? "invalid_administrator_session" : "invalid_session";
-    const auth = c.req.header("Authorization");
-    if (!auth?.startsWith("Bearer ")) return fail(401, code);
-    try {
-      if (admin)
-        c.set(
-          "adminSession",
-          await one<AdminSession>(
-            db,
-            "SELECT administrator_id, token_hash, created_at FROM administrator_sessions WHERE token_hash = $1 AND active = true",
-            hash(auth.slice(7)),
-          ),
-        );
-      else
-        c.set(
-          "session",
-          await one<Session>(
-            db,
-            `SELECT s.user_id, s.token_hash, s.created_at, u.region FROM login_sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = $1 AND s.active = true AND u.status = 'active'`,
-            hash(auth.slice(7)),
-          ),
-        );
-    } catch (e) {
-      if (e instanceof NoRows) return fail(401, code);
-      throw e;
-    }
+export const noContent = () => new Response(null, { status: 204 });
+const bearerToken = (c: C) => {
+  const auth = c.req.header("Authorization");
+  return auth?.startsWith("Bearer ") ? auth.slice(7) : undefined;
+};
+export const sessionMiddleware = (db: pg.Pool) =>
+  createMiddleware<Env>(async (c, next) => {
+    const token = bearerToken(c);
+    const session =
+      token &&
+      (await first<Session>(
+        db,
+        `SELECT s.user_id, s.token_hash, s.created_at, u.region FROM login_sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = $1 AND s.active = true AND u.status = 'active'`,
+        hash(token),
+      ));
+    c.set("session", session || fail(401, "invalid_session"));
     await next();
-  };
-}
-export const regionMiddleware =
-  (region: string): MiddlewareHandler<Env> =>
-  async (c, next) => {
+  });
+export const adminSessionMiddleware = (db: pg.Pool) =>
+  createMiddleware<Env>(async (c, next) => {
+    const token = bearerToken(c);
+    const session =
+      token &&
+      (await first<AdminSession>(
+        db,
+        "SELECT administrator_id, token_hash, created_at FROM administrator_sessions WHERE token_hash = $1 AND active = true",
+        hash(token),
+      ));
+    c.set(
+      "adminSession",
+      session || fail(401, "invalid_administrator_session"),
+    );
+    await next();
+  });
+export const regionMiddleware = (region: string) =>
+  createMiddleware<Env>(async (c, next) => {
     if (c.var.session.region !== region) fail(403, "region_mismatch");
     await next();
-  };
+  });
