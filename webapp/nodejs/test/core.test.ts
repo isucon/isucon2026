@@ -38,7 +38,7 @@ test("image signature matches the Go reference test vector", () => {
     imageSignature(
       key,
       "550e8400-e29b-41d4-a716-446655440000",
-      1790553600n,
+      1790553600,
     ).toString("base64url"),
     "qv9Jrl_ciG5MowUjgzZ4_bYd2cxIxvpS7zOcTSqxx84",
   );
@@ -107,7 +107,7 @@ test("database timestamps preserve microseconds for cursors and deadlines", () =
   assert.equal(
     micros("2026-10-04T03:00:00.123457Z") -
       micros("2026-10-04T03:00:00.123456Z"),
-    1n,
+    1,
   );
 });
 

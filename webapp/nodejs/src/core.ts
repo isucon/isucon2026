@@ -54,14 +54,14 @@ export function imageSigningKey(secret: string) {
     throw new Error("invalid image signing key");
   return Buffer.from(secret, "hex");
 }
-export function imageSignature(key: Buffer, id: string, exp: bigint) {
+export function imageSignature(key: Buffer, id: string, exp: number) {
   let value: Buffer = Buffer.from(`${exp}:${id}`);
   for (let i = 0; i < 1000; i++)
     value = createHmac("sha256", key).update(value).digest();
   return value;
 }
 export function signedImageURL(user: User, id: string) {
-  const exp = BigInt(Math.floor(Date.now() / 1000) + 86400);
+  const exp = Math.floor(Date.now() / 1000) + 86400;
   return `/api/images/${encodeURIComponent(id)}?exp=${exp}&sig=${imageSignature(user.imageKey!, id, exp).toString("base64url")}`;
 }
 // pg's default Date parser drops microseconds, which breaks tuple pagination.
@@ -72,18 +72,18 @@ export function timestamp(value: string) {
   const trimmed = fraction.replace(/0+$/, "");
   return seconds + (trimmed ? "." + trimmed : "") + "Z";
 }
+// Microseconds since the epoch; exact as a number until the year 2255.
 export function micros(value: string) {
   const fraction = value.match(/\.(\d+)/)?.[1] ?? "";
   return (
-    BigInt(Math.floor(new Date(value).getTime() / 1000)) * 1000000n +
-    BigInt(fraction.padEnd(6, "0").slice(0, 6))
+    Math.floor(new Date(value).getTime() / 1000) * 1000000 +
+    Number(fraction.padEnd(6, "0").slice(0, 6))
   );
 }
 export function addSeconds(value: string, seconds: number) {
-  const result = micros(value) + BigInt(seconds) * 1000000n;
-  const whole =
-    result >= 0n ? result / 1000000n : (result - 999999n) / 1000000n;
-  const frac = (result - whole * 1000000n)
+  const result = micros(value) + seconds * 1000000;
+  const whole = Math.floor(result / 1000000);
+  const frac = (result - whole * 1000000)
     .toString()
     .padStart(6, "0")
     .replace(/0+$/, "");
@@ -222,8 +222,8 @@ export function postResponse(p: Post, u: User) {
     visibility: p.visibility,
     location,
     postedAt: p.posted_at,
-    onTime: late <= 0n,
-    lateSeconds: late > 0n ? Number(late / 1000000n) : 0,
+    onTime: late <= 0,
+    lateSeconds: late > 0 ? Math.floor(late / 1000000) : 0,
   };
 }
 export const page = <T>(items: T[]) => ({
