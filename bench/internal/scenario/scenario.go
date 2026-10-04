@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"math/rand/v2"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -257,17 +258,23 @@ func messages(reason string, groups ...[]string) []string {
 	if reason != "" {
 		out = append(out, reason)
 	}
+collect:
 	for _, group := range groups {
 		for _, message := range group {
 			if len(out) >= maxMessages {
-				return out
+				break collect
 			}
 			if message != reason {
 				out = append(out, message)
 			}
 		}
 	}
-	return out
+	// 件数制限は元のメッセージ単位で適用し、複数行の詳細を欠落させない。
+	lines := []string{}
+	for _, message := range out {
+		lines = append(lines, strings.Split(strings.ReplaceAll(message, "\r\n", "\n"), "\n")...)
+	}
+	return lines
 }
 
 func (r *Runner) openedCounts() map[string]int {
