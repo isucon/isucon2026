@@ -149,11 +149,15 @@ func TestSupervisorIntegration(t *testing.T) {
 					t.Fatalf("public: %s", &stdout)
 				}
 				diagnostic := "ステータスコード 500 が返りました（期待値 200"
-				if !strings.Contains(final.Execution.Reason, diagnostic) {
-					t.Fatalf("missing contestant reason: %q", final.Execution.Reason)
+				if final.Execution.Reason != "実行終了" {
+					t.Fatalf("reason: got %q, want %q", final.Execution.Reason, "実行終了")
 				}
 				messages, ok := public["messages"].([]any)
-				if !ok || len(messages) == 0 || messages[0] != final.Execution.Reason {
+				if !ok || len(messages) == 0 {
+					t.Fatalf("missing contestant messages: %s", &stdout)
+				}
+				message, ok := messages[0].(string)
+				if !ok || !strings.Contains(message, diagnostic) {
 					t.Fatalf("missing contestant messages: %s", &stdout)
 				}
 				if !strings.Contains(stderr.String(), diagnostic) {
