@@ -45,6 +45,7 @@ pulumi.runtime.setMocks(
 const config = {
   ...defaults,
   secretKeys: [...defaults.secretKeys, "ISUXPORTAL_SLACK_WEBHOOK_URL"],
+  natGatewayCount: 1,
   name: "portal-test",
   region: "ap-northeast-1",
   domainName: "portal.example.com",
@@ -90,7 +91,7 @@ describe("portal infrastructure", () => {
       });
     }
   });
-  test("keeps TLS cache and redundant outbound access", () => {
+  test("keeps TLS cache and shares one NAT across both private AZs", () => {
     expect(
       ofType("aws:elasticache/replicationGroup:ReplicationGroup")[0].inputs,
     ).toMatchObject({
@@ -99,7 +100,15 @@ describe("portal infrastructure", () => {
       automaticFailoverEnabled: true,
       numCacheClusters: 2,
     });
-    expect(ofType("aws:ec2/natGateway:NatGateway")).toHaveLength(2);
+    expect(ofType("aws:ec2/natGateway:NatGateway")).toHaveLength(1);
+    const routes = ofType("aws:ec2/routeTable:RouteTable").filter((r) =>
+      r.name.startsWith("private-")
+    );
+    expect(routes).toHaveLength(2);
+    expect(routes.map((r) => r.inputs.routes[0].natGatewayId)).toEqual([
+      "portal-0-id",
+      "portal-0-id",
+    ]);
     const albGroup = ofType("aws:ec2/securityGroup:SecurityGroup").find((r) =>
       r.name === "alb"
     )!;
@@ -168,4 +177,14 @@ describe("portal infrastructure", () => {
       expect(() => validateConfig({ ...config, ...override })).toThrow();
     }
   });
+});
+
+test("validates the NAT count while retaining a redundant default", () => {
+  expect(defaults.natGatewayCount).toBe(2);
+  expect(() => validateConfig({ ...config, natGatewayCount: 0 })).toThrow(
+    "natGatewayCount",
+  );
+  expect(() => validateConfig({ ...config, natGatewayCount: 3 })).toThrow(
+    "natGatewayCount",
+  );
 });

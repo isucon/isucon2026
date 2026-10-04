@@ -1,8 +1,8 @@
 // Command bench は ISUReal のベンチマーク（初期化 → 事前検証 → 初期データの検証 → 負荷走行 →
 // 走行後の整合性チェック）を実行する。単独でも、スーパーバイザーの子プロセスとしても動く。
 // 単独では結果 JSON を標準出力へ出す。スーパーバイザーの下では途中経過と結果を報告用の
-// パイプへ送り、詳しい結果（運営向け）は標準エラー出力、参加者に見える標準出力には pass と
-// score だけを出す。終了コードは pass=0、fail=1、設定の誤りなど=2。
+// パイプへ送り、詳しい結果（運営向け）は標準エラー出力、参加者に見える標準出力には進行ログと
+// pass・score の JSON を出す。終了コードは pass=0、fail=1、設定の誤りなど=2。
 package main
 
 import (
@@ -45,6 +45,10 @@ func run(parent context.Context, args []string, stdout, stderr io.Writer) int {
 	}
 	if closer != nil {
 		defer closer.Close()
+	}
+	progressLogger := logger
+	if reporter != nil {
+		progressLogger = slog.New(slog.NewTextHandler(stdout, nil))
 	}
 	flags := flag.NewFlagSet("bench", flag.ContinueOnError)
 	flags.SetOutput(stderr)
@@ -103,7 +107,7 @@ func run(parent context.Context, args []string, stdout, stderr io.Writer) int {
 	var reportErr error
 	runner, err := scenario.NewRunner(scenario.Config{
 		Target: normalized, Host: *host, Users: *users, Duration: *duration,
-		Dataset: dataset.Generate(datasetConfig()), Logger: logger,
+		Dataset: dataset.Generate(datasetConfig()), Logger: progressLogger,
 		OnProgress: func(result scenario.Result) {
 			if reportErr != nil {
 				return
