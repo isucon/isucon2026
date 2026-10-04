@@ -2,7 +2,8 @@
 // 走行後の整合性チェック）を実行する。単独でも、スーパーバイザーの子プロセスとしても動く。
 // 単独では結果 JSON を標準出力へ出す。スーパーバイザーの下では途中経過と結果を報告用の
 // パイプへ送り、詳しい結果（運営向け）は標準エラー出力、参加者に見える標準出力には進行ログと
-// pass・score の JSON を出す。終了コードは pass=0、fail=1、設定の誤りなど=2。
+// pass、score、参加者向けメッセージの JSON を出す。単独実行の終了コードは pass=0、fail=1、設定の誤りなど=2。
+// スーパーバイザーの下では通常の fail も終了コード 0 とし、Passed=false で報告する。
 package main
 
 import (
@@ -136,24 +137,22 @@ func run(parent context.Context, args []string, stdout, stderr io.Writer) int {
 	if err := enc.Encode(result); err != nil {
 		return fail("encode result failed", 2)
 	}
-	reason := ""
-	if !result.Pass {
-		reason = "benchmark failed; contact the organizers for details"
-	}
-	if err := report(result, true, reason); err != nil {
+	if err := report(result, true, result.Reason); err != nil {
 		logger.Error("final report failed", "error", err)
 		return 2
 	}
 	if reporter != nil {
 		if err := json.NewEncoder(stdout).Encode(struct {
-			Pass  bool  `json:"pass"`
-			Score int64 `json:"score"`
-		}{result.Pass, result.Score}); err != nil {
+			Pass     bool     `json:"pass"`
+			Score    int64    `json:"score"`
+			Messages []string `json:"messages"`
+		}{result.Pass, result.Score, result.Messages}); err != nil {
 			logger.Error("write public result failed", "error", err)
 			return 2
 		}
 	}
-	if !result.Pass {
+	// 非ゼロ終了はポータルで運営向け障害として扱われる。
+	if reporter == nil && !result.Pass {
 		return 1
 	}
 	return 0
