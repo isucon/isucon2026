@@ -142,7 +142,9 @@ func run(parent context.Context, args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	if reporter != nil {
-		if err := json.NewEncoder(stdout).Encode(struct {
+		publicEncoder := json.NewEncoder(stdout)
+		publicEncoder.SetIndent("", "  ")
+		if err := publicEncoder.Encode(struct {
 			Pass     bool     `json:"pass"`
 			Score    int64    `json:"score"`
 			Messages []string `json:"messages"`
