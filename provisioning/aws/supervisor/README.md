@@ -151,3 +151,17 @@ stackがEIPと関連付けを管理し、SupervisorのRouter接続先へ反映�
 NIC定義の競合を確認します。`provisioning/scripts/router_network.py`は既存の
 `90-isucon.yaml`を検証し、cloud-init側の重複定義を除去します。
 Router上でrootとして実行し、再起動後もアプリ・DBへの経路が残ることを確認します。
+
+### 共有Router Security Groupの管理
+
+Supervisor stackは、`routerSecurityGroupIds`で指定した既存Security Groupへ、
+共有NATの公開IP `/32` からTCP 8080へのingressを追加します。
+参加者環境側のスタックで同じSecurity Groupのinline `ingress`を管理すると、
+その適用時にSupervisor側のルールが削除される場合があります。
+両スタックで同じingressの集合を管理しないでください。
+参加者環境側でも個別ルールを管理するか、Supervisorの許可ルールを含めて
+単一のスタックへ管理を集約する必要があります。
+
+Routerの公開IPを参加者環境側で変更した場合は、`targetOverrides`も更新してください。
+新規チームは`teamIds`への追加だけでなく、Portalに登録したappの公開IPから
+Routerの公開IPと`app.teamN-aws.127.0.0.1.nip.io`への対応が必要です。
