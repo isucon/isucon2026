@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type pg from "pg";
-import { body, string, cursor, type C } from "./http.js";
+import { readJSON, cursor, noContent, type C } from "./http.js";
 import {
   fail,
   validUserText,
@@ -9,7 +9,7 @@ import {
   page,
   type User,
 } from "./core.js";
-import { type DB, exec, one, rows, transaction, notFound } from "./db.js";
+import { type DB, exec, first, must, one, rows, transaction } from "./db.js";
 import {
   getPost,
   getUser,
@@ -96,15 +96,12 @@ export async function selectCurrentRealMojis(
 export function interactionHandlers(db: pg.Pool) {
   return {
     createComment: async (c: C) => {
-      const b = await body(c, { body: "string" }),
-        text = string(b, "body");
+      const { body: text = "" } = await readJSON(c, { body: "string" });
       if (!validUserText(text, 1, 1000)) fail(400, "invalid_interaction");
       const actor = c.var.session.user_id;
-      const post = await notFound(
-        () => getPost(db, c.req.param("postId")!),
-        403,
-        "interaction_forbidden",
-      );
+      const post =
+        (await getPost(db, c.req.param("postId")!)) ??
+        fail(403, "interaction_forbidden");
       const result = await transaction(db, async (tx) => {
         for (const id of new Set([actor, post.author_id].sort()))
           await one(
@@ -125,13 +122,13 @@ export function interactionHandlers(db: pg.Pool) {
         );
         return {
           comment: await getComment(tx, id),
-          user: await getUser(tx, actor),
+          user: must(await getUser(tx, actor)),
         };
       });
       return c.json(commentResponse(result.comment, result.user), 201);
     },
     getComments: async (c: C) => {
-      const [at, id] = cursor(c, "afterCreatedAt", "afterId"),
+      const { at, id } = cursor(c, "afterCreatedAt", "afterId"),
         postID = c.req.param("postId")!;
       if (!(await canComment(db, c.var.session.user_id, postID)))
         fail(403, "interaction_forbidden");
@@ -153,16 +150,12 @@ export function interactionHandlers(db: pg.Pool) {
           "SELECT id FROM users WHERE id=$1 FOR NO KEY UPDATE",
           actor,
         );
-        const record = await notFound(
-          () =>
-            one<{ author_id: string; post_author_id: string }>(
-              tx,
-              "SELECT c.author_id,p.author_id AS post_author_id FROM comments c JOIN posts p ON p.id=c.post_id WHERE c.id=$1 AND c.deleted_at IS NULL FOR UPDATE OF c",
-              id,
-            ),
-          404,
-          "interaction_not_found",
-        );
+        const record =
+          (await first<{ author_id: string; post_author_id: string }>(
+            tx,
+            "SELECT c.author_id,p.author_id AS post_author_id FROM comments c JOIN posts p ON p.id=c.post_id WHERE c.id=$1 AND c.deleted_at IS NULL FOR UPDATE OF c",
+            id,
+          )) ?? fail(404, "interaction_not_found");
         if (actor !== record.author_id && actor !== record.post_author_id)
           fail(403, "interaction_forbidden");
         await exec(
@@ -171,7 +164,7 @@ export function interactionHandlers(db: pg.Pool) {
           id,
         );
       });
-      return c.body(null, 204);
+      return noContent();
     },
     replaceRealMoji: async (c: C) => {
       const form = await multipart(c),
@@ -187,11 +180,9 @@ export function interactionHandlers(db: pg.Pool) {
         return fail(400, "invalid_realmoji");
       const data = Buffer.from(await image.arrayBuffer()),
         actor = c.var.session.user_id,
-        post = await notFound(
-          () => getPost(db, c.req.param("postId")!),
-          403,
-          "interaction_forbidden",
-        );
+        post =
+          (await getPost(db, c.req.param("postId")!)) ??
+          fail(403, "interaction_forbidden");
       if (actor === post.author_id) fail(403, "interaction_forbidden");
       const result = await relationshipTx(
         db,
@@ -226,14 +217,14 @@ export function interactionHandlers(db: pg.Pool) {
           );
           return {
             reaction: await getRealMoji(tx, id),
-            user: await getUser(tx, actor),
+            user: must(await getUser(tx, actor)),
           };
         },
       );
       return c.json(realMojiResponse(result.reaction, result.user), 201);
     },
     getRealMojis: async (c: C) => {
-      const [at, id] = cursor(c, "beforeCreatedAt", "beforeId"),
+      const { at, id } = cursor(c, "beforeCreatedAt", "beforeId"),
         postID = c.req.param("postId")!;
       if (!(await canViewPost(db, c.var.session.user_id, postID)))
         fail(403, "interaction_forbidden");
@@ -255,16 +246,12 @@ export function interactionHandlers(db: pg.Pool) {
           "SELECT id FROM users WHERE id=$1 FOR NO KEY UPDATE",
           actor,
         );
-        const record = await notFound(
-          () =>
-            one<{ reactor_id: string; author_id: string }>(
-              tx,
-              "SELECT r.reactor_id,p.author_id FROM realmojis r JOIN posts p ON p.id=r.post_id WHERE r.id=$1 AND r.deleted_at IS NULL FOR UPDATE OF r",
-              id,
-            ),
-          404,
-          "interaction_not_found",
-        );
+        const record =
+          (await first<{ reactor_id: string; author_id: string }>(
+            tx,
+            "SELECT r.reactor_id,p.author_id FROM realmojis r JOIN posts p ON p.id=r.post_id WHERE r.id=$1 AND r.deleted_at IS NULL FOR UPDATE OF r",
+            id,
+          )) ?? fail(404, "interaction_not_found");
         if (actor !== record.reactor_id && actor !== record.author_id)
           fail(403, "interaction_forbidden");
         await exec(
@@ -273,7 +260,7 @@ export function interactionHandlers(db: pg.Pool) {
           id,
         );
       });
-      return c.body(null, 204);
+      return noContent();
     },
   };
 }

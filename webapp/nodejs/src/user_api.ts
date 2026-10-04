@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type pg from "pg";
-import { body, string, type C } from "./http.js";
+import { readJSON, noContent, type C } from "./http.js";
 import {
   hash,
   fail,
@@ -15,7 +15,7 @@ import {
   page,
   type User,
 } from "./core.js";
-import { one, scalar, exec, rows, transaction, notFound } from "./db.js";
+import { first, must, one, scalar, exec, rows, transaction } from "./db.js";
 import {
   getUser,
   userColumns,
@@ -26,14 +26,15 @@ import { isBlocked } from "./relationship_api.js";
 export function userHandlers(db: pg.Pool) {
   return {
     register: async (c: C) => {
-      const b = await body(c, {
-          username: "string",
-          displayName: "string",
-          region: "string",
-        }),
-        username = string(b, "username"),
-        displayName = string(b, "displayName"),
-        region = string(b, "region");
+      const {
+        username = "",
+        displayName = "",
+        region = "",
+      } = await readJSON(c, {
+        username: "string",
+        displayName: "string",
+        region: "string",
+      });
       if (
         !usernamePattern.test(username) ||
         !validUserText(displayName, 1, 100) ||
@@ -61,28 +62,26 @@ export function userHandlers(db: pg.Pool) {
           displayName,
           region,
         );
-        return getUser(tx, id);
+        return must(await getUser(tx, id));
       });
       return c.json({ secretKey, user: sessionUserResponse(user) }, 201);
     },
     login: async (c: C) => {
-      const b = await body(c, { username: "string", secretKey: "string" }),
-        username = string(b, "username");
+      const { username = "", secretKey = "" } = await readJSON(c, {
+        username: "string",
+        secretKey: "string",
+      });
       if (!usernamePattern.test(username)) fail(401, "invalid_credentials");
       const result = await transaction(db, async (tx) => {
-        const user = await notFound(
-          () =>
-            one<User>(
-              tx,
-              "SELECT id, username, secret_key_hash, display_name, bio, profile_image_id, region, account_type, status FROM users WHERE username = $1 FOR NO KEY UPDATE",
-              username,
-            ),
-          401,
-          "invalid_credentials",
-        );
+        const user =
+          (await first<User>(
+            tx,
+            "SELECT id, username, secret_key_hash, display_name, bio, profile_image_id, region, account_type, status FROM users WHERE username = $1 FOR NO KEY UPDATE",
+            username,
+          )) ?? fail(401, "invalid_credentials");
         if (
           user.status !== "active" ||
-          user.secret_key_hash !== hash(string(b, "secretKey"))
+          user.secret_key_hash !== hash(secretKey)
         )
           fail(401, "invalid_credentials");
         const token = randomUUID(),
@@ -129,30 +128,25 @@ export function userHandlers(db: pg.Pool) {
           s.token_hash,
         );
       });
-      return c.body(null, 204);
+      return noContent();
     },
-    getMe: async (c: C) =>
-      c.json(
-        getMeResponse(
-          await notFound(
-            () => getUser(db, c.var.session.user_id),
-            404,
-            "account_not_found",
-          ),
-        ),
-      ),
+    getMe: async (c: C) => {
+      const user =
+        (await getUser(db, c.var.session.user_id)) ??
+        fail(404, "account_not_found");
+      return c.json(getMeResponse(user));
+    },
     updateMe: async (c: C) => {
-      const b = await body(c, {
+      const b = await readJSON(c, {
         displayName: "string",
         bio: "string",
         region: "string",
       });
       if (
         (b.displayName == null && b.bio == null && b.region == null) ||
-        (b.displayName != null &&
-          !validUserText(string(b, "displayName"), 1, 100)) ||
-        (b.bio != null && !validUserText(string(b, "bio"), 0, 500)) ||
-        (b.region != null && !validRegion(string(b, "region")))
+        (b.displayName != null && !validUserText(b.displayName, 1, 100)) ||
+        (b.bio != null && !validUserText(b.bio, 0, 500)) ||
+        (b.region != null && !validRegion(b.region))
       )
         fail(400, "invalid_profile");
       const user = await transaction(db, async (tx) => {
@@ -177,10 +171,9 @@ export function userHandlers(db: pg.Pool) {
             c.var.session.user_id,
             b.region,
           );
-        return notFound(
-          () => getUser(tx, c.var.session.user_id),
-          404,
-          "account_not_found",
+        return (
+          (await getUser(tx, c.var.session.user_id)) ??
+          fail(404, "account_not_found")
         );
       });
       return c.json(getMeResponse(user));
@@ -218,11 +211,9 @@ export function userHandlers(db: pg.Pool) {
     },
     getUser: async (c: C) => {
       const viewer = c.var.session.user_id,
-        user = await notFound(
-          () => getUser(db, c.req.param("userId")!),
-          404,
-          "relationship_not_found",
-        );
+        user =
+          (await getUser(db, c.req.param("userId")!)) ??
+          fail(404, "relationship_not_found");
       if (await isBlocked(db, viewer, user.id))
         fail(404, "relationship_not_found");
       const friends = await getFriendIDs(db, viewer);
@@ -236,16 +227,14 @@ export function userHandlers(db: pg.Pool) {
     deleteAccount: async (c: C) => {
       const id = c.var.session.user_id;
       await transaction(db, async (tx) => {
-        await notFound(
-          () =>
-            one(
-              tx,
-              "SELECT id FROM users WHERE id=$1 AND status='active' FOR NO KEY UPDATE",
-              id,
-            ),
-          404,
-          "account_not_found",
-        );
+        if (
+          !(await first(
+            tx,
+            "SELECT id FROM users WHERE id=$1 AND status='active' FOR NO KEY UPDATE",
+            id,
+          ))
+        )
+          fail(404, "account_not_found");
         await exec(
           tx,
           "UPDATE users SET status='deleted', deleted_at=clock_timestamp(), updated_at=clock_timestamp() WHERE id=$1",
@@ -257,7 +246,7 @@ export function userHandlers(db: pg.Pool) {
           id,
         );
       });
-      return c.body(null, 204);
+      return noContent();
     },
   };
 }

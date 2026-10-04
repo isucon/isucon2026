@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type pg from "pg";
-import { type C, body, string } from "./http.js";
+import { type C, readJSON, noContent } from "./http.js";
 import {
   fail,
   hash,
@@ -9,25 +9,23 @@ import {
   validDate,
   addSeconds,
 } from "./core.js";
-import { exec, one, scalar, transaction, notFound } from "./db.js";
+import { exec, first, one, scalar, transaction } from "./db.js";
 import { getPostingWindow, windowResponse } from "./models.js";
 export function adminHandlers(db: pg.Pool) {
   return {
     login: async (c: C) => {
-      const b = await body(c, { username: "string", password: "string" }),
-        username = string(b, "username");
+      const { username = "", password = "" } = await readJSON(c, {
+        username: "string",
+        password: "string",
+      });
       if (!usernamePattern.test(username)) fail(401, "invalid_credentials");
-      const admin = await notFound(
-        () =>
-          one<{ id: string; password_hash: string }>(
-            db,
-            "SELECT id, password_hash FROM administrators WHERE username = $1",
-            username,
-          ),
-        401,
-        "invalid_credentials",
-      );
-      if (admin.password_hash !== hash(string(b, "password")))
+      const admin =
+        (await first<{ id: string; password_hash: string }>(
+          db,
+          "SELECT id, password_hash FROM administrators WHERE username = $1",
+          username,
+        )) ?? fail(401, "invalid_credentials");
+      if (admin.password_hash !== hash(password))
         fail(401, "invalid_credentials");
       const token = await transaction(db, async (tx) => {
         const id = randomUUID(),
@@ -56,7 +54,7 @@ export function adminHandlers(db: pg.Pool) {
         s.administrator_id,
         s.token_hash,
       );
-      return c.body(null, 204);
+      return noContent();
     },
     certify: async (c: C) => {
       if (
@@ -67,20 +65,21 @@ export function adminHandlers(db: pg.Pool) {
         ))
       )
         fail(409, "certification_conflict");
-      return c.body(null, 204);
+      return noContent();
     },
     uncertify: async (_c: C) => fail(409, "certification_irreversible"),
     openWindow: async (c: C) => {
-      const b = await body(c, {
-          region: "string",
-          localDate: "string",
-          onTimeSeconds: "number",
-        }),
-        region = string(b, "region"),
-        localDate = string(b, "localDate");
+      const {
+        region = "",
+        localDate = "",
+        onTimeSeconds = 86400,
+      } = await readJSON(c, {
+        region: "string",
+        localDate: "string",
+        onTimeSeconds: "number",
+      });
       if (!validRegion(region) || !validDate(localDate))
         fail(400, "invalid_posting_window");
-      const seconds = (b.onTimeSeconds as number) ?? 86400;
       const window = await transaction(db, async (tx) => {
         await exec(tx, "LOCK TABLE users IN SHARE ROW EXCLUSIVE MODE");
         if (
@@ -107,7 +106,7 @@ export function adminHandlers(db: pg.Pool) {
           region,
           localDate,
           startsAt,
-          addSeconds(startsAt, seconds),
+          addSeconds(startsAt, onTimeSeconds),
         );
         await exec(
           tx,

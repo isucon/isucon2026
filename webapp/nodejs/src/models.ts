@@ -1,4 +1,4 @@
-import { type DB, rows, one, scalar, NoRows } from "./db.js";
+import { type DB, rows, first, one, scalar } from "./db.js";
 import { type User, type Post, imageSigningKey, canView } from "./core.js";
 export const userColumns = [
   "id",
@@ -21,19 +21,19 @@ export function joinedUser(row: Record<string, unknown>, prefix: string): User {
   return user;
 }
 export async function getUser(db: DB, id: string) {
-  const user = await one<User>(
+  const user = await first<User>(
     db,
     `SELECT ${userColumns.join(", ")} FROM users WHERE id = $1 AND status = 'active'`,
     id,
   );
-  user.imageKey = imageSigningKey(user.secret_key_hash);
+  if (user) user.imageKey = imageSigningKey(user.secret_key_hash);
   return user;
 }
 export const postColumns = `p.id, p.author_id, p.posting_window_id, p.image_id, p.caption, p.visibility,
  p.location_kind, p.latitude, p.longitude, p.locality, p.posted_at,
  w.on_time_deadline, w.ended_at AS window_ended_at`;
 export const getPost = (db: DB, id: string) =>
-  one<Post>(
+  first<Post>(
     db,
     `SELECT ${postColumns} FROM posts p JOIN posting_windows w ON w.id = p.posting_window_id WHERE p.id = $1 AND p.deleted_at IS NULL`,
     id,
@@ -54,8 +54,7 @@ export async function selectPostsWithAuthor(
 }
 export async function getPostWithAuthor(db: DB, id: string) {
   const posts = await selectPostsWithAuthor(db, "AND p.id = $1", id);
-  if (!posts.length) throw new NoRows();
-  return posts[0];
+  return posts[0] as Post | undefined;
 }
 export async function getFriendIDs(db: DB, id: string) {
   const friendships = await rows<{ user_low_id: string; user_high_id: string }>(
@@ -79,6 +78,7 @@ export const placeholders = (ids: unknown[], offset = 0) =>
   ids.map((_, i) => `$${i + offset + 1}`).join(", ");
 export async function loadViewerContext(db: DB, id: string) {
   const user = await getUser(db, id);
+  if (!user) return undefined;
   const hasPostedToday = await scalar<boolean>(
     db,
     `SELECT EXISTS(SELECT 1 FROM posts p JOIN posting_windows posted ON posted.id = p.posting_window_id JOIN posting_windows current ON current.region = $2 AND current.ended_at IS NULL AND current.local_date = posted.local_date WHERE p.author_id = $1 AND p.deleted_at IS NULL)`,
@@ -107,27 +107,20 @@ export async function loadViewerContext(db: DB, id: string) {
   return { ...user, hasPostedToday, blocked, friends, friendsOfFriends };
 }
 export async function canViewPost(db: DB, viewerID: string, postID: string) {
-  try {
-    const post = await getPostWithAuthor(db, postID);
-    const viewer = await loadViewerContext(db, viewerID);
-    return canView(viewer, post);
-  } catch (e) {
-    if (e instanceof NoRows) return false;
-    throw e;
-  }
+  const post = await getPostWithAuthor(db, postID);
+  if (!post) return false;
+  const viewer = await loadViewerContext(db, viewerID);
+  return viewer !== undefined && canView(viewer, post);
 }
 export async function canComment(db: DB, viewerID: string, postID: string) {
-  try {
-    const post = await getPostWithAuthor(db, postID);
-    const viewer = await loadViewerContext(db, viewerID);
-    if (!canView(viewer, post) || post.window_ended_at != null) return false;
-    if (viewer.id === post.author_id) return viewer.hasPostedToday;
-    if (post.visibility === "public") return true;
-    return viewer.friends.has(post.author_id);
-  } catch (e) {
-    if (e instanceof NoRows) return false;
-    throw e;
-  }
+  const post = await getPostWithAuthor(db, postID);
+  if (!post) return false;
+  const viewer = await loadViewerContext(db, viewerID);
+  if (!viewer || !canView(viewer, post) || post.window_ended_at != null)
+    return false;
+  if (viewer.id === post.author_id) return viewer.hasPostedToday;
+  if (post.visibility === "public") return true;
+  return viewer.friends.has(post.author_id);
 }
 export interface PostingWindow {
   id: string;
