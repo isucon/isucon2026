@@ -17,6 +17,23 @@ import (
 	"testing"
 )
 
+func TestReportReason(t *testing.T) {
+	for _, tc := range []struct{ name, reason, want string }{
+		{"success", "", "実行終了"},
+		{"initialize", "初期化に失敗しました: POST /api/initialize: ステータスコード 500", "初期化に失敗しました"},
+		{"multiple failures", "初期データの検証に失敗しました: ユーザーAの画像署名が不正\nユーザーBの画像署名が不正", "初期データの検証に失敗しました"},
+		{"no detail", "初期化の応答の language が空です", "初期化の応答の language が空です"},
+		{"interrupted", "ベンチマークが中断されました: context deadline exceeded", "ベンチマークが中断されました"},
+		{"multiline without prefix", "検証に失敗しました\r\n追加の詳細", "検証に失敗しました"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := reportReason(tc.reason); got != tc.want {
+				t.Fatalf("got %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestNormalizeTarget(t *testing.T) {
 	for _, tc := range []struct{ in, want string }{
 		{"192.0.2.1", "http://192.0.2.1:80"},
@@ -149,8 +166,8 @@ func TestSupervisorIntegration(t *testing.T) {
 					t.Fatalf("public: %s", &stdout)
 				}
 				diagnostic := "ステータスコード 500 が返りました（期待値 200"
-				if final.Execution.Reason != "実行終了" {
-					t.Fatalf("reason: got %q, want %q", final.Execution.Reason, "実行終了")
+				if final.Execution.Reason != "初期化に失敗しました" {
+					t.Fatalf("reason: got %q, want %q", final.Execution.Reason, "初期化に失敗しました")
 				}
 				messages, ok := public["messages"].([]any)
 				if !ok || len(messages) == 0 {
