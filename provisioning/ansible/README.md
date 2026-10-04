@@ -6,11 +6,11 @@ AMI の中身を作ります。Packer（`provisioning/packer`）から呼ばれ�
 |---|---|---|
 | `prepare.yml` | localhost | webapp のソース、frontend、datagen、Router、Portal、Envoy を `build/` に作る |
 | `problem-server.yml` | `problem_servers` | app1〜3 と db1 で共用。isucon ユーザー、Go、PostgreSQL、nginx、webapp を入れ、初期データを投入する |
-| `router.yml` | `routers` | Router、Envoy、検証用 Portal と、その設定 |
+| `router.yml` | `routers` | Router、Envoy、検証用 Portal のバイナリと systemd unit |
 
-AWS のアドレスは固定なので、トポロジー（`group_vars/all.yml`）は AMI に焼き込みます。
-起動時に決まるもの（app のリージョン、どのサービスを動かすか、Router の ENI と TLS 証明書）は
-Pulumi の user-data が設定します。
+同じ AWS アカウントに複数のチームの環境を作るので、アドレスは AMI に焼き込みません。
+チームごとに違うもの（app のリージョンと DB の接続先、どのサービスを動かすか、Router の設定ファイル、
+ENI、TLS 証明書）は Pulumi の user-data が設定します。
 
 ## サーバー内の構成
 

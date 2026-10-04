@@ -5,14 +5,10 @@ import * as tls from "@pulumi/tls";
 import { config } from "./config";
 import {
 	eiceSubnetCidr,
-	routerDataIp,
-	routerDataSubnetCidr,
-	routerPublicIp,
-	routerPublicSubnetCidr,
 	serverEgressRules,
 	serverIngressCidrs,
-	serverNetworks,
-	teamDomain,
+	type Team,
+	team,
 	vpcCidr,
 } from "./lib/topology";
 import { routerUserData, serviceUserData } from "./lib/user-data";
@@ -39,6 +35,16 @@ const {
 	routerInstanceType,
 	clientCidrs,
 } = config;
+const teams = Array.from({ length: config.teamCount }, (_, index) =>
+	team(index + 1),
+);
+
+const tags = { Project: "isucon2026", ManagedBy: "pulumi" };
+const allEgress = [
+	{ protocol: "-1", fromPort: 0, toPort: 0, cidrBlocks: ["0.0.0.0/0"] },
+];
+
+// ---- 全チームで共有するリソース（VPC などはアカウントの上限があるので増やさない） ----
 
 function routerTls(): {
 	certificate: pulumi.Output<string>;
@@ -56,19 +62,14 @@ function routerTls(): {
 	});
 	const certificate = new tls.SelfSignedCert("router-tls-certificate", {
 		privateKeyPem: key.privateKeyPem,
-		subject: { commonName: teamDomain },
-		dnsNames: [teamDomain, `*.${teamDomain}`],
+		subject: { commonName: teams[0].domain },
+		dnsNames: teams.flatMap((t) => [t.domain, `*.${t.domain}`]),
 		validityPeriodHours: 24 * 365,
 		allowedUses: ["digital_signature", "key_encipherment", "server_auth"],
 	});
 	return { certificate: certificate.certPem, privateKey: key.privateKeyPem };
 }
 const { certificate: tlsCertificate, privateKey: tlsPrivateKey } = routerTls();
-
-const tags = { Project: "isucon2026", ManagedBy: "pulumi" };
-const allEgress = [
-	{ protocol: "-1", fromPort: 0, toPort: 0, cidrBlocks: ["0.0.0.0/0"] },
-];
 
 const vpc = new aws.ec2.Vpc("vpc", {
 	cidrBlock: vpcCidr,
@@ -90,18 +91,10 @@ function subnet(name: string, cidrBlock: string): aws.ec2.Subnet {
 	});
 }
 
-const routerDataSubnet = subnet("router-data", routerDataSubnetCidr);
-const routerPublicSubnet = subnet("router-public", routerPublicSubnetCidr);
-const eiceSubnet = subnet("eice", eiceSubnetCidr);
-
 const publicRouteTable = new aws.ec2.RouteTable("router-public-routes", {
 	vpcId: vpc.id,
 	routes: [{ cidrBlock: "0.0.0.0/0", gatewayId: internetGateway.id }],
 	tags,
-});
-new aws.ec2.RouteTableAssociation("router-public-routes", {
-	routeTableId: publicRouteTable.id,
-	subnetId: routerPublicSubnet.id,
 });
 
 // SSH はインターネットに開けず、SSM と EC2 Instance Connect Endpoint から入る
@@ -115,7 +108,7 @@ const eiceSecurityGroup = new aws.ec2.SecurityGroup("eice-sg", {
 });
 const instanceConnectEndpoint =
 	new aws.ec2transitgateway.InstanceConnectEndpoint("eice", {
-		subnetId: eiceSubnet.id,
+		subnetId: subnet("eice", eiceSubnetCidr).id,
 		securityGroupIds: [eiceSecurityGroup.id],
 		tags,
 	});
@@ -141,7 +134,6 @@ const instanceProfile = new aws.iam.InstanceProfile("instance-profile", {
 	tags,
 });
 
-// Router: パブリック用 ENI（EIP、bench の入口）とデータ用 ENI（サーバー間の折り返し）の 2 本
 const routerPublicSecurityGroup = new aws.ec2.SecurityGroup(
 	"router-public-sg",
 	{
@@ -162,48 +154,14 @@ const routerPublicSecurityGroup = new aws.ec2.SecurityGroup(
 		tags,
 	},
 );
-const routerDataSecurityGroup = new aws.ec2.SecurityGroup("router-data-sg", {
-	vpcId: vpc.id,
-	description: "Router data interface",
-	ingress: [
-		{
-			protocol: "-1",
-			fromPort: 0,
-			toPort: 0,
-			cidrBlocks: serverNetworks.map((network) => network.subnetCidr),
-		},
-	],
-	egress: allEgress,
-	tags,
-});
-const routerPublicEni = new aws.ec2.NetworkInterface("router-public-eni", {
-	subnetId: routerPublicSubnet.id,
-	privateIps: [routerPublicIp],
-	securityGroups: [routerPublicSecurityGroup.id],
-	tags: { ...tags, Name: "isucon2026-router-public" },
-});
-const routerDataEni = new aws.ec2.NetworkInterface("router-data-eni", {
-	subnetId: routerDataSubnet.id,
-	privateIps: [routerDataIp],
-	securityGroups: [routerDataSecurityGroup.id],
-	sourceDestCheck: false,
-	tags: { ...tags, Name: "isucon2026-router-data" },
-});
-const routerEip = new aws.ec2.Eip(
-	"router-eip",
-	{
-		domain: "vpc",
-		networkInterface: routerPublicEni.id,
-		tags,
-	},
-	{ dependsOn: [internetGateway] },
-);
 
 // EBS はスナップショットから作ったボリュームを遅延ロードするので、起動直後の DB の初回読み込みが
 // 10MB/s 台まで落ちる。初期化レートを指定して、起動後すぐに全ブロックを読み込ませる
-const serverLaunchTemplate = new aws.ec2.LaunchTemplate(
-	"server-launch-template",
-	{
+function serverLaunchTemplate(
+	name: string,
+	volume: { iops?: number; throughput?: number } = {},
+): aws.ec2.LaunchTemplate {
+	return new aws.ec2.LaunchTemplate(name, {
 		blockDeviceMappings: [
 			{
 				deviceName: "/dev/sda1",
@@ -211,150 +169,215 @@ const serverLaunchTemplate = new aws.ec2.LaunchTemplate(
 					volumeType: "gp3",
 					volumeInitializationRate: 300,
 					deleteOnTermination: "true",
+					...volume,
 				},
 			},
 		],
 		tags,
+	});
+}
+const appLaunchTemplate = serverLaunchTemplate("server-launch-template");
+const databaseLaunchTemplate = serverLaunchTemplate(
+	"database-launch-template",
+	{
+		iops: config.databaseVolumeIops,
+		throughput: config.databaseVolumeThroughput,
 	},
 );
 
-// サーバー: 他のサーバーのサブネット宛ては Router のデータ用 ENI へ送る（VPC 内のミドルボックスルーティング）。
-// 同一サブネット内はルートテーブルを通らないので、サーバーごとにサブネットを分ける。
-// サブネット宛てのルートは宛先のサブネットが存在しないと作れないので、ルートは 1 本ずつ宛先に依存させる
-const serverEgressAcl = routerEip.publicIp.apply(serverEgressRules);
-const serverSubnets = serverNetworks.map((network) =>
-	subnet(network.id, network.subnetCidr),
-);
-const servers = serverNetworks.map((network, index) => {
-	const serverSubnet = serverSubnets[index];
-	const routeTable = new aws.ec2.RouteTable(`${network.id}-routes`, {
-		vpcId: vpc.id,
-		tags: { ...tags, Name: `isucon2026-${network.id}` },
+// ---- チームごとのリソース ----
+
+function createTeam(t: Team) {
+	const prefix = `team${t.number}`;
+	const teamTags = { ...tags, Team: String(t.number) };
+
+	// Router: パブリック IP（bench の入口）とデータ用 ENI（サーバー間の折り返し）。
+	// EIP はアカウントの上限が厳しいので使わず、起動時に割り当てられるパブリック IPv4 を使う
+	const routerPublicSubnet = subnet(
+		`${prefix}-router-public`,
+		t.routerPublicSubnetCidr,
+	);
+	new aws.ec2.RouteTableAssociation(`${prefix}-router-public-routes`, {
+		routeTableId: publicRouteTable.id,
+		subnetId: routerPublicSubnet.id,
 	});
-	const routes = [
-		new aws.ec2.Route(`${network.id}-egress`, {
-			routeTableId: routeTable.id,
-			destinationCidrBlock: "0.0.0.0/0",
-			gatewayId: internetGateway.id,
-		}),
-		...serverNetworks.flatMap((peer, peerIndex) =>
-			peer.id === network.id
-				? []
-				: [
-						new aws.ec2.Route(
-							`${network.id}-to-${peer.id}`,
-							{
-								routeTableId: routeTable.id,
-								destinationCidrBlock: peer.subnetCidr,
-								networkInterfaceId: routerDataEni.id,
-							},
-							{ dependsOn: [serverSubnets[peerIndex]] },
-						),
-					],
-		),
-	];
-	new aws.ec2.RouteTableAssociation(`${network.id}-routes`, {
-		routeTableId: routeTable.id,
-		subnetId: serverSubnet.id,
-	});
-	new aws.ec2.NetworkAcl(`${network.id}-acl`, {
-		vpcId: vpc.id,
-		subnetIds: [serverSubnet.id],
-		ingress: [
-			{
-				protocol: "-1",
-				ruleNo: 1000,
-				action: "allow",
-				cidrBlock: "0.0.0.0/0",
-				fromPort: 0,
-				toPort: 0,
-			},
-		],
-		egress: serverEgressAcl,
-		tags: { ...tags, Name: `isucon2026-${network.id}` },
-	});
-	const securityGroup = new aws.ec2.SecurityGroup(`${network.id}-sg`, {
-		vpcId: vpc.id,
-		description: `ISUCON ${network.id}`,
-		ingress: [
-			{
-				protocol: "-1",
-				fromPort: 0,
-				toPort: 0,
-				cidrBlocks: serverIngressCidrs(network),
-			},
-			sshFromEice,
-		],
-		egress: allEgress,
-		tags,
-	});
-	// パブリック IPv4 は外向き通信（パッケージ取得、SSM）専用。インターネットからの着信は SG で受けない
-	return new aws.ec2.Instance(
-		`${network.id}-instance`,
+	const routerDataSecurityGroup = new aws.ec2.SecurityGroup(
+		`${prefix}-router-data-sg`,
 		{
-			ami: serviceAmiId,
+			vpcId: vpc.id,
+			description: `Router data interface for team ${t.number}`,
+			ingress: [
+				{
+					protocol: "-1",
+					fromPort: 0,
+					toPort: 0,
+					cidrBlocks: t.servers.map((server) => server.subnetCidr),
+				},
+			],
+			egress: allEgress,
+			tags: teamTags,
+		},
+	);
+	const routerDataEni = new aws.ec2.NetworkInterface(
+		`${prefix}-router-data-eni`,
+		{
+			subnetId: subnet(`${prefix}-router-data`, t.routerDataSubnetCidr).id,
+			privateIps: [t.routerDataIp],
+			securityGroups: [routerDataSecurityGroup.id],
+			sourceDestCheck: false,
+			tags: { ...teamTags, Name: `isucon2026-${prefix}-router-data` },
+		},
+	);
+	const router = new aws.ec2.Instance(
+		`${prefix}-router`,
+		{
+			ami: routerAmiId,
 			availabilityZone,
-			instanceType: serviceInstanceType,
+			instanceType: routerInstanceType,
 			iamInstanceProfile: instanceProfile.name,
-			subnetId: serverSubnet.id,
-			privateIp: network.serviceIp,
+			subnetId: routerPublicSubnet.id,
+			privateIp: t.routerPublicIp,
 			associatePublicIpAddress: true,
-			vpcSecurityGroupIds: [securityGroup.id],
-			userData: serviceUserData(network),
-			// ルートボリュームの容量は AMI のスナップショットに合わせる
-			launchTemplate: {
-				id: serverLaunchTemplate.id,
-				version: serverLaunchTemplate.latestVersion.apply(String),
-			},
+			vpcSecurityGroupIds: [routerPublicSecurityGroup.id],
+			userDataBase64: pulumi
+				.all([tlsCertificate, tlsPrivateKey, routerDataEni.macAddress])
+				.apply(([certificate, privateKey, dataMac]) =>
+					gzipSync(
+						Buffer.from(routerUserData(t, dataMac, certificate, privateKey)),
+					).toString("base64"),
+				),
+			rootBlockDevice: { volumeSize: 20, volumeType: "gp3" },
 			tags: {
-				...tags,
-				Name: `isucon2026-${network.id}`,
-				Role: "problem-server",
+				...teamTags,
+				Name: `isucon2026-${prefix}-router`,
+				Role: "router",
+			},
+		},
+		// プライベート IP を固定しているので、置き換え時は古いインスタンスを先に消す
+		{ dependsOn: [internetGateway], deleteBeforeReplace: true },
+	);
+	new aws.ec2.NetworkInterfaceAttachment(`${prefix}-router-data-attachment`, {
+		instanceId: router.id,
+		networkInterfaceId: routerDataEni.id,
+		deviceIndex: 1,
+	});
+
+	// サーバー: 他のサーバーのサブネット宛ては Router のデータ用 ENI へ送る（VPC 内のミドルボックスルーティング）。
+	// 同一サブネット内はルートテーブルを通らないので、サーバーごとにサブネットを分ける。
+	// サブネット宛てのルートは宛先のサブネットが存在しないと作れないので、ルートは 1 本ずつ宛先に依存させる
+	const serverEgressAcl = router.publicIp.apply((address) =>
+		serverEgressRules(t, address),
+	);
+	const serverSubnets = t.servers.map((server) =>
+		subnet(`${prefix}-${server.id}`, server.subnetCidr),
+	);
+	const servers = t.servers.map((network, index) => {
+		const name = `${prefix}-${network.id}`;
+		const serverSubnet = serverSubnets[index];
+		const routeTable = new aws.ec2.RouteTable(`${name}-routes`, {
+			vpcId: vpc.id,
+			tags: { ...teamTags, Name: `isucon2026-${name}` },
+		});
+		const routes = [
+			new aws.ec2.Route(`${name}-egress`, {
+				routeTableId: routeTable.id,
+				destinationCidrBlock: "0.0.0.0/0",
+				gatewayId: internetGateway.id,
+			}),
+			...t.servers.flatMap((peer, peerIndex) =>
+				peer.id === network.id
+					? []
+					: [
+							new aws.ec2.Route(
+								`${name}-to-${peer.id}`,
+								{
+									routeTableId: routeTable.id,
+									destinationCidrBlock: peer.subnetCidr,
+									networkInterfaceId: routerDataEni.id,
+								},
+								{ dependsOn: [serverSubnets[peerIndex]] },
+							),
+						],
+			),
+		];
+		new aws.ec2.RouteTableAssociation(`${name}-routes`, {
+			routeTableId: routeTable.id,
+			subnetId: serverSubnet.id,
+		});
+		new aws.ec2.NetworkAcl(`${name}-acl`, {
+			vpcId: vpc.id,
+			subnetIds: [serverSubnet.id],
+			ingress: [
+				{
+					protocol: "-1",
+					ruleNo: 1000,
+					action: "allow",
+					cidrBlock: "0.0.0.0/0",
+					fromPort: 0,
+					toPort: 0,
+				},
+			],
+			egress: serverEgressAcl,
+			tags: { ...teamTags, Name: `isucon2026-${name}` },
+		});
+		const securityGroup = new aws.ec2.SecurityGroup(`${name}-sg`, {
+			vpcId: vpc.id,
+			description: `ISUCON team ${t.number} ${network.id}`,
+			ingress: [
+				{
+					protocol: "-1",
+					fromPort: 0,
+					toPort: 0,
+					cidrBlocks: serverIngressCidrs(t, network),
+				},
+				sshFromEice,
+			],
+			egress: allEgress,
+			tags: teamTags,
+		});
+		const isDatabase = network.region === undefined;
+		const launchTemplate = isDatabase
+			? databaseLaunchTemplate
+			: appLaunchTemplate;
+		// パブリック IPv4 は外向き通信（パッケージ取得、SSM）専用。インターネットからの着信は SG で受けない
+		return new aws.ec2.Instance(
+			`${name}-instance`,
+			{
+				ami: serviceAmiId,
+				availabilityZone,
+				instanceType: isDatabase
+					? config.databaseInstanceType
+					: serviceInstanceType,
+				iamInstanceProfile: instanceProfile.name,
+				subnetId: serverSubnet.id,
+				privateIp: network.serviceIp,
+				associatePublicIpAddress: true,
+				vpcSecurityGroupIds: [securityGroup.id],
+				userData: serviceUserData(t, network),
+				// ルートボリュームの容量は AMI のスナップショットに合わせる
+				launchTemplate: {
+					id: launchTemplate.id,
+					version: launchTemplate.latestVersion.apply(String),
+				},
+				tags: {
+					...teamTags,
+					Name: `isucon2026-${name}`,
+					Role: "problem-server",
+				},
 			},
 			// プライベート IP を固定しているので、置き換え時は古いインスタンスを先に消す
-		},
-		{ dependsOn: routes, deleteBeforeReplace: true },
-	);
-});
+			{ dependsOn: routes, deleteBeforeReplace: true },
+		);
+	});
 
-const router = new aws.ec2.Instance(
-	"router-instance",
-	{
-		ami: routerAmiId,
-		availabilityZone,
-		instanceType: routerInstanceType,
-		iamInstanceProfile: instanceProfile.name,
-		primaryNetworkInterface: { networkInterfaceId: routerPublicEni.id },
-		userDataBase64: pulumi
-			.all([
-				tlsCertificate,
-				tlsPrivateKey,
-				routerPublicEni.macAddress,
-				routerDataEni.macAddress,
-			])
-			.apply(([certificate, privateKey, publicMac, dataMac]) =>
-				gzipSync(
-					Buffer.from(
-						routerUserData(publicMac, dataMac, certificate, privateKey),
-					),
-				).toString("base64"),
-			),
-		rootBlockDevice: { volumeSize: 20, volumeType: "gp3" },
-		tags: { ...tags, Name: "isucon2026-router", Role: "router" },
-	},
-	{ dependsOn: [routerEip] },
-);
-new aws.ec2.NetworkInterfaceAttachment("router-data-attachment", {
-	instanceId: router.id,
-	networkInterfaceId: routerDataEni.id,
-	deviceIndex: 1,
-});
+	return {
+		number: t.number,
+		appHostname: `app.${t.domain}`,
+		routerInstanceId: router.id,
+		routerPublicAddress: router.publicIp,
+		serviceInstanceIds: servers.map((server) => server.id),
+	};
+}
 
-export const routerInstanceId = router.id;
-export const routerPublicAddress = routerEip.publicIp;
-export const appHostname = `app.${teamDomain}`;
+export const teamOutputs = teams.map(createTeam);
 export const instanceConnectEndpointId = instanceConnectEndpoint.id;
-export const serviceInstanceIds = servers.map((server) => server.id);
-export const servicePrivateIps = serverNetworks.map(
-	(network) => network.serviceIp,
-);

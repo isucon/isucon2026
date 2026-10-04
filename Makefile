@@ -150,10 +150,11 @@ aws-infra-up:
 aws-infra-destroy:
 	cd provisioning/aws && $(AWS_SDK_ENV) pulumi destroy --stack "$(or $(STACK),dev)"
 
+# TEAM でチームを選ぶ（1 始まり）
 aws-benchmark:
 	go -C bench run . \
-		-target "http://$$(cd provisioning/aws && pulumi stack output routerPublicAddress --stack "$(or $(STACK),dev)"):8080" \
-		-host "$$(cd provisioning/aws && pulumi stack output appHostname --stack "$(or $(STACK),dev)")" \
+		-target "http://$$(cd provisioning/aws && pulumi stack output teamOutputs --stack "$(or $(STACK),dev)" --json | jq -r '.[$(or $(TEAM),1) - 1].routerPublicAddress'):8080" \
+		-host "$$(cd provisioning/aws && pulumi stack output teamOutputs --stack "$(or $(STACK),dev)" --json | jq -r '.[$(or $(TEAM),1) - 1].appHostname')" \
 		-scale large \
 		$(BENCH_ARGS)
 
