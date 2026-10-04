@@ -11,6 +11,7 @@ import {
   timestamp,
   addSeconds,
   micros,
+  validTimestamp,
 } from "../src/core.js";
 
 test("Go rune lengths and NFC case folding", () => {
@@ -119,4 +120,29 @@ test("PostgreSQL numeric coordinates serialize as JSON numbers", async () => {
   await import("../src/db.js");
   const { default: pg } = await import("pg");
   assert.equal(pg.types.getTypeParser(1700)("35.123456"), 35.123456);
+});
+test("timestamps follow Go's RFC 3339 parsing", () => {
+  for (const value of [
+    "2026-10-04T12:00:00Z",
+    "2026-10-04T12:00:00.123456+09:00",
+    "2024-02-29T23:59:59-23:59",
+  ])
+    assert.equal(validTimestamp(value), true, value);
+  for (const value of [
+    "2026-10-04",
+    "2026-10-04T12:00:00",
+    "2026-10-04 12:00:00Z",
+    "2026-10-04t12:00:00z",
+    "2026-10-04T12:00Z",
+    "2026-10-04T12:00:00+0900",
+    "2026-02-29T00:00:00Z",
+    "2026-02-30T00:00:00Z",
+    "2026-13-01T00:00:00Z",
+    "2026-10-04T24:00:00Z",
+    "2026-10-04T12:60:00Z",
+    "2026-10-04T23:59:60Z",
+    "2026-10-04T12:00:00+24:00",
+    "2026-10-04T12:00:00+09:60",
+  ])
+    assert.equal(validTimestamp(value), false, value);
 });

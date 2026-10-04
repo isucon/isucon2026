@@ -12,7 +12,7 @@ There are no added caches, indexes, background workers, or parallel queries.
 
 ## Run
 
-Requirements: Node.js 22 or later, PostgreSQL, Bash, and `psql` on `PATH`.
+Requirements: Node.js 26 or later (for `Temporal`), PostgreSQL, Bash, and `psql` on `PATH`.
 Use the same schema, generated seed, and initial snapshot as the Go app
 (`../sql/001-schema.sql`, `002-seed.sql`, and `003-initial-snapshot.sql`).
 See [data generation](../datagen/README.md) for preparing those files.
