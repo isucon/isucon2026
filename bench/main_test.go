@@ -129,8 +129,21 @@ func TestSupervisorIntegration(t *testing.T) {
 				if strings.Contains(stderr.String(), `msg="phase: initialize"`) {
 					t.Fatalf("progress sent to stderr: %s", &stderr)
 				}
-				if err := json.Unmarshal([]byte(lines[len(lines)-1]), &public); err != nil {
+				resultStart := strings.Index(stdout.String(), "\n{")
+				if resultStart < 0 {
+					t.Fatalf("missing public result: %s", &stdout)
+				}
+				publicJSON := stdout.Bytes()[resultStart+1:]
+				if err := json.Unmarshal(publicJSON, &public); err != nil {
 					t.Fatal(err)
+				}
+				var indented bytes.Buffer
+				if err := json.Indent(&indented, bytes.TrimSpace(publicJSON), "", "  "); err != nil {
+					t.Fatal(err)
+				}
+				indented.WriteByte('\n')
+				if !bytes.Equal(publicJSON, indented.Bytes()) {
+					t.Fatalf("public output formatting: got %q, want %q", publicJSON, indented.Bytes())
 				}
 				if len(public) != 3 || public["pass"] != false || public["score"] != float64(0) {
 					t.Fatalf("public: %s", &stdout)
