@@ -20,12 +20,8 @@ export function imageHandlers(db: pg.Pool) {
       const rawExp = query.get("exp")!,
         rawSig = query.get("sig")!;
       if (!/^-?(?:0|[1-9][0-9]*)$/.test(rawExp)) fail(403, "image_forbidden");
-      const exp = BigInt(rawExp);
-      if (
-        exp.toString() !== rawExp ||
-        exp > 9223372036854775807n ||
-        exp <= BigInt(Math.floor(Date.now() / 1000))
-      )
+      const exp = Number(rawExp);
+      if (String(exp) !== rawExp || exp <= Math.floor(Date.now() / 1000))
         fail(403, "image_forbidden");
       const sig = Buffer.from(rawSig, "base64url");
       if (sig.length !== 32 || sig.toString("base64url") !== rawSig)
@@ -46,8 +42,7 @@ export function imageHandlers(db: pg.Pool) {
           `SELECT i.data, i.media_type FROM image_objects i JOIN users u ON u.id = i.owner_user_id AND u.status = 'active' WHERE i.id = $1 AND (u.profile_image_id = i.id OR EXISTS (SELECT 1 FROM posts p WHERE p.image_id = i.id AND p.author_id = u.id AND p.deleted_at IS NULL) OR EXISTS (SELECT 1 FROM realmojis r JOIN posts p ON p.id = r.post_id AND p.deleted_at IS NULL JOIN users author ON author.id = p.author_id AND author.status = 'active' WHERE r.image_id = i.id AND r.reactor_id = u.id AND r.replaced_at IS NULL AND r.deleted_at IS NULL))`,
           id,
         )) ?? fail(403, "image_forbidden");
-      if (exp <= BigInt(Math.floor(Date.now() / 1000)))
-        fail(403, "image_forbidden");
+      if (exp <= Math.floor(Date.now() / 1000)) fail(403, "image_forbidden");
       return new Response(new Uint8Array(object.data), {
         headers: {
           "Content-Type": object.media_type,
