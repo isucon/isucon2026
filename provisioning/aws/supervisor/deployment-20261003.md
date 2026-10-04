@@ -168,3 +168,13 @@ team2は順に`3.112.190.233`、`54.249.185.225`、`3.112.234.132`、
 team3は`54.238.146.111`、`13.112.120.193`、`52.193.198.127`です。
 SupervisorのtargetOverridesにも新IPを追加し、既存のRouter EIPへの転送を維持しました。
 更新後、全9台のportal表示IPとEC2の実IPが一致し、3つのSupervisorがrevision 6で稼働していることを確認しました。
+
+## ベンチ用EC2の撤去
+
+2026-10-04、Fargate Supervisorへの統一に伴い、停止中のCLIベンチ用EC2
+`i-0057610e0acc5b38c`とroot EBS、専用IAM role・instance profile・policy、
+Security GroupとRouterへの許可ルールをPulumiで削除しました。
+途中まで作成していたteam2用資源も削除し、`trial`・`team2`・`team3`の
+ベンチ用EC2スタックを削除しました。リポジトリからもEC2用定義・設定例・テストを除去しました。
+EC2のterminated、EBSの消失、ベンチ用スタック一覧が空であること、
+Fargate Supervisorが3チームとも1タスク稼働していることを確認しました。
