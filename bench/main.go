@@ -137,7 +137,7 @@ func run(parent context.Context, args []string, stdout, stderr io.Writer) int {
 	if err := enc.Encode(result); err != nil {
 		return fail("encode result failed", 2)
 	}
-	if err := report(result, true, result.Reason); err != nil {
+	if err := report(result, true, reportReason(result.Reason)); err != nil {
 		logger.Error("final report failed", "error", err)
 		return 2
 	}
@@ -158,6 +158,18 @@ func run(parent context.Context, args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	return 0
+}
+
+// reportReason は結果の要約を1行で返す。詳細は stdout の messages に残す。
+func reportReason(reason string) string {
+	if reason == "" {
+		return "実行終了"
+	}
+	if end := strings.IndexAny(reason, "\r\n"); end >= 0 {
+		reason = reason[:end]
+	}
+	summary, _, _ := strings.Cut(reason, ": ")
+	return summary
 }
 
 func normalizeTarget(target string, port int) (string, error) {
