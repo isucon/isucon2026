@@ -137,7 +137,7 @@ func run(parent context.Context, args []string, stdout, stderr io.Writer) int {
 	if err := enc.Encode(result); err != nil {
 		return fail("encode result failed", 2)
 	}
-	if err := report(result, true, result.Reason); err != nil {
+	if err := report(result, true, "実行終了"); err != nil {
 		logger.Error("final report failed", "error", err)
 		return 2
 	}
