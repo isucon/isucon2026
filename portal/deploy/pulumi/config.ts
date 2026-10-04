@@ -16,6 +16,7 @@ export const requiredSecrets = [
   "ISUXPORTAL_ADMIN_PASSWORD",
 ];
 export const defaults = {
+  natGatewayCount: 2,
   availabilityZones: ["ap-northeast-1a", "ap-northeast-1c"],
   vpcCidr: "10.26.0.0/16",
   auroraEngineVersion: "17.7",
@@ -48,6 +49,9 @@ export function validateConfig(c: PortalConfig): PortalConfig {
     new Set(c.availabilityZones).size !== 2 ||
     c.availabilityZones.some((az) => !az.startsWith(c.region))
   ) throw new Error("two distinct AZs in the deployment region are required");
+  if (![1, 2].includes(c.natGatewayCount)) {
+    throw new Error("natGatewayCount must be 1 or 2");
+  }
   if (
     c.auroraMinAcu < 0.5 || c.auroraMaxAcu < c.auroraMinAcu ||
     c.auroraMaxAcu > 256 || !Number.isInteger(c.auroraMinAcu * 2) ||
@@ -94,6 +98,8 @@ export function loadConfig(): PortalConfig {
     githubRepository: config.require("githubRepository"),
     githubEnvironment: config.require("githubEnvironment"),
     githubOidcProviderArn: config.require("githubOidcProviderArn"),
+    natGatewayCount: config.getNumber("natGatewayCount") ??
+      defaults.natGatewayCount,
     availabilityZones: config.getObject<string[]>("availabilityZones") ??
       defaults.availabilityZones,
     vpcCidr: config.get("vpcCidr") ?? defaults.vpcCidr,

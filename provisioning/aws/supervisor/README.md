@@ -1,0 +1,153 @@
+# 試し解き用Supervisor
+
+独立したPulumi stackで、SupervisorとISURealベンチを含むコンテナをECS
+Fargateへ配置します。
+`teamId`で1チーム、`teamIds`で複数チームを指定でき、各チームに1タスクを起動します。
+複数チームでVPC、NAT Gateway、ECRを共有します。
+Supervisorは実ポータルからジョブを取得し、ベンチを子プロセスとして実行して結果を報告します。
+実ポータル、対象チーム、問題サーバーは事前に構築してください。
+`portal-mock`には結果報告APIがないため接続できません。
+
+## ISUCON14との対応
+
+参照した版は`isucon/isucon14-portal`の`4c2b99a69b03dc0af56642dcf7ed9ef2015935e4`です。
+[task definition](https://github.com/isucon/isucon14-portal/blob/4c2b99a69b03dc0af56642dcf7ed9ef2015935e4/ecs/taskdef/benchmarker.jsonnet)、[service definition](https://github.com/isucon/isucon14-portal/blob/4c2b99a69b03dc0af56642dcf7ed9ef2015935e4/ecs/servicedef/benchmarker.jsonnet)、[entrypoint](https://github.com/isucon/isucon14-portal/blob/4c2b99a69b03dc0af56642dcf7ed9ef2015935e4/supervisor/entrypoint.sh)を確認しています。
+
+| 設定                        | ISUCON14                | この定義                                                       |
+| --------------------------- | ----------------------- | -------------------------------------------------------------- |
+| CPU / memory                | 4 vCPU / 8 GiB          | 同じ                                                           |
+| init process / stop timeout | 有効 / 120秒            | 同じ                                                           |
+| nofile / nproc              | 100000                  | 同じ                                                           |
+| runtime                     | ARM64 Fargate Spot      | 現行Dockerfileに合わせてX86_64 Fargate                         |
+| ログ                        | CloudWatch Logs         | 同じ、保持7日                                                  |
+| AZ識別                      | metadataからAZ IDを取得 | ポータルのavailability_zoneと一致する値を明示指定              |
+| network                     | public IP、3 AZのsubnet | 指定AZのprivate subnet、NAT Gatewayで固定送信元IP              |
+| 認証設定                    | S3 env file             | SSM SecureStringまたは既存のSecrets ManagerをECS secretsで注入 |
+
+固定送信元IPは、既存AWS検証環境のRouterが`clientCidr`を単一の`/32`に限定しているため使用します。
+Fargate、NAT Gateway、Elastic IP、CloudWatch Logsに利用料金が発生します。
+各stackは専用VPCを作るため、同一CIDRを使うstack間で接続を作らない構成です。
+
+## 初期設定
+
+Node.js、Pulumi CLI、AWS CLIとAWS構築権限が必要です。
+依存関係は親の`package-lock.json`を使います。 AWSアカウントにECS service-linked
+roleが存在しない場合は、構築者が`aws iam create-service-linked-role --aws-service-name ecs.amazonaws.com`で作成してください。
+
+Supervisorイメージはリポジトリルートをcontextに`supervisor/Dockerfile`でlinux/amd64向けにビルドし、同一アカウントのECRまたは認証不要のregistryへpushします。
+`image`にはpushした成果物のdigestを指定します。
+トークンはポータルの`ISUXPORTAL_BENCH_TOKEN`と一致させます。 同一regionのSSM
+SecureStringを使う場合は`tokenParameterArn`、ポータルの既存application JSON
+secretを使う場合は`tokenSecretArn`を設定します。
+後者は`ISUXPORTAL_BENCH_TOKEN`キーを直接参照するため、トークンのコピーは不要です。
+2種類のARNは同時に指定できません。
+カスタマー管理KMSキーで暗号化した場合は`tokenKmsKeyArn`も指定し、キー側のpolicyで実行roleの復号を許可してください。
+
+```bash
+npm --prefix provisioning/aws ci
+cd provisioning/aws/supervisor
+pulumi login
+pulumi stack init trial-team42
+pulumi config set aws:region ap-northeast-1
+pulumi config set availabilityZone ap-northeast-1a
+pulumi config set instanceName apne1-az4
+pulumi config set teamId 42
+pulumi config set portalEndpoint https://portal.example.com
+pulumi config set image '123456789012.dkr.ecr.ap-northeast-1.amazonaws.com/supervisor@sha256:<64桁のdigest>'
+pulumi config set tokenParameterArn arn:aws:ssm:ap-northeast-1:123456789012:parameter/trial/bench-token
+pulumi preview --diff
+pulumi up
+pulumi stack output
+```
+
+`instanceName`は例をそのまま使わず、対象チームの`availability_zone`に一致させてください。
+AZ名とAZ IDは別の識別子です。 ISUCON14はAZ
+IDを使用していましたが、現行Supervisorは渡された文字列をそのままポータルへ送ります。
+
+## Router接続と動作確認
+
+`egressPublicAddress`をRouter側stackの`clientCidr`へ設定します。
+`routerSecurityGroupIds`を設定すると、既存RouterのSecurity
+Groupへ固定送信元IPからTCP/8080を許可するルールを追加します。
+この場合は別stackの`clientCidr`変更は不要です。
+ポータルに実EC2のIPを登録している場合は、`targetOverrides`で各アプリのpublic
+IPをRouterのpublic IPとapp番号に対応するHostへ変換できます。
+Supervisorが受け取った対象番号を維持し、登録されていないIPはベンチ起動前に拒否します。
+設定例は[portal-devの適用済み設定](Pulumi.portal-dev.yaml.example)を参照してください。
+EC2のpublic IPやRouterのHost設定を変更した場合は、この対応表も更新します。
+このstackは問題サーバーへの直接通信許可やポータルのチーム登録を作りません。
+
+```bash
+# repository root
+SUPERVISOR_EGRESS="$(pulumi -C provisioning/aws/supervisor stack output egressPublicAddress --stack trial-team42)"
+pulumi -C provisioning/aws config set clientCidr "${SUPERVISOR_EGRESS}/32" --stack dev
+make aws-infra-preview STACK=dev
+make aws-infra-up STACK=dev
+
+LOG_GROUP="$(pulumi -C provisioning/aws/supervisor stack output logGroupName --stack trial-team42)"
+aws logs tail "${LOG_GROUP}" --follow --region ap-northeast-1
+```
+
+実ポータルからベンチジョブを投入し、`pending → running → finished`と結果のpass、スコアを確認します。
+停止時にはFargateの120秒上限で強制終了される可能性があるため、実行中ジョブのない時点で更新または削除します。
+更新時は旧タスクを停止してから新タスクを起動し、同じチームとAZ向けのworkerの重複を抑えます。
+実行中ジョブの自動回収は現行Supervisorの対象外です。
+
+標準出力と標準エラーはCloudWatch Logsへ送ります。
+ベンチのファイルログはタスク内の一時領域にあり、タスク終了時に消えます。
+ポータルへ確定報告できなかったファイルログの永続保存は、この定義に含めていません。
+SSMトークンを更新した場合はECSサービスを再デプロイして、新しいタスクへ値を反映してください。
+
+```bash
+pulumi -C provisioning/aws/supervisor destroy --stack trial-team42
+```
+
+削除はSupervisorのstackだけを対象にします。
+SSMパラメータ、ECRイメージ、ポータル、問題サーバーは別管理です。
+
+## 検証
+
+```bash
+npm --prefix provisioning/aws test
+npm --prefix provisioning/aws run typecheck
+```
+
+Pulumi
+mocksでFargateリソース、チーム限定設定、秘密情報の参照権限、固定送信元経路を検証します。
+AWS上の起動とポータルとの疎通は適用後に確認してください。 ECS
+secretsの権限は[AWSの実行role仕様](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task_execution_IAM_role.html)に従います。
+
+## portal-devへの適用記録
+
+2026-10-03にteam1〜3のSupervisorを適用しました。
+実行結果と既存アプリ側の未解決事項は[適用記録](deployment-20261003.md)に記録しています。
+
+## Benchmark dataset and regional routing
+
+Set `benchmarkScale: large` when the application database uses
+`datagen -scale large`. The Supervisor passes `--scale large` to the benchmark
+for both direct and Router-mapped execution. The portal-dev stack uses the
+`app.teamN-aws.127.0.0.1.nip.io` Host to route requests by region. Fixed
+`app1`–`app3` Hosts force one regional backend and cannot validate all regions
+in the current initial application configuration.
+
+## Shared portal NAT
+
+The portal-dev stack now sets `sharedNetwork` with the portal VPC, its
+`ap-northeast-1a` private subnet, and NAT egress IP `52.68.140.39`. It creates
+no dedicated VPC or NAT in this mode; ECS tasks remain private and Router
+ingress is restricted to the shared NAT `/32`. When moving existing workers,
+temporarily set `retainDedicatedNetwork: true`, deploy the new task network,
+verify the tasks, then remove that flag and deploy again to release the old VPC,
+NAT and EIP.
+
+## Routerの固定IPとネットワーク復旧
+
+`routerNetworkInterfaces`にRouter Hostとprimary ENI IDを指定すると、
+stackがEIPと関連付けを管理し、SupervisorのRouter接続先へ反映します。
+出力`routerPublicIps`から割り当て済みIPを確認できます。
+
+停止・起動後にRouterのdata NIC経路が消える場合は、cloud-initと静的netplanの
+NIC定義の競合を確認します。`provisioning/scripts/router_network.py`は既存の
+`90-isucon.yaml`を検証し、cloud-init側の重複定義を除去します。
+Router上でrootとして実行し、再起動後もアプリ・DBへの経路が残ることを確認します。

@@ -251,7 +251,7 @@ ISUXPORTAL_SUPERVISOR_HARD_TIMEOUT=150 \
 （上限 30 秒）を含めた暫定値である。supervisor のハードタイムアウト（初期設定 150 秒）は、ベンチの全体上限と
 報告処理の余裕を含めて長く設定する。本番の時間予算は実測して確定する。
 
-supervisor 実行時の stdout は `pass` と `score` だけの JSON とする。採点内訳、言語、詳細な失敗理由は stderr に出し、
+supervisor 実行時の stdout はシナリオの進行ログ（phase、初期ユーザー確認、投稿期間の開始、レベル上昇、バズ、最終検証の完了）と `pass`・`score` の JSON を出す。採点内訳、言語、詳細な失敗理由は stderr に出し、
 ポータルへ送る選手向けの失敗理由は一般的な文面にする。単独実行時は従来どおり詳細 JSON を stdout に出す。
 減点はないので、`ScoreBreakdown` の素点（`raw`）はスコアと同じ値を送り、減点（`deduction`）は 0 とする。
 

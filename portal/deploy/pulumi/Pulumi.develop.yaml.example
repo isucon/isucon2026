@@ -1,5 +1,6 @@
 config:
   aws:region: ap-northeast-1
+  isucon2026-portal:natGatewayCount: 1
   isucon2026-portal:name: portal-develop
   isucon2026-portal:domainName: portal-dev.isucon.whywrite.it
   isucon2026-portal:route53ZoneId: Z_REPLACE_ME
@@ -24,6 +25,8 @@ config:
     - ISUXPORTAL_DISCORD_CLIENT_SECRET
     - ISUXPORTAL_SLACK_WEBHOOK_URL
   isucon2026-portal:environment:
+    ISUXPORTAL_TIMING_CONTEST_START: "2026-10-04T10:00:00+09:00"
+    ISUXPORTAL_TIMING_CONTEST_END: "2026-10-04T20:00:00+09:00"
     ISUXPORTAL_ADMIN_ONLY: '1'
     ISUXPORTAL_ADMIN_LOGIN: admin
     ISUXPORTAL_GITHUB_CLIENT_ID: REPLACE_ME
