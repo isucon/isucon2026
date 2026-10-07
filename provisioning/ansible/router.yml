@@ -1,0 +1,7 @@
+---
+- name: Build the Router image
+  hosts: routers
+  become: true
+  roles:
+    - base
+    - router

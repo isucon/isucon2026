@@ -106,8 +106,10 @@ func Load(lookup LookupFunc) (Config, error) {
 		if err != nil || !serverIP.Is4() {
 			return Config{}, fmt.Errorf("%s_IP must be IPv4", prefix)
 		}
-		if !subnet.Contains(routerIP) || !subnet.Contains(serverIP) || routerIP == serverIP {
-			return Config{}, fmt.Errorf("%s addresses must be distinct members of subnet", prefix)
+		// The router address may sit outside the server subnet when every server
+		// subnet is routed through one shared router interface.
+		if !subnet.Contains(serverIP) || routerIP == serverIP {
+			return Config{}, fmt.Errorf("%s server address must be in its subnet and differ from the router address", prefix)
 		}
 		cfg.Servers[server] = ServerNetwork{Subnet: subnet, RouterIP: routerIP, ServerIP: serverIP}
 	}
