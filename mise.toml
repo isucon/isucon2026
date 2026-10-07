@@ -12,11 +12,3 @@ python = "3.12.13"
 
 [env]
 _.python.venv = { path = ".venv", create = true }
-
-[tasks."provisioning:install"]
-description = "Install repository-pinned Python and Ansible provisioning dependencies"
-run = [
-  "python -m ensurepip --upgrade",
-  "python -m pip install -r provisioning/requirements.txt",
-  "ansible-galaxy collection install -r provisioning/ansible/requirements.yml",
-]

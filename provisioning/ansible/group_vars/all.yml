@@ -1,0 +1,15 @@
+---
+# prepare.yml が成果物を置き、各 role がここから配布する
+repo_root: "{{ playbook_dir }}/../.."
+build_dir: "{{ playbook_dir }}/build"
+prepare_components: [webapp, frontend, datagen, router]
+
+go_version: "1.26.5"
+envoy_image: envoyproxy/envoy:v1.32.2
+
+isureal_db_name: isureal
+isureal_db_user: isureal
+isureal_db_password: isureal
+
+# Router から app の nginx へ転送するポート（webapp 本体は :8080 固定。provisioning/aws の appHttpPort と一致させる）
+app_http_port: 80

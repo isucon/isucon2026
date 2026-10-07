@@ -1,108 +1,112 @@
 export type NodeId = "app1" | "app2" | "app3" | "db1";
+export type Region = "asia" | "europe" | "america";
 
 export interface ServerNetwork {
-  id: NodeId;
-  vpcCidr: string;
-  serviceSubnetCidr: string;
-  routerSubnetCidr: string;
-  serviceIp: string;
-  routerIp: string;
+	id: NodeId;
+	// app だけが持つ。db1 は持たない
+	region?: Region;
+	subnetCidr: string;
+	serviceIp: string;
 }
 
-export const controlSubnetCidr = "192.168.60.64/28";
-export const controlRouterIp = "192.168.60.69";
-
-export const serverNetworks: readonly ServerNetwork[] = [
-  {
-    id: "app1",
-    vpcCidr: "192.168.60.0/24",
-    serviceSubnetCidr: "192.168.60.0/28",
-    routerSubnetCidr: "192.168.60.16/28",
-    serviceIp: "192.168.60.6",
-    routerIp: "192.168.60.21",
-  },
-  {
-    id: "app2",
-    vpcCidr: "192.168.61.0/24",
-    serviceSubnetCidr: "192.168.61.0/28",
-    routerSubnetCidr: "192.168.61.16/28",
-    serviceIp: "192.168.61.6",
-    routerIp: "192.168.61.21",
-  },
-  {
-    id: "app3",
-    vpcCidr: "192.168.62.0/24",
-    serviceSubnetCidr: "192.168.62.0/28",
-    routerSubnetCidr: "192.168.62.16/28",
-    serviceIp: "192.168.62.6",
-    routerIp: "192.168.62.21",
-  },
-  {
-    id: "db1",
-    vpcCidr: "192.168.63.0/24",
-    serviceSubnetCidr: "192.168.63.0/28",
-    routerSubnetCidr: "192.168.63.16/28",
-    serviceIp: "192.168.63.6",
-    routerIp: "192.168.63.21",
-  },
-] as const;
-
-export function requireIpv4HostCidr(name: string, value: string): string {
-  const parts = value.split("/");
-  const octets = parts[0]?.split(".") ?? [];
-  const valid =
-    parts.length === 2 &&
-    parts[1] === "32" &&
-    octets.length === 4 &&
-    octets.every(
-      (octet) =>
-        /^(0|[1-9][0-9]{0,2})$/.test(octet) && Number(octet) <= 255,
-    );
-  if (!valid) {
-    throw new Error(`${name} must be one canonical IPv4 address with a /32 prefix`);
-  }
-  return value;
+export interface Team {
+	number: number;
+	domain: string;
+	servers: readonly ServerNetwork[];
+	routerDataSubnetCidr: string;
+	routerDataIp: string;
+	routerPublicSubnetCidr: string;
+	routerPublicIp: string;
 }
 
-export function routerMediatedIngressCidrs(
-  destination: ServerNetwork,
+// VPC と EC2 Instance Connect Endpoint は全チームで共有する
+export const vpcCidr = "192.168.0.0/16";
+export const eiceSubnetCidr = "192.168.240.0/24";
+// Router の Envoy が転送する app の nginx のポート（provisioning/ansible の app_http_port と一致させる）
+export const appHttpPort = 80;
+// チームごとに 16 個の /24 を使うので、EIC Endpoint のサブネットと重ならない上限
+export const maxTeams = 15;
+
+const nodes: readonly { id: NodeId; region?: Region }[] = [
+	{ id: "app1", region: "asia" },
+	{ id: "app2", region: "europe" },
+	{ id: "app3", region: "america" },
+	{ id: "db1" },
+];
+
+// チーム n（1 始まり）は 192.168.(16(n-1)+k).0/24 を使う。
+// k = 1〜4 がサーバー、10 が Router のデータ用、11 が Router のパブリック用
+export function team(number: number): Team {
+	const base = 16 * (number - 1);
+	const subnet = (k: number) => `192.168.${base + k}.0/24`;
+	const host = (k: number) => `192.168.${base + k}.10`;
+	return {
+		number,
+		domain: `team${number}-aws.127.0.0.1.nip.io`,
+		servers: nodes.map((node, index) => ({
+			...node,
+			subnetCidr: subnet(index + 1),
+			serviceIp: host(index + 1),
+		})),
+		routerDataSubnetCidr: subnet(10),
+		routerDataIp: host(10),
+		routerPublicSubnetCidr: subnet(11),
+		routerPublicIp: host(11),
+	};
+}
+
+export function databaseIp(t: Team): string {
+	const db = t.servers.find((server) => server.region === undefined);
+	if (db === undefined) {
+		throw new Error("team has no database server");
+	}
+	return db.serviceIp;
+}
+
+// 他のサーバーからの通信は Router が NAT せずに折り返すので、送信元は相手のサブネットになる。
+// 同じ VPC の他チームのサブネットは許可しない
+export function serverIngressCidrs(
+	t: Team,
+	destination: ServerNetwork,
 ): string[] {
-  return [
-    `${destination.routerIp}/32`,
-    ...serverNetworks
-      .filter((source) => source.id !== destination.id)
-      .map((source) => source.vpcCidr),
-  ];
+	return [
+		`${t.routerDataIp}/32`,
+		...t.servers
+			.filter((source) => source.id !== destination.id)
+			.map((source) => source.subnetCidr),
+	];
 }
 
-export interface PublicIpIsolationRule {
-  protocol: "-1";
-  ruleNo: number;
-  action: "allow" | "deny";
-  cidrBlock: string;
-  fromPort: 0;
-  toPort: 0;
+export interface AclRule {
+	protocol: "-1";
+	ruleNo: number;
+	action: "allow" | "deny";
+	cidrBlock: string;
+	fromPort: 0;
+	toPort: 0;
 }
 
-export function publicIpIsolationRules(
-  blockedPublicIps: readonly string[],
-): PublicIpIsolationRule[] {
-  return [
-    ...blockedPublicIps.map((address, index) => ({
-      protocol: "-1" as const,
-      ruleNo: 100 + index * 10,
-      action: "deny" as const,
-      cidrBlock: `${address}/32`,
-      fromPort: 0 as const,
-      toPort: 0 as const,
-    })),
-    {
-      protocol: "-1",
-      ruleNo: 1000,
-      action: "allow",
-      cidrBlock: "0.0.0.0/0",
-      fromPort: 0,
-      toPort: 0,
-    },
-  ];
+// Router の公開側（パブリック IP とパブリック用サブネット）へサーバーから送らせない。
+// 開いていると Envoy 経由で同一リージョン扱いになり、遅延のないサーバー間通信ができてしまう
+export function serverEgressRules(
+	t: Team,
+	routerPublicAddress: string,
+): AclRule[] {
+	const rule = (
+		ruleNo: number,
+		action: "allow" | "deny",
+		cidrBlock: string,
+	): AclRule => ({
+		protocol: "-1",
+		ruleNo,
+		action,
+		cidrBlock,
+		fromPort: 0,
+		toPort: 0,
+	});
+	return [
+		rule(100, "deny", `${routerPublicAddress}/32`),
+		rule(110, "deny", t.routerPublicSubnetCidr),
+		rule(1000, "allow", "0.0.0.0/0"),
+	];
 }

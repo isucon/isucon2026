@@ -1,371 +1,283 @@
-import { buildRuntimeTopology, routerEnvironment, routerNetplan } from "./network";
-import { ServerNetwork, serverNetworks } from "./topology";
+import {
+	appHttpPort,
+	databaseIp,
+	type ServerNetwork,
+	type Team,
+	vpcCidr,
+} from "./topology";
 
-function base64(content: string): string {
-  return Buffer.from(content, "utf8").toString("base64");
+// アドレスはチームごとに違うので、AMI には焼き込まず起動時に設定する
+export function serviceUserData(t: Team, network: ServerNetwork): string {
+	const commands =
+		network.region === undefined
+			? ["systemctl enable --now postgresql"]
+			: [
+					`sed -i -e 's/^ISUREAL_REGION=.*/ISUREAL_REGION=${network.region}/' -e 's/^ISUREAL_DB_HOST=.*/ISUREAL_DB_HOST=${databaseIp(t)}/' /home/isucon/env.sh`,
+					"systemctl enable --now isureal-go nginx",
+				];
+	return `#!/bin/sh
+set -eu
+${commands.join("\n")}
+`;
 }
 
 function file(
-  path: string,
-  content: string,
-  mode = "0644",
-  owner = "root:root",
+	path: string,
+	content: string,
+	mode: string,
+	owner = "root:root",
 ): string {
-  return `  - path: ${path}
+	return `  - path: ${path}
     encoding: b64
     permissions: "${mode}"
     owner: ${owner}
-    content: ${base64(content)}`;
+    content: ${Buffer.from(content, "utf8").toString("base64")}`;
 }
 
-function multipartCloudConfig(config: string): string {
-  return `#cloud-config
-${config}
+function firstUsable(cidr: string): string {
+	const octets = cidr.split("/")[0].split(".").map(Number);
+	octets[3] += 1;
+	return octets.join(".");
+}
+
+// パブリック用 ENI は cloud-init の既定の設定（DHCP）に任せ、サーバーのサブネット宛てだけを
+// データ用 ENI から VPC へ送る
+export function routerNetplan(t: Team, dataMac: string): string {
+	const routes = t.servers
+		.map(
+			(network) => `        - to: ${network.subnetCidr}
+          via: ${firstUsable(t.routerDataSubnetCidr)}`,
+		)
+		.join("\n");
+	return `network:
+  version: 2
+  ethernets:
+    data0:
+      match:
+        macaddress: ${dataMac.toLowerCase()}
+      set-name: data0
+      dhcp4: false
+      addresses:
+        - ${t.routerDataIp}/${t.routerDataSubnetCidr.split("/")[1]}
+      routes:
+${routes}
 `;
 }
 
-function requireSafeSecret(name: string, value: string, pattern: RegExp): void {
-  if (!pattern.test(value)) {
-    throw new Error(`${name} has unsupported characters or length`);
-  }
+export function routerEnvironment(t: Team): string {
+	const lines = [
+		"ROUTER_PORTAL_ENDPOINT=http://127.0.0.1:18082",
+		`ROUTER_TEAM_NUMBER=${t.number}`,
+		"ROUTER_XDS_LISTEN_ADDRESS=127.0.0.1:18000",
+		`ROUTER_STATUS_LISTEN_ADDRESS=${t.routerPublicIp}:18081`,
+		"ROUTER_ENVOY_NODE_ID=isureal-router-envoy",
+		"ROUTER_ROUTE_CONFIG_NAME=isureal_routes",
+		`ROUTER_APP_HOST=app.${t.domain}`,
+	];
+	for (const server of t.servers) {
+		const prefix = `ROUTER_${server.id.toUpperCase()}`;
+		if (server.region !== undefined) {
+			lines.push(`${prefix}_HOST=${server.id}.${t.domain}`);
+		}
+		lines.push(
+			`${prefix}_SUBNET=${server.subnetCidr}`,
+			`${prefix}_REGION_LOCAL_IP=${t.routerDataIp}`,
+			`${prefix}_IP=${server.serviceIp}`,
+		);
+	}
+	return `${lines.join("\n")}\n`;
 }
 
-export function serviceUserData(
-  releaseId: string,
-  network: ServerNetwork,
-  domain: string,
-  databasePassword: string,
-  cursorKey: string,
-): string {
-  requireSafeSecret(
-    "databasePassword",
-    databasePassword,
-    /^[A-Za-z0-9._~-]{16,128}$/,
-  );
-  requireSafeSecret("cursorHmacKey", cursorKey, /^[A-Za-z0-9_-]{32,256}$/);
-  const topology = buildRuntimeTopology("https://portal.invalid", domain);
-  const databaseIp = serverNetworks.find((item) => item.id === "db1")!.serviceIp;
-  const backendEnvironment = `ISUREAL_LISTEN_ADDRESS=127.0.0.1:8081
-ISUREAL_PUBLIC_ORIGIN=https://app.team1-aws.${domain}
-ISUREAL_DATABASE_URL=postgresql://isureal:${databasePassword}@${databaseIp}:5432/isureal?sslmode=disable
-ISUREAL_SCHEMA_PATH=/opt/isucon/share/schema.sql
-ISUREAL_IMAGE_ROOT=/var/lib/isureal/images
-ISUREAL_CURSOR_HMAC_KEY=${cursorKey}
-ISUREAL_OPENAPI_PATH=/opt/isucon/share/openapi.yaml
-ISUREAL_IMAGE_SANITIZER_PATH=/opt/isucon/bin/image-sanitizer
-`;
-  const nginx = `server {
-    listen ${network.serviceIp}:8080 default_server;
-    server_name _;
-    root /opt/isucon/frontend;
-    index index.html;
-    client_max_body_size 32m;
-    location /api/ {
-        proxy_pass http://127.0.0.1:8081;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-    location / { try_files $uri $uri/ /index.html; }
-}
-`;
-  const initialize = `#!/bin/sh
-set -eu
-test "$(cat /etc/isucon/aws-release-id)" = "${releaseId}"
-if [ "${network.id}" = db1 ]; then
-pg_createcluster 16 main --start || test -e /var/lib/postgresql/16/main/PG_VERSION
-sed -i "s/^#*listen_addresses.*/listen_addresses = '127.0.0.1,${databaseIp}'/" /etc/postgresql/16/main/postgresql.conf
-${serverNetworks.filter((item) => item.id !== "db1").map((item) => `grep -Fq "${item.serviceIp}/32" /etc/postgresql/16/main/pg_hba.conf || echo "host isureal isureal ${item.serviceIp}/32 scram-sha-256" >>/etc/postgresql/16/main/pg_hba.conf`).join("\n")}
-systemctl restart postgresql@16-main.service
-systemctl enable --now postgresql.service
-runuser -u postgres -- psql -v ON_ERROR_STOP=1 --set=password="$(printf %s "${databasePassword}" | sed "s/'/''/g")" <<'SQL'
-DO $$
-BEGIN
-  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'isureal') THEN
-    CREATE ROLE isureal LOGIN;
-  END IF;
-END
-$$;
-ALTER ROLE isureal PASSWORD :'password';
-SELECT 'CREATE DATABASE isureal OWNER isureal'
-WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'isureal')\\gexec
-SQL
-ISUREAL_DATABASE_URL="postgresql://isureal:${databasePassword}@127.0.0.1:5432/isureal?sslmode=disable" \\
-  /opt/isucon/bin/seed --if-empty --schema /opt/isucon/share/schema.sql
-cat >/usr/local/sbin/isureal-node-check <<'CHECK'
-#!/bin/sh
-set -eu
-pg_isready -q -h ${databaseIp}
-CHECK
-chmod 0755 /usr/local/sbin/isureal-node-check
-else
-systemctl disable --now postgresql.service
-until pg_isready -q -h ${databaseIp} -U isureal -d isureal; do sleep 2; done
-ln -sfn /etc/nginx/sites-available/isureal /etc/nginx/sites-enabled/isureal
-rm -f /etc/nginx/sites-enabled/default
-cat >/usr/local/sbin/isureal-node-check <<'CHECK'
-#!/bin/sh
-set -eu
-pg_isready -q -h ${databaseIp}
-curl -fsS http://127.0.0.1:8081/health/ready >/dev/null
-curl -fsS -H 'Host: app.team1-aws.${domain}' http://${network.serviceIp}:8080/ >/dev/null
-CHECK
-chmod 0755 /usr/local/sbin/isureal-node-check
-systemctl daemon-reload
-systemctl enable --now isureal-api.service isureal-worker.service nginx.service
-fi
-`;
-  const initializeUnit = `[Unit]
-Description=Initialize ISUReal AWS problem server runtime
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=oneshot
-ExecStart=/usr/local/sbin/isureal-aws-initialize
-RemainAfterExit=yes
-Restart=on-failure
-RestartSec=5s
-
-[Install]
-WantedBy=multi-user.target
-`;
-  return multipartCloudConfig(`write_files:
-${file("/etc/isucon/aws-release-id", `${releaseId}\n`)}
-${file("/etc/isucon/aws-topology.json", `${JSON.stringify(topology, null, 2)}\n`)}
-${file("/etc/isucon/backend.env", backendEnvironment, "0640", "root:isureal")}
-${file("/etc/nginx/sites-available/isureal", nginx)}
-${file("/usr/local/sbin/isureal-aws-initialize", initialize, "0750")}
-${file("/etc/systemd/system/isureal-aws-initialize.service", initializeUnit)}
-runcmd:
-  - [systemctl, daemon-reload]
-  - [systemctl, enable, --now, isureal-aws-initialize.service]
-`);
-}
-
-export function routerUserData(
-  releaseId: string,
-  portalEndpoint: string,
-  domain: string,
-  controlIp: string,
-  controlMac: string,
-  dataMacs: readonly string[],
-  tlsCertificate: string,
-  tlsPrivateKey: string,
-): string {
-  const topology = buildRuntimeTopology(portalEndpoint, domain);
-  topology.networks.control.routerAddress = controlIp;
-  const env = routerEnvironment(topology);
-  const portalEnvironment = `PORTAL_TEAM_NUMBER=1
+export function portalEnvironment(t: Team): string {
+	return `PORTAL_TEAM_NUMBER=${t.number}
 PORTAL_TEAM_HASH=aws
-PORTAL_DOMAIN_SUFFIX=${domain}
+PORTAL_DOMAIN_SUFFIX=${t.domain.slice(t.domain.indexOf(".") + 1)}
 PORTAL_ROUTER_MODE=external-router
 PORTAL_LISTEN_ADDRESS=127.0.0.1:18082
 PORTAL_WEB_DIR=
 `;
-  const portalUnit = `[Unit]
-Description=ISUReal validation Portal
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=simple
-User=isureal-router
-Group=isureal-router
-EnvironmentFile=/etc/isucon/portal.env
-ExecStart=/opt/isucon/bin/isureal-portal
-Restart=on-failure
-RestartSec=1s
-NoNewPrivileges=true
-PrivateTmp=true
-ProtectSystem=strict
-ProtectHome=true
-
-[Install]
-WantedBy=multi-user.target
-`;
-  const interfaceSetup = `#!/bin/sh
-set -eu
-for expected in ${serverNetworks.map((network) => network.routerIp).join(" ")}; do
-  if ! ip -4 address show | grep -Fq " $expected/"; then
-    echo "missing Router data address: $expected" >&2
-    exit 1
-  fi
-done
-sysctl -w net.ipv4.ip_forward=1 >/dev/null
-sysctl -w net.ipv4.conf.all.rp_filter=0 >/dev/null
-sysctl -w net.ipv4.conf.default.rp_filter=0 >/dev/null
-nft delete table ip isureal_aws_egress 2>/dev/null || true
-nft -f - <<'NFT'
-table ip isureal_aws_egress {
-  chain forward {
-    type filter hook forward priority -10; policy accept;
-  }
-  chain postrouting {
-    type nat hook postrouting priority srcnat; policy accept;
-    ip saddr 192.168.0.0/16 oifname "control0" masquerade
-  }
 }
-NFT
-`;
-  const envoy = `node:
-  cluster: isureal-router
-  id: isureal-router-envoy
-admin:
-  address:
-    socket_address: { address: 127.0.0.1, port_value: 9901 }
-dynamic_resources:
-  ads_config:
-    api_type: GRPC
-    transport_api_version: V3
-    grpc_services:
-      - envoy_grpc: { cluster_name: xds_cluster }
-static_resources:
-  listeners:
-    - name: edge_http
-      address:
-        socket_address: { address: 0.0.0.0, port_value: 8080 }
-      filter_chains:
-        - filters:
-            - name: envoy.filters.network.http_connection_manager
-              typed_config:
-                "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
-                stat_prefix: edge_http
-                codec_type: AUTO
-                rds:
-                  route_config_name: isureal_routes
-                  config_source: { ads: {}, resource_api_version: V3 }
-                http_filters:
-                  - name: envoy.filters.http.fault
-                    typed_config: { "@type": type.googleapis.com/envoy.extensions.filters.http.fault.v3.HTTPFault }
-                  - name: envoy.filters.http.bandwidth_limit
-                    typed_config:
-                      "@type": type.googleapis.com/envoy.extensions.filters.http.bandwidth_limit.v3.BandwidthLimit
-                      stat_prefix: edge_bandwidth
-                      enable_mode: DISABLED
-                  - name: envoy.filters.http.router
-                    typed_config: { "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router }
-    - name: edge_https
-      address:
-        socket_address: { address: 0.0.0.0, port_value: 443 }
-      filter_chains:
-        - transport_socket:
-            name: envoy.transport_sockets.tls
-            typed_config:
-              "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.DownstreamTlsContext
-              common_tls_context:
-                tls_certificates:
-                  - certificate_chain: { filename: /etc/isucon/envoy/tls/server.crt }
-                    private_key: { filename: /etc/isucon/envoy/tls/server.key }
-          filters:
-            - name: envoy.filters.network.http_connection_manager
-              typed_config:
-                "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
-                stat_prefix: edge_https
-                codec_type: AUTO
-                rds:
-                  route_config_name: isureal_routes
-                  config_source: { ads: {}, resource_api_version: V3 }
-                http_filters:
-                  - name: envoy.filters.http.fault
-                    typed_config: { "@type": type.googleapis.com/envoy.extensions.filters.http.fault.v3.HTTPFault }
-                  - name: envoy.filters.http.bandwidth_limit
-                    typed_config:
-                      "@type": type.googleapis.com/envoy.extensions.filters.http.bandwidth_limit.v3.BandwidthLimit
-                      stat_prefix: edge_https_bandwidth
-                      enable_mode: DISABLED
-                  - name: envoy.filters.http.router
-                    typed_config: { "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router }
-  clusters:
-    - name: xds_cluster
-      type: STATIC
-      connect_timeout: 1s
-      typed_extension_protocol_options:
-        envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
-          "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
-          explicit_http_config: { http2_protocol_options: {} }
-      load_assignment:
-        cluster_name: xds_cluster
-        endpoints:
-          - lb_endpoints:
-              - endpoint:
-                  address:
-                    socket_address: { address: 127.0.0.1, port_value: 18000 }
-${serverNetworks
-  .filter((network) => network.id !== "db1")
-  .map(
-    (network) => `    - name: ${network.id}
-      type: STATIC
-      connect_timeout: 2s
-      load_assignment:
-        cluster_name: ${network.id}
-        endpoints:
-          - lb_endpoints:
-              - endpoint:
-                  address:
-                    socket_address: { address: ${network.serviceIp}, port_value: 8080 }`,
-  )
-  .join("\n")}
-`;
-  const initialize = `#!/bin/sh
-set -eu
-test "$(cat /etc/isucon/aws-release-id)" = "${releaseId}"
-rm -f /etc/netplan/50-cloud-init.yaml
-netplan apply
-/usr/local/sbin/isureal-aws-network-check
-/opt/isucon/bin/envoy --mode validate -c /etc/isucon/envoy/bootstrap.yaml
-systemctl daemon-reload
-systemctl enable --now isureal-portal.service
-for attempt in $(seq 1 30); do
-  if curl -fsS http://127.0.0.1:18082/healthz >/dev/null; then
-    break
-  fi
-  if [ "$attempt" -eq 30 ]; then
-    echo "Portal did not become healthy" >&2
-    exit 1
-  fi
-  sleep 2
-done
-systemctl enable --now isureal-router.service isureal-envoy.service
-cat >/usr/local/sbin/isureal-node-check <<'CHECK'
-#!/bin/sh
-set -eu
-curl -fsS http://${controlIp}:18081/healthz >/dev/null
-curl -fsS http://${controlIp}:18081/readyz >/dev/null
-CHECK
-chmod 0755 /usr/local/sbin/isureal-node-check
-`;
-  const initializeUnit = `[Unit]
-Description=Initialize ISUReal AWS Router runtime
-After=network-online.target
-Wants=network-online.target
 
-[Service]
-Type=oneshot
-ExecStart=/usr/local/sbin/isureal-aws-initialize
-RemainAfterExit=yes
-Restart=on-failure
-RestartSec=5s
+const typed = (type: string, fields: object = {}) => ({
+	"@type": `type.googleapis.com/${type}`,
+	...fields,
+});
 
-[Install]
-WantedBy=multi-user.target
-`;
-  return multipartCloudConfig(`write_files:
-${file("/etc/isucon/aws-release-id", `${releaseId}\n`)}
-${file("/etc/isucon/aws-topology.json", `${JSON.stringify(topology, null, 2)}\n`)}
-${file("/etc/netplan/90-isucon.yaml", routerNetplan(controlMac, dataMacs), "0600")}
-${file("/etc/isucon/router.env", env, "0640", "root:isureal-router")}
-${file("/etc/isucon/portal.env", portalEnvironment, "0640", "root:isureal-router")}
-${file("/etc/systemd/system/isureal-portal.service", portalUnit)}
-${file("/etc/isucon/envoy/bootstrap.yaml", envoy)}
-${file("/etc/isucon/envoy/tls/server.crt", tlsCertificate)}
+function edgeListener(name: string, port: number, tls: boolean): object {
+	const [address, prefix] = vpcCidr.split("/");
+	const connectionManager = {
+		name: "envoy.filters.network.http_connection_manager",
+		typed_config: typed(
+			"envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager",
+			{
+				stat_prefix: name,
+				codec_type: "AUTO",
+				request_timeout: "30s",
+				normalize_path: true,
+				merge_slashes: true,
+				internal_address_config: {
+					cidr_ranges: [
+						{ address_prefix: address, prefix_len: Number(prefix) },
+					],
+				},
+				rds: {
+					route_config_name: "isureal_routes",
+					config_source: {
+						ads: {},
+						resource_api_version: "V3",
+						initial_fetch_timeout: "15s",
+					},
+				},
+				http_filters: [
+					{
+						name: "envoy.filters.http.fault",
+						typed_config: typed(
+							"envoy.extensions.filters.http.fault.v3.HTTPFault",
+						),
+					},
+					{
+						name: "envoy.filters.http.bandwidth_limit",
+						typed_config: typed(
+							"envoy.extensions.filters.http.bandwidth_limit.v3.BandwidthLimit",
+							{ stat_prefix: `${name}_bandwidth`, enable_mode: "DISABLED" },
+						),
+					},
+					{
+						name: "envoy.filters.http.router",
+						typed_config: typed(
+							"envoy.extensions.filters.http.router.v3.Router",
+						),
+					},
+				],
+			},
+		),
+	};
+	const transportSocket = {
+		name: "envoy.transport_sockets.tls",
+		typed_config: typed(
+			"envoy.extensions.transport_sockets.tls.v3.DownstreamTlsContext",
+			{
+				common_tls_context: {
+					tls_certificates: [
+						{
+							certificate_chain: {
+								filename: "/etc/isucon/envoy/tls/server.crt",
+							},
+							private_key: { filename: "/etc/isucon/envoy/tls/server.key" },
+						},
+					],
+				},
+			},
+		),
+	};
+	return {
+		name,
+		address: { socket_address: { address: "0.0.0.0", port_value: port } },
+		filter_chains: [
+			{
+				...(tls ? { transport_socket: transportSocket } : {}),
+				filters: [connectionManager],
+			},
+		],
+	};
+}
+
+function staticCluster(
+	name: string,
+	address: string,
+	port: number,
+	extra: object = {},
+): object {
+	return {
+		name,
+		type: "STATIC",
+		...extra,
+		load_assignment: {
+			cluster_name: name,
+			endpoints: [
+				{
+					lb_endpoints: [
+						{
+							endpoint: {
+								address: { socket_address: { address, port_value: port } },
+							},
+						},
+					],
+				},
+			],
+		},
+	};
+}
+
+// YAML は JSON の上位互換なので、bootstrap.yaml として JSON を書く
+export function envoyBootstrap(t: Team): string {
+	const bootstrap = {
+		node: { cluster: "isureal-router", id: "isureal-router-envoy" },
+		admin: {
+			address: { socket_address: { address: "127.0.0.1", port_value: 9901 } },
+		},
+		dynamic_resources: {
+			ads_config: {
+				api_type: "GRPC",
+				transport_api_version: "V3",
+				grpc_services: [{ envoy_grpc: { cluster_name: "xds_cluster" } }],
+			},
+		},
+		static_resources: {
+			listeners: [
+				edgeListener("edge_http", 8080, false),
+				edgeListener("edge_https", 443, true),
+			],
+			clusters: [
+				staticCluster("xds_cluster", "127.0.0.1", 18000, {
+					connect_timeout: "1s",
+					typed_extension_protocol_options: {
+						"envoy.extensions.upstreams.http.v3.HttpProtocolOptions": typed(
+							"envoy.extensions.upstreams.http.v3.HttpProtocolOptions",
+							{ explicit_http_config: { http2_protocol_options: {} } },
+						),
+					},
+				}),
+				...t.servers
+					.filter((server) => server.region !== undefined)
+					.map((server) =>
+						staticCluster(server.id, server.serviceIp, appHttpPort, {
+							connect_timeout: "2s",
+							circuit_breakers: {
+								thresholds: [
+									{
+										priority: "DEFAULT",
+										max_connections: 100000,
+										max_pending_requests: 100000,
+										max_requests: 100000,
+									},
+								],
+							},
+						}),
+					),
+			],
+		},
+	};
+	return `${JSON.stringify(bootstrap, null, 2)}\n`;
+}
+
+// データ用 ENI は起動後に attach されるので、アドレスが載るまで netplan を当て直してから起動する
+export function routerUserData(
+	t: Team,
+	dataMac: string,
+	tlsCertificate: string,
+	tlsPrivateKey: string,
+): string {
+	return `#cloud-config
+write_files:
+${file("/etc/netplan/90-isucon.yaml", routerNetplan(t, dataMac), "0600")}
+${file("/etc/isucon/router.env", routerEnvironment(t), "0640", "root:isureal-router")}
+${file("/etc/isucon/portal.env", portalEnvironment(t), "0640", "root:isureal-router")}
+${file("/etc/isucon/envoy/bootstrap.yaml", envoyBootstrap(t), "0644")}
+${file("/etc/isucon/envoy/tls/server.crt", tlsCertificate, "0644")}
 ${file("/etc/isucon/envoy/tls/server.key", tlsPrivateKey, "0640", "root:isureal-router")}
-${file("/usr/local/sbin/isureal-aws-network-check", interfaceSetup, "0755")}
-${file("/usr/local/sbin/isureal-aws-initialize", initialize, "0750")}
-${file("/etc/systemd/system/isureal-aws-initialize.service", initializeUnit)}
 runcmd:
-  - [systemctl, daemon-reload]
-  - [systemctl, enable, --now, isureal-aws-initialize.service]
-`);
+  - until ip -4 -o address show dev data0 | grep -Fq ' ${t.routerDataIp}/'; do netplan apply; sleep 5; done
+  - systemctl enable --now isureal-portal isureal-router isureal-envoy
+`;
 }

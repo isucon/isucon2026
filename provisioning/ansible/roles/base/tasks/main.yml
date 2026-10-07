@@ -1,0 +1,41 @@
+---
+- name: Set timezone to UTC
+  ansible.builtin.file:
+    src: /usr/share/zoneinfo/Etc/UTC
+    dest: /etc/localtime
+    state: link
+    force: true
+
+- name: Disable unattended upgrades
+  ansible.builtin.copy:
+    src: 20auto-upgrades
+    dest: /etc/apt/apt.conf.d/20auto-upgrades
+    mode: "0644"
+
+- name: Install common packages
+  ansible.builtin.apt:
+    name:
+      - acl
+      - ca-certificates
+      - curl
+      - git
+      - iproute2
+      - jq
+      - make
+      - nftables
+      - unzip
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Tune kernel parameters
+  ansible.builtin.copy:
+    src: 90-isucon.conf
+    dest: /etc/sysctl.d/90-isucon.conf
+    mode: "0644"
+  notify: Apply sysctl
+
+- name: Raise process limits
+  ansible.builtin.copy:
+    src: limits.conf
+    dest: /etc/security/limits.d/90-isucon.conf
+    mode: "0644"

@@ -61,6 +61,21 @@ func TestLoadOverrides(t *testing.T) {
 	}
 }
 
+func TestLoadAcceptsSharedRouterAddressOutsideServerSubnets(t *testing.T) {
+	t.Parallel()
+	values := map[string]string{}
+	for _, prefix := range []string{"ROUTER_APP1", "ROUTER_APP2", "ROUTER_APP3", "ROUTER_DB1"} {
+		values[prefix+"_REGION_LOCAL_IP"] = "192.168.10.10"
+	}
+	cfg, err := Load(func(key string) (string, bool) { value, ok := values[key]; return value, ok })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := cfg.Servers[domain.DB1].RouterIP.String(); got != "192.168.10.10" {
+		t.Fatalf("db1 router IP = %s", got)
+	}
+}
+
 func TestLoadRejectsInvalidConfiguration(t *testing.T) {
 	t.Parallel()
 	tests := map[string]map[string]string{
@@ -69,7 +84,7 @@ func TestLoadRejectsInvalidConfiguration(t *testing.T) {
 		"cross over same":   {"ROUTER_SAME_REGION_BANDWIDTH_BPS": "100", "ROUTER_CROSS_REGION_BANDWIDTH_BPS": "101"},
 		"negative delay":    {"ROUTER_CROSS_REGION_DELAY": "-1ms"},
 		"overlap subnet":    {"ROUTER_APP2_SUBNET": "172.31.1.0/24", "ROUTER_APP2_REGION_LOCAL_IP": "172.31.1.3", "ROUTER_APP2_IP": "172.31.1.11"},
-		"router outside":    {"ROUTER_APP1_REGION_LOCAL_IP": "192.0.2.1"},
+		"server outside":    {"ROUTER_APP1_IP": "192.0.2.1"},
 		"duplicate address": {"ROUTER_APP2_REGION_LOCAL_IP": "172.31.2.10"},
 		"bad hostname":      {"ROUTER_APP_HOST": "http://example.test"},
 		"bad backoff":       {"ROUTER_PORTAL_RECONNECT_MIN_BACKOFF": "3s", "ROUTER_PORTAL_RECONNECT_MAX_BACKOFF": "1s"},
