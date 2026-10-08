@@ -81,7 +81,7 @@ RSpec.describe 'bench API' do
     expect(handle.job_id).to eq(job.id)
     expect(handle.handle.size).to be > 40
     expect(handle.target_ipv4_address).to eq(instance1.public_ipv4_address)
-    expect(handle.all_ipv4_addresses.size).to eq(3)
+    expect(handle.all_ipv4_addresses.to_a).to eq([instance1.public_ipv4_address])
     expect(handle.all_ipv4_addresses[0]).to eq(instance1.public_ipv4_address)
 
     # 途中報告: score == -1 → raw - deduction で計算（CT-7）
