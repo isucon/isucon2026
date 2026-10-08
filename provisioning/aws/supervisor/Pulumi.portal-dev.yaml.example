@@ -4,6 +4,8 @@ config:
   isucon2026-trial-supervisor:routerNetworkInterfaces:
     app.team2-aws.127.0.0.1.nip.io: eni-01cf2faf4fc94c7d8
     app.team3-aws.127.0.0.1.nip.io: eni-0a2745b0e1ff8f92d
+    app.team5-aws.127.0.0.1.nip.io: eni-05c33fb40ca55f1ff
+    app.team6-aws.127.0.0.1.nip.io: eni-0a62f85b7aaae6189
   isucon2026-trial-supervisor:sharedNetwork:
     vpcId: vpc-0e2be8c91c07a48f3
     subnetId: subnet-055a5ee88a1c5764b
@@ -19,7 +21,8 @@ config:
     - '3'
     - '4'
     - '5'
-  isucon2026-trial-supervisor:image: 124502390568.dkr.ecr.ap-northeast-1.amazonaws.com/isucon2026-supervisor-portal-dev@sha256:68668195782ae546705299028fc5f957afd90634ea639ad9cd64c9ff0f7de183
+    - '6'
+  isucon2026-trial-supervisor:image: 124502390568.dkr.ecr.ap-northeast-1.amazonaws.com/isucon2026-supervisor-portal-dev@sha256:0ccf2b3decc32e88c565a7e703e11ab6132797494ceef8adb26927375f791822
   isucon2026-trial-supervisor:routerSecurityGroupIds:
     - sg-09663cf353f2246e7
   isucon2026-trial-supervisor:targetOverrides:
@@ -77,4 +80,22 @@ config:
     13.113.253.143:
       target: 52.195.195.61
       host: app.team4-aws.127.0.0.1.nip.io
+    3.113.4.120:
+      target: 52.195.237.31
+      host: app.team5-aws.127.0.0.1.nip.io
+    13.114.191.55:
+      target: 52.195.237.31
+      host: app.team5-aws.127.0.0.1.nip.io
+    3.112.20.139:
+      target: 52.195.237.31
+      host: app.team5-aws.127.0.0.1.nip.io
+    43.207.225.96:
+      target: 13.192.234.219
+      host: app.team6-aws.127.0.0.1.nip.io
+    54.250.147.168:
+      target: 13.192.234.219
+      host: app.team6-aws.127.0.0.1.nip.io
+    57.180.245.99:
+      target: 13.192.234.219
+      host: app.team6-aws.127.0.0.1.nip.io
 encryptionsalt: v1:Qiz6zYuNH5I=:v1:p6BclRjnqVujiJMN:xnMY7wNzlD0PDbE9EYXISlrrp8nQOA==

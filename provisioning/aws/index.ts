@@ -34,6 +34,7 @@ const {
 	serviceInstanceType,
 	routerInstanceType,
 	clientCidrs,
+	sshCidrs,
 } = config;
 const teams = Array.from({ length: config.teamCount }, (_, index) =>
 	team(index + 1),
@@ -331,6 +332,16 @@ function createTeam(t: Team) {
 					cidrBlocks: serverIngressCidrs(t, network),
 				},
 				sshFromEice,
+				...(sshCidrs.length > 0
+					? [
+							{
+								protocol: "tcp",
+								fromPort: 22,
+								toPort: 22,
+								cidrBlocks: sshCidrs,
+							},
+						]
+					: []),
 			],
 			egress: allEgress,
 			tags: teamTags,
@@ -376,6 +387,7 @@ function createTeam(t: Team) {
 		routerInstanceId: router.id,
 		routerPublicAddress: router.publicIp,
 		serviceInstanceIds: servers.map((server) => server.id),
+		servicePublicAddresses: servers.map((server) => server.publicIp),
 	};
 }
 
