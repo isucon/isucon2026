@@ -26,6 +26,8 @@ export const config = {
 	databaseVolumeIops: c.getNumber("databaseVolumeIops") ?? 6000,
 	databaseVolumeThroughput: c.getNumber("databaseVolumeThroughput") ?? 200,
 	clientCidrs: ClientCidrsSchema.parse(c.getObject("clientCidrs") ?? []),
+	// 一時的にサーバー（Router を除く）のパブリック IP へ直接 SSH してよい送信元。通常は空にしておく
+	sshCidrs: ClientCidrsSchema.parse(c.getObject("sshCidrs") ?? []),
 	// Router の 443 で使う証明書。指定がなければ自己署名の証明書を生成する
 	tlsCertificate: c.getSecret("tlsCertificate"),
 	tlsPrivateKey: c.getSecret("tlsPrivateKey"),
