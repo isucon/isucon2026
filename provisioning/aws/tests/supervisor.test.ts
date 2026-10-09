@@ -30,6 +30,23 @@ const config = {
   routerSecurityGroupIds: ["sg-router"],
 };
 
+test("preserves team-specific benchmark images during supervisor deployments", () => {
+  const override = `registry.example/team42@sha256:${"b".repeat(64)}`;
+  const teamImages = { "42": override };
+  expect(supervisorContainer({ ...config, teamImages }, "logs").image)
+    .toBe(override);
+  expect(
+    supervisorContainer({ ...config, teamImages, teamId: "43" }, "logs").image,
+  )
+    .toBe(config.image);
+  expect(() =>
+    supervisorContainer({
+      ...config,
+      teamImages: { "42": "registry.example/team42:latest" },
+    }, "logs")
+  ).toThrow("image must be pinned by digest");
+});
+
 test("runs a team-scoped worker with ISUCON14 process and log settings", () => {
   const container = supervisorContainer(config, "trial-logs");
   expect(container.environment).toContainEqual({

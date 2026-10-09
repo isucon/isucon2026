@@ -9,6 +9,7 @@ export interface SupervisorConfig {
   benchmarkScale?: string;
   availabilityZone: string;
   image: string;
+  teamImages?: Record<string, string>;
   endpoint: string;
   tokenParameterArn?: string;
   tokenSecretArn?: string;
@@ -23,7 +24,10 @@ export interface SupervisorConfig {
 }
 
 export function supervisorContainer(c: SupervisorConfig, logGroup: string) {
-  if (!/^[a-zA-Z0-9./:_-]+@sha256:[a-f0-9]{64}$/.test(c.image)) {
+  const image = c.teamId === undefined
+    ? c.image
+    : c.teamImages?.[c.teamId] ?? c.image;
+  if (!/^[a-zA-Z0-9./:_-]+@sha256:[a-f0-9]{64}$/.test(image)) {
     throw new Error("image must be pinned by digest");
   }
   const endpoint = new URL(c.endpoint);
@@ -109,7 +113,7 @@ esac`;
   }
   return {
     name: "supervisor",
-    image: c.image,
+    image,
     essential: true,
     command,
     environment: [
