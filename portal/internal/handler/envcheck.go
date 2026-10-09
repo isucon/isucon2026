@@ -7,6 +7,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
+	"mime"
 	"net/http"
 	"strings"
 	"time"
@@ -24,6 +26,7 @@ func (h *Handler) checkerAuth(w http.ResponseWriter, r *http.Request) (int64, bo
 	q := r.URL.Query()
 	tok := q.Get("token")
 	teamIDParam := q.Get("team_id")
+	signature := q.Get("signature")
 	if r.Method == http.MethodPost {
 		_ = r.ParseForm()
 		if tok == "" {
@@ -32,8 +35,14 @@ func (h *Handler) checkerAuth(w http.ResponseWriter, r *http.Request) (int64, bo
 		if teamIDParam == "" {
 			teamIDParam = r.PostFormValue("team_id")
 		}
+		if signature == "" {
+			signature = r.PostFormValue("signature")
+		}
 	}
+	return h.checkerCredentialsAuth(w, tok, teamIDParam, signature)
+}
 
+func (h *Handler) checkerCredentialsAuth(w http.ResponseWriter, tok, teamIDParam, signature string) (int64, bool) {
 	switch {
 	case tok != "":
 		payload := token.VerifyChecker(h.cfg.CheckerSecret, tok)
@@ -43,10 +52,6 @@ func (h *Handler) checkerAuth(w http.ResponseWriter, r *http.Request) (int64, bo
 		}
 		return payload.TeamID, true
 	case teamIDParam != "":
-		signature := q.Get("signature")
-		if r.Method == http.MethodPost && signature == "" {
-			signature = r.PostFormValue("signature")
-		}
 		mac := hmac.New(sha512.New384, []byte(h.cfg.SSHKeyAPISecret))
 		mac.Write([]byte(teamIDParam))
 		expected := hex.EncodeToString(mac.Sum(nil))
@@ -141,18 +146,56 @@ func (h *Handler) EnvCheckSSHPublicKeys(w http.ResponseWriter, r *http.Request) 
 	renderPlain(w, http.StatusOK, strings.Join(lines, "\n")+"\n")
 }
 
+type envCheckResultRequest struct {
+	Token        string `json:"token"`
+	Name         string `json:"name"`
+	IPAddress    string `json:"ip_address"`
+	Passed       bool   `json:"passed"`
+	Message      string `json:"message"`
+	AdminMessage string `json:"admin_message"`
+	RawData      string `json:"raw_data"`
+}
+
 // EnvCheckCreate: POST /api/env_checks（FR-E-3: 空ボディで結果保存、FR-E-5: 副作用）
 func (h *Handler) EnvCheckCreate(w http.ResponseWriter, r *http.Request) {
 	ri := info(r)
 	ctx := r.Context()
-	teamID, ok := h.checkerAuth(w, r)
+	var input envCheckResultRequest
+	var teamID int64
+	var ok bool
+	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	if err != nil && r.Header.Get("Content-Type") != "" {
+		renderPlain(w, http.StatusBadRequest, "invalid content type")
+		return
+	}
+	if mediaType == "application/json" {
+		// The AMI checker sends a JSON object with a boolean passed field.
+		dec := json.NewDecoder(r.Body)
+		var result *envCheckResultRequest
+		if err := dec.Decode(&result); err != nil || result == nil {
+			renderPlain(w, http.StatusBadRequest, "invalid JSON result")
+			return
+		}
+		if err := dec.Decode(new(any)); err != io.EOF {
+			renderPlain(w, http.StatusBadRequest, "invalid JSON result")
+			return
+		}
+		input = *result
+		teamID, ok = h.checkerCredentialsAuth(w, input.Token, "", "")
+	} else {
+		// Keep the existing form and legacy signature clients compatible.
+		teamID, ok = h.checkerAuth(w, r)
+		input = envCheckResultRequest{
+			Name: r.FormValue("name"), IPAddress: r.FormValue("ip_address"),
+			Passed:  r.FormValue("passed") == "true" || r.FormValue("passed") == "1",
+			Message: r.FormValue("message"), AdminMessage: r.FormValue("admin_message"),
+			RawData: r.FormValue("raw_data"),
+		}
+	}
 	if !ok {
 		return
 	}
-	_ = r.ParseForm()
-	name := r.FormValue("name")
-	publicIP := r.FormValue("ip_address")
-	passed := r.FormValue("passed") == "true" || r.FormValue("passed") == "1"
+	name, publicIP, passed := input.Name, input.IPAddress, input.Passed
 
 	previous, err := model.LastEnvCheck(ctx, h.db, teamID, name)
 	if err != nil {
@@ -165,9 +208,9 @@ func (h *Handler) EnvCheckCreate(w http.ResponseWriter, r *http.Request) {
 		Name:         name,
 		IPAddress:    publicIP,
 		Passed:       passed,
-		Message:      r.FormValue("message"),
-		AdminMessage: r.FormValue("admin_message"),
-		RawData:      r.FormValue("raw_data"),
+		Message:      input.Message,
+		AdminMessage: input.AdminMessage,
+		RawData:      input.RawData,
 	}
 	if err := model.CreateEnvCheck(ctx, h.db, check); err != nil {
 		renderInternalError(w, err)

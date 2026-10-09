@@ -150,14 +150,13 @@ export class EnvCheck extends React.Component<Props, State> {
           </p>
           <article className="message">
             <div className="message-body">
-              このテンプレートでは{" "}
-              <a href="https://aws.amazon.com/jp/free/" target="_blank" rel="noreferrer noopener">
-                AWS 無料利用枠
-              </a>{" "}
-              に収まる範囲で EC2 インスタンス、VPC、インターネットゲートウェイ、セキュリティグループ、また Availability
-              Zone 情報取得に利用する Lambda 関数を作成します。また、EC2 環境の情報取得を行うための IAM
-              ロールを含みます。IAM ロールは EC2 インスタンスおよび Lambda
-              関数でのみ利用されます。また、許可されているアクションは AWS の仕様上、アカウントに存在する他の EC2
+              このテンプレートでは本番と同じ台数とインスタンスタイプで、c7i.large を3台、c6in.large を2台、合計5台の EC2
+              インスタンスを作成します。名前は isucon2026-envcheck-001 から isucon2026-envcheck-005
+              です。EC2、EBS、パブリック IPv4 などの利用料金が発生するため、確認後はスタックを削除してください。
+              VPC、インターネットゲートウェイ、セキュリティグループ、また Availability Zone 情報取得に利用する Lambda
+              関数を作成します。また、EC2 環境の情報取得を行うための IAM ロールを含みます。IAM ロールは EC2
+              インスタンスおよび Lambda 関数でのみ利用されます。また、許可されているアクションは AWS
+              の仕様上、アカウントに存在する他の EC2
               リソースの情報も閲覧できる設定になっていますが、不要な情報は取得いたしません。
             </div>
           </article>
@@ -183,8 +182,8 @@ export class EnvCheck extends React.Component<Props, State> {
             「既存のテンプレートを選択」、「テンプレートファイルのアップロード」を指定し、ダウンロードしたテンプレートをアップロードする。
           </li>
           <li>
-            スタック名は任意のもの、それ以外の箇所は変更せずに画面にしたがって進める。最後の「AWS
-            CloudFormation によって IAM リソースが作成される場合があることを承認します。」に<b>チェックを入れた上で</b>
+            スタック名は任意のもの、それ以外の箇所は変更せずに画面にしたがって進める。最後の「AWS CloudFormation
+            によって IAM リソースが作成される場合があることを承認します。」に<b>チェックを入れた上で</b>
             、「送信」をクリック。
           </li>
         </ol>
