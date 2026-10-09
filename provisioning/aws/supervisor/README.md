@@ -124,6 +124,10 @@ secretsの権限は[AWSの実行role仕様](https://docs.aws.amazon.com/AmazonEC
 
 ## Benchmark dataset and regional routing
 
+`teamImages` optionally maps team IDs to digest-pinned images. Workers without an
+override use `image`. Preserve these overrides when updating the Supervisor so a
+team's benchmark fixes are not replaced by the default benchmark binary.
+
 Set `benchmarkScale: large` when the application database uses
 `datagen -scale large`. The Supervisor passes `--scale large` to the benchmark
 for both direct and Router-mapped execution. The portal-dev stack uses the
