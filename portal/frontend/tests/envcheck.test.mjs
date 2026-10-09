@@ -19,15 +19,15 @@ new Function("require", "exports", outputText)((name) => {
   return require(name);
 }, exports);
 
-test("envcheck instructions describe all five paid instances", () => {
+test("envcheck instructions describe resources without instance details", () => {
   const component = new exports.EnvCheck({ session: { team: {} }, client: {} });
   component.state.checkStatus = EnvCheckStatus.NOT_STARTED;
   const html = renderToStaticMarkup(component.render());
-  assert.match(html, /c7i\.large/);
-  assert.match(html, /c6in\.large/);
-  assert.match(html, /5台/);
-  assert.match(html, /料金/);
-  assert.doesNotMatch(html, /無料利用枠/);
+  assert.match(
+    html,
+    /このテンプレートではEC2 インスタンス、VPC、インターネットゲートウェイ、セキュリティグループ、また Availability Zone 情報取得に利用する Lambda 関数を作成します。/,
+  );
+  assert.doesNotMatch(html, /本番と同じ|c7i\.large|c6in\.large|5台|isucon2026-envcheck-|無料利用枠/);
 });
 
 test("DONE returned by the API stops envcheck progress polling", async () => {

@@ -1,10 +1,7 @@
 package handler
 
 import (
-	"crypto/hmac"
-	"crypto/sha512"
 	"database/sql"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -20,60 +17,19 @@ import (
 	"github.com/isucon/isucon2026/portal/internal/token"
 )
 
-// checkerAuth は認証 2 方式（FR-E-4）: CheckerToken、無ければ HMAC-SHA384 署名（旧 AMI 互換）。
-// 戻り値は team_id。失敗時はレスポンス済みで ok=false。
-func (h *Handler) checkerAuth(w http.ResponseWriter, r *http.Request) (int64, bool) {
-	q := r.URL.Query()
-	tok := q.Get("token")
-	teamIDParam := q.Get("team_id")
-	signature := q.Get("signature")
-	if r.Method == http.MethodPost {
-		_ = r.ParseForm()
-		if tok == "" {
-			tok = r.PostFormValue("token")
-		}
-		if teamIDParam == "" {
-			teamIDParam = r.PostFormValue("team_id")
-		}
-		if signature == "" {
-			signature = r.PostFormValue("signature")
-		}
-	}
-	return h.checkerCredentialsAuth(w, tok, teamIDParam, signature)
-}
-
-func (h *Handler) checkerCredentialsAuth(w http.ResponseWriter, tok, teamIDParam, signature string) (int64, bool) {
-	switch {
-	case tok != "":
-		payload := token.VerifyChecker(h.cfg.CheckerSecret, tok)
-		if payload == nil {
-			renderPlain(w, http.StatusUnauthorized, "invalid token")
-			return 0, false
-		}
-		return payload.TeamID, true
-	case teamIDParam != "":
-		mac := hmac.New(sha512.New384, []byte(h.cfg.SSHKeyAPISecret))
-		mac.Write([]byte(teamIDParam))
-		expected := hex.EncodeToString(mac.Sum(nil))
-		if !secureCompare(expected, signature) {
-			renderPlain(w, http.StatusBadRequest, "invalid signature")
-			return 0, false
-		}
-		teamID, err := parseInt64(teamIDParam)
-		if err != nil {
-			renderPlain(w, http.StatusBadRequest, "invalid team_id")
-			return 0, false
-		}
-		return teamID, true
-	default:
-		renderPlain(w, http.StatusBadRequest, "request not have token or signature")
+// checkerAuth verifies the checker token and returns its team ID.
+func (h *Handler) checkerAuth(w http.ResponseWriter, tok string) (int64, bool) {
+	payload := token.VerifyChecker(h.cfg.CheckerSecret, tok)
+	if payload == nil {
+		renderPlain(w, http.StatusUnauthorized, "invalid token")
 		return 0, false
 	}
+	return payload.TeamID, true
 }
 
 // EnvCheckInfo: GET /api/env_check_info（FR-E-1: JSON）
 func (h *Handler) EnvCheckInfo(w http.ResponseWriter, r *http.Request) {
-	teamID, ok := h.checkerAuth(w, r)
+	teamID, ok := h.checkerAuth(w, r.URL.Query().Get("token"))
 	if !ok {
 		return
 	}
@@ -115,7 +71,7 @@ func (h *Handler) EnvCheckInfo(w http.ResponseWriter, r *http.Request) {
 
 // EnvCheckSSHPublicKeys: GET /api/ssh_public_keys（FR-E-2: text/plain、末尾改行）
 func (h *Handler) EnvCheckSSHPublicKeys(w http.ResponseWriter, r *http.Request) {
-	teamID, ok := h.checkerAuth(w, r)
+	teamID, ok := h.checkerAuth(w, r.URL.Query().Get("token"))
 	if !ok {
 		return
 	}
@@ -160,38 +116,22 @@ type envCheckResultRequest struct {
 func (h *Handler) EnvCheckCreate(w http.ResponseWriter, r *http.Request) {
 	ri := info(r)
 	ctx := r.Context()
-	var input envCheckResultRequest
-	var teamID int64
-	var ok bool
 	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
-	if err != nil && r.Header.Get("Content-Type") != "" {
-		renderPlain(w, http.StatusBadRequest, "invalid content type")
+	if err != nil || mediaType != "application/json" {
+		renderPlain(w, http.StatusUnsupportedMediaType, "content type must be application/json")
 		return
 	}
-	if mediaType == "application/json" {
-		// The AMI checker sends a JSON object with a boolean passed field.
-		dec := json.NewDecoder(r.Body)
-		var result *envCheckResultRequest
-		if err := dec.Decode(&result); err != nil || result == nil {
-			renderPlain(w, http.StatusBadRequest, "invalid JSON result")
-			return
-		}
-		if err := dec.Decode(new(any)); err != io.EOF {
-			renderPlain(w, http.StatusBadRequest, "invalid JSON result")
-			return
-		}
-		input = *result
-		teamID, ok = h.checkerCredentialsAuth(w, input.Token, "", "")
-	} else {
-		// Keep the existing form and legacy signature clients compatible.
-		teamID, ok = h.checkerAuth(w, r)
-		input = envCheckResultRequest{
-			Name: r.FormValue("name"), IPAddress: r.FormValue("ip_address"),
-			Passed:  r.FormValue("passed") == "true" || r.FormValue("passed") == "1",
-			Message: r.FormValue("message"), AdminMessage: r.FormValue("admin_message"),
-			RawData: r.FormValue("raw_data"),
-		}
+	dec := json.NewDecoder(r.Body)
+	var input *envCheckResultRequest
+	if err := dec.Decode(&input); err != nil || input == nil {
+		renderPlain(w, http.StatusBadRequest, "invalid JSON result")
+		return
 	}
+	if err := dec.Decode(new(any)); err != io.EOF {
+		renderPlain(w, http.StatusBadRequest, "invalid JSON result")
+		return
+	}
+	teamID, ok := h.checkerAuth(w, input.Token)
 	if !ok {
 		return
 	}

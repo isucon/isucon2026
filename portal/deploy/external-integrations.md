@@ -31,7 +31,6 @@ OAuth が未設定の検証環境ではその client secret を空文字にで�
 | `ISUXPORTAL_BYPASS_SECRET` | 32 バイト以上のランダム値を base64 化 |
 | `ISUXPORTAL_CHECKER_SECRET` | 32 バイト以上のランダム値を base64 化。checker 実行側にも配布 |
 | `ISUXPORTAL_BENCH_TOKEN` | supervisor と共有するランダム token |
-| `ISUXPORTAL_SSH_KEY_API_SECRET` | 公開鍵取得 API と共有するランダム値 |
 | `ISUXPORTAL_ADMIN_PASSWORD` | 運営ログイン用パスワード |
 | `ISUXPORTAL_GITHUB_CLIENT_SECRET` | GitHub OAuth App の secret |
 | `ISUXPORTAL_DISCORD_CLIENT_SECRET` | Discord OAuth2 の secret |
