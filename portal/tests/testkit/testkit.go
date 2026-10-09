@@ -99,7 +99,6 @@ func Config(t *testing.T) *config.Config {
 		BenchToken:        "token",
 		BypassTokenSecret: mustBase64(t, "5AQQyz/7oFnJYrxnq/HiLKYmh7QrdIrpCDpKlfvkYAg="), //gitleaks:allow isucon14 由来のダミー値
 		CheckerSecret:     mustBase64(t, "2RHAlLoifERG1EEc/5dwyzcZGitfUn1k9YkHTwk7HiRO"), //gitleaks:allow isucon14 由来のダミー値
-		SSHKeyAPISecret:   "himitsudayo",
 		SessionSecret:     "testkit-session-secret",
 		AvailabilityZones: []string{"apne1-az1", "apne1-az2", "apne1-az4"},
 		TestAMIID:         "ami-test",

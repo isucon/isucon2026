@@ -1,5 +1,5 @@
 # envcheck 連携（FR-E）の受け入れテスト。非 protobuf 3 本（JSON / text/plain / 空ボディ）と
-# 認証 2 方式（CheckerToken / HMAC-SHA384 署名）、インスタンス登録の副作用を検証する。
+# CheckerToken 認証、JSON 投稿、インスタンス登録の副作用を検証する。
 
 require 'openssl'
 
@@ -35,12 +35,11 @@ RSpec.describe 'envcheck API' do
       expect(body['az_id']).to eq(team1.availability_zone)
     end
 
-    it 'accepts legacy HMAC signature auth (FR-E-4)' do
+    it 'rejects legacy HMAC signature auth' do
       res = portal_get('/api/env_check_info', {
         'name' => 'contest', 'team_id' => team1.id.to_s, 'signature' => hmac_signature(team1.id),
       }, timing_headers)
-      expect(res.code).to eq('200')
-      expect(JSON.parse(res.body)['ami_ids']).to eq(['ami-y'])
+      expect(res.code).to eq('401')
     end
 
     it 'rejects unknown name with 400' do
@@ -48,15 +47,15 @@ RSpec.describe 'envcheck API' do
       expect(res.code).to eq('400')
     end
 
-    it 'rejects invalid token / signature' do
+    it 'rejects invalid or missing token' do
       res = portal_get('/api/env_check_info', { 'name' => 'contest', 'token' => 'bogus' }, timing_headers)
       expect(res.code).to eq('401')
 
       res = portal_get('/api/env_check_info', { 'name' => 'contest', 'team_id' => team1.id.to_s, 'signature' => 'bad' }, timing_headers)
-      expect(res.code).to eq('400')
+      expect(res.code).to eq('401')
 
       res = portal_get('/api/env_check_info', { 'name' => 'contest' }, timing_headers)
-      expect(res.code).to eq('400')
+      expect(res.code).to eq('401')
     end
   end
 
@@ -78,15 +77,15 @@ RSpec.describe 'envcheck API' do
 
   describe 'POST /api/env_checks（FR-E-3/5: 空ボディ + 副作用）' do
     def post_check(name:, ip:, passed: true)
-      portal_post('/api/env_checks', {}, timing_headers, form: {
+      portal_post('/api/env_checks', {}, timing_headers('Content-Type' => 'application/json'), body: JSON.dump({
         'token' => checker_token(team_id: team1.id),
         'name' => name,
         'ip_address' => ip,
-        'passed' => passed ? 'true' : 'false',
+        'passed' => passed,
         'message' => 'msg',
         'admin_message' => 'admin msg',
         'raw_data' => '{}',
-      })
+      }))
     end
 
     it 'saves result with empty body and registers ContestantInstance for contest<N>' do

@@ -2,8 +2,13 @@ package integration_test
 
 import (
 	"bytes"
+	"crypto/hmac"
+	"crypto/sha512"
+	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"net/url"
 	"testing"
 
 	"github.com/isucon/isucon2026/portal/tests/testkit"
@@ -68,5 +73,40 @@ func TestEnvCheckInvalidJSON(t *testing.T) {
 	}
 	if count != 0 {
 		t.Errorf("invalid requests stored %d results", count)
+	}
+}
+
+func TestEnvCheckRejectsLegacyRequests(t *testing.T) {
+	p := testkit.Start(t)
+	teamID, _ := p.CreateTeam(t, "legacy-envcheck")
+	tok := checkerTokenParam(t, p, teamID)
+	for _, mediaType := range []string{"application/x-www-form-urlencoded", "text/plain", ""} {
+		body := "token=" + tok + "&name=test-ssh&passed=true"
+		res, err := p.Server.Client().Post(p.Server.URL+"/api/env_checks", mediaType, bytes.NewBufferString(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := readAll(t, res); res.StatusCode != http.StatusUnsupportedMediaType {
+			t.Errorf("content type %q: %d %q, want 415", mediaType, res.StatusCode, got)
+		}
+	}
+	mac := hmac.New(sha512.New384, []byte("himitsudayo"))
+	mac.Write([]byte(fmt.Sprint(teamID)))
+	query := url.Values{"name": {"test-boot"}, "team_id": {fmt.Sprint(teamID)}, "signature": {hex.EncodeToString(mac.Sum(nil))}}
+	for _, path := range []string{"/api/env_check_info", "/api/ssh_public_keys"} {
+		res, err := p.Server.Client().Get(p.Server.URL + path + "?" + query.Encode())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := readAll(t, res); res.StatusCode != http.StatusUnauthorized {
+			t.Errorf("legacy signature on %s: %d %q, want 401", path, res.StatusCode, got)
+		}
+	}
+	var count int
+	if err := p.DB.QueryRow(`SELECT COUNT(*) FROM env_checks`).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Errorf("legacy requests stored %d results", count)
 	}
 }
