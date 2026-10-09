@@ -14,6 +14,7 @@ const worker = createSupervisor({
   region: new pulumi.Config("aws").require("region"),
   availabilityZone: config.require("availabilityZone"),
   image: config.require("image"),
+  teamImages: config.getObject<Record<string, string>>("teamImages"),
   endpoint: config.require("portalEndpoint"),
   tokenParameterArn: config.get("tokenParameterArn"),
   tokenSecretArn: config.get("tokenSecretArn"),
