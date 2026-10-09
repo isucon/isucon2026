@@ -270,6 +270,7 @@ export function routerUserData(
 ): string {
 	return `#cloud-config
 write_files:
+${file("/etc/cloud/cloud.cfg.d/99-isucon-router-network.cfg", "network: {config: disabled}\n", "0644")}
 ${file("/etc/netplan/90-isucon.yaml", routerNetplan(t, dataMac), "0600")}
 ${file("/etc/isucon/router.env", routerEnvironment(t), "0640", "root:isureal-router")}
 ${file("/etc/isucon/portal.env", portalEnvironment(t), "0640", "root:isureal-router")}
