@@ -7,7 +7,7 @@ pub struct Process {
     pub stdout_path: String,
     pub stderr_path: String,
     pub target_address: String,
-    pub all_addresses: [String; 3],
+    pub all_addresses: Vec<String>,
 }
 
 impl Process {

@@ -65,7 +65,12 @@ async fn run_case(case: &str) {
                                     job_id: 42,
                                     handle: "test-handle".into(),
                                     target_ipv4_address: "127.0.0.1".into(),
-                                    all_ipv4_addresses: vec!["127.0.0.1".into(); 3],
+                                    all_ipv4_addresses: vec![
+                                        "127.0.0.1".into(),
+                                        "127.0.0.2".into(),
+                                        "127.0.0.3".into(),
+                                        "127.0.0.4".into(),
+                                    ],
                                     ..Default::default()
                                 }),
                             }
@@ -117,7 +122,7 @@ async fn run_case(case: &str) {
     // frame: length=6, finished=true, passed=true, score=29. Exit immediately to
     // exercise the race between process exit and draining the final report.
     let script = r#"test "$ISUXBENCH_TARGET" = 127.0.0.1 || exit 2
- test "$ISUXBENCH_ALL_ADDRESSES" = 127.0.0.1,127.0.0.1,127.0.0.1 || exit 2
+ test "$ISUXBENCH_ALL_ADDRESSES" = 127.0.0.1,127.0.0.2,127.0.0.3,127.0.0.4 || exit 2
  eval "printf '\000\006\010\001\020\001\030\035' >&$ISUXBENCH_REPORT_FD"
  echo public-output
  echo private-output >&2"#;
