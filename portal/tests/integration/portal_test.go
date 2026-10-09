@@ -7,6 +7,7 @@ package integration_test
 import (
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -56,7 +57,16 @@ func TestBenchCycle(t *testing.T) {
 	now := time.Now()
 	timing := testkit.TimingHeaders(now)
 	teamID, leaderID := p.CreateTeam(t, "cycle")
-	instanceID := p.CreateInstance(t, teamID, 1)
+	var instanceID int64
+	var addresses []string
+	for n := int64(1); n <= 4; n++ {
+		instanceID = p.CreateInstance(t, teamID, n)
+		address := fmt.Sprintf("203.0.113.%d", n)
+		if _, err := p.DB.Exec(`UPDATE contestant_instances SET public_ipv4_address = $1 WHERE id = $2`, address, instanceID); err != nil {
+			t.Fatal(err)
+		}
+		addresses = append(addresses, address)
+	}
 
 	session := map[string]string{"X-Isux-Session-Contestant-Id": fmt.Sprint(leaderID)}
 	for k, v := range timing {
@@ -79,6 +89,13 @@ func TestBenchCycle(t *testing.T) {
 	testkit.DecodePB(t, res, received)
 	if received.JobHandle == nil || received.JobHandle.JobId != enqueued.Job.Id {
 		t.Fatalf("job handle = %v", received.JobHandle)
+	}
+
+	if !slices.Equal(received.JobHandle.AllIpv4Addresses, addresses) {
+		t.Fatalf("addresses = %v, want %v", received.JobHandle.AllIpv4Addresses, addresses)
+	}
+	if received.JobHandle.TargetIpv4Address != addresses[3] {
+		t.Fatalf("target = %q, want fourth server %q", received.JobHandle.TargetIpv4Address, addresses[3])
 	}
 
 	// 途中報告: score == -1 → raw - deduction（CT-7）
