@@ -3,6 +3,7 @@ package contract_test
 import (
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -134,4 +135,24 @@ func extractPortalCredentials(t *testing.T, template string) []byte {
 	}
 	t.Fatal("portal_credentials not found in template")
 	return nil
+}
+
+func TestContestTemplateProvidesFourServers(t *testing.T) {
+	template, err := cloudformation.ContestTemplate(cfnConfig(t), 42, "apne1-az2", time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Count(template, "Type: AWS::EC2::Instance\n"); got != 4 {
+		t.Errorf("instance count = %d, want 4", got)
+	}
+	if got := strings.Count(template, "Type: AWS::EC2::EIP\n"); got != 4 {
+		t.Errorf("public IP count = %d, want 4", got)
+	}
+	for n := 1; n <= 4; n++ {
+		for _, want := range []string{fmt.Sprintf("  Instance%d:", n), fmt.Sprintf("InstanceId: !Ref Instance%d", n), fmt.Sprintf("PrivateIpAddress: \"192.168.0.1%d\"", n)} {
+			if !strings.Contains(template, want) {
+				t.Errorf("missing %s", want)
+			}
+		}
+	}
 }
