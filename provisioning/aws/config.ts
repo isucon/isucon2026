@@ -15,6 +15,10 @@ export const config = {
 		.min(1)
 		.max(maxTeams)
 		.parse(c.getNumber("teamCount") ?? 1),
+	// Keep team networks but omit EC2 instances for retired trial teams.
+	disabledInstanceTeams: z.array(z.number().int().min(1).max(maxTeams)).parse(
+		c.getObject<number[]>("disabledInstanceTeams") ?? [],
+	),
 	serviceAmiId: c.get("serviceAmiId"),
 	routerAmiId: c.get("routerAmiId"),
 	availabilityZone: c.get("availabilityZone") ?? "ap-northeast-1a",

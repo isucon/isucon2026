@@ -3,6 +3,7 @@ import * as pulumi from "@pulumi/pulumi";
 import { isIPv4 } from "node:net";
 
 export interface SupervisorConfig {
+  detachedRouterHosts?: string[];
   routerNetworkInterfaces?: Record<string, string>;
   retainDedicatedNetwork?: boolean;
   sharedNetwork?: { vpcId: string; subnetId: string; egressPublicIp: string };
@@ -283,13 +284,15 @@ export function createSupervisor(c: SupervisorConfig) {
       !/^eni-[a-f0-9]+$/.test(networkInterfaceId)
     ) throw new Error("routerNetworkInterfaces must map safe Hosts to ENI IDs");
     const address = new aws.ec2.Eip(`router-${host}`, { domain: "vpc", tags });
-    routerAssociations.push(
-      new aws.ec2.EipAssociation(`router-${host}`, {
-        allocationId: address.id,
-        networkInterfaceId,
-        allowReassociation: false,
-      }),
-    );
+    if (!c.detachedRouterHosts?.includes(host)) {
+      routerAssociations.push(
+        new aws.ec2.EipAssociation(`router-${host}`, {
+          allocationId: address.id,
+          networkInterfaceId,
+          allowReassociation: false,
+        }),
+      );
+    }
     routerAddresses[host] = address.publicIp;
   }
   const routerPublicIps = pulumi.all(routerAddresses);
