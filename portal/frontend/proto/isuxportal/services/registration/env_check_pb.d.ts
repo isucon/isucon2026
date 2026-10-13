@@ -29,6 +29,11 @@ export declare type GetEnvCheckInformationResponse = Message<"isuxportal.proto.s
    * @generated from field: string instance_ip = 3;
    */
   instanceIp: string;
+
+  /**
+   * @generated from field: repeated string instance_ips = 4;
+   */
+  instanceIps: string[];
 };
 
 /**

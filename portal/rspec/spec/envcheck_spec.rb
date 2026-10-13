@@ -128,7 +128,7 @@ RSpec.describe 'envcheck API' do
       expect(body.template).to include('AWSTemplateFormatVersion')
       expect(body.template).to include('ami-test')
       expect(body.template).to include(team1.availability_zone)
-      expect(body.status).to eq(:DONE)
+      expect(body.status).to eq(:NOT_STARTED)
     end
   end
 end

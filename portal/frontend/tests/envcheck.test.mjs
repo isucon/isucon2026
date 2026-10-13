@@ -47,3 +47,28 @@ test("DONE returned by the API stops envcheck progress polling", async () => {
     globalThis.setInterval = originalSetInterval;
   }
 });
+
+test("all reported instances have their own SSH command", () => {
+  const component = new exports.EnvCheck({ session: { team: {} }, client: {} });
+  component.state.checkStatus = EnvCheckStatus.CREATED_INSTANCE;
+  component.state.instanceIPs = ["203.0.113.1", "203.0.113.2", "203.0.113.3", "203.0.113.4", "203.0.113.5"];
+  const html = renderToStaticMarkup(component.render());
+  for (const ip of component.state.instanceIPs) assert.ok(html.includes(`ssh -T isucon@${ip}`));
+  assert.doesNotMatch(html, /一回でも行えば確認完了/);
+});
+
+test("polling updates all SSH destinations and the actual progress", async () => {
+  const component = new exports.EnvCheck({
+    session: { team: {} },
+    client: {
+      getEnvCheckInformation: async () => ({
+        template: "template",
+        status: EnvCheckStatus.CREATED_INSTANCE,
+        instanceIps: ["203.0.113.1", "203.0.113.2"],
+      }),
+    },
+  });
+  component.setState = (state) => Object.assign(component.state, state);
+  assert.equal(await component.fetchEnvCheckInformation(), EnvCheckStatus.CREATED_INSTANCE);
+  assert.deepEqual(component.state.instanceIPs, ["203.0.113.1", "203.0.113.2"]);
+});
