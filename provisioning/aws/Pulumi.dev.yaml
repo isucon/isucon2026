@@ -4,6 +4,10 @@ config:
     - 192.0.2.1/32
   isucon2026:sshCidrs:
     - 0.0.0.0/0
+  isucon2026:disabledInstanceTeams:
+    - 1
+    - 2
+    - 3
   isucon2026:teamCount: "6"
 secretsprovider: awskms://alias/isucon2026-pulumi-secrets
 # KMS-encrypted Pulumi data key; not a plaintext credential.
