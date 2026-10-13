@@ -3,6 +3,9 @@ package model
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
+	"net"
+	"slices"
 	"time"
 
 	pbresources "github.com/isucon/isucon2026/portal/gen/pb/isuxportal/resources"
@@ -64,10 +67,123 @@ func CreateEnvCheck(ctx context.Context, db DBTX, e *EnvCheck) error {
 		e.TeamID, e.Name, e.IPAddress, e.Passed, e.Message, e.AdminMessage, e.RawData).Scan(&e.ID)
 }
 
-// EnvCheckStatus は EnvCheck.status 相当。
-// Rails は感想戦対応でステータスを DONE に固定している（FIXME を踏襲）。
+// EnvCheckProgress contains the state of the latest five-instance environment.
+// Reports identify that environment by its EC2 instance IDs, not reusable EIPs.
+type EnvCheckProgress struct {
+	Status      pbresources.EnvCheckStatus
+	InstanceIPs []string
+}
+
 func EnvCheckStatus(ctx context.Context, db DBTX, teamID int64) (pbresources.EnvCheckStatus, error) {
-	return pbresources.EnvCheckStatus_DONE, nil
+	progress, err := GetEnvCheckProgress(ctx, db, teamID)
+	return progress.Status, err
+}
+
+func GetEnvCheckProgress(ctx context.Context, db DBTX, teamID int64) (EnvCheckProgress, error) {
+	if teamID == 0 {
+		return EnvCheckProgress{Status: pbresources.EnvCheckStatus_PREPARING}, nil
+	}
+	rows, err := db.QueryContext(ctx, `SELECT `+envCheckColumns+` FROM env_checks WHERE team_id = $1 AND name IN ('test-boot', 'test-ssh') ORDER BY id DESC`, teamID)
+	if err != nil {
+		return EnvCheckProgress{}, err
+	}
+	defer rows.Close()
+	var checks []*EnvCheck
+	for rows.Next() {
+		check, err := scanEnvCheck(rows)
+		if err != nil {
+			return EnvCheckProgress{}, err
+		}
+		checks = append(checks, check)
+	}
+	if err := rows.Err(); err != nil {
+		return EnvCheckProgress{}, err
+	}
+	return envCheckProgress(checks), nil
+}
+
+type envCheckSnapshot struct {
+	InstanceID string `json:"instance_id"`
+	Instances  []struct {
+		ID string `json:"instance_id"`
+	} `json:"instances"`
+}
+
+func envCheckIdentity(check *EnvCheck) (string, []string) {
+	var snapshot envCheckSnapshot
+	if json.Unmarshal([]byte(check.RawData), &snapshot) != nil || len(snapshot.Instances) != 5 {
+		return "", nil
+	}
+	ids := make([]string, 0, 5)
+	for _, instance := range snapshot.Instances {
+		if instance.ID == "" || slices.Contains(ids, instance.ID) {
+			return "", nil
+		}
+		ids = append(ids, instance.ID)
+	}
+	if !slices.Contains(ids, snapshot.InstanceID) {
+		return "", nil
+	}
+	slices.Sort(ids)
+	return snapshot.InstanceID, ids
+}
+
+// checks must be ordered by descending ID, so retries never hide newer failures.
+func envCheckProgress(checks []*EnvCheck) EnvCheckProgress {
+	progress := EnvCheckProgress{Status: pbresources.EnvCheckStatus_NOT_STARTED}
+	if len(checks) == 0 {
+		return progress
+	}
+	var ids []string
+	for _, check := range checks {
+		if check.Name == "test-boot" {
+			_, ids = envCheckIdentity(check)
+			break
+		}
+	}
+	if len(ids) != 5 {
+		return progress
+	}
+	boot, ssh := map[string]*EnvCheck{}, map[string]*EnvCheck{}
+	for _, check := range checks {
+		id, environment := envCheckIdentity(check)
+		if !slices.Equal(ids, environment) {
+			continue
+		}
+		switch check.Name {
+		case "test-boot":
+			if boot[id] == nil {
+				boot[id] = check
+			}
+		case "test-ssh":
+			if ssh[id] == nil {
+				ssh[id] = check
+			}
+		}
+	}
+	allBoot, allSSH := true, true
+	for _, id := range ids {
+		b, s := boot[id], ssh[id]
+		if b == nil || !b.Passed || net.ParseIP(b.IPAddress) == nil {
+			allBoot = false
+			continue
+		}
+		if slices.Contains(progress.InstanceIPs, b.IPAddress) {
+			allBoot = false
+		} else {
+			progress.InstanceIPs = append(progress.InstanceIPs, b.IPAddress)
+		}
+		if s == nil || !s.Passed || s.ID < b.ID || s.IPAddress != b.IPAddress {
+			allSSH = false
+		}
+	}
+	if allBoot {
+		progress.Status = pbresources.EnvCheckStatus_CREATED_INSTANCE
+		if allSSH {
+			progress.Status = pbresources.EnvCheckStatus_DONE
+		}
+	}
+	return progress
 }
 
 func (e *EnvCheck) ToPB() *pbresources.EnvCheck {

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 
+	pbresources "github.com/isucon/isucon2026/portal/gen/pb/isuxportal/resources"
 	pbcommon "github.com/isucon/isucon2026/portal/gen/pb/isuxportal/services/common"
 	pbregistration "github.com/isucon/isucon2026/portal/gen/pb/isuxportal/services/registration"
 	"github.com/isucon/isucon2026/portal/internal/cloudformation"
@@ -120,11 +121,14 @@ func (h *Handler) RegistrationSessionShow(w http.ResponseWriter, r *http.Request
 	if status == pbregistration.GetRegistrationSessionResponse_JOINED {
 		res.DiscordServerId = h.cfg.Discord.ServerID
 	}
-	envStatus, err := model.EnvCheckStatus(ctx, h.db, 0)
-	if err != nil {
-		return err
+	res.EnvCheckStatus = pbresources.EnvCheckStatus_PREPARING
+	if team != nil && h.cfg.TestAMIID != "" {
+		status, err := model.EnvCheckStatus(ctx, h.db, team.ID)
+		if err != nil {
+			return err
+		}
+		res.EnvCheckStatus = status
 	}
-	res.EnvCheckStatus = envStatus
 
 	if err := h.saveSession(w, r); err != nil {
 		return err
@@ -463,20 +467,23 @@ func (h *Handler) RegistrationEnvCheck(w http.ResponseWriter, r *http.Request) e
 		return err
 	}
 
+	if h.cfg.TestAMIID == "" {
+		renderPB(w, http.StatusOK, &pbregistration.GetEnvCheckInformationResponse{Status: pbresources.EnvCheckStatus_PREPARING})
+		return nil
+	}
 	template, err := cloudFormationTestTemplate(h, team, ri)
 	if err != nil {
 		return errNotFound(err.Error())
 	}
-	status, err := model.EnvCheckStatus(ctx, h.db, team.ID)
+	progress, err := model.GetEnvCheckProgress(ctx, h.db, team.ID)
 	if err != nil {
 		return err
 	}
-	res := &pbregistration.GetEnvCheckInformationResponse{Template: template, Status: status}
-	if last, err := model.LastEnvCheck(ctx, h.db, team.ID, "test-boot"); err != nil {
-		return err
-	} else if last != nil {
-		res.InstanceIp = last.IPAddress
+	res := &pbregistration.GetEnvCheckInformationResponse{Template: template, Status: progress.Status, InstanceIps: progress.InstanceIPs}
+	if len(progress.InstanceIPs) > 0 {
+		res.InstanceIp = progress.InstanceIPs[0]
 	}
+
 	renderPB(w, http.StatusOK, res)
 	return nil
 }
