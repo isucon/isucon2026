@@ -36,8 +36,9 @@ const {
 	clientCidrs,
 	sshCidrs,
 } = config;
-const teams = Array.from({ length: config.teamCount }, (_, index) =>
-	team(index + 1),
+const teams = Array.from(
+	{ length: config.teamCount },
+	(_, index) => team(index + 1),
 );
 
 const tags = { Project: "isucon2026", ManagedBy: "pulumi" };
@@ -107,12 +108,12 @@ const eiceSecurityGroup = new aws.ec2.SecurityGroup("eice-sg", {
 	],
 	tags,
 });
-const instanceConnectEndpoint =
-	new aws.ec2transitgateway.InstanceConnectEndpoint("eice", {
-		subnetId: subnet("eice", eiceSubnetCidr).id,
-		securityGroupIds: [eiceSecurityGroup.id],
-		tags,
-	});
+const instanceConnectEndpoint = new aws.ec2transitgateway
+	.InstanceConnectEndpoint("eice", {
+	subnetId: subnet("eice", eiceSubnetCidr).id,
+	securityGroupIds: [eiceSecurityGroup.id],
+	tags,
+});
 const sshFromEice = {
 	protocol: "tcp",
 	fromPort: 22,
@@ -144,11 +145,11 @@ const routerPublicSecurityGroup = new aws.ec2.SecurityGroup(
 			sshFromEice,
 			...(clientCidrs.length > 0
 				? [443, 8080].map((port) => ({
-						protocol: "tcp",
-						fromPort: port,
-						toPort: port,
-						cidrBlocks: clientCidrs,
-					}))
+					protocol: "tcp",
+					fromPort: port,
+					toPort: port,
+					cidrBlocks: clientCidrs,
+				}))
 				: []),
 		],
 		egress: allEgress,
@@ -190,6 +191,7 @@ const databaseLaunchTemplate = serverLaunchTemplate(
 
 function createTeam(t: Team) {
 	const prefix = `team${t.number}`;
+	const instancesEnabled = !config.disabledInstanceTeams.includes(t.number);
 	const teamTags = { ...tags, Team: String(t.number) };
 
 	// Router: パブリック IP（bench の入口）とデータ用 ENI（サーバー間の折り返し）。
@@ -229,48 +231,56 @@ function createTeam(t: Team) {
 			tags: { ...teamTags, Name: `isucon2026-${prefix}-router-data` },
 		},
 	);
-	const router = new aws.ec2.Instance(
-		`${prefix}-router`,
-		{
-			ami: routerAmiId,
-			availabilityZone,
-			instanceType: routerInstanceType,
-			iamInstanceProfile: instanceProfile.name,
-			subnetId: routerPublicSubnet.id,
-			privateIp: t.routerPublicIp,
-			associatePublicIpAddress: true,
-			vpcSecurityGroupIds: [routerPublicSecurityGroup.id],
-			userDataBase64: pulumi
-				.all([tlsCertificate, tlsPrivateKey, routerDataEni.macAddress])
-				.apply(([certificate, privateKey, dataMac]) =>
-					gzipSync(
-						Buffer.from(routerUserData(t, dataMac, certificate, privateKey)),
-					).toString("base64"),
-				),
-			rootBlockDevice: { volumeSize: 20, volumeType: "gp3" },
-			tags: {
-				...teamTags,
-				Name: `isucon2026-${prefix}-router`,
-				Role: "router",
+	const router = instancesEnabled
+		? new aws.ec2.Instance(
+			`${prefix}-router`,
+			{
+				ami: routerAmiId,
+				availabilityZone,
+				instanceType: routerInstanceType,
+				iamInstanceProfile: instanceProfile.name,
+				subnetId: routerPublicSubnet.id,
+				privateIp: t.routerPublicIp,
+				associatePublicIpAddress: true,
+				vpcSecurityGroupIds: [routerPublicSecurityGroup.id],
+				userDataBase64: pulumi
+					.all([tlsCertificate, tlsPrivateKey, routerDataEni.macAddress])
+					.apply(([certificate, privateKey, dataMac]) =>
+						gzipSync(
+							Buffer.from(routerUserData(t, dataMac, certificate, privateKey)),
+						).toString("base64")
+					),
+				rootBlockDevice: { volumeSize: 20, volumeType: "gp3" },
+				tags: {
+					...teamTags,
+					Name: `isucon2026-${prefix}-router`,
+					Role: "router",
+				},
 			},
-		},
-		// プライベート IP を固定しているので、置き換え時は古いインスタンスを先に消す
-		{ dependsOn: [internetGateway], deleteBeforeReplace: true },
-	);
-	new aws.ec2.NetworkInterfaceAttachment(`${prefix}-router-data-attachment`, {
-		instanceId: router.id,
-		networkInterfaceId: routerDataEni.id,
-		deviceIndex: 1,
-	});
+			// プライベート IP を固定しているので、置き換え時は古いインスタンスを先に消す
+			{ dependsOn: [internetGateway], deleteBeforeReplace: true },
+		)
+		: undefined;
+	if (router) {
+		new aws.ec2.NetworkInterfaceAttachment(`${prefix}-router-data-attachment`, {
+			instanceId: router.id,
+			networkInterfaceId: routerDataEni.id,
+			deviceIndex: 1,
+		});
+	}
 
 	// サーバー: 他のサーバーのサブネット宛ては Router のデータ用 ENI へ送る（VPC 内のミドルボックスルーティング）。
 	// 同一サブネット内はルートテーブルを通らないので、サーバーごとにサブネットを分ける。
 	// サブネット宛てのルートは宛先のサブネットが存在しないと作れないので、ルートは 1 本ずつ宛先に依存させる
-	const serverEgressAcl = router.publicIp.apply((address) =>
-		serverEgressRules(t, address),
-	);
+	const serverEgressAcl = router
+		? router.publicIp.apply((address) => serverEgressRules(t, address))
+		: pulumi.output(
+			serverEgressRules(t, t.routerPublicIp).filter((rule) =>
+				rule.ruleNo !== 100
+			),
+		);
 	const serverSubnets = t.servers.map((server) =>
-		subnet(`${prefix}-${server.id}`, server.subnetCidr),
+		subnet(`${prefix}-${server.id}`, server.subnetCidr)
 	);
 	const servers = t.servers.map((network, index) => {
 		const name = `${prefix}-${network.id}`;
@@ -286,19 +296,17 @@ function createTeam(t: Team) {
 				gatewayId: internetGateway.id,
 			}),
 			...t.servers.flatMap((peer, peerIndex) =>
-				peer.id === network.id
-					? []
-					: [
-							new aws.ec2.Route(
-								`${name}-to-${peer.id}`,
-								{
-									routeTableId: routeTable.id,
-									destinationCidrBlock: peer.subnetCidr,
-									networkInterfaceId: routerDataEni.id,
-								},
-								{ dependsOn: [serverSubnets[peerIndex]] },
-							),
-						],
+				peer.id === network.id ? [] : [
+					new aws.ec2.Route(
+						`${name}-to-${peer.id}`,
+						{
+							routeTableId: routeTable.id,
+							destinationCidrBlock: peer.subnetCidr,
+							networkInterfaceId: routerDataEni.id,
+						},
+						{ dependsOn: [serverSubnets[peerIndex]] },
+					),
+				]
 			),
 		];
 		new aws.ec2.RouteTableAssociation(`${name}-routes`, {
@@ -334,13 +342,13 @@ function createTeam(t: Team) {
 				sshFromEice,
 				...(sshCidrs.length > 0
 					? [
-							{
-								protocol: "tcp",
-								fromPort: 22,
-								toPort: 22,
-								cidrBlocks: sshCidrs,
-							},
-						]
+						{
+							protocol: "tcp",
+							fromPort: 22,
+							toPort: 22,
+							cidrBlocks: sshCidrs,
+						},
+					]
 					: []),
 			],
 			egress: allEgress,
@@ -351,6 +359,7 @@ function createTeam(t: Team) {
 			? databaseLaunchTemplate
 			: appLaunchTemplate;
 		// パブリック IPv4 は外向き通信（パッケージ取得、SSM）専用。インターネットからの着信は SG で受けない
+		if (!instancesEnabled) return undefined;
 		return new aws.ec2.Instance(
 			`${name}-instance`,
 			{
@@ -384,10 +393,12 @@ function createTeam(t: Team) {
 	return {
 		number: t.number,
 		appHostname: `app.${t.domain}`,
-		routerInstanceId: router.id,
-		routerPublicAddress: router.publicIp,
-		serviceInstanceIds: servers.map((server) => server.id),
-		servicePublicAddresses: servers.map((server) => server.publicIp),
+		routerInstanceId: router?.id,
+		routerPublicAddress: router?.publicIp,
+		serviceInstanceIds: servers.flatMap((server) => server ? [server.id] : []),
+		servicePublicAddresses: servers.flatMap((server) =>
+			server ? [server.publicIp] : []
+		),
 	};
 }
 
