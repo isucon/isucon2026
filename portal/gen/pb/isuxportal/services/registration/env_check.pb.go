@@ -27,6 +27,7 @@ type GetEnvCheckInformationResponse struct {
 	Template      string                   `protobuf:"bytes,1,opt,name=template,proto3" json:"template,omitempty"`
 	Status        resources.EnvCheckStatus `protobuf:"varint,2,opt,name=status,proto3,enum=isuxportal.proto.resources.EnvCheckStatus" json:"status,omitempty"`
 	InstanceIp    string                   `protobuf:"bytes,3,opt,name=instance_ip,json=instanceIp,proto3" json:"instance_ip,omitempty"`
+	InstanceIps   []string                 `protobuf:"bytes,4,rep,name=instance_ips,json=instanceIps,proto3" json:"instance_ips,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -82,16 +83,24 @@ func (x *GetEnvCheckInformationResponse) GetInstanceIp() string {
 	return ""
 }
 
+func (x *GetEnvCheckInformationResponse) GetInstanceIps() []string {
+	if x != nil {
+		return x.InstanceIps
+	}
+	return nil
+}
+
 var File_isuxportal_services_registration_env_check_proto protoreflect.FileDescriptor
 
 const file_isuxportal_services_registration_env_check_proto_rawDesc = "" +
 	"\n" +
-	"0isuxportal/services/registration/env_check.proto\x12&isuxportal.proto.services.registration\x1a$isuxportal/resources/env_check.proto\"\xa1\x01\n" +
+	"0isuxportal/services/registration/env_check.proto\x12&isuxportal.proto.services.registration\x1a$isuxportal/resources/env_check.proto\"\xc4\x01\n" +
 	"\x1eGetEnvCheckInformationResponse\x12\x1a\n" +
 	"\btemplate\x18\x01 \x01(\tR\btemplate\x12B\n" +
 	"\x06status\x18\x02 \x01(\x0e2*.isuxportal.proto.resources.EnvCheckStatusR\x06status\x12\x1f\n" +
 	"\vinstance_ip\x18\x03 \x01(\tR\n" +
-	"instanceIpB\xc4\x02\n" +
+	"instanceIp\x12!\n" +
+	"\finstance_ips\x18\x04 \x03(\tR\vinstanceIpsB\xc4\x02\n" +
 	"*com.isuxportal.proto.services.registrationB\rEnvCheckProtoP\x01ZKgithub.com/isucon/isucon2026/portal/gen/pb/isuxportal/services/registration\xa2\x02\x04IPSR\xaa\x02&Isuxportal.Proto.Services.Registration\xca\x02&Isuxportal\\Proto\\Services\\Registration\xe2\x022Isuxportal\\Proto\\Services\\Registration\\GPBMetadata\xea\x02)Isuxportal::Proto::Services::Registrationb\x06proto3"
 
 var (
