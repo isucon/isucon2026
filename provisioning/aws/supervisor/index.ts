@@ -3,6 +3,7 @@ import { createSupervisor } from "../lib/supervisor";
 
 const config = new pulumi.Config();
 const worker = createSupervisor({
+  detachedRouterHosts: config.getObject<string[]>("detachedRouterHosts"),
   benchmarkScale: config.get("benchmarkScale"),
   routerNetworkInterfaces: config.getObject<Record<string, string>>(
     "routerNetworkInterfaces",

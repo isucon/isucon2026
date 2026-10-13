@@ -23,6 +23,11 @@ test("shares the portal private subnet and fixed NAT egress without a dedicated 
         "arn:aws:ssm:ap-northeast-1:123456789012:parameter/token",
       instanceName: "apne1-az4",
       teamIds: ["1", "2", "3"],
+      routerNetworkInterfaces: {
+        "app.team3.example": "eni-333",
+        "app.team5.example": "eni-555",
+      },
+      detachedRouterHosts: ["app.team3.example"],
       routerSecurityGroupIds: ["sg-router"],
       sharedNetwork: {
         vpcId: "vpc-portal",
@@ -38,6 +43,13 @@ test("shares the portal private subnet and fixed NAT egress without a dedicated 
     resources.find((r) => r.type === "aws:ec2/securityGroup:SecurityGroup")
       ?.inputs.vpcId,
   ).toBe("vpc-portal");
+  expect(resources.filter((r) => r.type === "aws:ec2/eip:Eip")).toHaveLength(2);
+  const associations = resources.filter((r) =>
+    r.type === "aws:ec2/eipAssociation:EipAssociation"
+  );
+  expect(associations.map((r) => r.inputs.networkInterfaceId)).toEqual([
+    "eni-555",
+  ]);
   const workers = resources.filter((r) => r.type === "aws:ecs/service:Service");
   expect(workers).toHaveLength(3);
   for (const worker of workers) {
