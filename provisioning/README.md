@@ -23,6 +23,34 @@ AMI には `Project=isucon2026` と `Role=<role>` のタグが付きます。pro
 c6i.2xlarge、ディスクは 60 GB。インスタンスのディスクも同じ大きさになる）。古い AMI は自動では消えないので、
 不要になったらスナップショットごと削除してください。
 
+## envcheck AMI の作成
+
+envcheck は競技用 AMI とは別に作成します。
+Go チェッカーは起動時に `test-boot`、`isucon` ユーザーの SSH ログイン時に `test-ssh` を JSON POST でポータルへ送信します。
+同じ VPC にある 5 台の名前、インスタンスタイプ、AMI、AZ、起動状態、ディスクとネットワークインターフェースの数を検査します。
+
+```sh
+go -C portal test ./cmd/envcheck
+python3 -m unittest discover -s provisioning/packer/envcheck -p 'test_*.py'
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go -C portal build -o bin/isucon-env-checker ./cmd/envcheck
+packer init provisioning/packer/envcheck
+packer build provisioning/packer/envcheck
+```
+
+Packer が参照できる AWS 認証情報を設定してください。
+`aws login` を使う場合は、既存の `provisioning/aws-sdk.config` と同様に、利用する profile の `aws configure export-credentials --format process` を `credential_process` に指定します。
+既定 VPC がない場合は `-var 'vpc_id=...' -var 'subnet_id=...'` でビルド用の public subnet を指定します。
+一時的なビルド用 EC2 は Packer が削除し、AMI と EBS スナップショットが残ります。
+起動時のサービスは `cloud-init.target` に登録し、認証情報と SSH 公開鍵の配置を行う `cloud-final.service` の終了を待ちます。
+Ubuntu の `cloud-final.service` は `multi-user.target` より後に動くため、チェッカーを `multi-user.target` に登録すると起動順序が循環します。
+
+作成した AMI ID は、ポータルの Pulumi stack の `environment.ISUXPORTAL_TEST_AMI_ID` に設定します。
+`pulumi up` と ecspresso によるポータルの再デプロイ後、検証用チームに AZ と SSH 公開鍵を設定してテンプレートを取得します。
+ポータルには JSON POST を受け付けるバージョンが必要です。
+CloudFormation での 5 台の作成完了、各 IP の `test-boot` 成功、各台への SSH ログイン後の `test-ssh` 成功をポータルのチェック履歴で確認し、検証後は CloudFormation stack を削除します。
+進捗表示は各インスタンスの最新の起動結果と、その後の SSH 結果で判定します。
+すべて成功した場合だけ完了になり、インスタンスを作り直すと以前の成功は引き継ぎません。
+
 ## デプロイ
 
 指定がなければ、タグが一致する最新の AMI を使います。

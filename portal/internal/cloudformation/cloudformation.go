@@ -28,6 +28,24 @@ type params struct {
 	AMIID             string
 }
 
+type envCheckInstance struct {
+	LogicalID    string
+	Number       string
+	InstanceType string
+}
+
+// EnvCheckInstances matches the production defaults in provisioning/aws/config.ts:
+// three app servers, one database server and one router.
+func (params) EnvCheckInstances() []envCheckInstance {
+	return []envCheckInstance{
+		{"EnvcheckInstance001", "001", "c7i.large"},
+		{"EnvcheckInstance002", "002", "c7i.large"},
+		{"EnvcheckInstance003", "003", "c7i.large"},
+		{"EnvcheckInstance004", "004", "c6in.large"},
+		{"EnvcheckInstance005", "005", "c6in.large"},
+	}
+}
+
 // TestTemplate は envcheck 用（test.yaml）。
 func TestTemplate(cfg *config.Config, teamID int64, zoneID string, now time.Time) (string, error) {
 	if cfg.TestAMIID == "" {

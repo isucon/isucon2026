@@ -91,6 +91,16 @@ describe("portal infrastructure", () => {
       });
     }
   });
+  test("disables automatic rotation of the RDS-managed password", () => {
+    const rotations = ofType(
+      "aws:secretsmanager/secretRotation:SecretRotation",
+    );
+    expect(rotations).toHaveLength(1);
+    expect(rotations[0].inputs).toMatchObject({
+      secretId: "arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:db",
+      rotationEnabled: false,
+    });
+  });
   test("keeps TLS cache and shares one NAT across both private AZs", () => {
     expect(
       ofType("aws:elasticache/replicationGroup:ReplicationGroup")[0].inputs,

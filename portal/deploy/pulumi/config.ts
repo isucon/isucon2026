@@ -12,7 +12,6 @@ export const requiredSecrets = [
   "ISUXPORTAL_BYPASS_SECRET",
   "ISUXPORTAL_CHECKER_SECRET",
   "ISUXPORTAL_BENCH_TOKEN",
-  "ISUXPORTAL_SSH_KEY_API_SECRET",
   "ISUXPORTAL_ADMIN_PASSWORD",
 ];
 export const defaults = {

@@ -5,6 +5,8 @@
 package integration_test
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"slices"
@@ -217,12 +219,18 @@ func TestEnvCheckEndpoints(t *testing.T) {
 		t.Errorf("ssh_public_keys body = %q", body)
 	}
 
-	form := fmt.Sprintf("token=%s&name=contest1&ip_address=203.0.113.9&passed=true&message=m&admin_message=am&raw_data={}", tokenParam)
-	req, err := http.NewRequest(http.MethodPost, p.Server.URL+"/api/env_checks", strings.NewReader(form))
+	bodyJSON, err := json.Marshal(map[string]any{
+		"token": tokenParam, "name": "contest1", "ip_address": "203.0.113.9",
+		"passed": true, "message": "m", "admin_message": "am", "raw_data": "{}",
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req, err := http.NewRequest(http.MethodPost, p.Server.URL+"/api/env_checks", bytes.NewReader(bodyJSON))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
 	for k, v := range timing {
 		req.Header.Set(k, v)
 	}
