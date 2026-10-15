@@ -39,7 +39,6 @@ type Config struct {
 
 	BypassTokenSecret []byte
 	CheckerSecret     []byte
-	SSHKeyAPISecret   string
 
 	GitHub  OAuthProvider
 	Discord Discord
@@ -125,8 +124,7 @@ func Load() (*Config, error) {
 		AdminPassword: os.Getenv("ISUXPORTAL_ADMIN_PASSWORD"),
 		AdminOnly:     os.Getenv("ISUXPORTAL_ADMIN_ONLY") == "1",
 
-		BenchToken:      getenv("ISUXPORTAL_BENCH_TOKEN", "token"),
-		SSHKeyAPISecret: getenv("ISUXPORTAL_SSH_KEY_API_SECRET", "himitsudayo"),
+		BenchToken: getenv("ISUXPORTAL_BENCH_TOKEN", "token"),
 
 		SlackWebhookURL: os.Getenv("ISUXPORTAL_SLACK_WEBHOOK_URL"),
 

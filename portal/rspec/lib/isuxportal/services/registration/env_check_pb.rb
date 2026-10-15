@@ -7,7 +7,7 @@ require 'google/protobuf'
 require 'isuxportal/resources/env_check_pb'
 
 
-descriptor_data = "\n0isuxportal/services/registration/env_check.proto\x12&isuxportal.proto.services.registration\x1a$isuxportal/resources/env_check.proto\"\xa1\x01\n\x1eGetEnvCheckInformationResponse\x12\x1a\n\x08template\x18\x01 \x01(\tR\x08template\x12\x42\n\x06status\x18\x02 \x01(\x0e\x32*.isuxportal.proto.resources.EnvCheckStatusR\x06status\x12\x1f\n\x0binstance_ip\x18\x03 \x01(\tR\ninstanceIpb\x06proto3"
+descriptor_data = "\n0isuxportal/services/registration/env_check.proto\x12&isuxportal.proto.services.registration\x1a$isuxportal/resources/env_check.proto\"\xc4\x01\n\x1eGetEnvCheckInformationResponse\x12\x1a\n\x08template\x18\x01 \x01(\tR\x08template\x12\x42\n\x06status\x18\x02 \x01(\x0e\x32*.isuxportal.proto.resources.EnvCheckStatusR\x06status\x12\x1f\n\x0binstance_ip\x18\x03 \x01(\tR\ninstanceIp\x12!\n\x0cinstance_ips\x18\x04 \x03(\tR\x0binstanceIpsb\x06proto3"
 
 pool = Google::Protobuf::DescriptorPool.generated_pool
 pool.add_serialized_file(descriptor_data)
