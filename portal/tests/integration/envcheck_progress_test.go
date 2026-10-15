@@ -52,11 +52,7 @@ func TestEnvCheckProgressHTTP(t *testing.T) {
 		post(n, "test-boot", true)
 	}
 	assertStatus(pb.EnvCheckStatus_CREATED_INSTANCE, 5)
-	for n := 1; n <= 4; n++ {
-		post(n, "test-ssh", true)
-	}
-	assertStatus(pb.EnvCheckStatus_CREATED_INSTANCE, 5)
-	post(5, "test-ssh", true)
+	post(1, "test-ssh", true)
 	assertStatus(pb.EnvCheckStatus_DONE, 5)
 	other := &registration.GetRegistrationSessionResponse{}
 	testkit.DecodePB(t, p.DoPB(t, http.MethodGet, "/api/registration/session", nil, map[string]string{"X-Isux-Session-Contestant-Id": fmt.Sprint(otherLeader)}), other)

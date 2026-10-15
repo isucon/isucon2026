@@ -137,7 +137,7 @@ export class EnvCheck extends React.Component<Props, State> {
           CloudFormation
           を利用します。予選実施前に実際に競技環境が用意できるかのチェックのため、以下の手順で競技環境確認を行ってください。
           <b>必ずSSHの接続まで</b>{" "}
-          行ってください。すべてのインスタンスで起動確認とSSH接続が成功すると確認完了になります。
+          行ってください。すべてのインスタンスの起動確認と、いずれか1台へのSSH接続が成功すると確認完了になります。
         </p>
         {this.renderState()}
         {this.renderReloadButton()}
@@ -191,9 +191,7 @@ export class EnvCheck extends React.Component<Props, State> {
             「スタックの作成」を実行後から約5分後、インスタンスが起動します。
             インスタンスの起動後、GitHubに登録してあるSSH鍵によりSSHができるようになるので、インスタンスに対してユーザー名「isucon」でSSHを行う。
           </p>
-          {this.state.instanceIPs.length === 0
-            ? this.renderInstanceIPAndSSHCommand("")
-            : this.state.instanceIPs.map((ip) => <div key={ip}>{this.renderInstanceIPAndSSHCommand(ip)}</div>)}
+          {this.renderInstanceIPAndSSHCommand(this.state.instanceIPs[0] ?? "")}
         </div>
 
         <h3 className="title is-3">4. 状態の確認とスタックの削除</h3>

@@ -161,7 +161,7 @@ func envCheckProgress(checks []*EnvCheck) EnvCheckProgress {
 			}
 		}
 	}
-	allBoot, allSSH := true, true
+	allBoot, anySSH := true, false
 	for _, id := range ids {
 		b, s := boot[id], ssh[id]
 		if b == nil || !b.Passed || net.ParseIP(b.IPAddress) == nil {
@@ -173,13 +173,13 @@ func envCheckProgress(checks []*EnvCheck) EnvCheckProgress {
 		} else {
 			progress.InstanceIPs = append(progress.InstanceIPs, b.IPAddress)
 		}
-		if s == nil || !s.Passed || s.ID < b.ID || s.IPAddress != b.IPAddress {
-			allSSH = false
+		if s != nil && s.Passed && s.ID > b.ID && s.IPAddress == b.IPAddress {
+			anySSH = true
 		}
 	}
 	if allBoot {
 		progress.Status = pbresources.EnvCheckStatus_CREATED_INSTANCE
-		if allSSH {
+		if anySSH {
 			progress.Status = pbresources.EnvCheckStatus_DONE
 		}
 	}

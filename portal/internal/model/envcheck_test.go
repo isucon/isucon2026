@@ -42,23 +42,19 @@ func TestEnvCheckProgress(t *testing.T) {
 	if got := envCheckProgress(checks).InstanceIPs; !slices.Equal(got, []string{"203.0.113.1", "203.0.113.2", "203.0.113.3", "203.0.113.4", "203.0.113.5"}) {
 		t.Fatalf("IPs: %v", got)
 	}
-	for n := 1; n <= 4; n++ {
-		add("a", n, "test-ssh", true)
-	}
-	assertStatus(pb.EnvCheckStatus_CREATED_INSTANCE)
-	add("a", 4, "test-ssh", true) // repeated reports do not count as another instance
-	assertStatus(pb.EnvCheckStatus_CREATED_INSTANCE)
-	add("a", 5, "test-ssh", true)
-	assertStatus(pb.EnvCheckStatus_DONE)
 	add("a", 1, "test-ssh", false)
 	assertStatus(pb.EnvCheckStatus_CREATED_INSTANCE)
 	add("a", 1, "test-ssh", true)
 	assertStatus(pb.EnvCheckStatus_DONE)
+	add("a", 1, "test-ssh", false) // latest result replaces the earlier success
+	assertStatus(pb.EnvCheckStatus_CREATED_INSTANCE)
+	add("a", 2, "test-ssh", true) // another instance is sufficient
+	assertStatus(pb.EnvCheckStatus_DONE)
 	add("a", 2, "test-boot", false)
 	assertStatus(pb.EnvCheckStatus_NOT_STARTED)
-	add("a", 2, "test-boot", true) // a fresh boot needs a fresh SSH check
+	add("a", 2, "test-boot", true) // the only successful SSH result predates this boot
 	assertStatus(pb.EnvCheckStatus_CREATED_INSTANCE)
-	add("a", 2, "test-ssh", true)
+	add("a", 3, "test-ssh", true)
 	assertStatus(pb.EnvCheckStatus_DONE)
 	add("b", 1, "test-boot", true) // same EIP, different instances: no old successes
 	assertStatus(pb.EnvCheckStatus_NOT_STARTED)
