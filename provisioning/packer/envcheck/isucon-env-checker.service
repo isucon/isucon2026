@@ -1,0 +1,18 @@
+[Unit]
+Description=ISUCON2026 environment boot check
+Wants=network-online.target
+After=network-online.target cloud-final.service
+StartLimitIntervalSec=1h
+StartLimitBurst=20
+
+[Service]
+Type=oneshot
+User=isucon
+ExecStart=/usr/local/bin/isucon-env-checker boot
+Restart=on-failure
+RestartSec=20s
+RemainAfterExit=yes
+TimeoutStartSec=150s
+
+[Install]
+WantedBy=cloud-init.target

@@ -156,6 +156,11 @@ export function createPortal(c: PortalConfig) {
   const databaseSecretArn = database.masterUserSecrets.apply((secrets) =>
     secrets[0].secretArn
   );
+  // ECS reads secrets at task startup, so unattended rotation invalidates running tasks.
+  new aws.secretsmanager.SecretRotation("database", {
+    secretId: databaseSecretArn,
+    rotationEnabled: false,
+  }, opts);
   const cacheSubnets = new aws.elasticache.SubnetGroup(
     "portal",
     { subnetIds },
