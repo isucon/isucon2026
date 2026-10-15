@@ -48,13 +48,14 @@ test("DONE returned by the API stops envcheck progress polling", async () => {
   }
 });
 
-test("all reported instances have their own SSH command", () => {
+test("only one SSH destination is displayed and one connection is required", () => {
   const component = new exports.EnvCheck({ session: { team: {} }, client: {} });
   component.state.checkStatus = EnvCheckStatus.CREATED_INSTANCE;
   component.state.instanceIPs = ["203.0.113.1", "203.0.113.2", "203.0.113.3", "203.0.113.4", "203.0.113.5"];
   const html = renderToStaticMarkup(component.render());
-  for (const ip of component.state.instanceIPs) assert.ok(html.includes(`ssh -T isucon@${ip}`));
-  assert.doesNotMatch(html, /一回でも行えば確認完了/);
+  assert.ok(html.includes("ssh -T isucon@203.0.113.1"));
+  for (const ip of component.state.instanceIPs.slice(1)) assert.ok(!html.includes(ip));
+  assert.match(html, /いずれか1台へのSSH接続/);
 });
 
 test("polling updates all SSH destinations and the actual progress", async () => {
