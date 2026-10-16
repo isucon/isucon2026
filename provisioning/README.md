@@ -127,3 +127,16 @@ clone identityの一意性を確認します。合格レポートは
 
 実ポータルからベンチジョブを受け取るチーム専用Fargate環境は、[Supervisor構築手順](aws/supervisor/README.md)を参照してください。
 `provisioning/aws/supervisor`の独立Pulumi stackで管理します。
+
+### 既存環境を保持した追加構築
+
+既存チームが稼働している場合は、`serviceAmiId` と `routerAmiId` を稼働中のAMIに固定してから新しいAMIを作成する。
+未指定の場合は最新AMIを自動選択するため、新規AMIの作成後に既存インスタンスも置換対象になる。
+
+`teamImages` はチーム番号をキーとし、`serviceAmiId` と `routerAmiId` を持つオブジェクトを指定する。
+新しいチームだけに別のAMIを割り当てられる。
+`independentTlsTeams` に追加チームの番号を指定すると、そのチーム専用の自己署名証明書を作成し、共通証明書のSANを変更しない。
+外部の証明書・秘密鍵を指定している場合は、その証明書が優先される。
+
+変更前に全体のプレビューと追加チームに限定したプレビューを確認し、既存リソースの置換・削除・設定更新を適用しない。
+実際のAMI ID、チームと環境の対応、接続情報は[privateの運用記録](https://github.com/isucon/isucon2026-private/pull/2)で管理する。
