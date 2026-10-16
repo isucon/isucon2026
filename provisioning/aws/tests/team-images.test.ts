@@ -4,6 +4,9 @@ import { expect, test } from "vitest";
 process.env.PULUMI_CONFIG = JSON.stringify({
 	"isucon2026:teamCount": "7",
 	"isucon2026:independentTlsTeams": "[7]",
+	"isucon2026:teamAdminSshPublicKeys": JSON.stringify({
+		7: ["ssh-ed25519 BBBB adminfixture"],
+	}),
 	"isucon2026:teamSshPublicKeys": JSON.stringify({
 		7: ["ssh-ed25519 AAAA fixture"],
 	}),
@@ -66,9 +69,15 @@ test("uses new images only for the selected team and preserves existing instance
 			const encoded = Buffer.from("ssh-ed25519 AAAA fixture\n").toString(
 				"base64",
 			);
-			if (instance.name.startsWith("team7-"))
+			if (instance.name.startsWith("team7-")) {
 				expect(instance.inputs.userData).toContain(encoded);
-			else expect(instance.inputs.userData).not.toContain("authorized_keys");
+				expect(instance.inputs.userData).toContain(
+					"useradd --create-home --shell /bin/bash isuadmin",
+				);
+				expect(instance.inputs.userData).toContain(
+					Buffer.from("ssh-ed25519 BBBB adminfixture\n").toString("base64"),
+				);
+			} else expect(instance.inputs.userData).not.toContain("authorized_keys");
 		}
 	}
 });
