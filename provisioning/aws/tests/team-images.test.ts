@@ -19,6 +19,7 @@ process.env.PULUMI_CONFIG = JSON.stringify({
 	}),
 });
 const resources: pulumi.runtime.MockResourceArgs[] = [];
+const options = new Map<string, pulumi.ResourceOptions>();
 pulumi.runtime.setMocks(
 	{
 		newResource: (args) => {
@@ -43,6 +44,10 @@ pulumi.runtime.setMocks(
 
 test("uses new images only for the selected team and preserves existing instances", async () => {
 	await pulumi.runtime.runInPulumiStack(async () => {
+		pulumi.runtime.registerStackTransformation((args) => {
+			options.set(args.name, args.opts);
+			return undefined;
+		});
 		const infra = await import("../index");
 		return { teams: infra.teamOutputs };
 	});
@@ -50,6 +55,7 @@ test("uses new images only for the selected team and preserves existing instance
 		(r) => r.type === "aws:ec2/instance:Instance",
 	);
 	expect(instances).toHaveLength(20);
+	expect(options.get("team7-router")?.deleteBeforeReplace).toBe(true);
 	const certificates = resources.filter(
 		(r) => r.type === "tls:index/selfSignedCert:SelfSignedCert",
 	);
