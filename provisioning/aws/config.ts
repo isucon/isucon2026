@@ -23,6 +23,9 @@ export const config = {
 	independentTlsTeams: z
 		.array(z.number().int().min(1).max(maxTeams))
 		.parse(c.getObject<number[]>("independentTlsTeams") ?? []),
+	teamSshPublicKeys: z
+		.record(z.string(), z.array(z.string().min(1)))
+		.parse(c.getObject("teamSshPublicKeys") ?? {}),
 	// Pin new environments independently, without replacing existing teams.
 	teamImages: z
 		.record(
