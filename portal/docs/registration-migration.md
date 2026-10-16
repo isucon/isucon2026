@@ -200,3 +200,11 @@ Go dev を検証用 DB に向ける場合は、Pulumi の `applicationDatabase` 
 RDS 自体の初期 DB 名は変更しません。
 元に戻すときも同じ手順で `applicationDatabase=isuxportal`、`redisDatabase=0` を設定します。
 検証用 Redis DB には元のログインセッションを移さず、実際の GitHub 再ログインで同じ参加者に戻ることを確認します。
+
+## 旧 GitHub callback を継続する場合
+
+Go 版は `/auth/github/callback` に加えて、旧 Django の `/complete/github/` も受け付けます。
+OAuth 開始時の callback を旧パスにする場合は、Pulumi stack の `environment` に `ISUXPORTAL_GITHUB_CALLBACK_PATH: /complete/github/` を設定して再デプロイします。
+トークン交換には実際に受信した callback パスを使用するため、設定変更前に開始した Go 版の認証も受け付けます。
+旧 Django の認証途中の state とログインセッションは引き継ぎません。
+同じドメインと GitHub Application を使う場合は既存の callback 登録を継続できます。

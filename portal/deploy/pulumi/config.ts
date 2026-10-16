@@ -23,6 +23,7 @@ export const defaults = {
   auroraMaxAcu: 16,
   cacheNodeType: "cache.t4g.small",
   enableBot: false,
+  dnsManagement: "route53" as "route53" | "external",
   applicationDatabase: "isuxportal",
   redisDatabase: 0,
   environment: {} as Record<string, string>,
@@ -42,6 +43,12 @@ export type PortalConfig = typeof defaults & {
   githubOidcProviderArn: string;
 };
 export function validateConfig(c: PortalConfig): PortalConfig {
+  if (!["route53", "external"].includes(c.dnsManagement)) {
+    throw new Error("dnsManagement must be route53 or external");
+  }
+  if (c.dnsManagement === "route53" && !c.route53ZoneId) {
+    throw new Error("route53ZoneId is required for Route 53 DNS");
+  }
   if (!/^[a-z][a-z0-9_]{0,62}$/.test(c.applicationDatabase)) {
     throw new Error(
       "applicationDatabase must be a lowercase PostgreSQL database name",
@@ -106,7 +113,9 @@ export function loadConfig(): PortalConfig {
     name: config.require("name"),
     region: new pulumi.Config("aws").require("region"),
     domainName: config.require("domainName"),
-    route53ZoneId: config.require("route53ZoneId"),
+    route53ZoneId: config.get("route53ZoneId") ?? "",
+    dnsManagement: config.get<"route53" | "external">("dnsManagement") ??
+      defaults.dnsManagement,
     githubRepository: config.require("githubRepository"),
     githubEnvironment: config.require("githubEnvironment"),
     githubOidcProviderArn: config.require("githubOidcProviderArn"),

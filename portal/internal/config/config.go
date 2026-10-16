@@ -79,6 +79,7 @@ type Config struct {
 
 // OAuthProvider は OAuth プロバイダの設定。エンドポイントはテスト時に差し替え可能。
 type OAuthProvider struct {
+	CallbackPath string
 	ClientID     string
 	ClientSecret string
 	AuthorizeURL string
@@ -89,7 +90,6 @@ type OAuthProvider struct {
 type Discord struct {
 	OAuthProvider
 
-	CallbackPath     string // Empty uses /auth/discord/callback.
 	BotToken         string
 	APIBaseURL       string // REST API（bot ジョブ用）
 	ServerID         string
@@ -158,6 +158,7 @@ func Load() (*Config, error) {
 	}
 
 	c.GitHub = OAuthProvider{
+		CallbackPath: getenv("ISUXPORTAL_GITHUB_CALLBACK_PATH", "/auth/github/callback"),
 		ClientID:     os.Getenv("ISUXPORTAL_GITHUB_CLIENT_ID"),
 		ClientSecret: os.Getenv("ISUXPORTAL_GITHUB_CLIENT_SECRET"),
 		AuthorizeURL: getenv("ISUXPORTAL_GITHUB_AUTHORIZE_URL", "https://github.com/login/oauth/authorize"),
@@ -165,8 +166,8 @@ func Load() (*Config, error) {
 		APIBaseURL:   getenv("ISUXPORTAL_GITHUB_API_BASE_URL", "https://api.github.com"),
 	}
 	c.Discord = Discord{
-		CallbackPath: getenv("ISUXPORTAL_DISCORD_CALLBACK_PATH", "/auth/discord/callback"),
 		OAuthProvider: OAuthProvider{
+			CallbackPath: getenv("ISUXPORTAL_DISCORD_CALLBACK_PATH", "/auth/discord/callback"),
 			ClientID:     os.Getenv("ISUXPORTAL_DISCORD_CLIENT_ID"),
 			ClientSecret: os.Getenv("ISUXPORTAL_DISCORD_CLIENT_SECRET"),
 			AuthorizeURL: getenv("ISUXPORTAL_DISCORD_AUTHORIZE_URL", "https://discord.com/api/oauth2/authorize"),
@@ -180,6 +181,11 @@ func Load() (*Config, error) {
 		ContestantRoleID:        getenv("ISUXPORTAL_DISCORD_CONTESTANT_ROLE_ID", "721583193270255617"), //gitleaks:allow isucon14 の公開 snowflake
 		AdminRoleID:             getenv("ISUXPORTAL_DISCORD_ADMIN_ROLE_ID", "721583068724592640"),      //gitleaks:allow isucon14 の公開 snowflake
 		SupportCommChannelRoles: parsePairs(os.Getenv("ISUXPORTAL_DISCORD_SUPPORT_COMM_CHANNEL_ROLES")),
+	}
+	switch c.GitHub.CallbackPath {
+	case "/auth/github/callback", "/complete/github/":
+	default:
+		return nil, fmt.Errorf("ISUXPORTAL_GITHUB_CALLBACK_PATH must be /auth/github/callback or /complete/github/")
 	}
 	switch c.Discord.CallbackPath {
 	case "/auth/discord/callback", "/auth/discord/complete/":
