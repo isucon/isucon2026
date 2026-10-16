@@ -23,6 +23,7 @@ export const defaults = {
   auroraMaxAcu: 16,
   cacheNodeType: "cache.t4g.small",
   enableBot: false,
+  logRetentionDays: 30,
   dnsManagement: "route53" as "route53" | "external",
   applicationDatabase: "isuxportal",
   redisDatabase: 0,
@@ -130,6 +131,8 @@ export function loadConfig(): PortalConfig {
     auroraMaxAcu: config.getNumber("auroraMaxAcu") ?? defaults.auroraMaxAcu,
     cacheNodeType: config.get("cacheNodeType") ?? defaults.cacheNodeType,
     enableBot: config.getBoolean("enableBot") ?? defaults.enableBot,
+    logRetentionDays: config.getNumber("logRetentionDays") ??
+      defaults.logRetentionDays,
     applicationDatabase: config.get("applicationDatabase") ??
       defaults.applicationDatabase,
     redisDatabase: config.getNumber("redisDatabase") ?? defaults.redisDatabase,
