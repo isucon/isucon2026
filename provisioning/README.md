@@ -143,6 +143,7 @@ clone identityの一意性を確認します。合格レポートは
 未指定のチームのSSH設定には変更を加えない。
 `portalTeamIds` でネットワーク番号とポータルのチームIDを対応させると、回答用インスタンスにポータル同期用の `IsuconTeamID` / `IsuconInstanceNum` / `Role=contestant` タグを付与する。
 Routerは参加者の操作対象に含めない。
+`protectedDatabaseTeams` に指定したチームのDBインスタンスは、Pulumiによる削除・置換から保護する。
 
 変更前に全体のプレビューと追加チームに限定したプレビューを確認し、既存リソースの置換・削除・設定更新を適用しない。
 実際のAMI ID、チームと環境の対応、接続情報は[privateの運用記録](https://github.com/isucon/isucon2026-private/pull/2)で管理する。

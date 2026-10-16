@@ -4,6 +4,7 @@ import { expect, test } from "vitest";
 process.env.PULUMI_CONFIG = JSON.stringify({
 	"isucon2026:teamCount": "7",
 	"isucon2026:independentTlsTeams": "[7]",
+	"isucon2026:protectedDatabaseTeams": "[7]",
 	"isucon2026:portalTeamIds": JSON.stringify({ 7: 700 }),
 	"isucon2026:teamAdminSshPublicKeys": JSON.stringify({
 		7: ["ssh-ed25519 BBBB adminfixture"],
@@ -19,7 +20,7 @@ process.env.PULUMI_CONFIG = JSON.stringify({
 	}),
 });
 const resources: pulumi.runtime.MockResourceArgs[] = [];
-const options = new Map<string, pulumi.ResourceOptions>();
+const options = new Map<string, pulumi.CustomResourceOptions>();
 pulumi.runtime.setMocks(
 	{
 		newResource: (args) => {
@@ -56,6 +57,8 @@ test("uses new images only for the selected team and preserves existing instance
 	);
 	expect(instances).toHaveLength(20);
 	expect(options.get("team7-router")?.deleteBeforeReplace).toBe(true);
+	expect(options.get("team7-db1-instance")?.protect).toBe(true);
+	expect(options.get("team7-app1-instance")?.protect).not.toBe(true);
 	const certificates = resources.filter(
 		(r) => r.type === "tls:index/selfSignedCert:SelfSignedCert",
 	);
