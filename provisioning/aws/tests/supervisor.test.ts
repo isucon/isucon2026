@@ -100,6 +100,11 @@ test("creates Fargate service with fixed egress and scoped execution-role secret
       )
     );
   });
+  const logs = resources.find((r) =>
+    r.type === "aws:cloudwatch/logGroup:LogGroup"
+  )!;
+  expect(logs.inputs.retentionInDays).toBe(0);
+  expect(logs.inputs.skipDestroy).toBe(true);
   const task = resources.find((r) =>
     r.type === "aws:ecs/taskDefinition:TaskDefinition"
   )!;
@@ -237,4 +242,23 @@ test("uses Router EIPs by Host while retaining routes without a managed EIP", as
     "203.0.113.11": routes["203.0.113.11"],
   });
   expect(routes["203.0.113.10"].target).toBe("198.51.100.10");
+});
+
+test("limits a portal endpoint cutover to selected teams", () => {
+  const c = {
+    ...config,
+    teamEndpoints: { "42": "https://new.portal.example" },
+  };
+  const endpoint = (teamId: string) =>
+    supervisorContainer({ ...c, teamId }, "logs").environment.find((e) =>
+      e.name === "ISUXPORTAL_SUPERVISOR_ENDPOINT_URL"
+    )?.value;
+  expect(endpoint("42")).toBe("https://new.portal.example");
+  expect(endpoint("43")).toBe(config.endpoint);
+  expect(() =>
+    supervisorContainer({
+      ...c,
+      teamEndpoints: { "42": "http://invalid.example" },
+    }, "logs")
+  ).toThrow();
 });
