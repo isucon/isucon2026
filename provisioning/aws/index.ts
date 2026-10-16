@@ -418,7 +418,11 @@ function createTeam(t: Team) {
 				},
 			},
 			// プライベート IP を固定しているので、置き換え時は古いインスタンスを先に消す
-			{ dependsOn: routes, deleteBeforeReplace: true },
+			{
+				dependsOn: routes,
+				deleteBeforeReplace: true,
+				protect: isDatabase && config.protectedDatabaseTeams.includes(t.number),
+			},
 		);
 	});
 
