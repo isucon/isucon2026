@@ -112,3 +112,20 @@ npm run format:check # Deno が必要
 exports `vpcId`, `privateSubnetIds`, and `natPublicIps` for consumers such as
 the trial Supervisor. A single NAT reduces cost and EIP allocation at the
 expense of outbound AZ redundancy.
+
+## Route 53 以外の DNS を使用する場合
+
+`dnsManagement=external` を指定すると、Route 53 のレコードを作成せず、ACM の DNS 検証と HTTPS リスナーは引き続き Pulumi で管理します。
+`route53ZoneId` はこのモードでは使用しません。
+外部 DNS 側には `certificateValidationRecords` の CNAME と、`loadBalancerDnsName` を向くサービスのレコードを設定してください。
+証明書検証 CNAME は自動更新にも使用するため、発行後も保持してください。
+
+既存ドメインからの切替では、まず `portal-external` ACM リソースだけを対象に作成し、外部 DNS へ検証 CNAME を追加します。
+証明書が発行された後に通常の `pulumi preview` / `pulumi up` を実行し、ecspresso でデプロイします。
+証明書とリクエストの応答を確認してから、外部 DNS のサービスレコードを切り替えます。
+`external` への変更は従来の Route 53 レコードと証明書を削除するため、旧ホスト名を引き続き使う場合は別途維持する構成が必要です。
+具体的なレコード、変更前の値、切り戻し先は非公開の環境別資料へ記録してください。
+
+CloudWatch ログの保存期間は `logRetentionDays`（既定値: `0`、無期限）で設定する。
+既存スタックに有限の日数が明示されている場合、その値は維持されるため、全ログを保持するには `0` に変更して適用する。
+ロググループには `skipDestroy` を設定し、スタック削除時にもログを残す。
