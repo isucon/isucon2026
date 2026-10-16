@@ -4,6 +4,7 @@ import { expect, test } from "vitest";
 process.env.PULUMI_CONFIG = JSON.stringify({
 	"isucon2026:teamCount": "7",
 	"isucon2026:independentTlsTeams": "[7]",
+	"isucon2026:portalTeamIds": JSON.stringify({ 7: 700 }),
 	"isucon2026:teamAdminSshPublicKeys": JSON.stringify({
 		7: ["ssh-ed25519 BBBB adminfixture"],
 	}),
@@ -71,6 +72,13 @@ test("uses new images only for the selected team and preserves existing instance
 			);
 			if (instance.name.startsWith("team7-")) {
 				expect(instance.inputs.userData).toContain(encoded);
+				expect(instance.inputs.tags.IsuconTeamID).toBe("700");
+				expect(instance.inputs.tags.Role).toBe("contestant");
+				expect(instance.inputs.tags.IsuconInstanceNum).toBe(
+					instance.name.includes("db1")
+						? "4"
+						: instance.name.match(/app([123])/)?.[1],
+				);
 				expect(instance.inputs.userData).toContain(
 					"useradd --create-home --shell /bin/bash isuadmin",
 				);
