@@ -100,6 +100,9 @@ func (h *Handler) oauthProvider(provider string) config.OAuthProvider {
 }
 
 func (h *Handler) callbackURL(r *http.Request, provider string) string {
+	if provider == "discord" && h.cfg.Discord.CallbackPath != "" {
+		return h.baseURL(r) + h.cfg.Discord.CallbackPath
+	}
 	return h.baseURL(r) + "/auth/" + provider + "/callback"
 }
 
@@ -119,7 +122,8 @@ func (h *Handler) exchangeOAuth(ctx context.Context, r *http.Request, provider, 
 		"client_secret": {p.ClientSecret},
 		"code":          {code},
 		"grant_type":    {"authorization_code"},
-		"redirect_uri":  {h.callbackURL(r, provider)},
+		// Both callback routes remain valid, including flows started before a configuration change.
+		"redirect_uri": {h.baseURL(r) + r.URL.Path},
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.TokenURL, strings.NewReader(form.Encode()))
 	if err != nil {

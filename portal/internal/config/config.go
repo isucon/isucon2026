@@ -89,6 +89,7 @@ type OAuthProvider struct {
 type Discord struct {
 	OAuthProvider
 
+	CallbackPath     string // Empty uses /auth/discord/callback.
 	BotToken         string
 	APIBaseURL       string // REST API（bot ジョブ用）
 	ServerID         string
@@ -164,6 +165,7 @@ func Load() (*Config, error) {
 		APIBaseURL:   getenv("ISUXPORTAL_GITHUB_API_BASE_URL", "https://api.github.com"),
 	}
 	c.Discord = Discord{
+		CallbackPath: getenv("ISUXPORTAL_DISCORD_CALLBACK_PATH", "/auth/discord/callback"),
 		OAuthProvider: OAuthProvider{
 			ClientID:     os.Getenv("ISUXPORTAL_DISCORD_CLIENT_ID"),
 			ClientSecret: os.Getenv("ISUXPORTAL_DISCORD_CLIENT_SECRET"),
@@ -178,6 +180,11 @@ func Load() (*Config, error) {
 		ContestantRoleID:        getenv("ISUXPORTAL_DISCORD_CONTESTANT_ROLE_ID", "721583193270255617"), //gitleaks:allow isucon14 の公開 snowflake
 		AdminRoleID:             getenv("ISUXPORTAL_DISCORD_ADMIN_ROLE_ID", "721583068724592640"),      //gitleaks:allow isucon14 の公開 snowflake
 		SupportCommChannelRoles: parsePairs(os.Getenv("ISUXPORTAL_DISCORD_SUPPORT_COMM_CHANNEL_ROLES")),
+	}
+	switch c.Discord.CallbackPath {
+	case "/auth/discord/callback", "/auth/discord/complete/":
+	default:
+		return nil, fmt.Errorf("ISUXPORTAL_DISCORD_CALLBACK_PATH must be /auth/discord/callback or /auth/discord/complete/")
 	}
 
 	maxTeams, err := strconv.Atoi(getenv("ISUXPORTAL_MAX_TEAMS", "600"))

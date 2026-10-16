@@ -380,6 +380,19 @@ export function createPortal(c: PortalConfig) {
     }, opts);
     executionRoles[name] = execution.arn;
     taskRoles[name] = task.arn;
+    if (name === "migrate") {
+      new aws.iam.RolePolicy("migration-snapshot-read", {
+        role: task.id,
+        policy: pulumi.jsonStringify({
+          Version: "2012-10-17",
+          Statement: [{
+            Effect: "Allow",
+            Action: ["s3:GetObject"],
+            Resource: pulumi.interpolate`${configBucket.arn}/rehearsal/*`,
+          }],
+        }),
+      }, opts);
+    }
     if (name === "portal") {
       new aws.iam.RolePolicy("avatar-upload", {
         role: task.id,
@@ -542,11 +555,12 @@ export function createPortal(c: PortalConfig) {
       DEFAULT_URL_HOST: c.domainName,
       MONITOR_ENV: c.name,
       AWS_REGION: c.region,
-      ISUXPORTAL_DATABASE_URL: "postgres:///isuxportal?sslmode=verify-full",
+      ISUXPORTAL_DATABASE_URL:
+        `postgres:///${c.applicationDatabase}?sslmode=verify-full`,
       PGHOST: database.endpoint,
       PGSSLROOTCERT: "/etc/ssl/certs/rds-global-bundle.pem",
       REDIS_URL: pulumi
-        .interpolate`rediss://${cache.primaryEndpointAddress}:6379/0`,
+        .interpolate`rediss://${cache.primaryEndpointAddress}:6379/${c.redisDatabase}`,
       ISUXPORTAL_AVATAR_BUCKET: avatars.id,
       ISUXPORTAL_AVATAR_BASE_PATH: "avatars/",
     },
