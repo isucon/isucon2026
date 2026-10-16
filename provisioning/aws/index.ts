@@ -391,7 +391,11 @@ function createTeam(t: Team) {
 				privateIp: network.serviceIp,
 				associatePublicIpAddress: true,
 				vpcSecurityGroupIds: [securityGroup.id],
-				userData: serviceUserData(t, network),
+				userData: serviceUserData(
+					t,
+					network,
+					config.teamSshPublicKeys[t.number],
+				),
 				// ルートボリュームの容量は AMI のスナップショットに合わせる
 				launchTemplate: {
 					id: launchTemplate.id,

@@ -4,6 +4,9 @@ import { expect, test } from "vitest";
 process.env.PULUMI_CONFIG = JSON.stringify({
 	"isucon2026:teamCount": "7",
 	"isucon2026:independentTlsTeams": "[7]",
+	"isucon2026:teamSshPublicKeys": JSON.stringify({
+		7: ["ssh-ed25519 AAAA fixture"],
+	}),
 	"isucon2026:disabledInstanceTeams": "[1,2,3]",
 	"isucon2026:serviceAmiId": "ami-service",
 	"isucon2026:routerAmiId": "ami-router",
@@ -59,5 +62,13 @@ test("uses new images only for the selected team and preserves existing instance
 			? `ami-new-${role}`
 			: `ami-${role}`;
 		expect(instance.inputs.ami, instance.name).toBe(expected);
+		if (role === "service") {
+			const encoded = Buffer.from("ssh-ed25519 AAAA fixture\n").toString(
+				"base64",
+			);
+			if (instance.name.startsWith("team7-"))
+				expect(instance.inputs.userData).toContain(encoded);
+			else expect(instance.inputs.userData).not.toContain("authorized_keys");
+		}
 	}
 });

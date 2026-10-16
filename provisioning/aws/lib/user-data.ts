@@ -7,7 +7,11 @@ import {
 } from "./topology";
 
 // アドレスはチームごとに違うので、AMI には焼き込まず起動時に設定する
-export function serviceUserData(t: Team, network: ServerNetwork): string {
+export function serviceUserData(
+	t: Team,
+	network: ServerNetwork,
+	sshPublicKeys: string[] = [],
+): string {
 	const commands =
 		network.region === undefined
 			? ["systemctl enable --now postgresql"]
@@ -15,6 +19,17 @@ export function serviceUserData(t: Team, network: ServerNetwork): string {
 					`sed -i -e 's/^ISUREAL_REGION=.*/ISUREAL_REGION=${network.region}/' -e 's/^ISUREAL_DB_HOST=.*/ISUREAL_DB_HOST=${databaseIp(t)}/' /home/isucon/env.sh`,
 					"systemctl enable --now isureal-go nginx",
 				];
+	if (sshPublicKeys.length > 0) {
+		const encoded = Buffer.from(`${sshPublicKeys.join("\n")}\n`).toString(
+			"base64",
+		);
+		commands.unshift(
+			"install -d -m 700 -o isucon -g isucon /home/isucon/.ssh",
+			`printf '%s' '${encoded}' | base64 -d > /home/isucon/.ssh/authorized_keys`,
+			"chown isucon:isucon /home/isucon/.ssh/authorized_keys",
+			"chmod 600 /home/isucon/.ssh/authorized_keys",
+		);
+	}
 	return `#!/bin/sh
 set -eu
 ${commands.join("\n")}
