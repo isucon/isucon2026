@@ -48,6 +48,7 @@ test("external DNS retains ACM validation without creating Route 53 records", as
       region: "ap-northeast-1",
       domainName: "portal.example.com",
       dnsManagement: "external",
+      logRetentionDays: 0,
       route53ZoneId: "",
       githubRepository: "example/portal",
       githubEnvironment: "develop",
@@ -71,4 +72,9 @@ test("external DNS retains ACM validation without creating Route 53 records", as
     r.type === "aws:lb/listener:Listener" && r.name === "https"
   )!;
   expect(listener.inputs.certificateArn).toBeDefined();
+  const logs = resources.find((r) =>
+    r.type === "aws:cloudwatch/logGroup:LogGroup"
+  )!;
+  expect(logs.inputs.retentionInDays).toBe(0);
+  expect(logs.inputs.skipDestroy).toBe(true);
 });

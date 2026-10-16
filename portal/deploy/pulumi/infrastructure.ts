@@ -347,7 +347,8 @@ export function createPortal(c: PortalConfig) {
   }, opts);
   const logs = new aws.cloudwatch.LogGroup("portal", {
     name: `/ecs/${c.name}`,
-    retentionInDays: 30,
+    retentionInDays: c.logRetentionDays,
+    skipDestroy: true,
   }, opts);
   const assume = pulumi.jsonStringify({
     Version: "2012-10-17",
