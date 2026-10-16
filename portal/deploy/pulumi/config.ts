@@ -23,7 +23,7 @@ export const defaults = {
   auroraMaxAcu: 16,
   cacheNodeType: "cache.t4g.small",
   enableBot: false,
-  logRetentionDays: 30,
+  logRetentionDays: 0, // CloudWatch: never expire; explicit stack settings may override.
   dnsManagement: "route53" as "route53" | "external",
   applicationDatabase: "isuxportal",
   redisDatabase: 0,

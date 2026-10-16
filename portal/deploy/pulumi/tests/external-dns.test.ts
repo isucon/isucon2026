@@ -40,7 +40,7 @@ pulumi.runtime.setMocks(
   false,
 );
 
-test("external DNS retains ACM validation without creating Route 53 records", async () => {
+test("external DNS retains ACM validation and defaults to indefinite logs", async () => {
   await pulumi.runtime.runInPulumiStack(async () =>
     createPortal(validateConfig({
       ...defaults,
@@ -48,7 +48,6 @@ test("external DNS retains ACM validation without creating Route 53 records", as
       region: "ap-northeast-1",
       domainName: "portal.example.com",
       dnsManagement: "external",
-      logRetentionDays: 0,
       route53ZoneId: "",
       githubRepository: "example/portal",
       githubEnvironment: "develop",
