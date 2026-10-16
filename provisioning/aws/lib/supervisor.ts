@@ -12,6 +12,7 @@ export interface SupervisorConfig {
   image: string;
   teamImages?: Record<string, string>;
   endpoint: string;
+  teamEndpoints?: Record<string, string>;
   tokenParameterArn?: string;
   tokenSecretArn?: string;
   teamId?: string;
@@ -31,7 +32,10 @@ export function supervisorContainer(c: SupervisorConfig, logGroup: string) {
   if (!/^[a-zA-Z0-9./:_-]+@sha256:[a-f0-9]{64}$/.test(image)) {
     throw new Error("image must be pinned by digest");
   }
-  const endpoint = new URL(c.endpoint);
+  const endpointUrl = c.teamId === undefined
+    ? c.endpoint
+    : c.teamEndpoints?.[c.teamId] ?? c.endpoint;
+  const endpoint = new URL(endpointUrl);
   if (
     endpoint.protocol !== "https:" || endpoint.username || endpoint.password
   ) {
@@ -118,7 +122,7 @@ esac`;
     essential: true,
     command,
     environment: [
-      { name: "ISUXPORTAL_SUPERVISOR_ENDPOINT_URL", value: c.endpoint },
+      { name: "ISUXPORTAL_SUPERVISOR_ENDPOINT_URL", value: endpointUrl },
       ...(c.teamId === undefined
         ? []
         : [{ name: "ISUXPORTAL_SUPERVISOR_TEAM_ID", value: c.teamId }]),
@@ -251,7 +255,8 @@ export function createSupervisor(c: SupervisorConfig) {
     }),
   });
   const logs = new aws.cloudwatch.LogGroup("supervisor-logs", {
-    retentionInDays: 7,
+    retentionInDays: 0,
+    skipDestroy: true,
     tags,
   });
   const cluster = new aws.ecs.Cluster("supervisor-cluster", { tags });
