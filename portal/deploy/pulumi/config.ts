@@ -23,6 +23,8 @@ export const defaults = {
   auroraMaxAcu: 16,
   cacheNodeType: "cache.t4g.small",
   enableBot: false,
+  applicationDatabase: "isuxportal",
+  redisDatabase: 0,
   environment: {} as Record<string, string>,
   secretKeys: [
     ...requiredSecrets,
@@ -40,6 +42,17 @@ export type PortalConfig = typeof defaults & {
   githubOidcProviderArn: string;
 };
 export function validateConfig(c: PortalConfig): PortalConfig {
+  if (!/^[a-z][a-z0-9_]{0,62}$/.test(c.applicationDatabase)) {
+    throw new Error(
+      "applicationDatabase must be a lowercase PostgreSQL database name",
+    );
+  }
+  if (
+    !Number.isInteger(c.redisDatabase) || c.redisDatabase < 0 ||
+    c.redisDatabase > 15
+  ) {
+    throw new Error("redisDatabase must be an integer from 0 to 15");
+  }
   if (!/^[a-z][a-z0-9-]{1,23}$/.test(c.name)) {
     throw new Error("name must be 2-24 lowercase letters, digits or hyphens");
   }
@@ -108,6 +121,9 @@ export function loadConfig(): PortalConfig {
     auroraMaxAcu: config.getNumber("auroraMaxAcu") ?? defaults.auroraMaxAcu,
     cacheNodeType: config.get("cacheNodeType") ?? defaults.cacheNodeType,
     enableBot: config.getBoolean("enableBot") ?? defaults.enableBot,
+    applicationDatabase: config.get("applicationDatabase") ??
+      defaults.applicationDatabase,
+    redisDatabase: config.getNumber("redisDatabase") ?? defaults.redisDatabase,
     environment: config.getObject<Record<string, string>>("environment") ??
       defaults.environment,
     secretKeys: config.getObject<string[]>("secretKeys") ?? defaults.secretKeys,
