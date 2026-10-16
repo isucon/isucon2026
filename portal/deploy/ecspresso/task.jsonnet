@@ -31,6 +31,7 @@ assert std.length([c for c in std.stringChars(std.substr(digest, 7, 64)) if !std
     ] + (if service == 'migrate' then [] else [
            { name: key, valueFrom: infra.applicationSecretArn + ':' + key + '::' }
            for key in infra.secretKeys
+           if key != 'ISUXPORTAL_DISCORD_BOT_TOKEN' || service == 'worker' || (service == 'bot' && infra.enableBot)
          ]) + (if service == 'worker' then [{ name: 'ISUXPORTAL_ADMIN_SSH_PRIVATE_KEY', valueFrom: infra.sshSecretArn }] else []),
     logConfiguration: {
       logDriver: 'awslogs',

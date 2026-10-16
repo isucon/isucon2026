@@ -17,6 +17,7 @@ const worker = createSupervisor({
   image: config.require("image"),
   teamImages: config.getObject<Record<string, string>>("teamImages"),
   endpoint: config.require("portalEndpoint"),
+  teamEndpoints: config.getObject<Record<string, string>>("teamEndpoints"),
   tokenParameterArn: config.get("tokenParameterArn"),
   tokenSecretArn: config.get("tokenSecretArn"),
   teamIds: config.getObject<string[]>("teamIds"),

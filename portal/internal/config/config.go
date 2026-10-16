@@ -79,6 +79,7 @@ type Config struct {
 
 // OAuthProvider は OAuth プロバイダの設定。エンドポイントはテスト時に差し替え可能。
 type OAuthProvider struct {
+	CallbackPath string
 	ClientID     string
 	ClientSecret string
 	AuthorizeURL string
@@ -157,6 +158,7 @@ func Load() (*Config, error) {
 	}
 
 	c.GitHub = OAuthProvider{
+		CallbackPath: getenv("ISUXPORTAL_GITHUB_CALLBACK_PATH", "/auth/github/callback"),
 		ClientID:     os.Getenv("ISUXPORTAL_GITHUB_CLIENT_ID"),
 		ClientSecret: os.Getenv("ISUXPORTAL_GITHUB_CLIENT_SECRET"),
 		AuthorizeURL: getenv("ISUXPORTAL_GITHUB_AUTHORIZE_URL", "https://github.com/login/oauth/authorize"),
@@ -165,6 +167,7 @@ func Load() (*Config, error) {
 	}
 	c.Discord = Discord{
 		OAuthProvider: OAuthProvider{
+			CallbackPath: getenv("ISUXPORTAL_DISCORD_CALLBACK_PATH", "/auth/discord/callback"),
 			ClientID:     os.Getenv("ISUXPORTAL_DISCORD_CLIENT_ID"),
 			ClientSecret: os.Getenv("ISUXPORTAL_DISCORD_CLIENT_SECRET"),
 			AuthorizeURL: getenv("ISUXPORTAL_DISCORD_AUTHORIZE_URL", "https://discord.com/api/oauth2/authorize"),
@@ -178,6 +181,16 @@ func Load() (*Config, error) {
 		ContestantRoleID:        getenv("ISUXPORTAL_DISCORD_CONTESTANT_ROLE_ID", "721583193270255617"), //gitleaks:allow isucon14 の公開 snowflake
 		AdminRoleID:             getenv("ISUXPORTAL_DISCORD_ADMIN_ROLE_ID", "721583068724592640"),      //gitleaks:allow isucon14 の公開 snowflake
 		SupportCommChannelRoles: parsePairs(os.Getenv("ISUXPORTAL_DISCORD_SUPPORT_COMM_CHANNEL_ROLES")),
+	}
+	switch c.GitHub.CallbackPath {
+	case "/auth/github/callback", "/complete/github/":
+	default:
+		return nil, fmt.Errorf("ISUXPORTAL_GITHUB_CALLBACK_PATH must be /auth/github/callback or /complete/github/")
+	}
+	switch c.Discord.CallbackPath {
+	case "/auth/discord/callback", "/auth/discord/complete/":
+	default:
+		return nil, fmt.Errorf("ISUXPORTAL_DISCORD_CALLBACK_PATH must be /auth/discord/callback or /auth/discord/complete/")
 	}
 
 	maxTeams, err := strconv.Atoi(getenv("ISUXPORTAL_MAX_TEAMS", "600"))
