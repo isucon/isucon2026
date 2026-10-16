@@ -100,8 +100,8 @@ func (h *Handler) oauthProvider(provider string) config.OAuthProvider {
 }
 
 func (h *Handler) callbackURL(r *http.Request, provider string) string {
-	if provider == "discord" && h.cfg.Discord.CallbackPath != "" {
-		return h.baseURL(r) + h.cfg.Discord.CallbackPath
+	if path := h.oauthProvider(provider).CallbackPath; path != "" {
+		return h.baseURL(r) + path
 	}
 	return h.baseURL(r) + "/auth/" + provider + "/callback"
 }

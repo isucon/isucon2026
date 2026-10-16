@@ -81,6 +81,7 @@ func (h *Handler) Router() http.Handler {
 	r.Get("/auth/github", h.OAuthStart("github"))
 	r.Get("/auth/discord", h.OAuthStart("discord"))
 	r.Get("/auth/github/callback", h.GitHubCallback)
+	r.Get("/complete/github/", h.GitHubCallback) // Django portal compatibility
 	r.Get("/auth/discord/callback", h.DiscordCallback)
 	r.Get("/auth/discord/complete/", h.DiscordCallback) // Django portal compatibility
 	r.Delete("/session", h.SessionDestroy)

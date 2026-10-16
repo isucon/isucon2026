@@ -45,3 +45,15 @@ func TestContestLinks(t *testing.T) {
 		})
 	}
 }
+
+func TestGitHubCallbackPathValidation(t *testing.T) {
+	for _, path := range []string{"/complete/github", "https://example.com/callback", "/auth/discord/callback"} {
+		t.Run(path, func(t *testing.T) {
+			t.Setenv("ISUXPORTAL_GITHUB_CALLBACK_PATH", path)
+			_, err := Load()
+			if err == nil || !strings.Contains(err.Error(), "ISUXPORTAL_GITHUB_CALLBACK_PATH") {
+				t.Fatalf("invalid callback path %q: error=%v", path, err)
+			}
+		})
+	}
+}
