@@ -258,23 +258,31 @@ export function createPortal(c: PortalConfig) {
       maxAgeSeconds: 600,
     }],
   }, opts);
-  const certificate = new aws.acm.Certificate("portal", {
-    domainName: c.domainName,
-    validationMethod: "DNS",
-  }, opts);
+  const certificate = new aws.acm.Certificate(
+    c.dnsManagement === "external" ? "portal-external" : "portal",
+    {
+      domainName: c.domainName,
+      validationMethod: "DNS",
+    },
+    opts,
+  );
   const validation = certificate.domainValidationOptions.apply((options) =>
     options[0]
   );
-  const validationRecord = new aws.route53.Record("certificate", {
-    zoneId: c.route53ZoneId,
-    name: validation.resourceRecordName,
-    type: validation.resourceRecordType,
-    records: [validation.resourceRecordValue],
-    ttl: 60,
-  }, opts);
+  const validationRecord = c.dnsManagement === "route53"
+    ? new aws.route53.Record("certificate", {
+      zoneId: c.route53ZoneId,
+      name: validation.resourceRecordName,
+      type: validation.resourceRecordType,
+      records: [validation.resourceRecordValue],
+      ttl: 60,
+    }, opts)
+    : undefined;
   const validatedCertificate = new aws.acm.CertificateValidation("portal", {
     certificateArn: certificate.arn,
-    validationRecordFqdns: [validationRecord.fqdn],
+    validationRecordFqdns: [
+      validationRecord ? validationRecord.fqdn : validation.resourceRecordName,
+    ],
   }, opts);
   const alb = new aws.lb.LoadBalancer("portal", {
     name: c.name,
@@ -316,16 +324,18 @@ export function createPortal(c: PortalConfig) {
     certificateArn: validatedCertificate.certificateArn,
     defaultActions: [{ type: "forward", targetGroupArn: target.arn }],
   }, opts);
-  new aws.route53.Record("portal", {
-    zoneId: c.route53ZoneId,
-    name: c.domainName,
-    type: "A",
-    aliases: [{
-      name: alb.dnsName,
-      zoneId: alb.zoneId,
-      evaluateTargetHealth: true,
-    }],
-  }, opts);
+  if (c.dnsManagement === "route53") {
+    new aws.route53.Record("portal", {
+      zoneId: c.route53ZoneId,
+      name: c.domainName,
+      type: "A",
+      aliases: [{
+        name: alb.dnsName,
+        zoneId: alb.zoneId,
+        evaluateTargetHealth: true,
+      }],
+    }, opts);
+  }
   const cluster = new aws.ecs.Cluster("portal", {
     name: c.name,
     settings: [{ name: "containerInsights", value: "enabled" }],
@@ -627,6 +637,9 @@ export function createPortal(c: PortalConfig) {
     databaseSecretArn,
     databaseEndpoint: database.endpoint,
     url: `https://${c.domainName}`,
+    certificateArn: certificate.arn,
+    certificateValidationRecords: certificate.domainValidationOptions,
+    loadBalancerDnsName: alb.dnsName,
     natPublicIps: natIps,
     vpcId: vpc.id,
     privateSubnetIds: privateSubnets.map((subnet) => subnet.id),
