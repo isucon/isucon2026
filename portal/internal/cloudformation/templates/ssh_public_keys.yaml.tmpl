@@ -1,0 +1,33 @@
+{{define "ssh_public_keys"}}            - |
+              set -eu
+              umask 077
+              keydir=/home/isucon/.ssh
+              install -d -m 0700 -o isucon -g isucon "$keydir"
+              downloaded=$(mktemp "$keydir/.downloaded.XXXXXX")
+              candidate=$(mktemp "$keydir/.candidate.XXXXXX")
+              trap 'rm -f "$downloaded" "$candidate"' EXIT HUP INT TERM
+              valid_keys() {
+                count=0
+                while IFS= read -r key || [ -n "$key" ]; do
+                  [ -n "$key" ] || continue
+                  printf '%s\n' "$key" > "$candidate"
+                  ssh-keygen -l -f "$candidate" >/dev/null 2>&1 || return 1
+                  count=$((count + 1))
+                done < "$downloaded"
+                [ "$count" -gt 0 ]
+              }
+              attempt=1
+              while [ "$attempt" -le 12 ]; do
+                if curl --fail --silent --show-error --connect-timeout 5 --max-time 10 --output "$downloaded" 'https://{{.PortalHost}}/api/ssh_public_keys?token={{.Token}}' && valid_keys; then
+                  chmod 0600 "$downloaded"
+                  chown isucon:isucon "$downloaded"
+                  mv -f "$downloaded" "$keydir/authorized_keys"
+                  exit 0
+                fi
+                echo "SSH key download or validation failed (attempt $attempt/12); existing keys retained" >&2
+                if [ "$attempt" -lt 12 ]; then sleep 10; fi
+                attempt=$((attempt + 1))
+              done
+              echo "Could not install SSH keys; check portal key registration and rerun this cloud-init command" >&2
+              exit 1
+{{end}}

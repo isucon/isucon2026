@@ -258,23 +258,31 @@ export function createPortal(c: PortalConfig) {
       maxAgeSeconds: 600,
     }],
   }, opts);
-  const certificate = new aws.acm.Certificate("portal", {
-    domainName: c.domainName,
-    validationMethod: "DNS",
-  }, opts);
+  const certificate = new aws.acm.Certificate(
+    c.dnsManagement === "external" ? "portal-external" : "portal",
+    {
+      domainName: c.domainName,
+      validationMethod: "DNS",
+    },
+    opts,
+  );
   const validation = certificate.domainValidationOptions.apply((options) =>
     options[0]
   );
-  const validationRecord = new aws.route53.Record("certificate", {
-    zoneId: c.route53ZoneId,
-    name: validation.resourceRecordName,
-    type: validation.resourceRecordType,
-    records: [validation.resourceRecordValue],
-    ttl: 60,
-  }, opts);
+  const validationRecord = c.dnsManagement === "route53"
+    ? new aws.route53.Record("certificate", {
+      zoneId: c.route53ZoneId,
+      name: validation.resourceRecordName,
+      type: validation.resourceRecordType,
+      records: [validation.resourceRecordValue],
+      ttl: 60,
+    }, opts)
+    : undefined;
   const validatedCertificate = new aws.acm.CertificateValidation("portal", {
     certificateArn: certificate.arn,
-    validationRecordFqdns: [validationRecord.fqdn],
+    validationRecordFqdns: [
+      validationRecord ? validationRecord.fqdn : validation.resourceRecordName,
+    ],
   }, opts);
   const alb = new aws.lb.LoadBalancer("portal", {
     name: c.name,
@@ -316,16 +324,18 @@ export function createPortal(c: PortalConfig) {
     certificateArn: validatedCertificate.certificateArn,
     defaultActions: [{ type: "forward", targetGroupArn: target.arn }],
   }, opts);
-  new aws.route53.Record("portal", {
-    zoneId: c.route53ZoneId,
-    name: c.domainName,
-    type: "A",
-    aliases: [{
-      name: alb.dnsName,
-      zoneId: alb.zoneId,
-      evaluateTargetHealth: true,
-    }],
-  }, opts);
+  if (c.dnsManagement === "route53") {
+    new aws.route53.Record("portal", {
+      zoneId: c.route53ZoneId,
+      name: c.domainName,
+      type: "A",
+      aliases: [{
+        name: alb.dnsName,
+        zoneId: alb.zoneId,
+        evaluateTargetHealth: true,
+      }],
+    }, opts);
+  }
   const cluster = new aws.ecs.Cluster("portal", {
     name: c.name,
     settings: [{ name: "containerInsights", value: "enabled" }],
@@ -337,7 +347,8 @@ export function createPortal(c: PortalConfig) {
   }, opts);
   const logs = new aws.cloudwatch.LogGroup("portal", {
     name: `/ecs/${c.name}`,
-    retentionInDays: 30,
+    retentionInDays: c.logRetentionDays,
+    skipDestroy: true,
   }, opts);
   const assume = pulumi.jsonStringify({
     Version: "2012-10-17",
@@ -380,6 +391,19 @@ export function createPortal(c: PortalConfig) {
     }, opts);
     executionRoles[name] = execution.arn;
     taskRoles[name] = task.arn;
+    if (name === "migrate") {
+      new aws.iam.RolePolicy("migration-snapshot-read", {
+        role: task.id,
+        policy: pulumi.jsonStringify({
+          Version: "2012-10-17",
+          Statement: [{
+            Effect: "Allow",
+            Action: ["s3:GetObject"],
+            Resource: pulumi.interpolate`${configBucket.arn}/rehearsal/*`,
+          }],
+        }),
+      }, opts);
+    }
     if (name === "portal") {
       new aws.iam.RolePolicy("avatar-upload", {
         role: task.id,
@@ -542,11 +566,12 @@ export function createPortal(c: PortalConfig) {
       DEFAULT_URL_HOST: c.domainName,
       MONITOR_ENV: c.name,
       AWS_REGION: c.region,
-      ISUXPORTAL_DATABASE_URL: "postgres:///isuxportal?sslmode=verify-full",
+      ISUXPORTAL_DATABASE_URL:
+        `postgres:///${c.applicationDatabase}?sslmode=verify-full`,
       PGHOST: database.endpoint,
       PGSSLROOTCERT: "/etc/ssl/certs/rds-global-bundle.pem",
       REDIS_URL: pulumi
-        .interpolate`rediss://${cache.primaryEndpointAddress}:6379/0`,
+        .interpolate`rediss://${cache.primaryEndpointAddress}:6379/${c.redisDatabase}`,
       ISUXPORTAL_AVATAR_BUCKET: avatars.id,
       ISUXPORTAL_AVATAR_BASE_PATH: "avatars/",
     },
@@ -613,6 +638,9 @@ export function createPortal(c: PortalConfig) {
     databaseSecretArn,
     databaseEndpoint: database.endpoint,
     url: `https://${c.domainName}`,
+    certificateArn: certificate.arn,
+    certificateValidationRecords: certificate.domainValidationOptions,
+    loadBalancerDnsName: alb.dnsName,
     natPublicIps: natIps,
     vpcId: vpc.id,
     privateSubnetIds: privateSubnets.map((subnet) => subnet.id),

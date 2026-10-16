@@ -265,7 +265,8 @@ func (s Snapshot) Import(ctx context.Context, db *sql.DB) error {
 				return err
 			}
 		}
-		if err := model.UpdateTeamStudentStatus(ctx, tx, team.ID); err != nil {
+		// Derive student status without changing the source timestamp.
+		if _, err := tx.ExecContext(ctx, `UPDATE teams SET student=(SELECT COUNT(*)>0 AND COUNT(*)=COUNT(*) FILTER (WHERE student) FROM contestants WHERE team_id=teams.id) WHERE id=$1`, team.ID); err != nil {
 			return err
 		}
 	}

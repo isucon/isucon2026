@@ -23,6 +23,10 @@ export const defaults = {
   auroraMaxAcu: 16,
   cacheNodeType: "cache.t4g.small",
   enableBot: false,
+  logRetentionDays: 0, // CloudWatch: never expire; explicit stack settings may override.
+  dnsManagement: "route53" as "route53" | "external",
+  applicationDatabase: "isuxportal",
+  redisDatabase: 0,
   environment: {} as Record<string, string>,
   secretKeys: [
     ...requiredSecrets,
@@ -40,6 +44,23 @@ export type PortalConfig = typeof defaults & {
   githubOidcProviderArn: string;
 };
 export function validateConfig(c: PortalConfig): PortalConfig {
+  if (!["route53", "external"].includes(c.dnsManagement)) {
+    throw new Error("dnsManagement must be route53 or external");
+  }
+  if (c.dnsManagement === "route53" && !c.route53ZoneId) {
+    throw new Error("route53ZoneId is required for Route 53 DNS");
+  }
+  if (!/^[a-z][a-z0-9_]{0,62}$/.test(c.applicationDatabase)) {
+    throw new Error(
+      "applicationDatabase must be a lowercase PostgreSQL database name",
+    );
+  }
+  if (
+    !Number.isInteger(c.redisDatabase) || c.redisDatabase < 0 ||
+    c.redisDatabase > 15
+  ) {
+    throw new Error("redisDatabase must be an integer from 0 to 15");
+  }
   if (!/^[a-z][a-z0-9-]{1,23}$/.test(c.name)) {
     throw new Error("name must be 2-24 lowercase letters, digits or hyphens");
   }
@@ -93,7 +114,9 @@ export function loadConfig(): PortalConfig {
     name: config.require("name"),
     region: new pulumi.Config("aws").require("region"),
     domainName: config.require("domainName"),
-    route53ZoneId: config.require("route53ZoneId"),
+    route53ZoneId: config.get("route53ZoneId") ?? "",
+    dnsManagement: config.get<"route53" | "external">("dnsManagement") ??
+      defaults.dnsManagement,
     githubRepository: config.require("githubRepository"),
     githubEnvironment: config.require("githubEnvironment"),
     githubOidcProviderArn: config.require("githubOidcProviderArn"),
@@ -108,6 +131,11 @@ export function loadConfig(): PortalConfig {
     auroraMaxAcu: config.getNumber("auroraMaxAcu") ?? defaults.auroraMaxAcu,
     cacheNodeType: config.get("cacheNodeType") ?? defaults.cacheNodeType,
     enableBot: config.getBoolean("enableBot") ?? defaults.enableBot,
+    logRetentionDays: config.getNumber("logRetentionDays") ??
+      defaults.logRetentionDays,
+    applicationDatabase: config.get("applicationDatabase") ??
+      defaults.applicationDatabase,
+    redisDatabase: config.getNumber("redisDatabase") ?? defaults.redisDatabase,
     environment: config.getObject<Record<string, string>>("environment") ??
       defaults.environment,
     secretKeys: config.getObject<string[]>("secretKeys") ?? defaults.secretKeys,

@@ -91,6 +91,16 @@ def export():
     from django.db import connection, transaction
     from social_django.models import UserSocialAuth
 
+    team_id_text = os.environ.get("PORTAL_EXPORT_TEAM_ID", "")
+    team_id = None
+    if team_id_text:
+        if (
+            not team_id_text.isascii()
+            or not team_id_text.isdecimal()
+            or int(team_id_text) <= 0
+        ):
+            raise ValueError("PORTAL_EXPORT_TEAM_ID must be a positive integer")
+        team_id = int(team_id_text)
     directory = Path(os.environ["PORTAL_EXPORT_DIR"])
     directory.mkdir(mode=0o700, parents=True, exist_ok=False)
     icons = directory / "avatars"
@@ -126,13 +136,30 @@ def export():
             )
             if unknown:
                 raise ValueError("unmapped source fields: " + ",".join(sorted(unknown)))
-        users = list(user_model._base_manager.order_by("id").values(*USER_FIELDS))
-        teams = list(team_model._base_manager.order_by("id").values(*TEAM_FIELDS))
+        team_query = team_model._base_manager
+        user_query = user_model._base_manager
+        if team_id is not None:
+            team_query = team_query.filter(id=team_id)
+            user_query = user_query.filter(team_id=team_id)
+        teams = list(team_query.order_by("id").values(*TEAM_FIELDS))
+        if team_id is not None and not teams:
+            raise ValueError("requested team does not exist")
+        users = list(user_query.order_by("id").values(*USER_FIELDS))
+        if team_id is not None:
+            # A withdrawn team's historical owner may no longer belong to the team.
+            missing_owners = {t["owner_id"] for t in teams} - {u["id"] for u in users}
+            users.extend(
+                user_model._base_manager.filter(id__in=missing_owners)
+                .order_by("id")
+                .values(*USER_FIELDS)
+            )
+            users.sort(key=lambda user: user["id"])
         github = {}
         user_ids = {user["id"] for user in users}
-        for auth in UserSocialAuth.objects.order_by("id").values(
-            "user_id", "provider", "uid"
-        ):
+        identities = UserSocialAuth.objects
+        if team_id is not None:
+            identities = identities.filter(user_id__in=user_ids)
+        for auth in identities.order_by("id").values("user_id", "provider", "uid"):
             if auth["user_id"] not in user_ids:
                 raise ValueError("orphan social identity")
             if auth["provider"] != "github":

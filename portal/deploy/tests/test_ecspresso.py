@@ -91,6 +91,22 @@ class EcspressoTest(unittest.TestCase):
         )
         self.assertNotIn("loadBalancers", self.render("migrate", "servicedef"))
 
+    def test_discord_bot_token_is_limited_to_consumers(self):
+        self.infra["secretKeys"].append("ISUXPORTAL_DISCORD_BOT_TOKEN")
+        for enabled in (False, True):
+            self.infra["enableBot"] = enabled
+            (self.path / "infra.json").write_text(json.dumps(self.infra))
+            for service in ("portal", "worker", "notifyloop", "bot", "migrate"):
+                with self.subTest(enabled=enabled, service=service):
+                    task = self.render(service, "taskdef")
+                    names = {
+                        s["name"] for s in task["containerDefinitions"][0]["secrets"]
+                    }
+                    self.assertEqual(
+                        "ISUXPORTAL_DISCORD_BOT_TOKEN" in names,
+                        service == "worker" or (service == "bot" and enabled),
+                    )
+
     def test_singletons_and_worker_secret_isolation(self):
         for name in ("bot", "notifyloop"):
             definition = self.render(name, "servicedef")

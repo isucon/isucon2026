@@ -75,13 +75,15 @@ func (h *Handler) Router() http.Handler {
 	r.Get("/docs", h.DocsRedirect) // 競技時間中のみ有効（routes.rb の constraints 相当）
 	r.Get("/site/sha", func(w http.ResponseWriter, _ *http.Request) { renderPlain(w, http.StatusOK, h.cfg.Revision) })
 
-	// --- 認証・セッション（8 本） ---
+	// --- 認証・セッション ---
 	r.Get("/session/new/github", h.SessionNewGitHub)
 	r.Get("/session/new/discord", h.SessionNewDiscord)
 	r.Get("/auth/github", h.OAuthStart("github"))
 	r.Get("/auth/discord", h.OAuthStart("discord"))
 	r.Get("/auth/github/callback", h.GitHubCallback)
+	r.Get("/complete/github/", h.GitHubCallback) // Django portal compatibility
 	r.Get("/auth/discord/callback", h.DiscordCallback)
+	r.Get("/auth/discord/complete/", h.DiscordCallback) // Django portal compatibility
 	r.Delete("/session", h.SessionDestroy)
 	r.Get("/session/bypass/{token}", h.AssumeBypassToken)
 
