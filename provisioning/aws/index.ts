@@ -405,7 +405,16 @@ function createTeam(t: Team) {
 				tags: {
 					...teamTags,
 					Name: `isucon2026-${name}`,
-					Role: "problem-server",
+					Role:
+						config.portalTeamIds[t.number] === undefined
+							? "problem-server"
+							: "contestant",
+					...(config.portalTeamIds[t.number] === undefined
+						? {}
+						: {
+								IsuconTeamID: String(config.portalTeamIds[t.number]),
+								IsuconInstanceNum: String(index + 1),
+							}),
 				},
 			},
 			// プライベート IP を固定しているので、置き換え時は古いインスタンスを先に消す
