@@ -91,6 +91,12 @@ class QueryGuardTests(unittest.TestCase):
 
 class SnapshotExportTests(unittest.TestCase):
     def test_export_preserves_null_false_and_microseconds_without_credentials(self):
+        self.check_export("")
+
+    def test_scoped_export_excludes_other_teams_and_their_identities(self):
+        self.check_export("20")
+
+    def check_export(self, team_id):
         import contextlib
         import datetime
         import json
@@ -138,6 +144,18 @@ class SnapshotExportTests(unittest.TestCase):
             def count(self):
                 return len(self.rows)
 
+            def filter(self, **criteria):
+                def matches(row):
+                    for key, value in criteria.items():
+                        if key.endswith("__in"):
+                            if row[key[:-4]] not in value:
+                                return False
+                        elif row[key] != value:
+                            return False
+                    return True
+
+                return Manager([row for row in self.rows if matches(row)])
+
         def model(label, row):
             return SimpleNamespace(
                 _base_manager=Manager([row]),
@@ -150,6 +168,8 @@ class SnapshotExportTests(unittest.TestCase):
 
         user_model = model("authentication.User", user)
         team_model = model("authentication.Team", team)
+        user_model._base_manager.rows.append({**user, "id": 11, "team_id": 21})
+        team_model._base_manager.rows.append({**team, "id": 21, "owner_id": 11})
         unknown_model = SimpleNamespace(
             _base_manager=Manager([{}]), _meta=SimpleNamespace(label="contact.Ticket")
         )
@@ -182,7 +202,10 @@ class SnapshotExportTests(unittest.TestCase):
             "social_django.models": SimpleNamespace(
                 UserSocialAuth=SimpleNamespace(
                     objects=Manager(
-                        [{"user_id": 10, "provider": "github", "uid": "123"}]
+                        [
+                            {"user_id": 10, "provider": "github", "uid": "123"},
+                            {"user_id": 11, "provider": "github", "uid": "456"},
+                        ]
                     )
                 )
             ),
@@ -196,6 +219,7 @@ class SnapshotExportTests(unittest.TestCase):
                     {
                         "PORTAL_EXPORT_DIR": str(directory),
                         "PORTAL_AVATAR_BASE_URL": "https://cdn.example.invalid/avatars",
+                        "PORTAL_EXPORT_TEAM_ID": team_id,
                     },
                 ),
             ):
@@ -203,6 +227,8 @@ class SnapshotExportTests(unittest.TestCase):
             raw = (directory / "snapshot.json").read_text()
             self.assertNotIn("never-export", raw)
             result = json.loads(raw)
+            self.assertEqual(len(result["teams"]), 1 if team_id else 2)
+            self.assertEqual(len(result["users"]), 1 if team_id else 2)
             self.assertEqual(
                 result["users"][0]["terms_agreed_at"],
                 "2026-09-01T12:00:00.123456+00:00",

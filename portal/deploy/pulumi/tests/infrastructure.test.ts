@@ -44,6 +44,8 @@ pulumi.runtime.setMocks(
 );
 const config = {
   ...defaults,
+  applicationDatabase: "rehearsal_test",
+  redisDatabase: 1,
   secretKeys: [...defaults.secretKeys, "ISUXPORTAL_SLACK_WEBHOOK_URL"],
   natGatewayCount: 1,
   name: "portal-test",
@@ -67,6 +69,16 @@ describe("portal infrastructure", () => {
     expect(ofType("aws:ecs/service:Service")).toHaveLength(0);
     expect(ofType("aws:ecs/taskDefinition:TaskDefinition")).toHaveLength(0);
     expect(ofType("aws:ecs/cluster:Cluster")).toHaveLength(1);
+  });
+  test("limits migration snapshot reads to the private rehearsal prefix", () => {
+    const policy = ofType("aws:iam/rolePolicy:RolePolicy").find((r) =>
+      r.name === "migration-snapshot-read"
+    );
+    expect(policy).toBeDefined();
+    const statements = JSON.parse(policy!.inputs.policy).Statement;
+    expect(statements).toHaveLength(1);
+    expect(statements[0].Action).toEqual(["s3:GetObject"]);
+    expect(statements[0].Resource).toMatch(/\/rehearsal\/\*$/);
   });
   test("uses warm encrypted Aurora Serverless v2 in two AZs", () => {
     const db = ofType("aws:rds/cluster:Cluster")[0].inputs;
@@ -135,6 +147,12 @@ describe("portal infrastructure", () => {
   test("exports infrastructure data without rendering ECS definitions or secret values", () => {
     const object = ofType("aws:s3/bucketObjectv2:BucketObjectv2")[0];
     const data = JSON.parse(object.inputs.content);
+    expect(data.environment.ISUXPORTAL_DATABASE_URL).toBe(
+      "postgres:///rehearsal_test?sslmode=verify-full",
+    );
+    expect(data.environment.REDIS_URL).toBe(
+      "rediss://cache.example.com:6379/1",
+    );
     expect(data).toMatchObject({
       name: "portal-test",
       region: "ap-northeast-1",
@@ -174,6 +192,10 @@ describe("portal infrastructure", () => {
   test("rejects auto-pause, duplicate AZs and plaintext credentials", () => {
     const overrides: Partial<PortalConfig>[] = [
       { auroraMinAcu: 0 },
+      { applicationDatabase: "bad/name" },
+      { redisDatabase: -1 },
+      { redisDatabase: 16 },
+      { redisDatabase: 1.5 },
       { availabilityZones: ["ap-northeast-1a", "ap-northeast-1a"] },
       { environment: { ISUXPORTAL_ADMIN_PASSWORD: "bad" } },
       {

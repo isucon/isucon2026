@@ -1,6 +1,21 @@
 package config
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
+
+func TestDiscordCallbackPathValidation(t *testing.T) {
+	for _, path := range []string{"/auth/discord/complete", "https://example.com/callback", "/auth/github/callback"} {
+		t.Run(path, func(t *testing.T) {
+			t.Setenv("ISUXPORTAL_DISCORD_CALLBACK_PATH", path)
+			_, err := Load()
+			if err == nil || !strings.Contains(err.Error(), "ISUXPORTAL_DISCORD_CALLBACK_PATH") {
+				t.Fatalf("invalid callback path %q: error=%v", path, err)
+			}
+		})
+	}
+}
 
 func TestContestLinks(t *testing.T) {
 	for _, tt := range []struct {
