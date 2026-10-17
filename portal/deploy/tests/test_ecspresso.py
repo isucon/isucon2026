@@ -90,6 +90,24 @@ class EcspressoTest(unittest.TestCase):
             with self.subTest(service=service):
                 self.assertEqual(self.render(service, "servicedef")["desiredCount"], 0)
 
+    def test_create_and_update_preserve_service_defaults(self):
+        for name in ("portal", "worker", "bot", "notifyloop"):
+            with self.subTest(service=name):
+                service = self.render(name, "servicedef")
+                self.assertEqual(
+                    service["availabilityZoneRebalancing"],
+                    "DISABLED" if name in ("bot", "notifyloop") else "ENABLED",
+                )
+                self.assertEqual(service["propagateTags"], "NONE")
+                self.assertEqual(
+                    service["healthCheckGracePeriodSeconds"],
+                    60 if name == "portal" else 0,
+                )
+                self.assertEqual(
+                    self.render(name, "taskdef")["volumes"],
+                    [{"name": "tmp", "host": {}}],
+                )
+
     def test_migration_only_has_database_secrets(self):
         task = self.render("migrate", "taskdef")
         self.assertEqual(task["containerDefinitions"][0]["command"], ["migrate"])
