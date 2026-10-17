@@ -63,7 +63,7 @@ func (m *Model) checkFeedLocked(viewerID, feed string, before *client.Post, page
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	var result FeedResult
-	var signatures []signature
+	signatures := make([]signature, 0, len(page.Items))
 	viewer := m.users[viewerID]
 	if viewer == nil {
 		result.error("フィード %s: 閲覧者 %s を bench が知りません", feed, viewerID)
@@ -74,7 +74,8 @@ func (m *Model) checkFeedLocked(viewerID, feed string, before *client.Post, page
 		return result, nil
 	}
 
-	seen := map[string]bool{}
+	v := m.newView(viewer, r)
+	seen := make(map[string]bool, len(page.Items))
 	for i, item := range page.Items {
 		if seen[item.ID] {
 			result.error("フィード %s: 投稿 %s が重複しています", feed, item.ID)
@@ -94,7 +95,7 @@ func (m *Model) checkFeedLocked(viewerID, feed string, before *client.Post, page
 			}
 			continue
 		}
-		if m.inFeedTri(viewer, p, feed, r) == False {
+		if v.inFeedTri(p, feed) == False {
 			result.violation("フィード %s: %s に見えてはいけない投稿 %s が返りました", feed, viewer.Username, item.ID)
 			continue
 		}
@@ -102,37 +103,92 @@ func (m *Model) checkFeedLocked(viewerID, feed string, before *client.Post, page
 		signatures = append(signatures, signature{postID: p.ID, url: item.ImageURL, imageID: p.ImageID, secretKey: m.users[p.AuthorID].SecretKey})
 	}
 
-	for _, p := range m.openPosts(r) {
+	m.feedCandidates(viewer.ID, feed, r, func(p *Post) {
 		if seen[p.ID] || (before != nil && !p.PostedAt.Before(before.PostedAt)) {
-			continue
+			return
 		}
 		if page.HasMore && !p.PostedAt.After(page.Items[len(page.Items)-1].PostedAt) {
-			continue
+			return
 		}
-		if m.inFeedTri(viewer, p, feed, r) == True {
+		if v.inFeedTri(p, feed) == True {
 			result.error("フィード %s: %s に見えるべき投稿 %s がありません", feed, viewer.Username, p.ID)
 		}
-	}
+	})
 	return result, signatures
 }
 
 // mayHaveUnknownPost は authorID に、結果がわからないまま ID の知らない投稿があるかもしれないか。
 func (m *Model) mayHaveUnknownPost(authorID string, r Read) bool {
-	return slices.ContainsFunc(m.pending, func(p *pendingPost) bool {
-		return p.authorID == authorID && boolTri(p.exists.possible(r)) != False
+	return slices.ContainsFunc(m.pending[authorID], func(p *pendingPost) bool {
+		return boolTri(p.exists, r) != False
 	})
 }
 
-// openPosts は、読み取りの時点で開いていたかもしれない投稿期間の投稿。フィードに出うるのは
-// これだけ。
-func (m *Model) openPosts(r Read) []*Post {
-	var posts []*Post
+// openWindows は、読み取りの時点で開いていたかもしれない投稿期間。フィードに出うるのは
+// これらの期間の投稿だけ。
+func (m *Model) openWindows(r Read) []string {
+	var ids []string
 	for _, current := range m.current {
-		for _, id := range current.possible(r) {
-			posts = append(posts, m.byWindow[id]...)
+		current.each(r, func(id string) {
+			if id != "" && id != "?" && !slices.Contains(ids, id) {
+				ids = append(ids, id)
+			}
+		})
+	}
+	return ids
+}
+
+// feedCandidates は、viewerID の feed に出るべき（inFeedTri が真になりうる）投稿を、
+// 開いていたかもしれない投稿期間から選んで f に渡す。投稿期間のすべての投稿はユーザー数に
+// 比例して増えるので、friends と following は相手の投稿だけを、friends-of-friends は友達の
+// 友達の投稿だけを索引から引く。public はすべての投稿が候補になる。
+func (m *Model) feedCandidates(viewerID, feed string, r Read, f func(*Post)) {
+	open := m.openWindows(r)
+	byAuthors := func(authors map[string]bool) {
+		for author := range authors {
+			for _, p := range m.byAuthor[author] {
+				if slices.Contains(open, p.WindowID) {
+					f(p)
+				}
+			}
 		}
 	}
-	return posts
+	all := func() {
+		for _, id := range open {
+			for _, p := range m.byWindow[id] {
+				f(p)
+			}
+		}
+	}
+	switch feed {
+	case "public":
+		all()
+	case "following":
+		byAuthors(m.followCandidates[viewerID])
+	case "friends":
+		byAuthors(m.friendCandidates[viewerID])
+	case "friends-of-friends":
+		// 友達の友達は、友達だったかもしれない相手の、友達だったかもしれない相手に限られる。
+		// 初期データの人気のユーザーでは数が投稿より多くなるので、そのときはすべての投稿を見る。
+		hops, posts := 0, 0
+		for c := range m.friendCandidates[viewerID] {
+			hops += len(m.friendCandidates[c])
+		}
+		for _, id := range open {
+			posts += len(m.byWindow[id])
+		}
+		if hops > posts {
+			all()
+			return
+		}
+		authors := make(map[string]bool, hops)
+		for c := range m.friendCandidates[viewerID] {
+			for author := range m.friendCandidates[c] {
+				authors[author] = true
+			}
+		}
+		byAuthors(authors)
+	}
 }
 
 func (m *Model) checkPostContent(result *FeedResult, feed string, got client.Post, want *Post, r Read) {
@@ -144,7 +200,7 @@ func (m *Model) checkPostContent(result *FeedResult, feed string, got client.Pos
 		result.error("フィード %s: 投稿 %s のキャプションが違います", feed, want.ID)
 	case !got.PostedAt.Equal(want.PostedAt):
 		result.error("フィード %s: 投稿 %s の投稿時刻が違います", feed, want.ID)
-	case !slices.Contains(want.visibility.possible(r), got.Visibility):
+	case !want.visibility.mayBe(r, got.Visibility):
 		result.error("フィード %s: 投稿 %s の公開範囲が違います", feed, want.ID)
 	}
 }
