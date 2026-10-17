@@ -43,8 +43,13 @@ func (s Snapshot) Verify(ctx context.Context, db model.DBTX) error {
 	for _, t := range s.Teams {
 		teams[t.ID] = t
 	}
-	if err := expect("row counts", `SELECT (SELECT count(*) FROM teams)=$1 AND (SELECT count(*) FROM contestants)=$2 AND (SELECT count(*) FROM registration_records)=$2 AND (SELECT count(*) FROM registration_source_records)=$3`, len(s.Teams), memberCount, len(s.Teams)+len(s.Users)); err != nil {
+	if err := expect("row counts", `SELECT (SELECT count(*) FROM teams)=$1 AND (SELECT count(*) FROM contestants)=$2 AND (SELECT count(*) FROM registration_records)=$2 AND (SELECT count(*) FROM registration_source_records)=$3`, len(s.Teams), memberCount, len(s.Teams)+len(s.Users)+len(s.RegistrationCoupons)); err != nil {
 		return err
+	}
+	for _, coupon := range s.RegistrationCoupons {
+		if err := archive("authentication.RegisterCoupon", coupon.ID, coupon); err != nil {
+			return err
+		}
 	}
 	for _, t := range s.Teams {
 		if err := archive("authentication.Team", t.ID, t); err != nil {

@@ -1,9 +1,10 @@
 local infra = import 'infra.json';
 local service = std.native('must_env')('SERVICE');
+local standby = std.get(infra, 'standby', false);
 local singleton = std.member(['bot', 'notifyloop'], service);
 {
   serviceName: service,
-  desiredCount: if service == 'portal' then 2 else if service == 'bot' && !infra.enableBot then 0 else 1,
+  desiredCount: if service == 'portal' then 2 else if standby then 0 else if service == 'bot' && !infra.enableBot then 0 else 1,
   launchType: 'FARGATE',
   platformVersion: '1.4.0',
   networkConfiguration: { awsvpcConfiguration: {
