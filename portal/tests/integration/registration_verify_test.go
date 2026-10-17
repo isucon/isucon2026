@@ -2,7 +2,9 @@ package integration_test
 
 import (
 	"context"
+	"github.com/isucon/isucon2026/portal/internal/registrationmigration"
 	"testing"
+	"time"
 
 	"github.com/isucon/isucon2026/portal/tests/testkit"
 )
@@ -10,6 +12,8 @@ import (
 func TestVerifyImportedRegistration(t *testing.T) {
 	db := testkit.Database(t)
 	s := registrationSnapshot()
+	s.RegistrationCoupons = []registrationmigration.RegistrationCoupon{{ID: 1, Name: "invitation", Token: "synthetic", CreatedAt: time.Now().UTC().Truncate(time.Microsecond), UpdatedAt: time.Now().UTC().Truncate(time.Microsecond)}}
+	s.Other["authentication.RegisterCoupon"] = 1
 	ctx := context.Background()
 	if err := s.Import(ctx, db); err != nil {
 		t.Fatal(err)
@@ -18,6 +22,7 @@ func TestVerifyImportedRegistration(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, query := range []string{
+		"UPDATE registration_source_records SET payload='{}' WHERE model='authentication.RegisterCoupon'",
 		"UPDATE contestants SET github_id='changed' WHERE id=10",
 		"UPDATE contestants SET discord_id='changed' WHERE id=10",
 		"UPDATE contestants SET avatar_url='changed'",

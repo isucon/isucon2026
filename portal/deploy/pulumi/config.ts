@@ -23,6 +23,8 @@ export const defaults = {
   auroraMaxAcu: 16,
   cacheNodeType: "cache.t4g.small",
   enableBot: false,
+  standby: false,
+  existingCertificateArn: "",
   logRetentionDays: 0, // CloudWatch: never expire; explicit stack settings may override.
   dnsManagement: "route53" as "route53" | "external",
   applicationDatabase: "isuxportal",
@@ -44,6 +46,15 @@ export type PortalConfig = typeof defaults & {
   githubOidcProviderArn: string;
 };
 export function validateConfig(c: PortalConfig): PortalConfig {
+  if (
+    c.existingCertificateArn &&
+    !new RegExp(`^arn:aws:acm:${c.region}:[0-9]{12}:certificate/[a-f0-9-]{36}$`)
+      .test(c.existingCertificateArn)
+  ) {
+    throw new Error(
+      "existingCertificateArn must be an ACM certificate in the deployment region",
+    );
+  }
   if (!["route53", "external"].includes(c.dnsManagement)) {
     throw new Error("dnsManagement must be route53 or external");
   }
@@ -131,6 +142,9 @@ export function loadConfig(): PortalConfig {
     auroraMaxAcu: config.getNumber("auroraMaxAcu") ?? defaults.auroraMaxAcu,
     cacheNodeType: config.get("cacheNodeType") ?? defaults.cacheNodeType,
     enableBot: config.getBoolean("enableBot") ?? defaults.enableBot,
+    standby: config.getBoolean("standby") ?? defaults.standby,
+    existingCertificateArn: config.get("existingCertificateArn") ??
+      defaults.existingCertificateArn,
     logRetentionDays: config.getNumber("logRetentionDays") ??
       defaults.logRetentionDays,
     applicationDatabase: config.get("applicationDatabase") ??

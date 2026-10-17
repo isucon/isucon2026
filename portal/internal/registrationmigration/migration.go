@@ -49,6 +49,18 @@ type Team struct {
 	SacloudCoupon          string     `json:"sacloud_coupon"`
 }
 
+// RegistrationCoupon is archived for audit; it does not activate cloud credits
+// or enable legacy registration invitation redemption.
+type RegistrationCoupon struct {
+	ID        int64      `json:"id"`
+	Name      string     `json:"name"`
+	Token     string     `json:"token"`
+	TeamID    *int64     `json:"team_id"`
+	CreatedAt time.Time  `json:"created_at"`
+	UpdatedAt time.Time  `json:"updated_at"`
+	UsedAt    *time.Time `json:"used_at"`
+}
+
 // Other lists every non-registration application model, including zero counts.
 // Nonempty unsupported models block import instead of silently losing data.
 var requiredInventory = []string{"authentication.RegisterCoupon", "contact.Ticket", "contact.TicketComment", "contest.Information", "contest.Server", "contest.Job", "contest.Score", "envcheck.EnvCheckResult"}
@@ -63,11 +75,12 @@ func EmptyInventory() map[string]int {
 }
 
 type Snapshot struct {
-	Version int               `json:"version"`
-	Users   []User            `json:"users"`
-	Teams   []Team            `json:"teams"`
-	Other   map[string]int    `json:"other"`
-	Avatars map[string]string `json:"avatars"`
+	RegistrationCoupons []RegistrationCoupon `json:"registration_coupons,omitempty"`
+	Version             int                  `json:"version"`
+	Users               []User               `json:"users"`
+	Teams               []Team               `json:"teams"`
+	Other               map[string]int       `json:"other"`
+	Avatars             map[string]string    `json:"avatars"`
 }
 
 func Decode(r io.Reader) (*Snapshot, error) {
@@ -100,6 +113,12 @@ func (s Snapshot) Validate() error {
 		}
 	}
 	for name, count := range s.Other {
+		if name == "authentication.RegisterCoupon" {
+			if count != len(s.RegistrationCoupons) {
+				return fmt.Errorf("registration coupon inventory mismatch")
+			}
+			continue
+		}
 		if count != 0 {
 			return fmt.Errorf("unsupported model %s contains %d records", name, count)
 		}
@@ -126,6 +145,16 @@ func (s Snapshot) Validate() error {
 		}
 		teams[team.ID] = team
 		names[team.Name] = true
+	}
+	couponIDs, couponTokens := map[int64]bool{}, map[string]bool{}
+	for _, coupon := range s.RegistrationCoupons {
+		if coupon.ID <= 0 || couponIDs[coupon.ID] || coupon.Token == "" || couponTokens[coupon.Token] || coupon.CreatedAt.IsZero() || coupon.UpdatedAt.IsZero() {
+			return fmt.Errorf("invalid or duplicate registration coupon")
+		}
+		if coupon.TeamID != nil && teams[*coupon.TeamID].ID == 0 {
+			return fmt.Errorf("registration coupon has unknown team")
+		}
+		couponIDs[coupon.ID], couponTokens[coupon.Token] = true, true
 	}
 	counts := map[int64]int{}
 	for _, user := range s.Users {
@@ -218,6 +247,11 @@ func (s Snapshot) Import(ctx context.Context, db *sql.DB) error {
 		}
 		_, err = tx.ExecContext(ctx, `INSERT INTO registration_source_records(model,source_id,payload) VALUES($1,$2,$3)`, kind, id, payload)
 		return err
+	}
+	for _, coupon := range s.RegistrationCoupons {
+		if err := archive("authentication.RegisterCoupon", coupon.ID, coupon); err != nil {
+			return err
+		}
 	}
 	for _, team := range s.Teams {
 		teams[team.ID] = team
