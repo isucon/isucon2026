@@ -17,6 +17,8 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"runtime/debug"
+	"runtime/pprof"
 	"strconv"
 	"strings"
 	"syscall"
@@ -31,7 +33,15 @@ import (
 // devTarget は Docker Compose の開発環境の入口。
 const devTarget = "http://app.127.0.0.1.nip.io:18090"
 
+// defaultGCPercent は GOGC を指定しないときの GC の目標。bench の常駐ヒープ（初期データと
+// モデル）は数十 MB と小さく、既定の 100 では負荷走行で HTTP と JSON が割り当てるたびに GC が
+// 走り、CPU を取られる。メモリには余裕があるので、GC の回数を減らす。
+const defaultGCPercent = 400
+
 func main() {
+	if os.Getenv("GOGC") == "" {
+		debug.SetGCPercent(defaultGCPercent)
+	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	os.Exit(run(ctx, os.Args[1:], os.Stdout, os.Stderr))
@@ -65,6 +75,8 @@ func run(parent context.Context, args []string, stdout, stderr io.Writer) int {
 	scale := flags.String("scale", "small", "scale of the initial data in the target DB: small or large (must match datagen -scale)")
 	timeout := flags.Duration("timeout", 140*time.Second, "overall benchmark deadline; supervisor hard timeout must be longer")
 	postValidation := flags.Bool("only-post-validation", false, "reserved: report unsupported without initializing the application")
+	cpuProfile := flags.String("cpuprofile", "", "write a CPU profile of the whole run to this file")
+	memProfile := flags.String("memprofile", "", "write an allocation profile to this file at the end of the run")
 	report := func(result scenario.Result, finished bool, reason string) error {
 		if reporter == nil {
 			return nil
@@ -102,6 +114,17 @@ func run(parent context.Context, args []string, stdout, stderr io.Writer) int {
 	normalized, err := normalizeTarget(*target, *port)
 	if err != nil {
 		return fail("invalid benchmark target", 2)
+	}
+	if *cpuProfile != "" {
+		stopProfile, err := startCPUProfile(*cpuProfile)
+		if err != nil {
+			logger.Error("cpu profile setup failed", "error", err)
+			return fail("benchmarker setup failed", 2)
+		}
+		defer stopProfile()
+	}
+	if *memProfile != "" {
+		defer writeAllocProfile(*memProfile, logger)
 	}
 	ctx, cancel := context.WithTimeout(parent, *timeout)
 	defer cancel()
@@ -158,6 +181,35 @@ func run(parent context.Context, args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	return 0
+}
+
+// startCPUProfile は path へ CPU プロファイルを書き始め、止める関数を返す。
+func startCPUProfile(path string) (func(), error) {
+	f, err := os.Create(path)
+	if err != nil {
+		return nil, err
+	}
+	if err := pprof.StartCPUProfile(f); err != nil {
+		_ = f.Close()
+		return nil, err
+	}
+	return func() {
+		pprof.StopCPUProfile()
+		_ = f.Close()
+	}, nil
+}
+
+// writeAllocProfile は起動からの割り当てのプロファイルを path へ書く。
+func writeAllocProfile(path string, logger *slog.Logger) {
+	f, err := os.Create(path)
+	if err != nil {
+		logger.Error("memory profile failed", "error", err)
+		return
+	}
+	defer f.Close()
+	if err := pprof.Lookup("allocs").WriteTo(f, 0); err != nil {
+		logger.Error("memory profile failed", "error", err)
+	}
 }
 
 // reportReason は結果の要約を1行で返す。詳細は stdout の messages に残す。
