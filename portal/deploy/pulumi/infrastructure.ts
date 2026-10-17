@@ -404,7 +404,8 @@ export function createPortal(c: PortalConfig) {
           Statement: [{
             Effect: "Allow",
             Action: ["s3:GetObject"],
-            Resource: pulumi.interpolate`${configBucket.arn}/rehearsal/*`,
+            Resource: pulumi
+              .interpolate`${configBucket.arn}/rehearsal/*/snapshot.json`,
           }],
         }),
       }, opts);
