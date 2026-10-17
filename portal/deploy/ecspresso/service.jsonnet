@@ -6,6 +6,9 @@ local singleton = std.member(['bot', 'notifyloop'], service);
   serviceName: service,
   desiredCount: if service == 'portal' then 2 else if standby then 0 else if service == 'bot' && !infra.enableBot then 0 else 1,
   launchType: 'FARGATE',
+  availabilityZoneRebalancing: if singleton then 'DISABLED' else 'ENABLED',
+  propagateTags: 'NONE',
+  healthCheckGracePeriodSeconds: if service == 'portal' then 60 else 0,
   platformVersion: '1.4.0',
   networkConfiguration: { awsvpcConfiguration: {
     subnets: infra.subnets,
@@ -18,6 +21,5 @@ local singleton = std.member(['bot', 'notifyloop'], service);
     deploymentCircuitBreaker: { enable: true, rollback: true },
   },
 } + (if service == 'portal' then {
-       healthCheckGracePeriodSeconds: 60,
        loadBalancers: [{ targetGroupArn: infra.targetGroupArn, containerName: 'portal', containerPort: 8081 }],
      } else {})
