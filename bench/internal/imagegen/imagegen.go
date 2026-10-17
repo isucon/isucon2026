@@ -18,8 +18,8 @@ const encodeQuality = 80
 func JPEG(width, height int, seed uint64) ([]byte, error) {
 	random := rand.New(rand.NewPCG(seed, seed))
 	picture := image.NewRGBA(image.Rect(0, 0, width, height))
-	for y := 0; y < height; y++ {
-		for x := 0; x < width; x++ {
+	for y := range height {
+		for x := range width {
 			picture.SetRGBA(x, y, color.RGBA{
 				R: uint8((x * 255 / width) ^ int(random.Uint64()&0x1F)),
 				G: uint8((y * 255 / height) ^ int(random.Uint64()&0x1F)),

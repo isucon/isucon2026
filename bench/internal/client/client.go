@@ -662,8 +662,8 @@ func (s *NotificationStream) Receive() (Notification, error) {
 			err := json.Unmarshal([]byte(strings.Join(data, "\n")), &notification)
 			return notification, err
 		}
-		if strings.HasPrefix(line, "data:") {
-			data = append(data, strings.TrimPrefix(strings.TrimPrefix(line, "data:"), " "))
+		if after, ok := strings.CutPrefix(line, "data:"); ok {
+			data = append(data, strings.TrimPrefix(after, " "))
 		}
 	}
 	if err := scanner.Err(); err != nil {
