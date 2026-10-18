@@ -118,7 +118,8 @@ func (w *world) later() Read {
 func (w *world) inFeed(viewer, author, feed string, r Read) Tri {
 	w.m.mu.Lock()
 	defer w.m.mu.Unlock()
-	return w.m.inFeedTri(w.m.users[viewer], w.posts[author], feed, r)
+	v := w.m.newView(w.m.users[viewer], r)
+	return v.inFeedTri(w.posts[author], feed)
 }
 
 func TestOracle(t *testing.T) {

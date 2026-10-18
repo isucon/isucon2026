@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -60,7 +61,7 @@ func Verify(rawURL, imageID, secretKey string, now time.Time) error {
 	if !expiresAt.After(now) || expiresAt.After(now.Add(maxLifetime)) {
 		return fmt.Errorf("画像 URL %q の有効期限 %s が範囲外です", rawURL, expiresAt.UTC().Format(time.RFC3339))
 	}
-	if sig := query.Get("sig"); !hmac.Equal([]byte(sig), []byte(Sign(secretKey, imageID, exp))) {
+	if sig := query.Get("sig"); !hmac.Equal([]byte(sig), []byte(signatures.sign(secretKey, imageID, exp))) {
 		return fmt.Errorf("画像 URL %q の署名が画像の持ち主の鍵と一致しません", rawURL)
 	}
 	return nil
@@ -73,4 +74,53 @@ func ImageID(rawURL string) string {
 		return ""
 	}
 	return strings.TrimPrefix(parsed.Path, "/api/images/")
+}
+
+// signatures は Verify が計算した署名の控え。負荷走行では同じ投稿の画像 URL を多くの
+// ユーザーが何度も確かめる（アプリが URL を作り直しても、同じ秒のうちは exp が同じ）ので、
+// 1 回に HMAC を 1000 回重ねる計算を繰り返さない。控えるのは bench が計算した正しい署名
+// なので、アプリが返す署名の誤りは毎回見つかる。
+var signatures = &signatureCache{limit: 1 << 16}
+
+type signatureKey struct {
+	secretKey, imageID string
+	exp                int64
+}
+
+// signatureCache は 2 世代の控え。今の世代が limit 件になったら前の世代を捨てる。
+type signatureCache struct {
+	limit             int
+	mu                sync.Mutex
+	current, previous map[signatureKey]string
+}
+
+func (c *signatureCache) sign(secretKey, imageID string, exp int64) string {
+	key := signatureKey{secretKey: secretKey, imageID: imageID, exp: exp}
+	c.mu.Lock()
+	sig, ok := c.current[key]
+	if !ok {
+		if sig, ok = c.previous[key]; ok {
+			c.store(key, sig)
+		}
+	}
+	c.mu.Unlock()
+	if ok {
+		return sig
+	}
+	sig = Sign(secretKey, imageID, exp)
+	c.mu.Lock()
+	c.store(key, sig)
+	c.mu.Unlock()
+	return sig
+}
+
+// store は c.mu を持って呼ぶ。
+func (c *signatureCache) store(key signatureKey, sig string) {
+	if len(c.current) >= c.limit {
+		c.previous, c.current = c.current, nil
+	}
+	if c.current == nil {
+		c.current = make(map[signatureKey]string)
+	}
+	c.current[key] = sig
 }

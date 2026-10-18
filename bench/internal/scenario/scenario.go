@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"math/rand/v2"
 	"net/http"
 	"strings"
@@ -281,9 +282,7 @@ func (r *Runner) openedCounts() map[string]int {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	out := make(map[string]int, len(r.opened))
-	for region, count := range r.opened {
-		out[region] = count
-	}
+	maps.Copy(out, r.opened)
 	return out
 }
 
