@@ -335,9 +335,12 @@ func (a *fakeApp) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // testRatchet は短い観測窓で昇格しやすくしたラチェット。
+// testRatchet は負荷走行のテストのラチェット。話題になると 1 日（testSchedule の 250 ms）ごとに
+// 人数が倍になり、bench が速いほど数千人に増えて接続を使い切るので、話題にはしない（話題は
+// TestMaybeBuzz で確かめる）。口コミの流入は残し、途中から参加するユーザーも通す。
 var testRatchet = RatchetConfig{
 	Window: 100 * time.Millisecond, MinOps: 1, MaxFailRate: 0.01, MaxReadP99: time.Second, MaxOpP99: 3 * time.Second, Max503Rate: 0.05,
-	Step: 0.1, BuzzHeadroom: 0.5, BuzzMinOps: 1, BuzzMin: 2, BuzzSpill: 0.05,
+	Step: 0.1, BuzzHeadroom: 0.5, BuzzMinOps: math.MaxInt64, BuzzMin: 2, BuzzSpill: 0.05,
 }
 
 // TestMaybeBuzz は、1 日の始まりに直前の観測窓の余裕があれば話題になり、現在の人数と同じ数
@@ -588,8 +591,7 @@ func TestUnknownFeedPostIsCritical(t *testing.T) {
 func TestNotificationFaults(t *testing.T) {
 	t.Run("missing notification skips posting", func(t *testing.T) {
 		runner, app := newTestRunner(t, 1, metrics.SLO{FailRate: 1000, MinOps: 1})
-		// Buzz で流入したユーザーは通知を待たずに投稿するので、起こさない。
-		runner.ratchetConfig.BuzzMinOps = math.MaxInt64
+		// Buzz で流入したユーザーは通知を待たずに投稿するが、testRatchet では話題にならない。
 		app.notify = func(string, string) string { return "" }
 		runner.load(t.Context())
 		if runner.board.ErrorCount() != 0 || app.postCount() != 0 {
@@ -598,7 +600,6 @@ func TestNotificationFaults(t *testing.T) {
 	})
 	t.Run("unknown window is an error", func(t *testing.T) {
 		runner, app := newTestRunner(t, 1, metrics.SLO{FailRate: 1000, MinOps: 1})
-		runner.ratchetConfig.BuzzMinOps = math.MaxInt64
 		app.notify = func(region, _ string) string {
 			return fmt.Sprintf(`{"id":"n1","postingWindowId":"wrong","region":%q}`, region)
 		}
