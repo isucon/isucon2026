@@ -49,7 +49,8 @@ func (d *DiscordAPI) permissions(ctx context.Context, uid string) (int64, bool, 
 		}
 	}
 	if p&discordgo.PermissionAdministrator != 0 {
-		return ^int64(0), staff, nil
+		// Discord administrators already bypass all channel/thread access controls.
+		return ^int64(0), true, nil
 	}
 	for _, o := range ch.PermissionOverwrites {
 		if o.ID == d.GuildID {

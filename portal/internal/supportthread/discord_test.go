@@ -144,3 +144,23 @@ func TestEnsureThreadRecoversLegacyName(t *testing.T) {
 		t.Fatalf("legacy thread not recovered: %s %v", id, err)
 	}
 }
+
+func TestDiscordAdministratorIsStaffForSupportInvitation(t *testing.T) {
+	s := fakeSession(t, func(r *http.Request) string {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/members/admin"):
+			return `{"roles":["administrator"]}`
+		case strings.HasSuffix(r.URL.Path, "/roles"):
+			return `[{"id":"administrator","permissions":"8"}]`
+		case strings.HasSuffix(r.URL.Path, "/channels/parent"):
+			return `{"id":"parent","guild_id":"guild","type":0}`
+		default:
+			t.Fatalf("unexpected request %s", r.URL.Path)
+			return ""
+		}
+	})
+	d := DiscordAPI{Session: s, GuildID: "guild", ParentID: "parent", AdminRoleID: "operator"}
+	if err := d.CheckParticipant(context.Background(), "admin"); err != nil {
+		t.Fatal(err)
+	}
+}
