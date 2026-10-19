@@ -66,7 +66,8 @@ func run() error {
 	dg.AddHandler(b.onMessage)
 
 	if a.Cfg.Discord.SupportThreadParentID != "" {
-		b.threads = &supportthread.Service{DB: a.DB, Discord: &supportthread.DiscordAPI{Session: dg, GuildID: a.Cfg.Discord.ServerID, ParentID: a.Cfg.Discord.SupportThreadParentID, AdminRoleID: a.Cfg.Discord.AdminRoleID}}
+		b.channelPolicy = &supportthread.DiscordAPI{Session: dg, GuildID: a.Cfg.Discord.ServerID, ParentID: a.Cfg.Discord.SupportThreadParentID, AdminRoleID: a.Cfg.Discord.AdminRoleID, CommandChannelID: a.Cfg.Discord.SupportThreadCommandChannelID}
+		b.threads = &supportthread.Service{DB: a.DB, Discord: b.channelPolicy}
 	}
 
 	if err := dg.Open(); err != nil {
@@ -84,9 +85,10 @@ func run() error {
 }
 
 type bot struct {
-	app     *app.App
-	redis   *redis.Client
-	threads *supportthread.Service
+	app           *app.App
+	redis         *redis.Client
+	threads       *supportthread.Service
+	channelPolicy *supportthread.DiscordAPI
 }
 
 func (b *bot) expectedServer(guildID string) bool {
@@ -389,7 +391,10 @@ func (b *bot) pollSupportThreads(ctx context.Context) {
 	defer ticker.Stop()
 	for {
 		work, cancel := context.WithTimeout(ctx, 2*time.Minute)
-		err := b.threads.RetryPending(work)
+		err := b.channelPolicy.ReconcileChannels(work)
+		if err == nil {
+			err = b.threads.RetryPending(work)
+		}
 		cancel()
 		if err != nil {
 			slog.Error("support thread reconciliation failed", "error", err)
@@ -413,6 +418,17 @@ func (b *bot) threadCommand(s *discordgo.Session, e *discordgo.MessageCreate, fi
 	if e.ChannelID != b.app.Cfg.Discord.SupportThreadCommandChannelID {
 		var id int64
 		return b.app.DB.QueryRowContext(context.Background(), `SELECT clarification_id FROM discord_support_threads WHERE thread_id=$1`, e.ChannelID).Scan(&id) == nil
+	}
+	// Repair access before replying, so results are never posted into a channel
+	// that we know is publicly readable or could not verify.
+	if b.channelPolicy != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		err := b.channelPolicy.ReconcileChannels(ctx)
+		cancel()
+		if err != nil {
+			slog.Error("support channel policy failed; command suppressed", "error", err)
+			return true
+		}
 	}
 	if !b.isAdmin(s, e) {
 		reply("**FORBIDDEN** You're not an admin :lock:")
