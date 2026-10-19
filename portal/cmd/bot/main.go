@@ -389,7 +389,7 @@ func (b *bot) pollSupportThreads(ctx context.Context) {
 	defer ticker.Stop()
 	for {
 		work, cancel := context.WithTimeout(ctx, 2*time.Minute)
-		err := b.threads.Poll(work, *b.app.Cfg.Discord.SupportThreadSince)
+		err := b.threads.RetryPending(work)
 		cancel()
 		if err != nil {
 			slog.Error("support thread reconciliation failed", "error", err)
@@ -421,15 +421,15 @@ func (b *bot) threadCommand(s *discordgo.Session, e *discordgo.MessageCreate, fi
 	switch fields[0] {
 	case ".supportOpen":
 		if !parent || len(fields) != 2 {
-			reply("**USAGE** .supportOpen clarification_id (in the support thread parent channel)")
+			reply("**USAGE** .supportOpen team_id (in the support thread parent channel)")
 			return true
 		}
 		id, err := strconv.ParseInt(fields[1], 10, 64)
 		if err != nil || id <= 0 {
-			reply("**Error** Invalid clarification ID")
+			reply("**Error** Invalid team ID")
 			return true
 		}
-		thread, err := b.threads.Open(ctx, id)
+		thread, err := b.threads.OpenTeam(ctx, id)
 		if err != nil {
 			slog.Error("support thread open failed", "error", err)
 			reply("**Error** Could not open support thread; retry after checking Bot logs.")
@@ -448,7 +448,7 @@ func (b *bot) threadCommand(s *discordgo.Session, e *discordgo.MessageCreate, fi
 		// Do not post into the archived thread: that would unarchive it.
 	case ".support":
 		if parent {
-			reply("**USAGE** .supportOpen clarification_id\nNew participant clarifications automatically create private threads. Close with .supportClose inside the thread.")
+			reply("**USAGE** .supportOpen team_id\nOnly .supportOpen creates a private thread. Close with .supportClose inside the thread.")
 		} else {
 			var status string
 			if err := b.app.DB.QueryRowContext(ctx, `SELECT status FROM discord_support_threads WHERE thread_id=$1`, e.ChannelID).Scan(&status); err == nil {
