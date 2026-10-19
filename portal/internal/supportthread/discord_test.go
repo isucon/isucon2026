@@ -93,7 +93,7 @@ func TestMessagesPaginatesBackwardsAndPreservesAttachments(t *testing.T) {
 		t.Fatal("incomplete or unordered log")
 	}
 }
-func TestParticipantCannotHaveThreadManagement(t *testing.T) {
+func TestParticipantWithThreadManagementCanBeInvited(t *testing.T) {
 	s := fakeSession(t, func(r *http.Request) string {
 		if strings.HasSuffix(r.URL.Path, "/members/member") {
 			return `{"roles":["participant"]}`
@@ -103,9 +103,9 @@ func TestParticipantCannotHaveThreadManagement(t *testing.T) {
 		}
 		return `{"id":"parent","guild_id":"guild","type":0}`
 	})
-	d := DiscordAPI{Session: s, GuildID: "guild", ParentID: "parent", AdminRoleID: "admin"}
-	if err := d.CheckParticipant(context.Background(), "member"); err == nil {
-		t.Fatal("participant could read closed threads")
+	d := DiscordAPI{Session: s, GuildID: "guild", ParentID: "parent"}
+	if err := d.CheckParticipant(context.Background(), "member"); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -145,7 +145,7 @@ func TestEnsureThreadRecoversLegacyName(t *testing.T) {
 	}
 }
 
-func TestDiscordAdministratorIsStaffForSupportInvitation(t *testing.T) {
+func TestDiscordAdministratorCanBeInvited(t *testing.T) {
 	s := fakeSession(t, func(r *http.Request) string {
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/members/admin"):
@@ -159,7 +159,7 @@ func TestDiscordAdministratorIsStaffForSupportInvitation(t *testing.T) {
 			return ""
 		}
 	})
-	d := DiscordAPI{Session: s, GuildID: "guild", ParentID: "parent", AdminRoleID: "operator"}
+	d := DiscordAPI{Session: s, GuildID: "guild", ParentID: "parent"}
 	if err := d.CheckParticipant(context.Background(), "admin"); err != nil {
 		t.Fatal(err)
 	}

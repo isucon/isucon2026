@@ -66,7 +66,7 @@ func run() error {
 	dg.AddHandler(b.onMessage)
 
 	if a.Cfg.Discord.SupportThreadParentID != "" {
-		b.threads = &supportthread.Service{DB: a.DB, Discord: &supportthread.DiscordAPI{Session: dg, GuildID: a.Cfg.Discord.ServerID, ParentID: a.Cfg.Discord.SupportThreadParentID, AdminRoleID: a.Cfg.Discord.AdminRoleID}}
+		b.threads = &supportthread.Service{DB: a.DB, Discord: &supportthread.DiscordAPI{Session: dg, GuildID: a.Cfg.Discord.ServerID, ParentID: a.Cfg.Discord.SupportThreadParentID}}
 	}
 
 	if err := dg.Open(); err != nil {
