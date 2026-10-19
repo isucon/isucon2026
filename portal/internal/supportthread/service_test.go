@@ -218,7 +218,7 @@ func TestTeamCommandReusesActiveConversationAndCreatesNewAfterClose(t *testing.T
 	if err != nil || first != again || f.creates != 1 {
 		t.Fatalf("duplicate team conversation: %s %v", again, err)
 	}
-	if err = s.Close(ctx, first); err != nil {
+	if err = s.CloseTeam(ctx, 90001); err != nil {
 		t.Fatal(err)
 	}
 	second, err := s.OpenTeam(ctx, 90001)
