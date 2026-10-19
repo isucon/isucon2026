@@ -88,6 +88,8 @@ func (h *Handler) Router() http.Handler {
 	r.Get("/session/bypass/{token}", h.AssumeBypassToken)
 
 	// --- 運営 ERB 3 画面 + フォーム POST 5 本 + デバッグ 4 本 ---
+	r.Get("/admin/support_threads", h.SupportThreadsIndex)
+	r.Get("/admin/support_threads/{id}", h.SupportThreadTranscript)
 	r.Get("/admin/session/new", h.AdminSessionNew)
 	r.Post("/admin/session", h.AdminSessionCreate)
 	r.Get("/admin/impersonate", h.ImpersonateIndex)

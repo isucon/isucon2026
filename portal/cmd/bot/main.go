@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -24,6 +25,7 @@ import (
 	"github.com/isucon/isucon2026/portal/internal/app"
 	"github.com/isucon/isucon2026/portal/internal/job"
 	"github.com/isucon/isucon2026/portal/internal/model"
+	"github.com/isucon/isucon2026/portal/internal/supportthread"
 )
 
 const (
@@ -57,16 +59,23 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	dg.Identify.Intents = discordgo.IntentsGuildMembers | discordgo.IntentsGuildMessages |
+	dg.Identify.Intents = discordgo.IntentsGuilds | discordgo.IntentsGuildMembers | discordgo.IntentsGuildMessages |
 		discordgo.IntentsGuildMessageReactions | discordgo.IntentsMessageContent
 	dg.AddHandler(b.onMemberJoin)
 	dg.AddHandler(b.onReactionAdd)
 	dg.AddHandler(b.onMessage)
 
+	if a.Cfg.Discord.SupportThreadParentID != "" {
+		b.threads = &supportthread.Service{DB: a.DB, Discord: &supportthread.DiscordAPI{Session: dg, GuildID: a.Cfg.Discord.ServerID, ParentID: a.Cfg.Discord.SupportThreadParentID, AdminRoleID: a.Cfg.Discord.AdminRoleID}}
+	}
+
 	if err := dg.Open(); err != nil {
 		return err
 	}
 	defer dg.Close()
+	if b.threads != nil {
+		go b.pollSupportThreads(ctx)
+	}
 
 	slog.Info("bot started", "server_id", a.Cfg.Discord.ServerID)
 	<-ctx.Done()
@@ -75,8 +84,9 @@ func run() error {
 }
 
 type bot struct {
-	app   *app.App
-	redis *redis.Client
+	app     *app.App
+	redis   *redis.Client
+	threads *supportthread.Service
 }
 
 func (b *bot) expectedServer(guildID string) bool {
@@ -141,6 +151,9 @@ func (b *bot) onMessage(s *discordgo.Session, e *discordgo.MessageCreate) {
 	}
 	reply := func(msg string) {
 		_, _ = s.ChannelMessageSend(e.ChannelID, msg)
+	}
+	if b.threads != nil && b.threadCommand(s, e, fields, reply) {
+		return
 	}
 	switch fields[0] {
 	case ".ping":
@@ -369,4 +382,79 @@ func parseUint(s string) uint64 {
 	var v uint64
 	fmt.Sscan(s, &v)
 	return v
+}
+
+func (b *bot) pollSupportThreads(ctx context.Context) {
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+	for {
+		work, cancel := context.WithTimeout(ctx, 2*time.Minute)
+		err := b.threads.Poll(work, *b.app.Cfg.Discord.SupportThreadSince)
+		cancel()
+		if err != nil {
+			slog.Error("support thread reconciliation failed", "error", err)
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
+}
+
+func (b *bot) threadCommand(s *discordgo.Session, e *discordgo.MessageCreate, fields []string, reply func(string)) bool {
+	parent := e.ChannelID == b.app.Cfg.Discord.SupportThreadParentID
+	var clarID int64
+	err := b.app.DB.QueryRowContext(context.Background(), `SELECT clarification_id FROM discord_support_threads WHERE thread_id=$1`, e.ChannelID).Scan(&clarID)
+	if !parent && err != nil {
+		return false
+	}
+	if fields[0] != ".support" && fields[0] != ".supportOpen" && fields[0] != ".supportClose" {
+		return false
+	}
+	if !b.isAdmin(s, e) {
+		reply("**FORBIDDEN** You're not an admin :lock:")
+		return true
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	switch fields[0] {
+	case ".supportOpen":
+		if !parent || len(fields) != 2 {
+			reply("**USAGE** .supportOpen clarification_id (in the support thread parent channel)")
+			return true
+		}
+		id, err := strconv.ParseInt(fields[1], 10, 64)
+		if err != nil || id <= 0 {
+			reply("**Error** Invalid clarification ID")
+			return true
+		}
+		thread, err := b.threads.Open(ctx, id)
+		if err != nil {
+			slog.Error("support thread open failed", "error", err)
+			reply("**Error** Could not open support thread; retry after checking Bot logs.")
+			return true
+		}
+		reply("Support thread: <#" + thread + ">")
+	case ".supportClose":
+		if parent {
+			reply("Run .supportClose inside the support thread.")
+			return true
+		}
+		if err := b.threads.Close(ctx, e.ChannelID); err != nil {
+			slog.Error("support thread close failed", "error", err)
+			return true
+		}
+		// Do not post into the archived thread: that would unarchive it.
+	case ".support":
+		if parent {
+			reply("**USAGE** .supportOpen clarification_id\nNew participant clarifications automatically create private threads. Close with .supportClose inside the thread.")
+		} else {
+			var status string
+			if err := b.app.DB.QueryRowContext(ctx, `SELECT status FROM discord_support_threads WHERE thread_id=$1`, e.ChannelID).Scan(&status); err == nil {
+				reply(fmt.Sprintf("clar #%d: %s\n.supportClose", clarID, status))
+			}
+		}
+	}
+	return true
 }
