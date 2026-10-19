@@ -396,6 +396,7 @@ function createTeam(t: Team) {
 					network,
 					config.teamSshPublicKeys[t.number],
 					config.teamAdminSshPublicKeys[t.number],
+					config.guardTeams.includes(t.number),
 				),
 				// ルートボリュームの容量は AMI のスナップショットに合わせる
 				launchTemplate: {

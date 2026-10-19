@@ -10,6 +10,7 @@
     - postgresql
     - nginx
     - webapp
+    - guard
   post_tasks:
     # どのサービスを動かすかは役割で決まるので、起動時に user-data が有効にする
     - name: Leave role-specific services disabled in the image
@@ -17,4 +18,4 @@
         name: "{{ item }}"
         state: stopped
         enabled: false
-      loop: [isureal-go, nginx, postgresql]
+      loop: [isureal-go, isureal-guard, nginx, postgresql]
