@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
+	"net/http/httptrace"
 	"net/url"
 	"os"
 	"slices"
@@ -51,8 +53,9 @@ type runner struct {
 }
 
 type identityResponse struct {
-	Server        string   `json:"server"`
-	CountryValues []string `json:"country_values"`
+	Server         string   `json:"server"`
+	CountryValues  []string `json:"country_values"`
+	ClientIPValues []string `json:"client_ip_values"`
 }
 
 type routeResponse struct {
@@ -71,6 +74,7 @@ type httpResult struct {
 	status   int
 	body     []byte
 	duration time.Duration
+	localIP  string
 }
 
 func main() {
@@ -321,7 +325,13 @@ func (r *runner) assertInitialHTTP(ctx context.Context) error {
 	if err := r.assertHTTPStatus(ctx, "unknown.team1.invalid", []string{"JP"}, "/identity", http.StatusNotFound); err != nil {
 		return fmt.Errorf("unknown host: %w", err)
 	}
-	log.Printf("PASS HTTP host/country/default/error matrix")
+	if err := r.assertClientIP(ctx, "203.0.113.7", "203.0.113.7"); err != nil {
+		return fmt.Errorf("given client IP: %w", err)
+	}
+	if err := r.assertClientIP(ctx, "", ""); err != nil {
+		return fmt.Errorf("missing client IP: %w", err)
+	}
+	log.Printf("PASS HTTP host/country/default/client IP/error matrix")
 	return nil
 }
 
@@ -427,6 +437,27 @@ func (r *runner) assertIdentity(ctx context.Context, host string, countries []st
 	return nil
 }
 
+func (r *runner) assertClientIP(ctx context.Context, clientIP, want string) error {
+	result, err := r.send(ctx, appHost, []string{"JP"}, clientIP, "/identity")
+	if err != nil {
+		return err
+	}
+	if result.status != http.StatusOK {
+		return fmt.Errorf("status=%d body=%s", result.status, strings.TrimSpace(string(result.body)))
+	}
+	var identity identityResponse
+	if err := json.Unmarshal(result.body, &identity); err != nil {
+		return fmt.Errorf("decode identity: %w", err)
+	}
+	if want == "" {
+		want = result.localIP
+	}
+	if !slices.Equal(identity.ClientIPValues, []string{want}) {
+		return fmt.Errorf("client IP got=%v want=%s", identity.ClientIPValues, want)
+	}
+	return nil
+}
+
 func (r *runner) assertHTTPStatus(ctx context.Context, host string, countries []string, path string, want int) error {
 	result, err := r.do(ctx, host, countries, path)
 	if err != nil {
@@ -496,6 +527,10 @@ func (r *runner) peerFetch(ctx context.Context, sourceHost, country, target stri
 }
 
 func (r *runner) do(ctx context.Context, host string, countries []string, path string) (httpResult, error) {
+	return r.send(ctx, host, countries, "", path)
+}
+
+func (r *runner) send(ctx context.Context, host string, countries []string, clientIP, path string) (httpResult, error) {
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, routerEndpoint+path, nil)
 	if err != nil {
 		return httpResult{}, err
@@ -504,6 +539,15 @@ func (r *runner) do(ctx context.Context, host string, countries []string, path s
 	for _, country := range countries {
 		request.Header.Add("X-Country-Code", country)
 	}
+	if clientIP != "" {
+		request.Header.Set("X-Client-IP", clientIP)
+	}
+	var localIP string
+	request = request.WithContext(httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{
+		GotConn: func(info httptrace.GotConnInfo) {
+			localIP, _, _ = net.SplitHostPort(info.Conn.LocalAddr().String())
+		},
+	}))
 	started := time.Now()
 	response, err := r.api.Do(request)
 	if err != nil {
@@ -514,7 +558,7 @@ func (r *runner) do(ctx context.Context, host string, countries []string, path s
 	if err != nil {
 		return httpResult{}, err
 	}
-	return httpResult{status: response.StatusCode, body: body, duration: time.Since(started)}, nil
+	return httpResult{status: response.StatusCode, body: body, duration: time.Since(started), localIP: localIP}, nil
 }
 
 func bitsPerSecond(bytes int, duration time.Duration) float64 {

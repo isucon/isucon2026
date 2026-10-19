@@ -13,7 +13,7 @@ export function serviceUserData(t: Team, network: ServerNetwork): string {
 			? ["systemctl enable --now postgresql"]
 			: [
 					`sed -i -e 's/^ISUREAL_REGION=.*/ISUREAL_REGION=${network.region}/' -e 's/^ISUREAL_DB_HOST=.*/ISUREAL_DB_HOST=${databaseIp(t)}/' /home/isucon/env.sh`,
-					"systemctl enable --now isureal-go nginx",
+					"systemctl enable --now isureal-go isureal-guard nginx",
 				];
 	return `#!/bin/sh
 set -eu

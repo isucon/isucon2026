@@ -138,11 +138,15 @@ func buildUpstreamRoute(name string, server domain.ServerID, serverRegion, clien
 		TypedPerFilterConfig: typedConfigs,
 	}
 	if defaultCountry != "" {
-		route.RequestHeadersToAdd = []*corev3.HeaderValueOption{{
+		route.RequestHeadersToAdd = append(route.RequestHeadersToAdd, &corev3.HeaderValueOption{
 			Header:       &corev3.HeaderValue{Key: "x-country-code", Value: defaultCountry},
 			AppendAction: corev3.HeaderValueOption_OVERWRITE_IF_EXISTS_OR_ADD,
-		}}
+		})
 	}
+	route.RequestHeadersToAdd = append(route.RequestHeadersToAdd, &corev3.HeaderValueOption{
+		Header:       &corev3.HeaderValue{Key: "x-client-ip", Value: "%DOWNSTREAM_DIRECT_REMOTE_ADDRESS_WITHOUT_PORT%"},
+		AppendAction: corev3.HeaderValueOption_ADD_IF_ABSENT,
+	})
 	return route, nil
 }
 

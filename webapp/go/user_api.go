@@ -78,6 +78,7 @@ func registerHandler(h *HandlerContext) echo.HandlerFunc {
 		if err := c.Bind(&input); err != nil {
 			return err
 		}
+		c.Set("username", input.Username)
 		if !usernamePattern.MatchString(input.Username) || !validUserText(input.DisplayName, 1, 100) || !validRegion(input.Region) {
 			return NewAPIError(http.StatusBadRequest, "invalid_registration")
 		}
@@ -122,6 +123,7 @@ func loginHandler(h *HandlerContext) echo.HandlerFunc {
 		if err := c.Bind(&input); err != nil {
 			return err
 		}
+		c.Set("username", input.Username)
 		if !usernamePattern.MatchString(input.Username) {
 			return NewAPIError(http.StatusUnauthorized, "invalid_credentials")
 		}
