@@ -13,34 +13,30 @@ import (
 )
 
 type DiscordAPI struct {
-	Session                        *discordgo.Session
-	GuildID, ParentID, AdminRoleID string
+	Session           *discordgo.Session
+	GuildID, ParentID string
 }
 
 func (d *DiscordAPI) botID() string { return d.Session.State.User.ID }
-func (d *DiscordAPI) permissions(ctx context.Context, uid string) (int64, bool, error) {
+func (d *DiscordAPI) permissions(ctx context.Context, uid string) (int64, error) {
 	member, err := d.Session.GuildMember(d.GuildID, uid, discordgo.WithContext(ctx))
 	if err != nil {
-		return 0, false, err
+		return 0, err
 	}
 	roles, err := d.Session.GuildRoles(d.GuildID, discordgo.WithContext(ctx))
 	if err != nil {
-		return 0, false, err
+		return 0, err
 	}
 	ch, err := d.Session.Channel(d.ParentID, discordgo.WithContext(ctx))
 	if err != nil {
-		return 0, false, err
+		return 0, err
 	}
 	if ch.Type != discordgo.ChannelTypeGuildText || ch.GuildID != d.GuildID {
-		return 0, false, errors.New("support thread parent must be a text channel in the configured guild")
+		return 0, errors.New("support thread parent must be a text channel in the configured guild")
 	}
 	selected := map[string]bool{d.GuildID: true}
-	staff := false
 	for _, r := range member.Roles {
 		selected[r] = true
-		if r == d.AdminRoleID {
-			staff = true
-		}
 	}
 	var p int64
 	for _, r := range roles {
@@ -50,7 +46,7 @@ func (d *DiscordAPI) permissions(ctx context.Context, uid string) (int64, bool, 
 	}
 	if p&discordgo.PermissionAdministrator != 0 {
 		// Discord administrators already bypass all channel/thread access controls.
-		return ^int64(0), true, nil
+		return ^int64(0), nil
 	}
 	for _, o := range ch.PermissionOverwrites {
 		if o.ID == d.GuildID {
@@ -70,10 +66,10 @@ func (d *DiscordAPI) permissions(ctx context.Context, uid string) (int64, bool, 
 			p = (p &^ o.Deny) | o.Allow
 		}
 	}
-	return p, staff, nil
+	return p, nil
 }
 func (d *DiscordAPI) CheckParticipant(ctx context.Context, uid string) error {
-	p, staff, err := d.permissions(ctx, uid)
+	p, err := d.permissions(ctx, uid)
 	if err != nil {
 		return err
 	}
@@ -81,13 +77,10 @@ func (d *DiscordAPI) CheckParticipant(ctx context.Context, uid string) error {
 	if p&required != required {
 		return fmt.Errorf("member %s lacks parent view/history/thread-send permissions", uid)
 	}
-	if !staff && p&(discordgo.PermissionManageThreads|discordgo.PermissionAdministrator) != 0 {
-		return fmt.Errorf("participant %s can bypass private thread membership", uid)
-	}
 	return nil
 }
 func (d *DiscordAPI) EnsureThread(ctx context.Context, name string) (string, error) {
-	p, _, err := d.permissions(ctx, d.botID())
+	p, err := d.permissions(ctx, d.botID())
 	if err != nil {
 		return "", err
 	}
