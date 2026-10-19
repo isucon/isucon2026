@@ -43,13 +43,14 @@ datagen-test:
 	cd webapp/datagen && go test ./...
 
 # Docker Compose の DB に、ファイルを経ずに初期データを入れ直す（SCALE=large で本番の規模）。
-# bench は同じ -scale で実行する。
+# bench は同じ -scale で実行する。WEBAPP=webapp-optimized で最適化版のスキーマを使う。
 SCALE ?= small
+WEBAPP ?= webapp
 DB_PSQL = docker compose exec -T db-asia psql -U isureal -d isureal -v ON_ERROR_STOP=1 -q
 datagen-load:
-	$(DB_PSQL) < webapp/sql/001-schema.sql
+	$(DB_PSQL) < $(WEBAPP)/sql/001-schema.sql
 	cd webapp/datagen && go run . -scale $(SCALE) -out - | $(DB_PSQL)
-	$(DB_PSQL) < webapp/sql/003-initial-snapshot.sql
+	$(DB_PSQL) < $(WEBAPP)/sql/003-initial-snapshot.sql
 
 generate-api:
 	npm --prefix frontend run generate:api

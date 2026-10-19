@@ -27,6 +27,19 @@
       changed_when: true
       when: "'webapp' in prepare_components"
 
+    - name: Archive isureal-guard source
+      ansible.builtin.command:
+        argv:
+          - tar
+          - --create
+          - --gzip
+          - --file={{ build_dir }}/guard.tar.gz
+          - --directory={{ repo_root }}/guard
+          - --exclude=*_test.go
+          - .
+      changed_when: true
+      when: "'guard' in prepare_components"
+
     - name: Build frontend
       ansible.builtin.shell: |
         set -eu

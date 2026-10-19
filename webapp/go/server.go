@@ -1,6 +1,8 @@
 package isureal
 
 import (
+	"os"
+
 	"github.com/jmoiron/sqlx"
 	"github.com/labstack/echo/v5"
 	"github.com/labstack/echo/v5/middleware"
@@ -11,6 +13,7 @@ import (
 type HandlerContext struct {
 	DB     *sqlx.DB
 	Config *Config
+	IPBans *IPBanList
 }
 
 func NewServer(config *Config) *echo.Echo {
@@ -18,8 +21,9 @@ func NewServer(config *Config) *echo.Echo {
 		panic("invalid server region: " + config.Region)
 	}
 	e := echo.New()
+	e.IPExtractor = extractClientIP
 
-	e.Use(middleware.RequestLogger())
+	e.Use(ActionLogMiddleware(config.LogLevel, os.Stdout))
 	e.Use(middleware.Recover())
 	e.HTTPErrorHandler = APIErrorHandler
 
@@ -36,7 +40,9 @@ func NewServer(config *Config) *echo.Echo {
 	handlerContext := &HandlerContext{
 		DB:     db,
 		Config: config,
+		IPBans: &IPBanList{},
 	}
+	e.Use(IPBanMiddleware(handlerContext))
 
 	e.POST("/api/initialize", initializeHandler(handlerContext))
 	e.POST("/api/auth/register", registerHandler(handlerContext))
