@@ -3,11 +3,11 @@ package supportthread_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"github.com/bwmarrin/discordgo"
 	"github.com/isucon/isucon2026/portal/internal/supportthread"
 	"github.com/isucon/isucon2026/portal/tests/testkit"
 	"testing"
-	"time"
 )
 
 type fakeDiscord struct {
@@ -26,7 +26,11 @@ func (f *fakeDiscord) call(s string) error {
 }
 func (f *fakeDiscord) EnsureThread(ctx context.Context, name string) (string, error) {
 	f.creates++
-	return "thread", f.call("create")
+	id := "thread"
+	if f.creates > 1 {
+		id = fmt.Sprintf("thread-%d", f.creates)
+	}
+	return id, f.call("create")
 }
 func (f *fakeDiscord) CheckParticipant(ctx context.Context, id string) error {
 	return f.call("check:" + id)
@@ -169,17 +173,17 @@ func TestFailedTranscriptWriteDoesNotRemoveParticipants(t *testing.T) {
 	}
 }
 
-func TestPollDoesNotImportBacklogButResumesManualOpen(t *testing.T) {
+func TestRetriesNeverOpenNewClarificationsButResumeCommands(t *testing.T) {
 	db := testkit.Database(t)
 	ctx := context.Background()
-	_, err := db.Exec(`INSERT INTO teams(id,name,email_address,invite_token,student,created_at,updated_at) VALUES(90001,'test','test@example.invalid','token',false,now(),now()); INSERT INTO contestants(id,name,team_id,discord_id,github_login,github_id,discord_tag,avatar_url,created_at,updated_at) VALUES(90001,'test',90001,'member','test','test','test','',now(),now()); INSERT INTO clarifications(id,team_id,admin,created_at,updated_at) VALUES(90001,90001,false,now()-interval '1 day',now())`)
+	_, err := db.Exec(`INSERT INTO teams(id,name,email_address,invite_token,student,created_at,updated_at) VALUES(90001,'test','test@example.invalid','token',false,now(),now()); INSERT INTO contestants(id,name,team_id,discord_id,github_login,github_id,discord_tag,avatar_url,created_at,updated_at) VALUES(90001,'test',90001,'member','test','test','test','',now(),now()); INSERT INTO clarifications(id,team_id,admin,created_at,updated_at) VALUES(90001,90001,false,now(),now())`)
 	if err != nil {
 		t.Fatal(err)
 	}
 	f := &fakeDiscord{fail: "add:member"}
 	s := &supportthread.Service{DB: db, Discord: f}
-	since := time.Now()
-	if err = s.Poll(ctx, since); err != nil {
+
+	if err = s.RetryPending(ctx); err != nil {
 		t.Fatal(err)
 	}
 	if f.creates != 0 {
@@ -189,10 +193,40 @@ func TestPollDoesNotImportBacklogButResumesManualOpen(t *testing.T) {
 		t.Fatal("expected invite failure")
 	}
 	f.fail = ""
-	if err = s.Poll(ctx, since); err != nil {
+	if err = s.RetryPending(ctx); err != nil {
 		t.Fatal(err)
 	}
 	if len(f.members) != 1 {
 		t.Fatal("manual opening not resumed")
+	}
+}
+
+func TestTeamCommandReusesActiveConversationAndCreatesNewAfterClose(t *testing.T) {
+	db := testkit.Database(t)
+	ctx := context.Background()
+	_, err := db.Exec(`INSERT INTO teams(id,name,email_address,invite_token,student,created_at,updated_at) VALUES(90001,'test','test@example.invalid','token',false,now(),now()); INSERT INTO contestants(id,name,team_id,discord_id,github_login,github_id,discord_tag,avatar_url,created_at,updated_at) VALUES(90001,'test',90001,'member','test','test','test','',now(),now())`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := &fakeDiscord{}
+	s := &supportthread.Service{DB: db, Discord: f}
+	first, err := s.OpenTeam(ctx, 90001)
+	if err != nil {
+		t.Fatal(err)
+	}
+	again, err := s.OpenTeam(ctx, 90001)
+	if err != nil || first != again || f.creates != 1 {
+		t.Fatalf("duplicate team conversation: %s %v", again, err)
+	}
+	if err = s.Close(ctx, first); err != nil {
+		t.Fatal(err)
+	}
+	second, err := s.OpenTeam(ctx, 90001)
+	if err != nil || second == first {
+		t.Fatalf("new conversation not created: %s %v", second, err)
+	}
+	var n int
+	if err = db.QueryRow(`SELECT count(*) FROM discord_support_threads`).Scan(&n); err != nil || n != 2 {
+		t.Fatalf("old log not retained: %d %v", n, err)
 	}
 }

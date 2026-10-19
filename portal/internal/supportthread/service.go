@@ -52,19 +52,61 @@ func (s *Service) locked(ctx context.Context, id int64, fn func(*sql.Conn) error
 	return fn(conn)
 }
 
+// OpenTeam starts an operator-requested conversation. A team can have one active
+// conversation; a later command after close creates a new log without reusing it.
+func (s *Service) OpenTeam(ctx context.Context, teamID int64) (string, error) {
+	if teamID <= 0 {
+		return "", errors.New("invalid team ID")
+	}
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return "", err
+	}
+	defer tx.Rollback()
+	if _, err = tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(15430028,$1::integer)`, teamID); err != nil {
+		return "", err
+	}
+	team, err := model.FindTeam(ctx, tx, teamID)
+	if err != nil {
+		return "", err
+	}
+	if team == nil {
+		return "", errors.New("team not found")
+	}
+	var id int64
+	err = tx.QueryRowContext(ctx, `SELECT t.clarification_id FROM discord_support_threads t JOIN clarifications c ON c.id=t.clarification_id WHERE c.team_id=$1 AND t.status<>'closed' ORDER BY t.clarification_id LIMIT 1`, teamID).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		if err = tx.QueryRowContext(ctx, `INSERT INTO clarifications(team_id,disclosed,original_question,question,admin,created_at,updated_at) VALUES($1,false,'Discord Support Thread','Discord Support Thread',true,now(),now()) RETURNING id`, teamID).Scan(&id); err != nil {
+			return "", err
+		}
+		if _, err = tx.ExecContext(ctx, `INSERT INTO discord_support_threads(clarification_id,participant_ids,status) VALUES($1,'[]','opening')`, id); err != nil {
+			return "", err
+		}
+	} else if err != nil {
+		return "", err
+	}
+	if err = tx.Commit(); err != nil {
+		return "", err
+	}
+	return s.Open(ctx, id)
+}
+
 func (s *Service) Open(ctx context.Context, id int64) (thread string, err error) {
 	err = s.locked(ctx, id, func(conn *sql.Conn) error {
 		clar, e := model.FindClarification(ctx, conn, id)
 		if e != nil {
 			return e
 		}
-		if clar == nil || clar.Admin || !clar.TeamID.Valid {
+		if clar == nil || !clar.TeamID.Valid {
 			return errors.New("a participant clarification with a team is required")
 		}
 		var status string
 		var idsJSON []byte
 		var existing sql.NullString
 		e = conn.QueryRowContext(ctx, `SELECT thread_id,status,participant_ids FROM discord_support_threads WHERE clarification_id=$1`, id).Scan(&existing, &status, &idsJSON)
+		if clar.Admin && errors.Is(e, sql.ErrNoRows) {
+			return errors.New("announcement is not a support conversation")
+		}
 		if errors.Is(e, sql.ErrNoRows) {
 			if _, e = conn.ExecContext(ctx, `INSERT INTO discord_support_threads(clarification_id,participant_ids,status) VALUES($1,'[]','opening')`, id); e != nil {
 				return e
@@ -200,10 +242,10 @@ func (s *Service) Close(ctx context.Context, thread string) error {
 	})
 }
 
-// Poll opens only participant clarifications submitted after explicit activation.
-// Failed opens and closes remain durable and are retried after bot restarts.
-func (s *Service) Poll(ctx context.Context, since time.Time) error {
-	rows, err := s.DB.QueryContext(ctx, `SELECT c.id FROM clarifications c LEFT JOIN discord_support_threads t ON t.clarification_id=c.id WHERE NOT c.admin AND c.team_id IS NOT NULL AND ((c.created_at >= $1 AND t.clarification_id IS NULL) OR t.status='opening') ORDER BY COALESCE(t.updated_at,c.created_at),c.id LIMIT 50`, since)
+// RetryPending resumes only operations explicitly initiated by an operator.
+// It never discovers or opens new clarifications.
+func (s *Service) RetryPending(ctx context.Context) error {
+	rows, err := s.DB.QueryContext(ctx, `SELECT clarification_id FROM discord_support_threads WHERE status='opening' ORDER BY updated_at,clarification_id LIMIT 50`)
 	if err != nil {
 		return err
 	}
