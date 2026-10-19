@@ -45,8 +45,9 @@ func (d *DiscordAPI) channelOverwrites(current []*discordgo.PermissionOverwrite,
 	}
 	set(d.GuildID, discordgo.PermissionOverwriteTypeRole, everyoneAllow, supportChannelPermissions&^everyoneAllow, supportChannelPermissions)
 	set(d.AdminRoleID, discordgo.PermissionOverwriteTypeRole, operatorAllow, supportChannelPermissions&^operatorAllow, supportChannelPermissions)
-	management := int64(discordgo.PermissionManageChannels | discordgo.PermissionManageRoles)
-	set(d.botID(), discordgo.PermissionOverwriteTypeMember, botAllow|management, supportChannelPermissions&^botAllow, supportChannelPermissions|management)
+	// Management permissions come from the bot role. Discord can reject
+	// granting ManageRoles to the bot itself even when it can edit overwrites.
+	set(d.botID(), discordgo.PermissionOverwriteTypeMember, botAllow, supportChannelPermissions&^botAllow, supportChannelPermissions)
 	out := []*discordgo.PermissionOverwrite{}
 	for _, o := range result {
 		if o.Allow != 0 || o.Deny != 0 {
@@ -104,13 +105,10 @@ func (d *DiscordAPI) ReconcileChannels(ctx context.Context) error {
 	}
 	for _, target := range targets {
 		desired := d.channelOverwrites(target.channel.PermissionOverwrites, target.commands)
-		if target.channel.Name == target.name && sameOverwrites(target.channel.PermissionOverwrites, desired) {
+		if sameOverwrites(target.channel.PermissionOverwrites, desired) {
 			continue
 		}
 		edit := &discordgo.ChannelEdit{PermissionOverwrites: desired}
-		if target.channel.Name != target.name {
-			edit.Name = target.name
-		}
 		if _, err := d.Session.ChannelEditComplex(target.id, edit, discordgo.WithContext(ctx)); err != nil {
 			return fmt.Errorf("repair %s: %w", target.name, err)
 		}
@@ -118,8 +116,22 @@ func (d *DiscordAPI) ReconcileChannels(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		if actual.Name != target.name || !sameOverwrites(actual.PermissionOverwrites, desired) {
+		if !sameOverwrites(actual.PermissionOverwrites, desired) {
 			return fmt.Errorf("%s policy repair did not persist", target.name)
+		}
+	}
+	// Repair both access policies before renaming: Discord's separate name
+	// rate limit must not prevent the other channel's privacy repair.
+	for _, target := range targets {
+		if target.channel.Name == target.name {
+			continue
+		}
+		actual, err := d.Session.ChannelEditComplex(target.id, &discordgo.ChannelEdit{Name: target.name}, discordgo.WithContext(ctx))
+		if err != nil {
+			return fmt.Errorf("rename %s: %w", target.name, err)
+		}
+		if actual.Name != target.name {
+			return fmt.Errorf("%s rename did not persist", target.name)
 		}
 	}
 	return nil

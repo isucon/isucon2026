@@ -31,13 +31,18 @@ func TestChannelPolicyRepairsDriftAndIsIdempotent(t *testing.T) {
 			if err := json.NewDecoder(r.Body).Decode(&edit); err != nil {
 				t.Fatal(err)
 			}
-			if writes == 3 && edit.Name != "" {
+			if writes == 6 && edit.Name != "" {
 				t.Fatal("permission-only repair unnecessarily renames channel")
 			}
 			if edit.Name != "" {
+				if channels["parent"].PermissionOverwrites == nil {
+					t.Fatal("rename attempted before both channel permissions were repaired")
+				}
 				ch.Name = edit.Name
 			}
-			ch.PermissionOverwrites = edit.PermissionOverwrites
+			if edit.PermissionOverwrites != nil {
+				ch.PermissionOverwrites = edit.PermissionOverwrites
+			}
 			writes++
 		}
 		raw, _ := json.Marshal(ch)
@@ -47,7 +52,7 @@ func TestChannelPolicyRepairsDriftAndIsIdempotent(t *testing.T) {
 	if err := d.ReconcileChannels(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if writes != 2 || channels["commands"].Name != "admin-commands" || channels["parent"].Name != "support-threads" {
+	if writes != 4 || channels["commands"].Name != "admin-commands" || channels["parent"].Name != "support-threads" {
 		t.Fatalf("channels not repaired: %d", writes)
 	}
 	find := func(channel, id string) *discordgo.PermissionOverwrite {
@@ -69,13 +74,13 @@ func TestChannelPolicyRepairsDriftAndIsIdempotent(t *testing.T) {
 	if find("parent", "guild").Allow&discordgo.PermissionSendMessagesInThreads == 0 || find("parent", "guild").Deny&discordgo.PermissionSendMessages == 0 {
 		t.Fatal("participant parent permissions incorrect")
 	}
-	if find("commands", "bot").Allow&discordgo.PermissionManageRoles == 0 {
-		t.Fatal("bot cannot repair permissions")
+	if find("commands", "bot").Allow&(discordgo.PermissionManageRoles|discordgo.PermissionManageChannels) != 0 {
+		t.Fatal("management permissions must be inherited, not granted to the bot itself")
 	}
 	if err := d.ReconcileChannels(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if writes != 2 {
+	if writes != 4 {
 		t.Fatal("unchanged channels were rewritten")
 	}
 	channels["commands"].Name = "accidentally-renamed"
@@ -83,14 +88,14 @@ func TestChannelPolicyRepairsDriftAndIsIdempotent(t *testing.T) {
 	if err := d.ReconcileChannels(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if writes != 3 {
+	if writes != 6 {
 		t.Fatal("later drift not repaired")
 	}
 	channels["commands"].PermissionOverwrites = append(channels["commands"].PermissionOverwrites, &discordgo.PermissionOverwrite{ID: "another-role", Type: discordgo.PermissionOverwriteTypeRole, Allow: discordgo.PermissionViewChannel})
 	if err := d.ReconcileChannels(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if writes != 4 {
+	if writes != 7 {
 		t.Fatal("permission-only drift not repaired")
 	}
 }
