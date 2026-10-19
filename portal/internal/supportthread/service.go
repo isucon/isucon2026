@@ -170,7 +170,7 @@ func (s *Service) Open(ctx context.Context, id int64) (thread string, err error)
 		}
 
 		if thread == "" {
-			thread, e = s.Discord.EnsureThread(ctx, fmt.Sprintf("clar-%d", id))
+			thread, e = s.Discord.EnsureThread(ctx, fmt.Sprintf("support-%d", id))
 			if e != nil {
 				return e
 			}

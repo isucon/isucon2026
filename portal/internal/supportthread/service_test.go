@@ -7,6 +7,7 @@ import (
 	"github.com/bwmarrin/discordgo"
 	"github.com/isucon/isucon2026/portal/internal/supportthread"
 	"github.com/isucon/isucon2026/portal/tests/testkit"
+	"strings"
 	"testing"
 )
 
@@ -25,6 +26,9 @@ func (f *fakeDiscord) call(s string) error {
 	return nil
 }
 func (f *fakeDiscord) EnsureThread(ctx context.Context, name string) (string, error) {
+	if !strings.HasPrefix(name, "support-") {
+		return "", fmt.Errorf("unexpected thread name: %s", name)
+	}
 	f.creates++
 	id := "thread"
 	if f.creates > 1 {
