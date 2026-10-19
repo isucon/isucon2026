@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/bwmarrin/discordgo"
@@ -99,10 +100,14 @@ func (d *DiscordAPI) EnsureThread(ctx context.Context, name string) (string, err
 	if err != nil {
 		return "", err
 	}
+	legacyName := ""
+	if strings.HasPrefix(name, "support-") {
+		legacyName = "clar-" + strings.TrimPrefix(name, "support-")
+	}
 	matches := []*discordgo.Channel{}
 	collect := func(chs []*discordgo.Channel) {
 		for _, ch := range chs {
-			if ch.ParentID == d.ParentID && ch.Name == name && ch.OwnerID == d.botID() {
+			if ch.ParentID == d.ParentID && (ch.Name == name || (legacyName != "" && ch.Name == legacyName)) && ch.OwnerID == d.botID() {
 				matches = append(matches, ch)
 			}
 		}
@@ -130,7 +135,7 @@ func (d *DiscordAPI) EnsureThread(ctx context.Context, name string) (string, err
 			return "", errors.New("matching support thread is not private")
 		}
 		no := false
-		if _, err = d.Session.ChannelEditComplex(ch.ID, &discordgo.ChannelEdit{Archived: &no, Invitable: &no}, discordgo.WithContext(ctx)); err != nil {
+		if _, err = d.Session.ChannelEditComplex(ch.ID, &discordgo.ChannelEdit{Name: name, Archived: &no, Invitable: &no}, discordgo.WithContext(ctx)); err != nil {
 			return "", err
 		}
 		return ch.ID, nil

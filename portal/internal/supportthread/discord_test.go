@@ -108,3 +108,39 @@ func TestParticipantCannotHaveThreadManagement(t *testing.T) {
 		t.Fatal("participant could read closed threads")
 	}
 }
+
+func TestEnsureThreadRecoversLegacyName(t *testing.T) {
+	renamed := false
+	s := fakeSession(t, func(r *http.Request) string {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/members/bot"):
+			return `{"roles":["botrole"]}`
+		case strings.HasSuffix(r.URL.Path, "/roles"):
+			return `[{"id":"botrole","permissions":"8"}]`
+		case strings.HasSuffix(r.URL.Path, "/channels/parent"):
+			return `{"id":"parent","guild_id":"guild","type":0}`
+		case strings.HasSuffix(r.URL.Path, "/threads/active"):
+			return `{"threads":[{"id":"existing","parent_id":"parent","owner_id":"bot","name":"clar-1","type":12}]}`
+		case strings.HasSuffix(r.URL.Path, "/threads/archived/private"):
+			return `{"threads":[],"has_more":false}`
+		case r.Method == "PATCH" && strings.HasSuffix(r.URL.Path, "/channels/existing"):
+			var edit discordgo.ChannelEdit
+			if err := json.NewDecoder(r.Body).Decode(&edit); err != nil {
+				t.Fatal(err)
+			}
+			if edit.Name != "support-1" {
+				t.Fatalf("unexpected name %q", edit.Name)
+			}
+			renamed = true
+			return `{"id":"existing","type":12}`
+		default:
+			t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
+			return `{}`
+		}
+	})
+	d := DiscordAPI{Session: s, GuildID: "guild", ParentID: "parent"}
+	id, err := d.EnsureThread(context.Background(), "support-1")
+	if err != nil || id != "existing" || !renamed {
+		t.Fatalf("legacy thread not recovered: %s %v", id, err)
+	}
+}
