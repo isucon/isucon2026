@@ -403,32 +403,37 @@ func (b *bot) pollSupportThreads(ctx context.Context) {
 }
 
 func (b *bot) threadCommand(s *discordgo.Session, e *discordgo.MessageCreate, fields []string, reply func(string)) bool {
-	parent := e.ChannelID == b.app.Cfg.Discord.SupportThreadParentID
-	var clarID int64
-	err := b.app.DB.QueryRowContext(context.Background(), `SELECT clarification_id FROM discord_support_threads WHERE thread_id=$1`, e.ChannelID).Scan(&clarID)
-	if !parent && err != nil {
-		return false
-	}
 	if fields[0] != ".support" && fields[0] != ".supportOpen" && fields[0] != ".supportClose" {
 		return false
+	}
+	// Never publish help or command results in the participant-visible parent.
+	if e.ChannelID == b.app.Cfg.Discord.SupportThreadParentID {
+		return true
+	}
+	if e.ChannelID != b.app.Cfg.Discord.SupportThreadCommandChannelID {
+		var id int64
+		return b.app.DB.QueryRowContext(context.Background(), `SELECT clarification_id FROM discord_support_threads WHERE thread_id=$1`, e.ChannelID).Scan(&id) == nil
 	}
 	if !b.isAdmin(s, e) {
 		reply("**FORBIDDEN** You're not an admin :lock:")
 		return true
 	}
+	if fields[0] == ".support" {
+		reply("**USAGE**\n.supportOpen team_id\n.supportClose team_id\nRun both commands in this operator-only channel.")
+		return true
+	}
+	if len(fields) != 2 {
+		reply("**USAGE** " + fields[0] + " team_id")
+		return true
+	}
+	id, err := strconv.ParseInt(fields[1], 10, 64)
+	if err != nil || id <= 0 {
+		reply("**Error** Invalid team ID")
+		return true
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
-	switch fields[0] {
-	case ".supportOpen":
-		if !parent || len(fields) != 2 {
-			reply("**USAGE** .supportOpen team_id (in the support thread parent channel)")
-			return true
-		}
-		id, err := strconv.ParseInt(fields[1], 10, 64)
-		if err != nil || id <= 0 {
-			reply("**Error** Invalid team ID")
-			return true
-		}
+	if fields[0] == ".supportOpen" {
 		thread, err := b.threads.OpenTeam(ctx, id)
 		if err != nil {
 			slog.Error("support thread open failed", "error", err)
@@ -436,25 +441,13 @@ func (b *bot) threadCommand(s *discordgo.Session, e *discordgo.MessageCreate, fi
 			return true
 		}
 		reply("Support thread: <#" + thread + ">")
-	case ".supportClose":
-		if parent {
-			reply("Run .supportClose inside the support thread.")
-			return true
-		}
-		if err := b.threads.Close(ctx, e.ChannelID); err != nil {
+	} else {
+		if err := b.threads.CloseTeam(ctx, id); err != nil {
 			slog.Error("support thread close failed", "error", err)
+			reply("**Error** Could not close support thread; check Bot logs.")
 			return true
 		}
-		// Do not post into the archived thread: that would unarchive it.
-	case ".support":
-		if parent {
-			reply("**USAGE** .supportOpen team_id\nOnly .supportOpen creates a private thread. Close with .supportClose inside the thread.")
-		} else {
-			var status string
-			if err := b.app.DB.QueryRowContext(ctx, `SELECT status FROM discord_support_threads WHERE thread_id=$1`, e.ChannelID).Scan(&status); err == nil {
-				reply(fmt.Sprintf("clar #%d: %s\n.supportClose", clarID, status))
-			}
-		}
+		reply(fmt.Sprintf("Support closed for team %d. Transcript saved.", id))
 	}
 	return true
 }

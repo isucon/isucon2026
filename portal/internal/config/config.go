@@ -97,8 +97,9 @@ type Discord struct {
 	ContestantRoleID string
 	AdminRoleID      string
 	// 単一開催（P-3）: qualify / final の 2 系統ロールは 1 系統に統合
-	SupportCommChannelRoles map[string]string // channel_id => role_id
-	SupportThreadParentID   string
+	SupportCommChannelRoles       map[string]string // channel_id => role_id
+	SupportThreadParentID         string
+	SupportThreadCommandChannelID string
 }
 
 // Timing は競技時刻の設定。未設定（nil）の扱いは Rails 実装と同じ。
@@ -175,14 +176,15 @@ func Load() (*Config, error) {
 			TokenURL:     getenv("ISUXPORTAL_DISCORD_TOKEN_URL", "https://discord.com/api/oauth2/token"),
 			APIBaseURL:   getenv("ISUXPORTAL_DISCORD_API_BASE_URL", "https://discord.com/api/v10"),
 		},
-		BotToken:                os.Getenv("ISUXPORTAL_DISCORD_BOT_TOKEN"),
-		APIBaseURL:              getenv("ISUXPORTAL_DISCORD_API_BASE_URL", "https://discord.com/api/v10"),
-		ServerID:                getenv("ISUXPORTAL_DISCORD_SERVER_ID", "721578039779262486"),          //gitleaks:allow isucon14 の公開 snowflake
-		ChannelID:               getenv("ISUXPORTAL_DISCORD_CHANNEL_ID", "729697803982602286"),         //gitleaks:allow isucon14 の公開 snowflake
-		ContestantRoleID:        getenv("ISUXPORTAL_DISCORD_CONTESTANT_ROLE_ID", "721583193270255617"), //gitleaks:allow isucon14 の公開 snowflake
-		AdminRoleID:             getenv("ISUXPORTAL_DISCORD_ADMIN_ROLE_ID", "721583068724592640"),      //gitleaks:allow isucon14 の公開 snowflake
-		SupportThreadParentID:   os.Getenv("ISUXPORTAL_DISCORD_SUPPORT_THREAD_PARENT_ID"),
-		SupportCommChannelRoles: parsePairs(os.Getenv("ISUXPORTAL_DISCORD_SUPPORT_COMM_CHANNEL_ROLES")),
+		BotToken:                      os.Getenv("ISUXPORTAL_DISCORD_BOT_TOKEN"),
+		APIBaseURL:                    getenv("ISUXPORTAL_DISCORD_API_BASE_URL", "https://discord.com/api/v10"),
+		ServerID:                      getenv("ISUXPORTAL_DISCORD_SERVER_ID", "721578039779262486"),          //gitleaks:allow isucon14 の公開 snowflake
+		ChannelID:                     getenv("ISUXPORTAL_DISCORD_CHANNEL_ID", "729697803982602286"),         //gitleaks:allow isucon14 の公開 snowflake
+		ContestantRoleID:              getenv("ISUXPORTAL_DISCORD_CONTESTANT_ROLE_ID", "721583193270255617"), //gitleaks:allow isucon14 の公開 snowflake
+		AdminRoleID:                   getenv("ISUXPORTAL_DISCORD_ADMIN_ROLE_ID", "721583068724592640"),      //gitleaks:allow isucon14 の公開 snowflake
+		SupportThreadParentID:         os.Getenv("ISUXPORTAL_DISCORD_SUPPORT_THREAD_PARENT_ID"),
+		SupportThreadCommandChannelID: os.Getenv("ISUXPORTAL_DISCORD_SUPPORT_THREAD_COMMAND_CHANNEL_ID"),
+		SupportCommChannelRoles:       parsePairs(os.Getenv("ISUXPORTAL_DISCORD_SUPPORT_COMM_CHANNEL_ROLES")),
 	}
 	switch c.GitHub.CallbackPath {
 	case "/auth/github/callback", "/complete/github/":
@@ -242,6 +244,13 @@ func Load() (*Config, error) {
 	if c.Discord.SupportThreadParentID != "" && c.Discord.SupportCommChannelRoles[c.Discord.SupportThreadParentID] != "" {
 		return nil, fmt.Errorf("support thread parent cannot also be a legacy support channel")
 	}
+	if c.Discord.SupportThreadParentID != "" {
+		id := c.Discord.SupportThreadCommandChannelID
+		if id == "" || id == c.Discord.SupportThreadParentID || c.Discord.SupportCommChannelRoles[id] != "" {
+			return nil, fmt.Errorf("support threads require a separate operator command channel")
+		}
+	}
+
 	return c, nil
 }
 

@@ -91,6 +91,19 @@ func (s *Service) OpenTeam(ctx context.Context, teamID int64) (string, error) {
 	return s.Open(ctx, id)
 }
 
+// CloseTeam ends the team's active conversation from the operator-only channel.
+func (s *Service) CloseTeam(ctx context.Context, teamID int64) error {
+	var thread sql.NullString
+	err := s.DB.QueryRowContext(ctx, `SELECT t.thread_id FROM discord_support_threads t JOIN clarifications c ON c.id=t.clarification_id WHERE c.team_id=$1 AND t.status<>'closed' ORDER BY t.clarification_id LIMIT 1`, teamID).Scan(&thread)
+	if err != nil {
+		return err
+	}
+	if !thread.Valid {
+		return errors.New("support thread is still opening")
+	}
+	return s.Close(ctx, thread.String)
+}
+
 func (s *Service) Open(ctx context.Context, id int64) (thread string, err error) {
 	err = s.locked(ctx, id, func(conn *sql.Conn) error {
 		clar, e := model.FindClarification(ctx, conn, id)
