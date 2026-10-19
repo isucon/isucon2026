@@ -7,14 +7,16 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/bwmarrin/discordgo"
 )
 
 type DiscordAPI struct {
-	Session                        *discordgo.Session
-	GuildID, ParentID, AdminRoleID string
+	Session                                          *discordgo.Session
+	GuildID, ParentID, AdminRoleID, CommandChannelID string
+	policyMu                                         sync.Mutex
 }
 
 func (d *DiscordAPI) botID() string { return d.Session.State.User.ID }
