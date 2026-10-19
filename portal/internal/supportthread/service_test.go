@@ -7,6 +7,7 @@ import (
 	"github.com/bwmarrin/discordgo"
 	"github.com/isucon/isucon2026/portal/internal/supportthread"
 	"github.com/isucon/isucon2026/portal/tests/testkit"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -16,6 +17,7 @@ type fakeDiscord struct {
 	members []string
 	fail    string
 	creates int
+	staff   []string
 }
 
 func (f *fakeDiscord) call(s string) error {
@@ -232,5 +234,43 @@ func TestTeamCommandReusesActiveConversationAndCreatesNewAfterClose(t *testing.T
 	var n int
 	if err = db.QueryRow(`SELECT count(*) FROM discord_support_threads`).Scan(&n); err != nil || n != 2 {
 		t.Fatalf("old log not retained: %d %v", n, err)
+	}
+}
+
+func (f *fakeDiscord) StaffIDs(context.Context) ([]string, error) { return f.staff, nil }
+func TestStaffAreInvitedOnOpenAndRetainedOnClose(t *testing.T) {
+	db := testkit.Database(t)
+	ctx := context.Background()
+	_, err := db.Exec(`INSERT INTO teams(id,name,email_address,invite_token,student,created_at,updated_at) VALUES(90001,'test','test@example.invalid','token',false,now(),now()); INSERT INTO contestants(id,name,team_id,discord_id,github_login,github_id,discord_tag,avatar_url,created_at,updated_at) VALUES(90001,'test',90001,'member','test','test','test','',now(),now())`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := &fakeDiscord{staff: []string{"operator"}}
+	s := &supportthread.Service{DB: db, Discord: f}
+	thread, err := s.OpenTeam(ctx, 90001)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(f.members, "operator") {
+		t.Fatal("operator was not invited")
+	}
+	f.staff = append(f.staff, "administrator")
+	if _, err = s.OpenTeam(ctx, 90001); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(f.members, "administrator") {
+		t.Fatal("new administrator was not invited on reuse")
+	}
+	if err = s.CloseTeam(ctx, 90001); err != nil {
+		t.Fatal(err)
+	}
+	if slices.Contains(f.members, "member") || len(f.members) != 2 {
+		t.Fatalf("unexpected remaining membership: %v", f.members)
+	}
+	if _, err = s.Open(ctx, 1); err != nil {
+		t.Fatal(err)
+	}
+	if f.creates != 1 || thread != "thread" {
+		t.Fatal("closed thread recreated")
 	}
 }

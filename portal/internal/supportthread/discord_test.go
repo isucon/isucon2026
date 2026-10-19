@@ -164,3 +164,34 @@ func TestDiscordAdministratorCanBeInvited(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestStaffIDsIncludesOperatorsAdministratorsAndOwnerAcrossPages(t *testing.T) {
+	s := fakeSession(t, func(r *http.Request) string {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/roles"):
+			return `[{"id":"ops","permissions":"0"},{"id":"admin","permissions":"8"}]`
+		case strings.HasSuffix(r.URL.Path, "/members"):
+			if r.URL.Query().Get("after") != "" {
+				return `[{"user":{"id":"owner"},"roles":[]},{"user":{"id":"bot"},"roles":["admin"]}]`
+			}
+			page := make([]*discordgo.Member, 1000)
+			for i := range page {
+				page[i] = &discordgo.Member{User: &discordgo.User{ID: fmt.Sprint(i + 1)}}
+			}
+			page[0].Roles = []string{"ops"}
+			page[1].Roles = []string{"admin"}
+			raw, _ := json.Marshal(page)
+			return string(raw)
+		case strings.HasSuffix(r.URL.Path, "/guilds/guild"):
+			return `{"id":"guild","owner_id":"owner"}`
+		default:
+			t.Fatalf("unexpected request %s", r.URL.Path)
+			return ""
+		}
+	})
+	d := DiscordAPI{Session: s, GuildID: "guild", AdminRoleID: "ops"}
+	ids, err := d.StaffIDs(context.Background())
+	if err != nil || strings.Join(ids, ",") != "1,2,owner" {
+		t.Fatalf("unexpected staff: %v %v", ids, err)
+	}
+}

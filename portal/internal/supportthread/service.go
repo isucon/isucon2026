@@ -16,6 +16,7 @@ import (
 )
 
 type Discord interface {
+	StaffIDs(context.Context) ([]string, error)
 	EnsureThread(context.Context, string) (string, error)
 	CheckParticipant(context.Context, string) error
 	AddMember(context.Context, string, string) error
@@ -130,6 +131,10 @@ func (s *Service) Open(ctx context.Context, id int64) (thread string, err error)
 			return e
 		}
 		thread = existing.String
+		if status == "open" {
+			_, e = s.inviteStaff(ctx, thread)
+			return e
+		}
 		if status != "opening" {
 			return nil
 		}
@@ -186,6 +191,9 @@ func (s *Service) Open(ctx context.Context, id int64) (thread string, err error)
 				return e
 			}
 		}
+		if _, e = s.inviteStaff(ctx, thread); e != nil {
+			return e
+		}
 		_, e = conn.ExecContext(ctx, `UPDATE discord_support_threads SET status='open',updated_at=now() WHERE clarification_id=$1`, id)
 		return e
 	})
@@ -230,12 +238,19 @@ func (s *Service) Close(ctx context.Context, thread string) error {
 		}
 
 		// Enumerate actual membership, not current team membership: also remove guests
-		// invited manually and people who have since left the team. Keep only the Bot.
+		// invited manually and people who have since left the team. Retain staff and the Bot.
+		staff, err := s.inviteStaff(ctx, thread)
+		if err != nil {
+			return err
+		}
 		members, err := s.Discord.Members(ctx, thread)
 		if err != nil {
 			return err
 		}
 		for _, uid := range members {
+			if staff[uid] {
+				continue
+			}
 			if err = s.Discord.RemoveMember(ctx, thread, uid); err != nil {
 				return err
 			}
@@ -244,8 +259,10 @@ func (s *Service) Close(ctx context.Context, thread string) error {
 		if err != nil {
 			return err
 		}
-		if len(remaining) != 0 {
-			return errors.New("thread still has members; retry close")
+		for _, uid := range remaining {
+			if !staff[uid] {
+				return errors.New("thread still has non-staff members; retry close")
+			}
 		}
 		if err = s.Discord.Archive(ctx, thread); err != nil {
 			return err
@@ -306,4 +323,22 @@ func (s *Service) RetryPending(ctx context.Context) error {
 		}
 	}
 	return errors.Join(errs...)
+}
+
+func (s *Service) inviteStaff(ctx context.Context, thread string) (map[string]bool, error) {
+	ids, err := s.Discord.StaffIDs(ctx)
+	if err != nil {
+		return nil, err
+	}
+	staff := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		if staff[id] {
+			continue
+		}
+		if err := s.Discord.AddMember(ctx, thread, id); err != nil {
+			return nil, err
+		}
+		staff[id] = true
+	}
+	return staff, nil
 }
