@@ -98,6 +98,8 @@ type Discord struct {
 	AdminRoleID      string
 	// 単一開催（P-3）: qualify / final の 2 系統ロールは 1 系統に統合
 	SupportCommChannelRoles map[string]string // channel_id => role_id
+	SupportThreadParentID   string
+	SupportThreadSince      *time.Time
 }
 
 // Timing は競技時刻の設定。未設定（nil）の扱いは Rails 実装と同じ。
@@ -180,6 +182,7 @@ func Load() (*Config, error) {
 		ChannelID:               getenv("ISUXPORTAL_DISCORD_CHANNEL_ID", "729697803982602286"),         //gitleaks:allow isucon14 の公開 snowflake
 		ContestantRoleID:        getenv("ISUXPORTAL_DISCORD_CONTESTANT_ROLE_ID", "721583193270255617"), //gitleaks:allow isucon14 の公開 snowflake
 		AdminRoleID:             getenv("ISUXPORTAL_DISCORD_ADMIN_ROLE_ID", "721583068724592640"),      //gitleaks:allow isucon14 の公開 snowflake
+		SupportThreadParentID:   os.Getenv("ISUXPORTAL_DISCORD_SUPPORT_THREAD_PARENT_ID"),
 		SupportCommChannelRoles: parsePairs(os.Getenv("ISUXPORTAL_DISCORD_SUPPORT_COMM_CHANNEL_ROLES")),
 	}
 	switch c.GitHub.CallbackPath {
@@ -225,6 +228,7 @@ func Load() (*Config, error) {
 		{"ISUXPORTAL_TIMING_CONTEST_START", &c.Timing.ContestStart},
 		{"ISUXPORTAL_TIMING_CONTEST_FREEZE", &c.Timing.ContestFreeze},
 		{"ISUXPORTAL_TIMING_CONTEST_END", &c.Timing.ContestEnd},
+		{"ISUXPORTAL_DISCORD_SUPPORT_THREAD_SINCE", &c.Discord.SupportThreadSince},
 	} {
 		v := os.Getenv(e.key)
 		if v == "" {
@@ -237,6 +241,12 @@ func Load() (*Config, error) {
 		*e.dst = &t
 	}
 
+	if c.Discord.SupportThreadParentID != "" && c.Discord.SupportCommChannelRoles[c.Discord.SupportThreadParentID] != "" {
+		return nil, fmt.Errorf("support thread parent cannot also be a legacy support channel")
+	}
+	if c.Discord.SupportThreadParentID != "" && c.Discord.SupportThreadSince == nil {
+		return nil, fmt.Errorf("ISUXPORTAL_DISCORD_SUPPORT_THREAD_SINCE is required when private support threads are enabled")
+	}
 	return c, nil
 }
 
