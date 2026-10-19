@@ -13,8 +13,8 @@ import (
 )
 
 type DiscordAPI struct {
-	Session           *discordgo.Session
-	GuildID, ParentID string
+	Session                        *discordgo.Session
+	GuildID, ParentID, AdminRoleID string
 }
 
 func (d *DiscordAPI) botID() string { return d.Session.State.User.ID }
@@ -204,4 +204,48 @@ func (d *DiscordAPI) Members(ctx context.Context, id string) ([]string, error) {
 }
 func (d *DiscordAPI) RemoveMember(ctx context.Context, thread, uid string) error {
 	return d.Session.ThreadMemberRemove(thread, uid, discordgo.WithContext(ctx))
+}
+
+// StaffIDs enumerates the guild owner, configured operators, and administrators.
+func (d *DiscordAPI) StaffIDs(ctx context.Context) ([]string, error) {
+	guild, err := d.Session.Guild(d.GuildID, discordgo.WithContext(ctx))
+	if err != nil {
+		return nil, err
+	}
+	roles, err := d.Session.GuildRoles(d.GuildID, discordgo.WithContext(ctx))
+	if err != nil {
+		return nil, err
+	}
+	selected := map[string]bool{d.AdminRoleID: true}
+	for _, role := range roles {
+		if role.Permissions&discordgo.PermissionAdministrator != 0 {
+			selected[role.ID] = true
+		}
+	}
+	ids := []string{}
+	after := ""
+	for {
+		members, err := d.Session.GuildMembers(d.GuildID, after, 1000, discordgo.WithContext(ctx))
+		if err != nil {
+			return nil, err
+		}
+		for _, member := range members {
+			if member.User == nil || member.User.ID == d.botID() {
+				continue
+			}
+			staff := member.User.ID == guild.OwnerID
+			for _, role := range member.Roles {
+				staff = staff || selected[role]
+			}
+			if staff {
+				ids = append(ids, member.User.ID)
+			}
+		}
+		if len(members) < 1000 {
+			break
+		}
+		after = members[len(members)-1].User.ID
+	}
+	sort.Strings(ids)
+	return ids, nil
 }
