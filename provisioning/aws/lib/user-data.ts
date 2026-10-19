@@ -7,7 +7,12 @@ import {
 } from "./topology";
 
 // アドレスはチームごとに違うので、AMI には焼き込まず起動時に設定する
-export function serviceUserData(t: Team, network: ServerNetwork): string {
+export function serviceUserData(
+	t: Team,
+	network: ServerNetwork,
+	sshPublicKeys: string[] = [],
+	adminSshPublicKeys: string[] = [],
+): string {
 	const commands =
 		network.region === undefined
 			? ["systemctl enable --now postgresql"]
@@ -15,10 +20,33 @@ export function serviceUserData(t: Team, network: ServerNetwork): string {
 					`sed -i -e 's/^ISUREAL_REGION=.*/ISUREAL_REGION=${network.region}/' -e 's/^ISUREAL_DB_HOST=.*/ISUREAL_DB_HOST=${databaseIp(t)}/' /home/isucon/env.sh`,
 					"systemctl enable --now isureal-go nginx",
 				];
+	commands.unshift(...authorizedKeyCommands("isucon", sshPublicKeys));
+	if (adminSshPublicKeys.length > 0) {
+		commands.unshift(
+			"id -u isuadmin >/dev/null 2>&1 || useradd --create-home --shell /bin/bash isuadmin",
+			"printf '%s\\n' 'isuadmin ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/90-isuadmin",
+			"chmod 440 /etc/sudoers.d/90-isuadmin",
+			...authorizedKeyCommands("isuadmin", adminSshPublicKeys),
+		);
+	}
 	return `#!/bin/sh
 set -eu
 ${commands.join("\n")}
 `;
+}
+
+function authorizedKeyCommands(
+	user: "isucon" | "isuadmin",
+	keys: string[],
+): string[] {
+	if (keys.length === 0) return [];
+	const encoded = Buffer.from(`${keys.join("\n")}\n`).toString("base64");
+	return [
+		`install -d -m 700 -o ${user} -g ${user} /home/${user}/.ssh`,
+		`printf '%s' '${encoded}' | base64 -d > /home/${user}/.ssh/authorized_keys`,
+		`chown ${user}:${user} /home/${user}/.ssh/authorized_keys`,
+		`chmod 600 /home/${user}/.ssh/authorized_keys`,
+	];
 }
 
 function file(
