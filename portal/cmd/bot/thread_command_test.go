@@ -4,6 +4,7 @@ import (
 	"github.com/bwmarrin/discordgo"
 	"github.com/isucon/isucon2026/portal/internal/app"
 	"github.com/isucon/isucon2026/portal/internal/config"
+	"github.com/isucon/isucon2026/portal/internal/supportthread"
 	"strings"
 	"testing"
 )
@@ -39,5 +40,15 @@ func TestThreadCommandChannelRequiresOperatorRole(t *testing.T) {
 		if !strings.HasPrefix(response, tc.want) {
 			t.Fatalf("unexpected response %q", response)
 		}
+	}
+}
+
+func TestThreadCommandDoesNotReplyWhenChannelCannotBeVerified(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.Discord.SupportThreadCommandChannelID = "commands"
+	b := &bot{app: &app.App{Cfg: cfg}, channelPolicy: &supportthread.DiscordAPI{}}
+	e := &discordgo.MessageCreate{Message: &discordgo.Message{ChannelID: "commands"}}
+	if !b.threadCommand(nil, e, []string{".support"}, func(string) { t.Fatal("reply exposed before verifying permissions") }) {
+		t.Fatal("unverified command fell through")
 	}
 }
