@@ -192,10 +192,10 @@ func TestOracleConcurrentWrites(t *testing.T) {
 	}
 }
 
-func feedItem(p *Post, author User) client.Post {
+func feedItem(p *Post, author User) client.FeedPost {
 	exp := time.Now().Add(time.Hour).Unix()
-	return client.Post{
-		ID: p.ID, Author: client.UserSummary{ID: author.ID, Username: author.Username}, Caption: p.Caption, PostedAt: p.PostedAt,
+	return client.FeedPost{
+		ID: p.ID, Author: client.FeedAuthor{ID: author.ID, Username: author.Username}, Caption: p.Caption, PostedAt: p.PostedAt,
 		Visibility: p.visibility.initial, ImageURL: fmt.Sprintf("/api/images/%s?exp=%d&sig=%s", p.ImageID, exp, imageurl.Sign(author.SecretKey, p.ImageID, exp)),
 	}
 }
@@ -203,49 +203,59 @@ func feedItem(p *Post, author User) client.Post {
 func TestCheckFeed(t *testing.T) {
 	w := newWorld(t)
 	m := w.m
-	item := func(author string) client.Post { return feedItem(w.posts[author], *m.User(author)) }
+	item := func(author string) client.FeedPost { return feedItem(w.posts[author], *m.User(author)) }
 
 	// b の public フィードには a と d の公開投稿が出る。新しい順は d、a。
 	r := w.later()
-	if result := m.CheckFeed("b", "public", nil, client.FeedPage{Items: []client.Post{item("d"), item("a")}}, r); len(result.Violations)+len(result.Errors) != 0 {
+	if result := m.CheckFeed("b", "public", nil, client.FeedPage{Items: []client.FeedPost{item("d"), item("a")}}, r, true); len(result.Violations)+len(result.Errors)+len(result.Thorough) != 0 {
 		t.Fatalf("valid page: %+v", result)
 	}
 	// a に d（a をブロックしている）の投稿を返すのは違反。
-	result := m.CheckFeed("a", "public", nil, client.FeedPage{Items: []client.Post{item("d")}}, r)
+	result := m.CheckFeed("a", "public", nil, client.FeedPage{Items: []client.FeedPost{item("d")}}, r, true)
 	if len(result.Violations) != 1 || !strings.Contains(result.Violations[0], "見えてはいけない") {
 		t.Fatalf("blocked post: %+v", result)
 	}
 	// 見えるべき a の投稿が無いのは欠落（エラー）。
-	result = m.CheckFeed("b", "public", nil, client.FeedPage{Items: []client.Post{item("d")}}, r)
-	if len(result.Violations) != 0 || len(result.Errors) != 1 || !strings.Contains(result.Errors[0], "見えるべき") {
+	result = m.CheckFeed("b", "public", nil, client.FeedPage{Items: []client.FeedPost{item("d")}}, r, true)
+	if len(result.Violations) != 0 || len(result.Thorough) != 1 || !strings.Contains(result.Thorough[0], "見えるべき") {
 		t.Fatalf("missing post: %+v", result)
 	}
+	// thorough でなければ欠落は確かめない。
+	result = m.CheckFeed("b", "public", nil, client.FeedPage{Items: []client.FeedPost{item("d")}}, r, false)
+	if len(result.Violations)+len(result.Errors)+len(result.Thorough) != 0 {
+		t.Fatalf("missing post without thorough check: %+v", result)
+	}
 	// 続きがあるページでは、最後の投稿より古い投稿は次のページにあるので欠落ではない。
-	result = m.CheckFeed("b", "public", nil, client.FeedPage{Items: []client.Post{item("d")}, HasMore: true}, r)
-	if len(result.Errors) != 0 {
+	result = m.CheckFeed("b", "public", nil, client.FeedPage{Items: []client.FeedPost{item("d")}, HasMore: true}, r, true)
+	if len(result.Thorough) != 0 {
 		t.Fatalf("next page: %+v", result)
 	}
 	// 古い順に並んでいるのはエラー。
-	result = m.CheckFeed("b", "public", nil, client.FeedPage{Items: []client.Post{item("a"), item("d")}}, r)
+	result = m.CheckFeed("b", "public", nil, client.FeedPage{Items: []client.FeedPost{item("a"), item("d")}}, r, true)
 	if len(result.Errors) != 1 || !strings.Contains(result.Errors[0], "新しい順") {
 		t.Fatalf("order: %+v", result)
 	}
 	// 画像 URL の署名が投稿者のものでなければエラー。
 	forged := item("d")
 	forged.ImageURL = feedItem(w.posts["d"], *m.User("a")).ImageURL
-	result = m.CheckFeed("b", "public", nil, client.FeedPage{Items: []client.Post{forged, item("a")}}, r)
-	if len(result.Errors) != 1 || !strings.Contains(result.Errors[0], "画像 URL") {
+	result = m.CheckFeed("b", "public", nil, client.FeedPage{Items: []client.FeedPost{forged, item("a")}}, r, true)
+	if len(result.Thorough) != 1 || !strings.Contains(result.Thorough[0], "画像 URL") {
 		t.Fatalf("forged image URL: %+v", result)
+	}
+	// 返った投稿は thorough でなくても確かめる。
+	result = m.CheckFeed("a", "public", nil, client.FeedPage{Items: []client.FeedPost{item("d")}}, r, false)
+	if len(result.Violations) != 1 {
+		t.Fatalf("blocked post without thorough check: %+v", result)
 	}
 
 	// bench の知らない投稿は違反。ただし結果のわからない投稿作成があればその投稿かもしれない。
-	stranger := client.Post{ID: "p-unknown", Author: client.UserSummary{ID: "e"}, PostedAt: w.c.now()}
-	result = m.CheckFeed("b", "public", nil, client.FeedPage{Items: []client.Post{stranger, item("d"), item("a")}}, r)
+	stranger := client.FeedPost{ID: "p-unknown", Author: client.FeedAuthor{ID: "e"}, PostedAt: w.c.now()}
+	result = m.CheckFeed("b", "public", nil, client.FeedPage{Items: []client.FeedPost{stranger, item("d"), item("a")}}, r, true)
 	if len(result.Violations) != 1 || !strings.Contains(result.Violations[0], "存在しない") {
 		t.Fatalf("unknown post: %+v", result)
 	}
 	m.BeginCreatePost("e").Unknown()
-	result = m.CheckFeed("b", "public", nil, client.FeedPage{Items: []client.Post{stranger, item("d"), item("a")}}, w.later())
+	result = m.CheckFeed("b", "public", nil, client.FeedPage{Items: []client.FeedPost{stranger, item("d"), item("a")}}, w.later(), true)
 	if len(result.Violations) != 0 {
 		t.Fatalf("post from an unknown creation: %+v", result)
 	}

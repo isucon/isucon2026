@@ -121,7 +121,8 @@ func TestPaginationAndOpen(t *testing.T) {
 	}))
 	defer server.Close()
 	api := client.New(server.URL)
-	feed, err := api.Feed(t.Context(), "token", "public", &before)
+	feedBefore := before.FeedPost()
+	feed, err := api.Feed(t.Context(), "token", "public", &feedBefore)
 	if err != nil || !feed.HasMore {
 		t.Fatalf("feed=%+v err=%v", feed, err)
 	}
@@ -390,5 +391,132 @@ func TestMayFailWith(t *testing.T) {
 	records := observed.all()
 	if len(records) != 2 || !records[0].Allowed || records[1].Allowed {
 		t.Fatalf("records=%+v", records)
+	}
+}
+
+// TestFeedDecodesOnlyUsedFields は、フィードの投稿をアプリの応答から必要な項目だけ読み、
+// 投稿の応答から絞ったものと一致することを確かめる。
+func TestFeedDecodesOnlyUsedFields(t *testing.T) {
+	image := "/api/images/i1?exp=1&sig=s"
+	locality := "Tokyo"
+	post := client.Post{
+		ID: "p1", PostingWindowID: "w1", ImageURL: image, Caption: "c", Visibility: "friends",
+		Author:   client.UserSummary{ID: "u1", Username: "alice", DisplayName: "Alice", ProfileImageURL: &image, Bio: "hi", AccountType: "standard"},
+		Location: client.Location{Kind: "locality", Locality: &locality},
+		PostedAt: time.Date(2026, 10, 1, 9, 0, 0, 123000, time.UTC), OnTime: true,
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"items": []client.Post{post}, "hasMore": true})
+	}))
+	defer server.Close()
+	page, err := client.New(server.URL).Feed(t.Context(), "token", "friends", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Items) != 1 || !page.HasMore {
+		t.Fatalf("page=%+v", page)
+	}
+	if got, want := page.Items[0], post.FeedPost(); got.ID != want.ID || got.Author != want.Author || got.PostingWindowID != want.PostingWindowID ||
+		got.ImageURL != want.ImageURL || got.Caption != want.Caption || got.Visibility != want.Visibility || !got.PostedAt.Equal(want.PostedAt) {
+		t.Fatalf("got %+v, want %+v", got, want)
+	}
+}
+
+// TestNotificationStreamReusesConnection は、通知を 1 件受けて閉じたストリームの接続を、
+// 次の購読で使い回すことを確かめる（アプリは通知を 1 件送ると応答を終える）。
+func TestNotificationStreamReusesConnection(t *testing.T) {
+	var conns atomic.Int64
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.(http.Flusher).Flush()
+		fmt.Fprint(w, "data: {\"id\":\"n1\",\"postingWindowId\":\"w1\",\"region\":\"asia\"}\n\n")
+		// アプリと同じく通知を送り出してから応答を終える。終端は通知より後に届く。
+		w.(http.Flusher).Flush()
+		time.Sleep(10 * time.Millisecond)
+	}))
+	server.Config.ConnState = func(_ net.Conn, state http.ConnState) {
+		if state == http.StateNew {
+			conns.Add(1)
+		}
+	}
+	server.Start()
+	defer server.Close()
+	api := client.New(server.URL).WithOwnConnections()
+	for range 3 {
+		stream, err := api.OpenNotifications(t.Context(), "token")
+		if err != nil {
+			t.Fatal(err)
+		}
+		n, err := stream.Receive()
+		if err != nil || n.PostingWindowID != "w1" {
+			t.Fatalf("notification=%+v err=%v", n, err)
+		}
+		if err := stream.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := conns.Load(); got != 1 {
+		t.Fatalf("opened %d connections, want 1", got)
+	}
+}
+
+// TestNotificationStreamCloseGivesUp は、通知のあとも応答を終えない実装でも、Close が
+// 読み切るのを待ち続けないことを確かめる。
+func TestNotificationStreamCloseGivesUp(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, "data: {\"id\":\"n1\",\"postingWindowId\":\"w1\",\"region\":\"asia\"}\n\n")
+		w.(http.Flusher).Flush()
+		<-r.Context().Done()
+	}))
+	defer server.Close()
+	stream, err := client.New(server.URL).OpenNotifications(t.Context(), "token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := stream.Receive(); err != nil {
+		t.Fatal(err)
+	}
+	start := time.Now()
+	_ = stream.Close()
+	if elapsed := time.Since(start); elapsed > 3*time.Second {
+		t.Fatalf("Close took %s", elapsed)
+	}
+}
+
+// TestConcurrentRequestsReuseConnections は、並行に取った画像の接続を残しておき、次に並行に
+// 取るときに使い回すことを確かめる。
+func TestConcurrentRequestsReuseConnections(t *testing.T) {
+	const parallel = 6
+	var conns atomic.Int64
+	var arrived sync.WaitGroup
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// すべてのリクエストがそろうまで返さず、確実に並行に接続させる。
+		arrived.Done()
+		arrived.Wait()
+		fmt.Fprint(w, "image")
+	}))
+	server.Config.ConnState = func(_ net.Conn, state http.ConnState) {
+		if state == http.StateNew {
+			conns.Add(1)
+		}
+	}
+	server.Start()
+	defer server.Close()
+	api := client.New(server.URL).WithOwnConnections()
+	for range 2 {
+		arrived.Add(parallel)
+		var wg sync.WaitGroup
+		for range parallel {
+			wg.Go(func() {
+				if _, err := api.Image(t.Context(), "/api/images/i1?exp=1&sig=s"); err != nil {
+					t.Error(err)
+				}
+			})
+		}
+		wg.Wait()
+	}
+	if got := conns.Load(); got != parallel {
+		t.Fatalf("opened %d connections, want %d", got, parallel)
 	}
 }

@@ -11,7 +11,7 @@ import (
 
 // feedBenchModel は負荷走行の終盤に近いモデル。asia の n 人が 1 列に友達でつながり、
 // 開いている投稿期間に全員が投稿済みで、pending 件の投稿作成が送信中。
-func feedBenchModel(n, pending int) (*Model, []client.Post) {
+func feedBenchModel(n, pending int) (*Model, []client.FeedPost) {
 	m := New()
 	m.Staleness = time.Second
 	now := time.Now().Add(-time.Minute)
@@ -26,13 +26,13 @@ func feedBenchModel(n, pending int) (*Model, []client.Post) {
 	w := m.BeginOpenWindow("asia")
 	m.OpenedWindow(w, Window{ID: "w1", Region: "asia", LocalDate: now})
 	visibilities := []string{"public", "friends", "friends_of_friends"}
-	var public []client.Post
+	var public []client.FeedPost
 	for i := range n {
 		c := m.BeginCreatePost(id(i))
 		p := Post{ID: fmt.Sprintf("p%d", i), AuthorID: id(i), WindowID: "w1", ImageID: fmt.Sprintf("p%d", i), Caption: "c", PostedAt: now.Add(time.Duration(i) * time.Millisecond)}
 		m.Created(c, p, visibilities[i%3])
 		if i%3 == 0 {
-			public = append(public, client.Post{ID: p.ID, Author: client.UserSummary{ID: p.AuthorID, Username: p.AuthorID}, Caption: p.Caption, PostedAt: p.PostedAt, Visibility: "public", PostingWindowID: "w1"})
+			public = append(public, client.FeedPost{ID: p.ID, Author: client.FeedAuthor{ID: p.AuthorID, Username: p.AuthorID}, Caption: p.Caption, PostedAt: p.PostedAt, Visibility: "public", PostingWindowID: "w1"})
 		}
 	}
 	for i := range pending {
@@ -61,7 +61,7 @@ func BenchmarkCheckFeed(b *testing.B) {
 				b.ReportAllocs()
 				for b.Loop() {
 					now := time.Now()
-					m.checkFeedLocked(viewer, tc.feed, nil, tc.page, Read{Sent: now, Received: now, Staleness: time.Second})
+					m.checkFeedLocked(viewer, tc.feed, nil, tc.page, Read{Sent: now, Received: now, Staleness: time.Second}, true)
 				}
 			})
 		}
