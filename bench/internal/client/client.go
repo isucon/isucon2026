@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -19,6 +18,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/goccy/go-json"
 )
 
 const (
@@ -577,12 +578,38 @@ func (c *Client) CreatePost(ctx context.Context, token string, image []byte, cap
 	return post, err
 }
 
-type FeedPage struct {
-	Items   []Post `json:"items"`
-	HasMore bool   `json:"hasMore"`
+// FeedAuthor はフィードの投稿者のうち、bench が確かめる項目。
+type FeedAuthor struct {
+	ID       string `json:"id"`
+	Username string `json:"username"`
 }
 
-func (c *Client) Feed(ctx context.Context, token, feed string, before *Post) (FeedPage, error) {
+// FeedPost はフィードの投稿のうち、bench が確かめて使う項目。フィードは負荷走行で最も
+// 多く読むので、使わない項目（投稿者のプロフィール、位置など）は値を作らずに読み飛ばす。
+type FeedPost struct {
+	ID              string     `json:"id"`
+	Author          FeedAuthor `json:"author"`
+	PostingWindowID string     `json:"postingWindowId"`
+	ImageURL        string     `json:"imageUrl"`
+	Caption         string     `json:"caption"`
+	Visibility      string     `json:"visibility"`
+	PostedAt        time.Time  `json:"postedAt"`
+}
+
+// FeedPost は投稿をフィードの投稿の項目に絞る。
+func (p Post) FeedPost() FeedPost {
+	return FeedPost{
+		ID: p.ID, Author: FeedAuthor{ID: p.Author.ID, Username: p.Author.Username}, PostingWindowID: p.PostingWindowID,
+		ImageURL: p.ImageURL, Caption: p.Caption, Visibility: p.Visibility, PostedAt: p.PostedAt,
+	}
+}
+
+type FeedPage struct {
+	Items   []FeedPost `json:"items"`
+	HasMore bool       `json:"hasMore"`
+}
+
+func (c *Client) Feed(ctx context.Context, token, feed string, before *FeedPost) (FeedPage, error) {
 	path := apiPrefix + "/feeds/" + feed
 	if before != nil {
 		path += "?" + url.Values{"beforePostedAt": {before.PostedAt.Format(time.RFC3339Nano)}, "beforeId": {before.ID}}.Encode()
