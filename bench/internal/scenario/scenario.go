@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"maps"
+	"math"
 	"math/rand/v2"
 	"net/http"
 	"strings"
@@ -22,6 +23,9 @@ import (
 	"github.com/isucon/isucon2026/bench/internal/score"
 	"github.com/isucon/isucon2026/dataset"
 )
+
+// DefaultVerifyRate は負荷走行で重い検証を行う操作の既定の割合。
+const DefaultVerifyRate = 0.1
 
 const (
 	initializeTimeout = 30 * time.Second
@@ -53,6 +57,10 @@ type Config struct {
 	Retry    client.RetryPolicy
 	// Staleness は書き込みが読み取りに反映されるまでに許す遅れ。
 	Staleness time.Duration
+	// VerifyRate は負荷走行で重い検証（フィードの欠落、画像 URL の署名、履歴の画像）を行う
+	// 操作の割合（0 より大きく 1 以下）。0 なら DefaultVerifyRate。初期データの検証と走行後の
+	// 確認は常にすべて検証する。
+	VerifyRate float64
 	// Ratchet はレベルの昇格の設定。ゼロ値なら DefaultRatchet。
 	Ratchet RatchetConfig
 	// Dataset は対象の DB に入っている初期データ。nil なら dataset.Small() から作る。
@@ -123,6 +131,8 @@ type Runner struct {
 	historyRate float64
 	// historyImages は履歴を 1 か月読むたびに中身を取得して比べる画像の数。
 	historyImages int
+	// verifyRate は負荷走行で重い検証を行う操作の割合（Config.VerifyRate）。
+	verifyRate float64
 	// returningRatio は、思い出を見返すユーザーを負荷ユーザー何人につき 1 人置くか。
 	returningRatio int
 	returningCount map[string]int
@@ -136,6 +146,12 @@ type Runner struct {
 func NewRunner(cfg Config) (*Runner, error) {
 	if cfg.Users < 1 || cfg.Duration < 0 {
 		return nil, fmt.Errorf("users must be positive and duration must be nonnegative")
+	}
+	if cfg.VerifyRate == 0 {
+		cfg.VerifyRate = DefaultVerifyRate
+	}
+	if !(cfg.VerifyRate > 0 && cfg.VerifyRate <= 1) {
+		return nil, fmt.Errorf("verify rate must be in (0, 1]: %v", cfg.VerifyRate)
 	}
 	if cfg.Duration == 0 {
 		cfg.Duration = loadDuration
@@ -190,6 +206,7 @@ func NewRunner(cfg Config) (*Runner, error) {
 		cohort:         make(map[string]bool),
 		historyRate:    0.02,
 		historyImages:  4,
+		verifyRate:     cfg.VerifyRate,
 		returningRatio: 8,
 		returningCount: make(map[string]int),
 		revisiting:     make(map[string]bool),
@@ -481,10 +498,26 @@ func (r *Runner) requestError(ctx context.Context, format string, args ...any) {
 // invalid は、届いたが検証に失敗したレスポンスを記録し、リージョンの
 // エラー率に数える。
 func (r *Runner) invalid(ctx context.Context, region, format string, args ...any) {
+	r.invalidN(ctx, region, 1, format, args...)
+}
+
+// invalidN は invalid と同じく記録し、エラー率には n 件として数える。
+func (r *Runner) invalidN(ctx context.Context, region string, n int64, format string, args ...any) {
 	if ctx.Err() == nil {
 		r.board.Errorf(format, args...)
-		r.recorder.AddFailure(region, time.Now())
+		r.recorder.AddFailure(region, time.Now(), n)
 	}
+}
+
+// sample は、負荷走行のこの操作で重い検証を行うかを verifyRate の確率で決める。行うなら、
+// 見つけた失敗 1 件をエラー率に何件として数えるか（割合の逆数）を返し、行わなければ 0 を
+// 返す。一部しか検証しなくても、ときどき誤る実装のエラー率の期待値は全件を検証したときと
+// 変わらない。
+func (r *Runner) sample() int64 {
+	if rand.Float64() >= r.verifyRate {
+		return 0
+	}
+	return max(1, int64(math.Round(1/r.verifyRate)))
 }
 
 // settle は書き込みの結果をモデルに記録する。4xx は拒否（反映されていない）、それ以外の

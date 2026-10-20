@@ -19,8 +19,11 @@ func (m *Model) ReadBetween(sent, received time.Time) Read {
 type FeedResult struct {
 	// Violations は見えてはいけない投稿や、存在しない投稿。1 件で失格にする。
 	Violations []string
-	// Errors は欠落、並び順、内容の不一致。エラー率に数える。
+	// Errors は並び順や内容の不一致。エラー率に数える。
 	Errors []string
+	// Thorough は thorough な検証でだけ見つかるエラー（見えるべき投稿の欠落と、画像 URL の
+	// 署名の誤り）。エラー率に数える。
+	Thorough []string
 }
 
 func (r *FeedResult) violation(format string, args ...any) {
@@ -31,6 +34,10 @@ func (r *FeedResult) error(format string, args ...any) {
 	r.Errors = append(r.Errors, fmt.Sprintf(format, args...))
 }
 
+func (r *FeedResult) thorough(format string, args ...any) {
+	r.Thorough = append(r.Thorough, fmt.Sprintf(format, args...))
+}
+
 // CheckFeed は viewer が before より古い投稿を feed で読んだ 1 ページを検証する。
 //
 //   - 返った投稿は、見えてはいけない（判定が偽）ものであってはならない。bench の知らない
@@ -38,14 +45,20 @@ func (r *FeedResult) error(format string, args ...any) {
 //   - ページの範囲（before より古く、次のページがあるなら最後の投稿以降）にある、見える
 //     べき（判定が真）投稿は、すべて返っていなければならない。
 //   - 投稿時刻の新しい順に並ぶ。同じ時刻の投稿の順は問わない。
-func (m *Model) CheckFeed(viewerID, feed string, before *client.Post, page client.FeedPage, r Read) FeedResult {
-	result, signatures := m.checkFeedLocked(viewerID, feed, before, page, r)
+//
+// 欠落の確認（開いている投稿期間の投稿をユーザー数に比例して調べる）と画像 URL の署名の
+// 検証は重いので、thorough のときだけ行う。返った投稿の確認は常に行う。
+func (m *Model) CheckFeed(viewerID, feed string, before *client.Post, page client.FeedPage, r Read, thorough bool) FeedResult {
+	result, signatures := m.checkFeedLocked(viewerID, feed, before, page, r, thorough)
+	if !thorough {
+		return result
+	}
 	// 署名の検証（HMAC を 1000 回）は重いので、ロックの外で、1 ページに signaturesPerPage 件
 	// だけ行う。署名の方式の誤りは数件で見つかり、ときどき誤る実装も走行中に何度も引く。
 	rand.Shuffle(len(signatures), func(i, j int) { signatures[i], signatures[j] = signatures[j], signatures[i] })
 	for _, sig := range signatures[:min(len(signatures), signaturesPerPage)] {
 		if err := imageurl.Verify(sig.url, sig.imageID, sig.secretKey, time.Now()); err != nil {
-			result.error("フィード %s: 投稿 %s の画像 URL が不正です: %v", feed, sig.postID, err)
+			result.thorough("フィード %s: 投稿 %s の画像 URL が不正です: %v", feed, sig.postID, err)
 		}
 	}
 	return result
@@ -59,11 +72,11 @@ type signature struct {
 	postID, url, imageID, secretKey string
 }
 
-func (m *Model) checkFeedLocked(viewerID, feed string, before *client.Post, page client.FeedPage, r Read) (FeedResult, []signature) {
+func (m *Model) checkFeedLocked(viewerID, feed string, before *client.Post, page client.FeedPage, r Read, thorough bool) (FeedResult, []signature) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	var result FeedResult
-	signatures := make([]signature, 0, len(page.Items))
+	var signatures []signature
 	viewer := m.users[viewerID]
 	if viewer == nil {
 		result.error("フィード %s: 閲覧者 %s を bench が知りません", feed, viewerID)
@@ -100,9 +113,14 @@ func (m *Model) checkFeedLocked(viewerID, feed string, before *client.Post, page
 			continue
 		}
 		m.checkPostContent(&result, feed, item, p, r)
-		signatures = append(signatures, signature{postID: p.ID, url: item.ImageURL, imageID: p.ImageID, secretKey: m.users[p.AuthorID].SecretKey})
+		if thorough {
+			signatures = append(signatures, signature{postID: p.ID, url: item.ImageURL, imageID: p.ImageID, secretKey: m.users[p.AuthorID].SecretKey})
+		}
 	}
 
+	if !thorough {
+		return result, nil
+	}
 	m.feedCandidates(viewer.ID, feed, r, func(p *Post) {
 		if seen[p.ID] || (before != nil && !p.PostedAt.Before(before.PostedAt)) {
 			return
@@ -111,7 +129,7 @@ func (m *Model) checkFeedLocked(viewerID, feed string, before *client.Post, page
 			return
 		}
 		if v.inFeedTri(p, feed) == True {
-			result.error("フィード %s: %s に見えるべき投稿 %s がありません", feed, viewer.Username, p.ID)
+			result.thorough("フィード %s: %s に見えるべき投稿 %s がありません", feed, viewer.Username, p.ID)
 		}
 	})
 	return result, signatures
