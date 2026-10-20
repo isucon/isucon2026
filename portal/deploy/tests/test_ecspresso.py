@@ -90,6 +90,14 @@ class EcspressoTest(unittest.TestCase):
             with self.subTest(service=service):
                 self.assertEqual(self.render(service, "servicedef")["desiredCount"], 0)
 
+    def test_standby_bot_override_keeps_workers_stopped(self):
+        for enabled in (False, True):
+            self.infra.update(standby=True, enableBot=enabled, enableBotInStandby=True)
+            (self.path / "infra.json").write_text(json.dumps(self.infra))
+            self.assertEqual(self.render("bot", "servicedef")["desiredCount"], int(enabled))
+            for service in ("worker", "notifyloop"):
+                self.assertEqual(self.render(service, "servicedef")["desiredCount"], 0)
+
     def test_create_and_update_preserve_service_defaults(self):
         for name in ("portal", "worker", "bot", "notifyloop"):
             with self.subTest(service=name):
