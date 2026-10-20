@@ -48,7 +48,7 @@ func (r *FeedResult) thorough(format string, args ...any) {
 //
 // 欠落の確認（開いている投稿期間の投稿をユーザー数に比例して調べる）と画像 URL の署名の
 // 検証は重いので、thorough のときだけ行う。返った投稿の確認は常に行う。
-func (m *Model) CheckFeed(viewerID, feed string, before *client.Post, page client.FeedPage, r Read, thorough bool) FeedResult {
+func (m *Model) CheckFeed(viewerID, feed string, before *client.FeedPost, page client.FeedPage, r Read, thorough bool) FeedResult {
 	result, signatures := m.checkFeedLocked(viewerID, feed, before, page, r, thorough)
 	if !thorough {
 		return result
@@ -72,7 +72,7 @@ type signature struct {
 	postID, url, imageID, secretKey string
 }
 
-func (m *Model) checkFeedLocked(viewerID, feed string, before *client.Post, page client.FeedPage, r Read, thorough bool) (FeedResult, []signature) {
+func (m *Model) checkFeedLocked(viewerID, feed string, before *client.FeedPost, page client.FeedPage, r Read, thorough bool) (FeedResult, []signature) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	var result FeedResult
@@ -209,7 +209,7 @@ func (m *Model) feedCandidates(viewerID, feed string, r Read, f func(*Post)) {
 	}
 }
 
-func (m *Model) checkPostContent(result *FeedResult, feed string, got client.Post, want *Post, r Read) {
+func (m *Model) checkPostContent(result *FeedResult, feed string, got client.FeedPost, want *Post, r Read) {
 	author := m.users[want.AuthorID]
 	switch {
 	case got.Author.ID != want.AuthorID || got.Author.Username != author.Username:
