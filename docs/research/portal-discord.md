@@ -66,6 +66,10 @@ Go 版には旧版の refresh token を使う定期更新処理はありませ�
 | Discord ID が未登録で、現在のセッションに有効な選手がいる | 現在の選手の Discord ID と表示名を付け替える                                       |
 | Discord ID が未登録で、選手として未ログイン               | OAuth 情報をセッションに保持して参加登録画面へ進む                                 |
 
+`Switch discord account` の通知は、未連携の選手が初めてDiscordを連携した場合にも送られます。
+この場合は変更前が `from=()` になるため、別アカウントからの変更や移行時の欠落を通知だけで判断しません。
+通知の登録はDB更新より前なので、更新の成否は現在の登録情報でも確認します。
+
 付け替え時は、旧 Discord ID の参加者ロールを外すジョブ、所属確認ジョブ、変更内容の Slack 通知を登録します。
 新しい Discord ID への参加者ロール付与は、この分岐では登録していません。
 所属確認ジョブの登録は DB の ID 更新より先なので、worker との実行順序も再連携試験の確認対象です。
@@ -201,7 +205,7 @@ Redis を切り替える場合は、使用中のサポートチャンネルを�
 | Discord アナウンス                  | 公開対象の運営アナウンスまたは質問回答の作成、更新に伴う `clarification_response` | `ISUXPORTAL_DISCORD_CHANNEL_ID`。新規か更新か、問い合わせ ID、競技ページへの URL |
 | 任意テキストの Discord 投稿         | `discord_announce` ジョブ                                                         | 同じアナウンスチャンネル。Bot の投稿 API を使用                                  |
 | SOS の Slack 通知                   | `#readme` の 🆘                                                                   | `ISUXPORTAL_SLACK_WEBHOOK_URL`。選手情報または `_unknown_`                       |
-| Discord アカウント変更の Slack 通知 | OAuth で未使用の別 ID へ付け替え                                                  | 選手 ID と変更前後の Discord ID、表示名                                          |
+| Discord アカウント変更の Slack 通知 | OAuth で未使用の ID を初回連携、または別 ID へ付け替え                                                  | 選手 ID と変更前後の Discord ID、表示名                                          |
 
 公開対象外の問い合わせ回答は、全体 Discord アナウンスの対象になりません。
 Discord アナウンスには質問本文や回答本文を転載せず、ポータルへのリンクを載せます。
