@@ -86,8 +86,8 @@ ECS の circuit breaker が旧 revision に戻した場合も、workflow は失�
 `bot` は既定 0 タスクで、`enableBot: true` と token 設定後に有効化します。
 
 移行準備中は Pulumi の `standby: true` を設定します。
-この設定では portal のみ2タスク、worker・notify・bot は0タスクになります。
-`enableBot: true` より `standby` が優先されます。
+この設定では portal は2タスク、worker と notifyloop は0タスクになります。
+Botも既定では0タスクですが、`enableBot: true` と `enableBotInStandby: true` を併用すると待機中でも1タスクで起動します。
 参加者への公開を防ぐ場合は、あわせて `environment.ISUXPORTAL_ADMIN_ONLY: "1"` を指定してください。
 切替時は最新データの取り込みと照合を終えてから、運営の判断で待機設定を解除して再デプロイします。
 
@@ -99,7 +99,7 @@ ACM の参照だけでは、インポート証明書の自動更新は有効に�
 
 タスク数は `ecspresso/service.jsonnet` の `desiredCount` で管理し、更新時にその値を適用します。
 一時的に手動スケールした値も次回デプロイで定義の値に戻ります。
-`enableBot: false` のデプロイは bot を 0 タスクに戻します。
+Botを確実に停止するときは `enableBot: false` と `enableBotInStandby: false` の両方を設定してデプロイします。
 `bot` と `notifyloop` は新旧の重複実行を避けるため、一度停止してから更新します。
 これらの desired count は 1 以下を維持してください。
 
@@ -114,6 +114,8 @@ sh portal/deploy/deploy.sh
 
 同じ環境へのローカル実行と workflow 実行を重ねないでください。
 workflow 同士は環境単位の concurrency で直列化します。
+
+本番移行時のデータ保全、DNS確認、通常稼働への切替、切り戻しは [ポータル切替手順](../../docs/research/portal-cutover.md) を参照してください。
 
 ## 更新と復旧
 
