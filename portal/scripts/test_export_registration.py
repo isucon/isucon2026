@@ -170,15 +170,44 @@ class SnapshotExportTests(unittest.TestCase):
         team_model = model("authentication.Team", team)
         user_model._base_manager.rows.append({**user, "id": 11, "team_id": 21})
         team_model._base_manager.rows.append({**team, "id": 21, "owner_id": 11})
+        coupon_model = model(
+            "authentication.RegisterCoupon",
+            dict(
+                id=1,
+                name="invitation",
+                token="synthetic",
+                team_id=20,
+                created_at=stamp,
+                updated_at=stamp,
+                used_at=None,
+            ),
+        )
+        coupon_model._base_manager.rows.append(
+            {
+                **coupon_model._base_manager.rows[0],
+                "id": 2,
+                "team_id": 21,
+                "token": "synthetic-other",
+            }
+        )
         unknown_model = SimpleNamespace(
             _base_manager=Manager([{}]), _meta=SimpleNamespace(label="contact.Ticket")
         )
         apps = SimpleNamespace(
-            get_model=lambda app, name: {"User": user_model, "Team": team_model}[name],
+            get_model=lambda app, name: {
+                "User": user_model,
+                "Team": team_model,
+                "RegisterCoupon": coupon_model,
+            }[name],
             get_app_configs=lambda: [
                 SimpleNamespace(
                     name="isucon.portal.authentication",
-                    get_models=lambda: [user_model, team_model, unknown_model],
+                    get_models=lambda: [
+                        user_model,
+                        team_model,
+                        coupon_model,
+                        unknown_model,
+                    ],
                 )
             ],
         )
@@ -237,6 +266,13 @@ class SnapshotExportTests(unittest.TestCase):
             self.assertIs(result["users"][0]["minor_parental_consent"], False)
             self.assertEqual(result["users"][0]["github_id"], "123")
             self.assertEqual(result["other"]["contact.Ticket"], 1)
+            self.assertEqual(len(result["registration_coupons"]), 1 if team_id else 2)
+            self.assertEqual(
+                result["other"]["authentication.RegisterCoupon"],
+                len(result["registration_coupons"]),
+            )
+            self.assertEqual(result["registration_coupons"][0]["token"], "synthetic")
+            self.assertIsNone(result["registration_coupons"][0]["used_at"])
             self.assertEqual(
                 (directory / "snapshot.json").stat().st_mode & 0o777, 0o600
             )

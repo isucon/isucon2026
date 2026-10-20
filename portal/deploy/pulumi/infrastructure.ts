@@ -258,18 +258,17 @@ export function createPortal(c: PortalConfig) {
       maxAgeSeconds: 600,
     }],
   }, opts);
-  const certificate = new aws.acm.Certificate(
-    c.dnsManagement === "external" ? "portal-external" : "portal",
-    {
-      domainName: c.domainName,
-      validationMethod: "DNS",
-    },
-    opts,
-  );
-  const validation = certificate.domainValidationOptions.apply((options) =>
+  const certificate = c.existingCertificateArn
+    ? undefined
+    : new aws.acm.Certificate(
+      c.dnsManagement === "external" ? "portal-external" : "portal",
+      { domainName: c.domainName, validationMethod: "DNS" },
+      opts,
+    );
+  const validation = certificate?.domainValidationOptions.apply((options) =>
     options[0]
   );
-  const validationRecord = c.dnsManagement === "route53"
+  const validationRecord = validation && c.dnsManagement === "route53"
     ? new aws.route53.Record("certificate", {
       zoneId: c.route53ZoneId,
       name: validation.resourceRecordName,
@@ -278,12 +277,18 @@ export function createPortal(c: PortalConfig) {
       ttl: 60,
     }, opts)
     : undefined;
-  const validatedCertificate = new aws.acm.CertificateValidation("portal", {
-    certificateArn: certificate.arn,
-    validationRecordFqdns: [
-      validationRecord ? validationRecord.fqdn : validation.resourceRecordName,
-    ],
-  }, opts);
+  const validatedCertificate = certificate && validation
+    ? new aws.acm.CertificateValidation("portal", {
+      certificateArn: certificate.arn,
+      validationRecordFqdns: [
+        validationRecord
+          ? validationRecord.fqdn
+          : validation.resourceRecordName,
+      ],
+    }, opts)
+    : undefined;
+  const certificateArn = validatedCertificate?.certificateArn ??
+    pulumi.output(c.existingCertificateArn);
   const alb = new aws.lb.LoadBalancer("portal", {
     name: c.name,
     loadBalancerType: "application",
@@ -321,7 +326,7 @@ export function createPortal(c: PortalConfig) {
     port: 443,
     protocol: "HTTPS",
     sslPolicy: "ELBSecurityPolicy-TLS13-1-2-2021-06",
-    certificateArn: validatedCertificate.certificateArn,
+    certificateArn,
     defaultActions: [{ type: "forward", targetGroupArn: target.arn }],
   }, opts);
   if (c.dnsManagement === "route53") {
@@ -399,7 +404,8 @@ export function createPortal(c: PortalConfig) {
           Statement: [{
             Effect: "Allow",
             Action: ["s3:GetObject"],
-            Resource: pulumi.interpolate`${configBucket.arn}/rehearsal/*`,
+            Resource: pulumi
+              .interpolate`${configBucket.arn}/rehearsal/*/snapshot.json`,
           }],
         }),
       }, opts);
@@ -554,6 +560,7 @@ export function createPortal(c: PortalConfig) {
     executionRoles,
     secretKeys: c.secretKeys,
     enableBot: c.enableBot,
+    standby: c.standby,
     environment: {
       ISUXPORTAL_ADMIN_ONLY: "1",
       ISUXPORTAL_ADMIN_LOGIN: "admin",
@@ -638,8 +645,9 @@ export function createPortal(c: PortalConfig) {
     databaseSecretArn,
     databaseEndpoint: database.endpoint,
     url: `https://${c.domainName}`,
-    certificateArn: certificate.arn,
-    certificateValidationRecords: certificate.domainValidationOptions,
+    certificateArn,
+    certificateValidationRecords: certificate?.domainValidationOptions ??
+      pulumi.output([]),
     loadBalancerDnsName: alb.dnsName,
     natPublicIps: natIps,
     vpcId: vpc.id,
