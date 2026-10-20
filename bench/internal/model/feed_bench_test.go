@@ -61,7 +61,7 @@ func BenchmarkCheckFeed(b *testing.B) {
 				b.ReportAllocs()
 				for b.Loop() {
 					now := time.Now()
-					m.checkFeedLocked(viewer, tc.feed, nil, tc.page, Read{Sent: now, Received: now, Staleness: time.Second})
+					m.checkFeedLocked(viewer, tc.feed, nil, tc.page, Read{Sent: now, Received: now, Staleness: time.Second}, true)
 				}
 			})
 		}
