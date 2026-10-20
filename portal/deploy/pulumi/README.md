@@ -129,3 +129,21 @@ expense of outbound AZ redundancy.
 CloudWatch ログの保存期間は `logRetentionDays`（既定値: `0`、無期限）で設定する。
 既存スタックに有限の日数が明示されている場合、その値は維持されるため、全ログを保持するには `0` に変更して適用する。
 ロググループには `skipDestroy` を設定し、スタック削除時にもログを残す。
+
+待機環境で Bot だけを起動する場合は、`standby: true` を維持し、
+`enableBot: true` と `enableBotInStandby: true` を設定します。
+Worker と通知ループは停止したままです。Bot のイベントが積んだジョブは
+Worker 起動後に処理されるため、本番切替時に旧環境との同期状態を確認してください。
+旧環境が同じトークンで Gateway Bot を実行していないことも確認します。
+
+### envcheck AMIの公開
+
+本番スタックで `publishEnvcheckAmi: true` を明示すると、環境変数
+`ISUXPORTAL_TEST_AMI_ID` のAMIに限り、Pulumiが `group=all` の起動許可を管理します。
+既定値はfalseです。競技用AMIは公開しません。同じAMIの公開許可を複数スタックで管理しないでください。
+
+リージョンのAMI公開ブロックが `block-new-sharing` の場合、適用操作の間だけ
+解除し、成功・失敗にかかわらず元へ戻します。これにより公開済みAMIは公開を
+維持し、新たな意図しない公開を防ぎます。AMIを変更する場合も同じ手順が必要です。
+公開後は `Public=true` と `LaunchPermissions` の `Group=all` を読み戻し、
+`pulumi preview` に差分がないことを確認してください。

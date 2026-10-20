@@ -44,6 +44,8 @@ pulumi.runtime.setMocks(
 );
 const config = {
   ...defaults,
+  publishEnvcheckAmi: true,
+  environment: { ISUXPORTAL_TEST_AMI_ID: "ami-0123456789abcdef0" },
   applicationDatabase: "rehearsal_test",
   redisDatabase: 1,
   secretKeys: [...defaults.secretKeys, "ISUXPORTAL_SLACK_WEBHOOK_URL"],
@@ -65,6 +67,20 @@ beforeAll(async () => {
   );
 });
 describe("portal infrastructure", () => {
+  test("publishes only the explicitly configured envcheck AMI", () => {
+    const permissions = ofType(
+      "aws:ec2/amiLaunchPermission:AmiLaunchPermission",
+    );
+    expect(permissions).toHaveLength(1);
+    expect(permissions[0].inputs).toMatchObject({
+      imageId: "ami-0123456789abcdef0",
+      group: "all",
+    });
+    expect(defaults.publishEnvcheckAmi).toBe(false);
+    expect(() => validateConfig({ ...config, environment: {} })).toThrow(
+      "TEST_AMI_ID",
+    );
+  });
   test("keeps ECS services and task definitions under ecspresso ownership", () => {
     expect(ofType("aws:ecs/service:Service")).toHaveLength(0);
     expect(ofType("aws:ecs/taskDefinition:TaskDefinition")).toHaveLength(0);

@@ -22,7 +22,9 @@ export const defaults = {
   auroraMinAcu: 2,
   auroraMaxAcu: 16,
   cacheNodeType: "cache.t4g.small",
+  publishEnvcheckAmi: false,
   enableBot: false,
+  enableBotInStandby: false,
   standby: false,
   existingCertificateArn: "",
   logRetentionDays: 0, // CloudWatch: never expire; explicit stack settings may override.
@@ -117,6 +119,16 @@ export function validateConfig(c: PortalConfig): PortalConfig {
       "enableBot requires ISUXPORTAL_DISCORD_BOT_TOKEN in secretKeys",
     );
   }
+  if (
+    c.publishEnvcheckAmi &&
+    !/^ami-[0-9a-f]{8}([0-9a-f]{9})?$/.test(
+      c.environment.ISUXPORTAL_TEST_AMI_ID ?? "",
+    )
+  ) {
+    throw new Error(
+      "publishEnvcheckAmi requires a valid ISUXPORTAL_TEST_AMI_ID",
+    );
+  }
   return c;
 }
 export function loadConfig(): PortalConfig {
@@ -141,7 +153,11 @@ export function loadConfig(): PortalConfig {
     auroraMinAcu: config.getNumber("auroraMinAcu") ?? defaults.auroraMinAcu,
     auroraMaxAcu: config.getNumber("auroraMaxAcu") ?? defaults.auroraMaxAcu,
     cacheNodeType: config.get("cacheNodeType") ?? defaults.cacheNodeType,
+    publishEnvcheckAmi: config.getBoolean("publishEnvcheckAmi") ??
+      defaults.publishEnvcheckAmi,
     enableBot: config.getBoolean("enableBot") ?? defaults.enableBot,
+    enableBotInStandby: config.getBoolean("enableBotInStandby") ??
+      defaults.enableBotInStandby,
     standby: config.getBoolean("standby") ?? defaults.standby,
     existingCertificateArn: config.get("existingCertificateArn") ??
       defaults.existingCertificateArn,
