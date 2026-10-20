@@ -29,6 +29,10 @@ const (
 	maxImageBytes      = 16 << 20
 	maxExportBytes     = 256 << 20
 	multipartImageName = "photo.jpg"
+	// maxIdleConnsPerUser は 1 人の端末が使い回すために残す接続の数。履歴の画像を並行に取る
+	// 接続（6 本）と通知のストリームが同時に開くので、Go の既定の 2 本では残りを閉じてしまい、
+	// 次の操作のたびに接続し直すことになる。
+	maxIdleConnsPerUser = 8
 )
 
 // RetryPolicy は 503 の再試行の仕方を決める（P-115 §6.4）。すべての
@@ -133,6 +137,7 @@ type Client struct {
 func NewTransport() *http.Transport {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.ForceAttemptHTTP2 = false
+	transport.MaxIdleConnsPerHost = maxIdleConnsPerUser
 	transport.TLSNextProto = map[string]func(string, *tls.Conn) http.RoundTripper{}
 	return transport
 }
@@ -651,12 +656,21 @@ type Notification struct {
 	Region          string `json:"region"`
 }
 
-type NotificationStream struct{ body io.ReadCloser }
+// notificationDrainTimeout は、通知を受けたストリームの残りを読み切るのを待つ上限。
+const notificationDrainTimeout = time.Second
+
+type NotificationStream struct {
+	body   io.ReadCloser
+	reader *bufio.Reader
+	cancel context.CancelFunc
+}
 
 // OpenNotifications はサーバーが購読を確立してから返る。
 func (c *Client) OpenNotifications(ctx context.Context, token string) (*NotificationStream, error) {
+	ctx, cancel := context.WithCancel(ctx)
 	req, err := c.newRequest(ctx, request{method: http.MethodGet, path: apiPrefix + "/notifications", token: token})
 	if err != nil {
+		cancel()
 		return nil, err
 	}
 	req.Header.Set("Accept", "text/event-stream")
@@ -664,26 +678,46 @@ func (c *Client) OpenNotifications(ctx context.Context, token string) (*Notifica
 	streaming.Timeout = 0
 	res, err := streaming.Do(req)
 	if err != nil {
+		cancel()
 		return nil, err
 	}
+	stream := &NotificationStream{body: res.Body, reader: bufio.NewReader(res.Body), cancel: cancel}
 	if res.StatusCode != http.StatusOK {
-		defer res.Body.Close()
-		data, _ := io.ReadAll(io.LimitReader(res.Body, maxErrorBodyBytes))
+		data, _ := io.ReadAll(io.LimitReader(stream.reader, maxErrorBodyBytes))
+		_ = stream.Close()
 		return nil, &APIError{Method: http.MethodGet, Path: apiPrefix + "/notifications", Status: res.StatusCode, Want: http.StatusOK, Code: problemCode(data)}
 	}
 	if !strings.HasPrefix(res.Header.Get("Content-Type"), "text/event-stream") {
-		res.Body.Close()
+		_ = stream.Close()
 		return nil, fmt.Errorf("通知の Content-Type が text/event-stream ではありません: %q", res.Header.Get("Content-Type"))
 	}
-	return &NotificationStream{body: res.Body}, nil
+	return stream, nil
 }
 
-func (s *NotificationStream) Close() error { return s.body.Close() }
+// Close はストリームの残りを読み切ってから閉じる。応答を最後まで読まずに閉じると、接続を
+// keep-alive で使い回せずに捨てることになる。アプリは通知を 1 件送ると応答を終えるが、
+// 終えない実装で止まらないよう、notificationDrainTimeout を過ぎたら打ち切る（その接続は捨てる）。
+func (s *NotificationStream) Close() error {
+	timer := time.AfterFunc(notificationDrainTimeout, s.cancel)
+	_, _ = io.Copy(io.Discard, io.LimitReader(s.reader, maxErrorBodyBytes))
+	timer.Stop()
+	err := s.body.Close()
+	s.cancel()
+	return err
+}
+
+// Receive は次の通知を 1 件読む。
 func (s *NotificationStream) Receive() (Notification, error) {
-	scanner := bufio.NewScanner(s.body)
 	var data []string
-	for scanner.Scan() {
-		line := scanner.Text()
+	for {
+		line, err := s.reader.ReadString('\n')
+		if err != nil && (err != io.EOF || line == "") {
+			if err == io.EOF {
+				return Notification{}, io.EOF
+			}
+			return Notification{}, err
+		}
+		line = strings.TrimRight(line, "\r\n")
 		if line == "" && len(data) > 0 {
 			var notification Notification
 			err := json.Unmarshal([]byte(strings.Join(data, "\n")), &notification)
@@ -692,11 +726,10 @@ func (s *NotificationStream) Receive() (Notification, error) {
 		if after, ok := strings.CutPrefix(line, "data:"); ok {
 			data = append(data, strings.TrimPrefix(after, " "))
 		}
+		if err == io.EOF {
+			return Notification{}, io.EOF
+		}
 	}
-	if err := scanner.Err(); err != nil {
-		return Notification{}, err
-	}
-	return Notification{}, io.EOF
 }
 
 // Image は署名付きの画像 URL を取得する。署名付き URL には Authorization
