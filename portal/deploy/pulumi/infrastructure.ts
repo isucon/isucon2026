@@ -13,6 +13,12 @@ export function createPortal(c: PortalConfig) {
     defaultTags: { tags },
   });
   const opts = { provider };
+  if (c.publishEnvcheckAmi) {
+    new aws.ec2.AmiLaunchPermission("envcheck-public", {
+      imageId: c.environment.ISUXPORTAL_TEST_AMI_ID,
+      group: "all",
+    }, opts);
+  }
   const account = aws.getCallerIdentityOutput({}, opts).accountId;
   const vpc = new aws.ec2.Vpc("portal", {
     cidrBlock: c.vpcCidr,
@@ -560,6 +566,7 @@ export function createPortal(c: PortalConfig) {
     executionRoles,
     secretKeys: c.secretKeys,
     enableBot: c.enableBot,
+    enableBotInStandby: c.enableBotInStandby,
     standby: c.standby,
     environment: {
       ISUXPORTAL_ADMIN_ONLY: "1",
