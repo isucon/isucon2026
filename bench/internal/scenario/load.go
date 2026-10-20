@@ -154,24 +154,27 @@ func (r *Runner) listen(ctx context.Context, user *agent.Agent, out chan client.
 			continue
 		}
 		n, err := stream.Receive()
+		valid := err == nil && n.ID != "" && n.PostingWindowID != "" && n.Region == user.Region
+		if valid {
+			r.board.Add(score.TagNotification)
+			// 古い通知が残っていれば新しい通知で置き換える。
+			select {
+			case <-out:
+			default:
+			}
+			out <- n
+		}
+		// 残りを読み切って接続を使い回す。応答を終えない実装でも通知を待たせないよう、
+		// 通知を渡してから閉じる。
 		_ = stream.Close()
 		switch {
 		case err != nil:
 			if time.Since(opened) < time.Second {
 				_ = sleepUntil(ctx, opened.Add(time.Second))
 			}
-			continue
-		case n.ID == "" || n.PostingWindowID == "" || n.Region != user.Region:
+		case !valid:
 			r.invalid(ctx, user.Region, "%s: 通知の内容が不正です（リージョン %s）", user.Username, n.Region)
-			continue
 		}
-		r.board.Add(score.TagNotification)
-		// 古い通知が残っていれば新しい通知で置き換える。
-		select {
-		case <-out:
-		default:
-		}
-		out <- n
 	}
 }
 
