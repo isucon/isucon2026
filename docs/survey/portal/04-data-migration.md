@@ -2,6 +2,9 @@
 
 調査日: 2026-08-21。
 
+以下はRails版を候補としていた時点の調査です。
+採用したGo版の移行範囲と切替手順は [ポータル切替手順](../../research/portal-cutover.md) を参照してください。
+
 `isucon2026-portal`（Django / TiDB）は**すでに本番稼働している**。
 `deploy-prod.yml` が `app-001.portal.isucon.net` / `app-002.portal.isucon.net` の
 2 台にローリングアップデートしており、登録開始は 2026-07-28、
