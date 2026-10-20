@@ -192,7 +192,8 @@ func (r *Runner) enterWindow(ctx context.Context, user *agent.Agent, windowID st
 	if !ok {
 		return nil, previous
 	}
-	if _, ok := r.readFeed(ctx, user, "friends", nil); ok {
+	// ゲート通過は大きな得点なので、欠落もいつも確かめる（friends の候補は索引で引けて軽い）。
+	if _, ok := r.readFeed(ctx, user, "friends", nil, 1); ok {
 		r.board.Add(score.TagGatePass)
 	}
 	return &session{windowID: windowID}, &post
@@ -208,11 +209,11 @@ func (r *Runner) browse(ctx context.Context, user *agent.Agent, s *session) {
 		r.readHistory(ctx, user)
 	}
 	feed := feeds[rand.IntN(len(feeds))]
-	page, ok := r.readFeed(ctx, user, feed, nil)
+	page, ok := r.readFeed(ctx, user, feed, nil, r.sample())
 	// 続きがあれば、ときどき次のページも読む（スクロール）。
 	for ok && page.HasMore && len(page.Items) > 0 && rand.Float64() < nextPageRate {
 		last := page.Items[len(page.Items)-1]
-		page, ok = r.readFeed(ctx, user, feed, &last)
+		page, ok = r.readFeed(ctx, user, feed, &last, r.sample())
 	}
 	if !ok {
 		return
@@ -319,16 +320,18 @@ func (r *Runner) post(ctx context.Context, user *agent.Agent, windowID string) (
 }
 
 // checkImage は投稿の画像 URL が投稿者の署名したものであり、中身が投稿した画像と一致する
-// ことを確かめる。
+// ことを確かめる。署名の検証（HMAC を 1000 回）は重いので、sample で選んだときだけ行う。
 func (r *Runner) checkImage(ctx context.Context, user *agent.Agent, post client.Post) bool {
 	author := r.model.User(post.Author.ID)
 	if author == nil {
 		r.invalid(ctx, user.Region, "%s: 投稿 %s の投稿者を bench が知りません", user.Username, post.ID)
 		return false
 	}
-	if err := imageurl.Verify(post.ImageURL, imageurl.ImageID(post.ImageURL), author.SecretKey, time.Now()); err != nil {
-		r.invalid(ctx, user.Region, "%s: 投稿 %s の画像 URL が不正です: %v", user.Username, post.ID, err)
-		return false
+	if weight := r.sample(); weight > 0 {
+		if err := imageurl.Verify(post.ImageURL, imageurl.ImageID(post.ImageURL), author.SecretKey, time.Now()); err != nil {
+			r.invalidN(ctx, user.Region, weight, "%s: 投稿 %s の画像 URL が不正です: %v", user.Username, post.ID, err)
+			return false
+		}
 	}
 	// 削除された投稿の画像は取得できない。取得している間に削除されることもあるので、
 	// 403 は、その区間で投稿が確実に残っていた場合だけエラーにする。
@@ -358,22 +361,26 @@ func (r *Runner) checkImage(ctx context.Context, user *agent.Agent, post client.
 }
 
 // readFeed はフィードの before より古い投稿のページ（before が nil なら最初のページ）を読み、
-// モデルで検証する。検証に通れば true。
-func (r *Runner) readFeed(ctx context.Context, user *agent.Agent, feed string, before *client.Post) (client.FeedPage, bool) {
+// モデルで検証する。検証に通れば true。weight が正なら欠落と署名も確かめ（thorough）、それで
+// 見つけた失敗 1 件をエラー率に weight 件として数える。
+func (r *Runner) readFeed(ctx context.Context, user *agent.Agent, feed string, before *client.Post, weight int64) (client.FeedPage, bool) {
 	sent := time.Now()
 	page, err := user.API.Feed(ctx, user.Token, feed, before)
 	if err != nil {
 		r.requestError(ctx, "%s: フィード %s を取得できません: %v", user.Username, feed, err)
 		return page, false
 	}
-	result := r.model.CheckFeed(user.ID, feed, before, page, r.model.ReadBetween(sent, time.Now()))
+	result := r.model.CheckFeed(user.ID, feed, before, page, r.model.ReadBetween(sent, time.Now()), weight > 0)
 	for _, violation := range result.Violations {
 		r.board.Criticalf("%s: %s", user.Username, violation)
 	}
 	for _, message := range result.Errors {
 		r.invalid(ctx, user.Region, "%s: %s", user.Username, message)
 	}
-	return page, len(result.Violations)+len(result.Errors) == 0
+	for _, message := range result.Thorough {
+		r.invalidN(ctx, user.Region, weight, "%s: %s", user.Username, message)
+	}
+	return page, len(result.Violations)+len(result.Errors)+len(result.Thorough) == 0
 }
 
 // react は RealMoji を送る。送ってよいとモデルが判定した投稿にだけ送る。送っている間に
@@ -430,7 +437,7 @@ func (r *Runner) comment(ctx context.Context, user *agent.Agent, post client.Pos
 func (r *Runner) readHistory(ctx context.Context, user *agent.Agent) {
 	months := r.initial.HistoryMonths()
 	month := months[rand.IntN(len(months))]
-	err := r.initial.CheckMemories(ctx, user, month, func(p client.Post) bool { return r.model.HasWindow(p.PostingWindowID) }, r.historyImages)
+	err := r.initial.CheckMemories(ctx, user, month, func(p client.Post) bool { return r.model.HasWindow(p.PostingWindowID) }, r.historyImages, r.sample() > 0)
 	r.recordHistory(ctx, user, err)
 }
 

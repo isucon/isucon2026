@@ -75,7 +75,7 @@ func TestViolation(t *testing.T) {
 		t.Fatalf("unexpected violation: %s", reason)
 	}
 	// 検証の失敗は観測窓 1 の分子に足される。
-	recorder.AddFailure("europe", start.Add(7*time.Second))
+	recorder.AddFailure("europe", start.Add(7*time.Second), 1)
 	if reason := recorder.Violation(slo, 1); reason != "" {
 		t.Fatalf("open window must not be judged: %s", reason)
 	}
