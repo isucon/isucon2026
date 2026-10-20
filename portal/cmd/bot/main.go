@@ -66,7 +66,7 @@ func run() error {
 	dg.AddHandler(b.onMessage)
 
 	if a.Cfg.Discord.SupportThreadParentID != "" {
-		b.channelPolicy = &supportthread.DiscordAPI{Session: dg, GuildID: a.Cfg.Discord.ServerID, ParentID: a.Cfg.Discord.SupportThreadParentID, AdminRoleID: a.Cfg.Discord.AdminRoleID, CommandChannelID: a.Cfg.Discord.SupportThreadCommandChannelID}
+		b.channelPolicy = &supportthread.DiscordAPI{ContestStart: a.Cfg.Timing.ContestStart, Session: dg, GuildID: a.Cfg.Discord.ServerID, ParentID: a.Cfg.Discord.SupportThreadParentID, AdminRoleID: a.Cfg.Discord.AdminRoleID, CommandChannelID: a.Cfg.Discord.SupportThreadCommandChannelID}
 		b.threads = &supportthread.Service{DB: a.DB, Discord: b.channelPolicy}
 	}
 

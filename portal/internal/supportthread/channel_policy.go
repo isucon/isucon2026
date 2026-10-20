@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"slices"
 	"sort"
+	"time"
 
 	"github.com/bwmarrin/discordgo"
 )
@@ -42,6 +43,13 @@ func (d *DiscordAPI) channelOverwrites(current []*discordgo.PermissionOverwrite,
 		everyoneAllow = 0
 		operatorAllow = viewHistory | discordgo.PermissionSendMessages
 		botAllow = operatorAllow
+	}
+	now := time.Now()
+	if d.now != nil {
+		now = d.now()
+	}
+	if d.ContestStart == nil || now.Before(*d.ContestStart) {
+		everyoneAllow = 0
 	}
 	set(d.GuildID, discordgo.PermissionOverwriteTypeRole, everyoneAllow, supportChannelPermissions&^everyoneAllow, supportChannelPermissions)
 	set(d.AdminRoleID, discordgo.PermissionOverwriteTypeRole, operatorAllow, supportChannelPermissions&^operatorAllow, supportChannelPermissions)
