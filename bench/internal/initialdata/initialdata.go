@@ -175,6 +175,8 @@ type userCheck struct {
 	images           []imageFetch
 	sampleSignatures bool
 	signatures       []signatureCheck
+	// skipContents なら画像の中身を取得するだけで、初期データと比べない。
+	skipContents bool
 }
 
 // sampledSignatures は、負荷走行で履歴を 1 か月読むたびに確かめる署名の数。署名（HMAC を
@@ -232,7 +234,7 @@ func (u *userCheck) fetchImages(ctx context.Context) error {
 		wg.Go(func() {
 			defer func() { <-slots }()
 			data, err := u.a.API.Image(ctx, fetch.url)
-			if err == nil && !bytes.Equal(data, u.world.ImageBytes(fetch.image)) {
+			if err == nil && !u.skipContents && !bytes.Equal(data, u.world.ImageBytes(fetch.image)) {
 				err = fmt.Errorf("画像 %s の中身が初期データと違います", fetch.image.ID)
 			}
 			if err != nil {
@@ -336,13 +338,18 @@ func (c *Checker) HistoryMonths() []time.Time {
 // 0 なら画像の署名をすべて確かめ、中身もすべて取得して比べる。images が正なら、署名は無作為に
 // 選んだ sampledSignatures 件、中身は無作為に選んだ images 枚だけを確かめる（負荷走行用）。
 // 負荷走行で作られた投稿（isNew が true）は比べない。
-func (c *Checker) CheckMemories(ctx context.Context, a *agent.Agent, month time.Time, isNew func(client.Post) bool, images int) error {
-	u := &userCheck{Checker: c, a: a, sampleSignatures: images > 0}
+//
+// thorough でなければ、画像の署名と中身（期待する JPEG を作るのが重い）は確かめず、中身の
+// 取得だけを行う。Memories の投稿、RealMoji、コメントは常に比べる。
+func (c *Checker) CheckMemories(ctx context.Context, a *agent.Agent, month time.Time, isNew func(client.Post) bool, images int, thorough bool) error {
+	u := &userCheck{Checker: c, a: a, sampleSignatures: images > 0 || !thorough, skipContents: !thorough}
 	if err := u.checkMonth(ctx, month, isNew); err != nil {
 		return err
 	}
-	if err := u.verifySampled(); err != nil {
-		return err
+	if thorough {
+		if err := u.verifySampled(); err != nil {
+			return err
+		}
 	}
 	if images > 0 && len(u.images) > images {
 		rand.Shuffle(len(u.images), func(i, j int) { u.images[i], u.images[j] = u.images[j], u.images[i] })

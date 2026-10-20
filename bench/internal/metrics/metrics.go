@@ -148,12 +148,13 @@ func (r *Recorder) Observe(record client.Record) {
 	}
 }
 
-// AddFailure は、HTTP としては成功したがレスポンスの検証に失敗した操作を数える。
-// 操作自体は分母に数え済みなので、分子にだけ足す。
-func (r *Recorder) AddFailure(region string, at time.Time) {
+// AddFailure は、HTTP としては成功したがレスポンスの検証に失敗した操作を n 件として数える。
+// 操作自体は分母に数え済みなので、分子にだけ足す。一部の操作だけを検証するときは、
+// 検証する割合の逆数を n にして、エラー率の期待値を全件を検証したときとそろえる。
+func (r *Recorder) AddFailure(region string, at time.Time, n int64) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.bucket(at, region).failures++
+	r.bucket(at, region).failures += n
 }
 
 // Stats は 1 つの観測窓における 1 リージョン（Region が "" なら全リージョン）の

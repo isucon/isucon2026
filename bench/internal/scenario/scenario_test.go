@@ -72,6 +72,7 @@ type fakeApp struct {
 	pageSize     int                                  // フィードの 1 ページの件数（0 なら 50）
 	keepDeleted  bool                                 // 削除した投稿を Memories に残す不具合
 	losePosts    bool                                 // 投稿を Memories から失う不具合
+	dropFeeds    bool                                 // ゲート通過のあとのフィードを空で返す不具合
 	notify       func(region, windowID string) string // 通知の中身
 }
 
@@ -295,6 +296,8 @@ func (a *fakeApp) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		respond(http.StatusOK, map[string]any{"items": items, "hasMore": false})
+	case path[0] == "feeds" && a.dropFeeds && path[1] != "friends":
+		respond(http.StatusOK, map[string]any{"items": []client.Post{}, "hasMore": false})
 	case path[0] == "feeds":
 		size := cmp.Or(a.pageSize, 50)
 		var before time.Time
@@ -426,8 +429,10 @@ func newTestRunner(t *testing.T, usersPerRegion int, slo metrics.SLO) (*Runner, 
 		SLO:      slo,
 		Retry:    client.RetryPolicy{MaxRetries: 1, Base: time.Millisecond, MaxWait: time.Millisecond},
 		Ratchet:  testRatchet,
-		Dataset:  tinyDataset,
-		Logger:   slog.New(slog.NewTextHandler(io.Discard, nil)),
+		// 偽のアプリとモデルの食い違いを見逃さないよう、テストではすべて検証する。
+		VerifyRate: 1,
+		Dataset:    tinyDataset,
+		Logger:     slog.New(slog.NewTextHandler(io.Discard, nil)),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -637,9 +642,56 @@ func TestCanceledRunFails(t *testing.T) {
 }
 
 func TestConfiguration(t *testing.T) {
-	for _, cfg := range []Config{{Users: 0}, {Users: 1, Duration: -time.Second}} {
+	for _, cfg := range []Config{{Users: 0}, {Users: 1, Duration: -time.Second}, {Users: 1, VerifyRate: -0.1}, {Users: 1, VerifyRate: 1.5}} {
 		if _, err := NewRunner(cfg); err == nil {
 			t.Errorf("accepted %+v", cfg)
 		}
+	}
+	runner, err := NewRunner(Config{Users: 1, Dataset: tinyDataset})
+	if err != nil || runner.verifyRate != DefaultVerifyRate {
+		t.Fatalf("verifyRate=%v err=%v, want default %v", runner.verifyRate, err, DefaultVerifyRate)
+	}
+}
+
+// TestSampleWeight は、重い検証を verifyRate の割合で選び、選んだ検証の失敗を割合の逆数の
+// 件数として数えることを確かめる。
+func TestSampleWeight(t *testing.T) {
+	runner := &Runner{verifyRate: 0.25}
+	sampled := 0
+	for range 10000 {
+		switch w := runner.sample(); w {
+		case 0:
+		case 4:
+			sampled++
+		default:
+			t.Fatalf("weight=%d, want 0 or 4", w)
+		}
+	}
+	if sampled < 2200 || sampled > 2800 {
+		t.Fatalf("sampled %d of 10000, want about 2500", sampled)
+	}
+	runner.verifyRate = 1
+	if w := runner.sample(); w != 1 {
+		t.Fatalf("weight=%d with rate 1, want 1", w)
+	}
+}
+
+// TestSampledMissingPostsKeepErrorRate は、欠落の確認を一部の読み取りだけで行うとき、
+// 見つけた欠落を割合の逆数の件数としてエラー率に数えることを確かめる。
+func TestSampledMissingPostsKeepErrorRate(t *testing.T) {
+	runner, app := newTestRunner(t, 2, metrics.SLO{FailRate: 1000, MinOps: 1})
+	runner.verifyRate = 0.1
+	runner.visibility = func() string { return "public" }
+	app.dropFeeds = true
+	runner.load(t.Context())
+	var failures int64
+	for _, window := range runner.recorder.Windows() {
+		for _, stats := range runner.recorder.Regions(window) {
+			failures += stats.Failures
+		}
+	}
+	errors := runner.board.ErrorCount()
+	if errors == 0 || failures != 10*errors {
+		t.Fatalf("failures=%d errors=%d, want each missing post counted 10 times", failures, errors)
 	}
 }
