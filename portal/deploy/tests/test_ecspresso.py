@@ -82,6 +82,32 @@ class EcspressoTest(unittest.TestCase):
         )
         self.assertEqual(service["loadBalancers"][0]["containerPort"], 8081)
 
+    def test_standby_runs_only_portal_even_with_bot_enabled(self):
+        self.infra.update(standby=True, enableBot=True)
+        (self.path / "infra.json").write_text(json.dumps(self.infra))
+        self.assertEqual(self.render("portal", "servicedef")["desiredCount"], 2)
+        for service in ("worker", "notifyloop", "bot"):
+            with self.subTest(service=service):
+                self.assertEqual(self.render(service, "servicedef")["desiredCount"], 0)
+
+    def test_create_and_update_preserve_service_defaults(self):
+        for name in ("portal", "worker", "bot", "notifyloop"):
+            with self.subTest(service=name):
+                service = self.render(name, "servicedef")
+                self.assertEqual(
+                    service["availabilityZoneRebalancing"],
+                    "DISABLED" if name in ("bot", "notifyloop") else "ENABLED",
+                )
+                self.assertEqual(service["propagateTags"], "NONE")
+                self.assertEqual(
+                    service["healthCheckGracePeriodSeconds"],
+                    60 if name == "portal" else 0,
+                )
+                self.assertEqual(
+                    self.render(name, "taskdef")["volumes"],
+                    [{"name": "tmp", "host": {}}],
+                )
+
     def test_migration_only_has_database_secrets(self):
         task = self.render("migrate", "taskdef")
         self.assertEqual(task["containerDefinitions"][0]["command"], ["migrate"])

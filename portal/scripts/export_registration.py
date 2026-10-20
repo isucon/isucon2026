@@ -27,6 +27,15 @@ USER_FIELDS = (
     "minor_parental_consent",
     "icon",
 )
+REGISTRATION_COUPON_FIELDS = (
+    "id",
+    "name",
+    "token",
+    "team_id",
+    "created_at",
+    "updated_at",
+    "used_at",
+)
 TEAM_FIELDS = (
     "id",
     "owner_id",
@@ -108,6 +117,7 @@ def export():
     base_url = os.environ["PORTAL_AVATAR_BASE_URL"]
     user_model = apps.get_model("authentication", "User")
     team_model = apps.get_model("authentication", "Team")
+    coupon_model = apps.get_model("authentication", "RegisterCoupon")
     if connection.vendor != "mysql":
         raise ValueError("export requires the Django MySQL/TiDB source")
     # Use a SELECT-only credential as an additional safeguard. Do not call model.save().
@@ -128,6 +138,7 @@ def export():
         for model, selected, ignored in (
             (user_model, USER_FIELDS, known_ignored),
             (team_model, TEAM_FIELDS, {"password", "envcheck_token"}),
+            (coupon_model, REGISTRATION_COUPON_FIELDS, set()),
         ):
             unknown = (
                 {field.attname for field in model._meta.concrete_fields}
@@ -176,6 +187,13 @@ def export():
             for model in app.get_models():
                 if model not in (user_model, team_model):
                     other[model._meta.label] = model._base_manager.count()
+        coupon_query = coupon_model._base_manager
+        if team_id is not None:
+            coupon_query = coupon_query.filter(team_id=team_id)
+        registration_coupons = list(
+            coupon_query.order_by("id").values(*REGISTRATION_COUPON_FIELDS)
+        )
+        other["authentication.RegisterCoupon"] = len(registration_coupons)
         avatars = {}
         storage = user_model._meta.get_field("icon").storage
         for user in users:
@@ -191,6 +209,7 @@ def export():
                 )
         snapshot = {
             "version": 1,
+            "registration_coupons": registration_coupons,
             "users": users,
             "teams": teams,
             "other": other,
