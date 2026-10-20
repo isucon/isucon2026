@@ -66,6 +66,11 @@ test("standby reuses an existing certificate without DNS or certificate changes"
       r.type === "aws:acm/certificateValidation:CertificateValidation"
     ),
   ).toHaveLength(0);
+  expect(
+    resources.filter((r) =>
+      r.type === "aws:ec2/amiLaunchPermission:AmiLaunchPermission"
+    ),
+  ).toHaveLength(0);
   const listener = resources.find((r) =>
     r.type === "aws:lb/listener:Listener" && r.name === "https"
   )!;
