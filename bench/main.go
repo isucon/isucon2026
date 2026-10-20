@@ -75,6 +75,7 @@ func run(parent context.Context, args []string, stdout, stderr io.Writer) int {
 	scale := flags.String("scale", "small", "scale of the initial data in the target DB: small or large (must match datagen -scale)")
 	timeout := flags.Duration("timeout", 140*time.Second, "overall benchmark deadline; supervisor hard timeout must be longer")
 	postValidation := flags.Bool("only-post-validation", false, "reserved: report unsupported without initializing the application")
+	verifyRate := flags.Float64("verify-rate", scenario.DefaultVerifyRate, "fraction of load-phase operations that get heavy verification, in (0, 1] (env ISUXBENCH_VERIFY_RATE)")
 	cpuProfile := flags.String("cpuprofile", "", "write a CPU profile of the whole run to this file")
 	memProfile := flags.String("memprofile", "", "write an allocation profile to this file at the end of the run")
 	report := func(result scenario.Result, finished bool, reason string) error {
@@ -98,6 +99,11 @@ func run(parent context.Context, args []string, stdout, stderr io.Writer) int {
 		}
 		return code
 	}
+	if value := os.Getenv("ISUXBENCH_VERIFY_RATE"); value != "" {
+		if err := flags.Set("verify-rate", value); err != nil {
+			return fail("invalid ISUXBENCH_VERIFY_RATE", 2)
+		}
+	}
 	if err := flags.Parse(args); err != nil {
 		if err == flag.ErrHelp {
 			return 0
@@ -105,7 +111,7 @@ func run(parent context.Context, args []string, stdout, stderr io.Writer) int {
 		return fail("invalid benchmark arguments", 2)
 	}
 	datasetConfig, ok := map[string]func() dataset.Config{"small": dataset.Small, "large": dataset.Large}[*scale]
-	if flags.NArg() != 0 || *users < 1 || *duration <= 0 || *timeout <= 0 || !ok {
+	if flags.NArg() != 0 || *users < 1 || *duration <= 0 || *timeout <= 0 || !ok || !(*verifyRate > 0 && *verifyRate <= 1) {
 		return fail("invalid benchmark arguments", 2)
 	}
 	if *postValidation {
@@ -130,7 +136,7 @@ func run(parent context.Context, args []string, stdout, stderr io.Writer) int {
 	defer cancel()
 	var reportErr error
 	runner, err := scenario.NewRunner(scenario.Config{
-		Target: normalized, Host: *host, Users: *users, Duration: *duration,
+		Target: normalized, Host: *host, Users: *users, Duration: *duration, VerifyRate: *verifyRate,
 		Dataset: dataset.Generate(datasetConfig()), Logger: progressLogger,
 		OnProgress: func(result scenario.Result) {
 			if reportErr != nil {

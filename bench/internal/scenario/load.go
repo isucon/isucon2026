@@ -154,24 +154,27 @@ func (r *Runner) listen(ctx context.Context, user *agent.Agent, out chan client.
 			continue
 		}
 		n, err := stream.Receive()
+		valid := err == nil && n.ID != "" && n.PostingWindowID != "" && n.Region == user.Region
+		if valid {
+			r.board.Add(score.TagNotification)
+			// 古い通知が残っていれば新しい通知で置き換える。
+			select {
+			case <-out:
+			default:
+			}
+			out <- n
+		}
+		// 残りを読み切って接続を使い回す。応答を終えない実装でも通知を待たせないよう、
+		// 通知を渡してから閉じる。
 		_ = stream.Close()
 		switch {
 		case err != nil:
 			if time.Since(opened) < time.Second {
 				_ = sleepUntil(ctx, opened.Add(time.Second))
 			}
-			continue
-		case n.ID == "" || n.PostingWindowID == "" || n.Region != user.Region:
+		case !valid:
 			r.invalid(ctx, user.Region, "%s: 通知の内容が不正です（リージョン %s）", user.Username, n.Region)
-			continue
 		}
-		r.board.Add(score.TagNotification)
-		// 古い通知が残っていれば新しい通知で置き換える。
-		select {
-		case <-out:
-		default:
-		}
-		out <- n
 	}
 }
 
@@ -192,7 +195,8 @@ func (r *Runner) enterWindow(ctx context.Context, user *agent.Agent, windowID st
 	if !ok {
 		return nil, previous
 	}
-	if _, ok := r.readFeed(ctx, user, "friends", nil); ok {
+	// ゲート通過は大きな得点なので、欠落もいつも確かめる（friends の候補は索引で引けて軽い）。
+	if _, ok := r.readFeed(ctx, user, "friends", nil, 1); ok {
 		r.board.Add(score.TagGatePass)
 	}
 	return &session{windowID: windowID}, &post
@@ -208,11 +212,11 @@ func (r *Runner) browse(ctx context.Context, user *agent.Agent, s *session) {
 		r.readHistory(ctx, user)
 	}
 	feed := feeds[rand.IntN(len(feeds))]
-	page, ok := r.readFeed(ctx, user, feed, nil)
+	page, ok := r.readFeed(ctx, user, feed, nil, r.sample())
 	// 続きがあれば、ときどき次のページも読む（スクロール）。
 	for ok && page.HasMore && len(page.Items) > 0 && rand.Float64() < nextPageRate {
 		last := page.Items[len(page.Items)-1]
-		page, ok = r.readFeed(ctx, user, feed, &last)
+		page, ok = r.readFeed(ctx, user, feed, &last, r.sample())
 	}
 	if !ok {
 		return
@@ -221,7 +225,7 @@ func (r *Runner) browse(ctx context.Context, user *agent.Agent, s *session) {
 		s.feeds++
 		r.board.Add(score.TagFeed)
 	}
-	var candidates []client.Post
+	var candidates []client.FeedPost
 	for _, post := range page.Items {
 		if r.model.Post(post.ID) != nil {
 			candidates = append(candidates, post)
@@ -283,7 +287,7 @@ func (r *Runner) post(ctx context.Context, user *agent.Agent, windowID string) (
 		ID: post.ID, AuthorID: user.ID, WindowID: post.PostingWindowID, ImageID: imageurl.ImageID(post.ImageURL),
 		Caption: post.Caption, PostedAt: post.PostedAt,
 	}, visibility)
-	if !r.checkImage(ctx, user, post) {
+	if !r.checkImage(ctx, user, post.FeedPost()) {
 		return client.Post{}, false
 	}
 	r.board.Add(score.TagImage)
@@ -319,16 +323,18 @@ func (r *Runner) post(ctx context.Context, user *agent.Agent, windowID string) (
 }
 
 // checkImage は投稿の画像 URL が投稿者の署名したものであり、中身が投稿した画像と一致する
-// ことを確かめる。
-func (r *Runner) checkImage(ctx context.Context, user *agent.Agent, post client.Post) bool {
+// ことを確かめる。署名の検証（HMAC を 1000 回）は重いので、sample で選んだときだけ行う。
+func (r *Runner) checkImage(ctx context.Context, user *agent.Agent, post client.FeedPost) bool {
 	author := r.model.User(post.Author.ID)
 	if author == nil {
 		r.invalid(ctx, user.Region, "%s: 投稿 %s の投稿者を bench が知りません", user.Username, post.ID)
 		return false
 	}
-	if err := imageurl.Verify(post.ImageURL, imageurl.ImageID(post.ImageURL), author.SecretKey, time.Now()); err != nil {
-		r.invalid(ctx, user.Region, "%s: 投稿 %s の画像 URL が不正です: %v", user.Username, post.ID, err)
-		return false
+	if weight := r.sample(); weight > 0 {
+		if err := imageurl.Verify(post.ImageURL, imageurl.ImageID(post.ImageURL), author.SecretKey, time.Now()); err != nil {
+			r.invalidN(ctx, user.Region, weight, "%s: 投稿 %s の画像 URL が不正です: %v", user.Username, post.ID, err)
+			return false
+		}
 	}
 	// 削除された投稿の画像は取得できない。取得している間に削除されることもあるので、
 	// 403 は、その区間で投稿が確実に残っていた場合だけエラーにする。
@@ -358,28 +364,32 @@ func (r *Runner) checkImage(ctx context.Context, user *agent.Agent, post client.
 }
 
 // readFeed はフィードの before より古い投稿のページ（before が nil なら最初のページ）を読み、
-// モデルで検証する。検証に通れば true。
-func (r *Runner) readFeed(ctx context.Context, user *agent.Agent, feed string, before *client.Post) (client.FeedPage, bool) {
+// モデルで検証する。検証に通れば true。weight が正なら欠落と署名も確かめ（thorough）、それで
+// 見つけた失敗 1 件をエラー率に weight 件として数える。
+func (r *Runner) readFeed(ctx context.Context, user *agent.Agent, feed string, before *client.FeedPost, weight int64) (client.FeedPage, bool) {
 	sent := time.Now()
 	page, err := user.API.Feed(ctx, user.Token, feed, before)
 	if err != nil {
 		r.requestError(ctx, "%s: フィード %s を取得できません: %v", user.Username, feed, err)
 		return page, false
 	}
-	result := r.model.CheckFeed(user.ID, feed, before, page, r.model.ReadBetween(sent, time.Now()))
+	result := r.model.CheckFeed(user.ID, feed, before, page, r.model.ReadBetween(sent, time.Now()), weight > 0)
 	for _, violation := range result.Violations {
 		r.board.Criticalf("%s: %s", user.Username, violation)
 	}
 	for _, message := range result.Errors {
 		r.invalid(ctx, user.Region, "%s: %s", user.Username, message)
 	}
-	return page, len(result.Violations)+len(result.Errors) == 0
+	for _, message := range result.Thorough {
+		r.invalidN(ctx, user.Region, weight, "%s: %s", user.Username, message)
+	}
+	return page, len(result.Violations)+len(result.Errors)+len(result.Thorough) == 0
 }
 
 // react は RealMoji を送る。送ってよいとモデルが判定した投稿にだけ送る。送っている間に
 // 投稿が見えなくなることもあるので、結果の正否は送った区間でのモデルの判定と比べる。
 // 見えるはずなのに拒否されたらエラー、見えないはずなのに受け付けられたら違反。送れたら true。
-func (r *Runner) react(ctx context.Context, user *agent.Agent, post client.Post, reactionType string) bool {
+func (r *Runner) react(ctx context.Context, user *agent.Agent, post client.FeedPost, reactionType string) bool {
 	sent := time.Now()
 	if r.model.CanView(user.ID, post.ID, r.model.ReadBetween(sent, sent)) != model.True {
 		return false
@@ -402,7 +412,7 @@ func (r *Runner) react(ctx context.Context, user *agent.Agent, post client.Post,
 }
 
 // comment はコメントを送る。送る条件と結果の正否は react と同じく判定する。送れたら true。
-func (r *Runner) comment(ctx context.Context, user *agent.Agent, post client.Post, body string) bool {
+func (r *Runner) comment(ctx context.Context, user *agent.Agent, post client.FeedPost, body string) bool {
 	sent := time.Now()
 	if r.model.CanComment(user.ID, post.ID, r.model.ReadBetween(sent, sent)) != model.True {
 		return false
@@ -430,7 +440,7 @@ func (r *Runner) comment(ctx context.Context, user *agent.Agent, post client.Pos
 func (r *Runner) readHistory(ctx context.Context, user *agent.Agent) {
 	months := r.initial.HistoryMonths()
 	month := months[rand.IntN(len(months))]
-	err := r.initial.CheckMemories(ctx, user, month, func(p client.Post) bool { return r.model.HasWindow(p.PostingWindowID) }, r.historyImages)
+	err := r.initial.CheckMemories(ctx, user, month, func(p client.Post) bool { return r.model.HasWindow(p.PostingWindowID) }, r.historyImages, r.sample() > 0)
 	r.recordHistory(ctx, user, err)
 }
 

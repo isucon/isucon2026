@@ -97,7 +97,7 @@ func (r *Runner) revisit(ctx context.Context, user *agent.Agent, month time.Time
 		}
 		return
 	}
-	err := r.initial.CheckMemories(ctx, user, month, func(client.Post) bool { return false }, r.historyImages)
+	err := r.initial.CheckMemories(ctx, user, month, func(client.Post) bool { return false }, r.historyImages, r.sample() > 0)
 	r.recordHistory(ctx, user, err)
 }
 
