@@ -14,6 +14,8 @@ import (
 )
 
 type DiscordAPI struct {
+	ContestStart                                     *time.Time
+	now                                              func() time.Time
 	Session                                          *discordgo.Session
 	GuildID, ParentID, AdminRoleID, CommandChannelID string
 	policyMu                                         sync.Mutex

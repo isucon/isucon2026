@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/bwmarrin/discordgo"
 )
@@ -48,7 +49,8 @@ func TestChannelPolicyRepairsDriftAndIsIdempotent(t *testing.T) {
 		raw, _ := json.Marshal(ch)
 		return string(raw)
 	})
-	d := DiscordAPI{Session: s, GuildID: "guild", ParentID: "parent", CommandChannelID: "commands", AdminRoleID: "ops"}
+	past := time.Unix(0, 0)
+	d := DiscordAPI{Session: s, GuildID: "guild", ParentID: "parent", CommandChannelID: "commands", AdminRoleID: "ops", ContestStart: &past}
 	if err := d.ReconcileChannels(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -135,4 +137,59 @@ func TestChannelPolicyReturnsRepairFailure(t *testing.T) {
 	if err := d.ReconcileChannels(context.Background()); err == nil {
 		t.Fatal("failed repair was accepted")
 	}
+}
+
+func TestChannelPolicyContestOpening(t *testing.T) {
+	start := time.Date(2026, 10, 31, 10, 0, 0, 0, time.FixedZone("JST", 9*3600))
+	now := start.Add(-time.Nanosecond)
+	channels := map[string]*discordgo.Channel{
+		"parent":   {ID: "parent", GuildID: "guild", Type: discordgo.ChannelTypeGuildText, Name: "support-threads"},
+		"commands": {ID: "commands", GuildID: "guild", Type: discordgo.ChannelTypeGuildText, Name: "admin-commands"},
+	}
+	s := fakeSession(t, func(r *http.Request) string {
+		ch := channels[r.URL.Path[strings.LastIndex(r.URL.Path, "/")+1:]]
+		if ch == nil {
+			t.Fatalf("unexpected request %s", r.URL.Path)
+		}
+		if r.Method == "PATCH" {
+			var edit discordgo.ChannelEdit
+			if err := json.NewDecoder(r.Body).Decode(&edit); err != nil {
+				t.Fatal(err)
+			}
+			ch.PermissionOverwrites = edit.PermissionOverwrites
+		}
+		raw, _ := json.Marshal(ch)
+		return string(raw)
+	})
+	d := DiscordAPI{Session: s, GuildID: "guild", ParentID: "parent", CommandChannelID: "commands", AdminRoleID: "ops", ContestStart: &start, now: func() time.Time { return now }}
+	check := func(open bool) {
+		t.Helper()
+		if err := d.ReconcileChannels(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		for name, ch := range channels {
+			for _, o := range ch.PermissionOverwrites {
+				visible := o.Allow&discordgo.PermissionViewChannel != 0
+				if o.ID == "guild" {
+					want := name == "parent" && open
+					if visible != want || (!want && o.Deny&discordgo.PermissionViewChannel == 0) {
+						t.Fatalf("%s public visibility=%v want=%v", name, visible, want)
+					}
+				}
+				if (o.ID == "ops" || o.ID == "bot") && !visible {
+					t.Fatalf("%s staff access lost", name)
+				}
+			}
+		}
+	}
+	check(false)
+	now = start.UTC()
+	check(true)
+	now = start.Add(24 * time.Hour)
+	check(true)
+	// Restarted bots derive visibility from the current clock.
+	d = DiscordAPI{Session: s, GuildID: "guild", ParentID: "parent", CommandChannelID: "commands", AdminRoleID: "ops", ContestStart: &start, now: func() time.Time { return start.Add(time.Hour) }}
+	check(true)
+	d.ContestStart = nil
+	check(false)
 }
