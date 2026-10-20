@@ -12,7 +12,7 @@ assert std.length([c for c in std.stringChars(std.substr(digest, 7, 64)) if !std
   runtimePlatform: { cpuArchitecture: 'ARM64', operatingSystemFamily: 'LINUX' },
   executionRoleArn: infra.executionRoles[service],
   taskRoleArn: infra.taskRoles[service],
-  volumes: [{ name: 'tmp' }],
+  volumes: [{ name: 'tmp', host: {} }],
   containerDefinitions: [{
     name: service,
     image: infra.repository + '@' + digest,

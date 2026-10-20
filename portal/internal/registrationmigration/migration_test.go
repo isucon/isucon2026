@@ -77,3 +77,33 @@ func TestDecodeSyntheticSnapshot(t *testing.T) {
 		t.Fatalf("snapshot values lost: %+v", user)
 	}
 }
+
+func TestRegistrationCoupons(t *testing.T) {
+	s := snapshot()
+	s.RegistrationCoupons = []RegistrationCoupon{{ID: 1, Name: "invitation", Token: "synthetic-token", TeamID: ptr(int64(20)), CreatedAt: time.Now(), UpdatedAt: time.Now()}}
+	s.Other["authentication.RegisterCoupon"] = 1
+	if err := s.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	for name, mutate := range map[string]func(*Snapshot){
+		"missing records":   func(s *Snapshot) { s.RegistrationCoupons = nil },
+		"missing inventory": func(s *Snapshot) { s.Other["authentication.RegisterCoupon"] = 0 },
+		"unknown team":      func(s *Snapshot) { s.RegistrationCoupons[0].TeamID = ptr(int64(999)) },
+		"duplicate": func(s *Snapshot) {
+			s.RegistrationCoupons = append(s.RegistrationCoupons, s.RegistrationCoupons[0])
+			s.Other["authentication.RegisterCoupon"] = 2
+		},
+		"timestamp": func(s *Snapshot) { s.RegistrationCoupons[0].CreatedAt = time.Time{} },
+	} {
+		t.Run(name, func(t *testing.T) {
+			changed := s
+			changed.Other = EmptyInventory()
+			changed.Other["authentication.RegisterCoupon"] = 1
+			changed.RegistrationCoupons = append([]RegistrationCoupon(nil), s.RegistrationCoupons...)
+			mutate(&changed)
+			if changed.Validate() == nil {
+				t.Fatal("invalid coupons accepted")
+			}
+		})
+	}
+}

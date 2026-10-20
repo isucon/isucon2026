@@ -70,7 +70,7 @@ describe("portal infrastructure", () => {
     expect(ofType("aws:ecs/taskDefinition:TaskDefinition")).toHaveLength(0);
     expect(ofType("aws:ecs/cluster:Cluster")).toHaveLength(1);
   });
-  test("limits migration snapshot reads to the private rehearsal prefix", () => {
+  test("limits migration reads to registration snapshots, excluding raw backups", () => {
     const policy = ofType("aws:iam/rolePolicy:RolePolicy").find((r) =>
       r.name === "migration-snapshot-read"
     );
@@ -78,7 +78,21 @@ describe("portal infrastructure", () => {
     const statements = JSON.parse(policy!.inputs.policy).Statement;
     expect(statements).toHaveLength(1);
     expect(statements[0].Action).toEqual(["s3:GetObject"]);
-    expect(statements[0].Resource).toMatch(/\/rehearsal\/\*$/);
+    const pattern = new RegExp(
+      "^" +
+        statements[0].Resource.split("*").map((part: string) =>
+          part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+        ).join(".*") + "$",
+    );
+    const prefix = statements[0].Resource.split("/rehearsal/")[0];
+    expect(pattern.test(prefix + "/rehearsal/test/snapshot.json")).toBe(true);
+    expect(
+      pattern.test(
+        prefix + "/rehearsal/test/source-backup/authentication_user.json.gz",
+      ),
+    ).toBe(false);
+    expect(pattern.test(prefix + "/rehearsal/test/source-backup/manifest.json"))
+      .toBe(false);
   });
   test("uses warm encrypted Aurora Serverless v2 in two AZs", () => {
     const db = ofType("aws:rds/cluster:Cluster")[0].inputs;
