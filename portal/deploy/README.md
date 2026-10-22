@@ -202,3 +202,26 @@ Account linking and subsequent Discord logins synchronize membership and contest
 roles after the identity update. Existing affected users can log in with Discord
 again after deployment to retry synchronization. Users outside the server must
 still accept the invitation first.
+
+### Periodic account reconciliation
+
+The worker checks a durable schedule at startup and every minute. Once per hour
+it queues SSH key, Discord membership, and Discord contestant-role checks, spread
+across the following hour. No additional service or public HTTP endpoint is used.
+The migration `004_periodic_job_schedules.sql` must run before the updated worker
+starts; the normal deployment runs migrations before updating services.
+
+SSH keys are refreshed for active teams via the public GitHub `.keys` endpoint,
+without retaining user OAuth tokens. Discord checks run only when the worker has
+a Bot token and the contestant has a linked Discord ID. Discord roles are also
+checked for disqualified/withdrawn teams so that undesired roles can be removed.
+Reconciliation does not automatically join users to Discord, and SSH key refresh
+updates the portal's key records, not `authorized_keys` on existing contest VMs.
+
+Pending/running checks are not duplicated by the next cycle. Each check uses the
+existing job retry/backoff policy independently; a failed GitHub fetch preserves
+the previously stored keys and does not block Discord reconciliation. Dead jobs
+remain available for diagnosis and a later hourly cycle schedules a fresh check.
+The schedule is persisted in PostgreSQL, so worker restarts and overlapping
+workers do not start duplicate hourly cycles. Worker downtime delays checks until
+it resumes; queue backlog and external service errors can delay completion.
