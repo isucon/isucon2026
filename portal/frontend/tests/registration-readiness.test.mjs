@@ -14,6 +14,7 @@ const { outputText } = ts.transpileModule(await readFile(componentURL, "utf8"), 
 const exports = {};
 const require = createRequire(componentURL);
 new Function("require", "exports", outputText)((name) => {
+  if (name === "./DiscordJoinGuide") return { DiscordJoinGuide: () => null };
   if (name === "./ErrorMessage") return { ErrorMessage: () => null };
   if (name.endsWith("/env_check_pb")) return { EnvCheckStatus };
   return require(name);

@@ -18,7 +18,7 @@ import (
 )
 
 // shellTemplate は layouts/application.html.erb 相当の SPA シェル。
-// meta タグ 8 個（isux:* 6 種 + csrf-param / csrf-token）が契約（CT-2）。
+// meta タグ 9 個（isux:* 7 種 + csrf-param / csrf-token）が契約（CT-2）。
 var shellTemplate = template.Must(template.New("shell").Parse(`<!DOCTYPE html>
 <html lang='ja'>
   <head>
@@ -29,6 +29,7 @@ var shellTemplate = template.Must(template.New("shell").Parse(`<!DOCTYPE html>
 
     <meta name="isux:github-auth-path" content="{{.GitHubAuthPath}}">
     <meta name="isux:discord-auth-path" content="{{.DiscordAuthPath}}">
+    <meta name="isux:discord-invite-url" content="{{.DiscordInviteURL}}">
     <meta name="isux:api-base-url" content="/">
     <meta name="isux:release" content="{{.Release}}">
 {{- if .SentryDSN}}
@@ -76,17 +77,18 @@ var shellTemplate = template.Must(template.New("shell").Parse(`<!DOCTYPE html>
 `))
 
 type shellData struct {
-	CSRFToken       string
-	GitHubAuthPath  string
-	DiscordAuthPath string
-	Release         string
-	SentryDSN       string
-	Environment     string
-	ApplicationCSS  string
-	VendorJS        string
-	ApplicationJS   string
-	ExtraCSS        []string
-	BundleJS        []string
+	CSRFToken        string
+	GitHubAuthPath   string
+	DiscordAuthPath  string
+	DiscordInviteURL string
+	Release          string
+	SentryDSN        string
+	Environment      string
+	ApplicationCSS   string
+	VendorJS         string
+	ApplicationJS    string
+	ExtraCSS         []string
+	BundleJS         []string
 }
 
 var (
@@ -133,15 +135,16 @@ func (h *Handler) renderShell(w http.ResponseWriter, r *http.Request, bundles []
 
 	backTo := r.URL.RequestURI()
 	data := shellData{
-		CSRFToken:       csrf,
-		GitHubAuthPath:  "/session/new/github?" + url.Values{"back_to": {backTo}}.Encode(),
-		DiscordAuthPath: "/session/new/discord?" + url.Values{"back_to": {backTo}}.Encode(),
-		Release:         h.cfg.Revision,
-		SentryDSN:       h.cfg.SentryDSN,
-		Environment:     h.cfg.SentryEnvironment,
-		ApplicationCSS:  h.packPath("application.css"),
-		VendorJS:        h.packPath("vendor.js"),
-		ApplicationJS:   h.packPath("application.js"),
+		DiscordInviteURL: h.cfg.Discord.InviteURL,
+		CSRFToken:        csrf,
+		GitHubAuthPath:   "/session/new/github?" + url.Values{"back_to": {backTo}}.Encode(),
+		DiscordAuthPath:  "/session/new/discord?" + url.Values{"back_to": {backTo}}.Encode(),
+		Release:          h.cfg.Revision,
+		SentryDSN:        h.cfg.SentryDSN,
+		Environment:      h.cfg.SentryEnvironment,
+		ApplicationCSS:   h.packPath("application.css"),
+		VendorJS:         h.packPath("vendor.js"),
+		ApplicationJS:    h.packPath("application.js"),
 	}
 	for _, b := range bundles {
 		if p := h.packPath(b + ".js"); p != "" {
