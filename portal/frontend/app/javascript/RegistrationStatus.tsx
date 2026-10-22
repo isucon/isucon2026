@@ -1,4 +1,5 @@
 import React from "react";
+import { DiscordJoinGuide } from "./DiscordJoinGuide";
 import { EnvCheckStatus } from "../../proto/isuxportal/resources/env_check_pb";
 import { ApiClient } from "./ApiClient";
 
@@ -18,7 +19,6 @@ export interface Props {
 }
 
 export interface State {
-  discordInviteUrl: string | undefined;
   error: Error | null;
 }
 
@@ -26,17 +26,8 @@ export class RegistrationStatus extends React.Component<Props, State> {
   constructor(props: Props) {
     super(props);
     this.state = {
-      discordInviteUrl: undefined,
       error: null,
     };
-  }
-
-  componentDidMount() {
-    fetch(`https://discord.com/api/guilds/${this.props.registrationSession.discordServerId}/widget.json`)
-      .then((response) => response.json())
-      .then(({ instant_invite }: { instant_invite: string }) => {
-        this.setState({ discordInviteUrl: instant_invite });
-      });
   }
 
   onEditButtonClick(event: React.MouseEvent<HTMLButtonElement>) {
@@ -142,6 +133,7 @@ export class RegistrationStatus extends React.Component<Props, State> {
 
             <section className="column is-6">
               <h4 className="title is-4">Discord</h4>
+              <DiscordJoinGuide serverId={this.props.registrationSession.discordServerId} />
               <iframe
                 src={`https://discord.com/widget?id=${this.props.registrationSession.discordServerId}&theme=dark`}
                 width="350"
@@ -230,11 +222,7 @@ export class RegistrationStatus extends React.Component<Props, State> {
           {!isDiscordSynced && (
             <li>
               Discordサーバーへの参加を確認できていないメンバーがいます。
-              {this.state.discordInviteUrl && (
-                <a href={this.state.discordInviteUrl} target="_blank" rel="noreferrer">
-                  Discordサーバーに参加
-                </a>
-              )}
+              このページの「Discord」の案内から参加してください。
               参加後しばらく経っても反映されない場合は、運営にお問い合わせください。
             </li>
           )}

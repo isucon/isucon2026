@@ -1,6 +1,7 @@
 import { ApiClient } from "../ApiClient";
 
 import React from "react";
+import { DiscordJoinGuide } from "../DiscordJoinGuide";
 import type { GetCurrentSessionResponse } from "../../../proto/isuxportal/services/common/me_pb";
 
 export interface Props {
@@ -14,6 +15,7 @@ export const ContestantDiscordPage: React.FC<Props> = ({ session }) => {
       <header className="mb-2">
         <h1 className="title is-1">Discord サーバ情報</h1>
       </header>
+      <DiscordJoinGuide serverId={session.discordServerId} />
       <iframe
         src={`https://discord.com/widget?id=${session.discordServerId}&theme=dark`}
         width="350"

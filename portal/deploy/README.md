@@ -179,3 +179,26 @@ Pulumi のテストは runtime mocks を使い、AWS の作成や課金を発生
 
 本番の接続先、証明書参照、バックアップ保存先、切替前の検証結果は[非公開の移行手順](https://github.com/isucon/isucon2026-private/tree/codex/portal-discord-environment/ops/production-portal)で管理します。
 公開リポジトリには実際の環境 ID や移行元データを保存しません。
+
+## Discord invitation and account linking
+
+Discord OAuth identifies the user; it does not automatically join the Discord server.
+After linking, users must join with the same Discord account using an invitation.
+The registration and contestant pages prefer `ISUXPORTAL_DISCORD_INVITE_URL` when set,
+and otherwise obtain `instant_invite` from the server widget.
+If neither provides an invitation, the pages ask users to contact the organizers.
+
+When the production widget returns `instant_invite: null`, set a valid invitation
+for the configured server in the target Pulumi stack:
+
+```sh
+pulumi config set --path 'environment.ISUXPORTAL_DISCORD_INVITE_URL' 'https://discord.gg/<invite-code>'
+```
+
+Apply the stack with `pulumi up`, then redeploy through ecspresso as described above.
+Do not update only the ECS task or generated S3 configuration.
+The invitation is displayed to portal users; do not use an operator-only invitation.
+Account linking and subsequent Discord logins synchronize membership and contestant
+roles after the identity update. Existing affected users can log in with Discord
+again after deployment to retry synchronization. Users outside the server must
+still accept the invitation first.
