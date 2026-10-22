@@ -88,6 +88,7 @@ type OAuthProvider struct {
 }
 
 type Discord struct {
+	InviteURL string // Optional invitation URL when the guild widget has no invite.
 	OAuthProvider
 
 	BotToken         string
@@ -168,6 +169,7 @@ func Load() (*Config, error) {
 		APIBaseURL:   getenv("ISUXPORTAL_GITHUB_API_BASE_URL", "https://api.github.com"),
 	}
 	c.Discord = Discord{
+		InviteURL: os.Getenv("ISUXPORTAL_DISCORD_INVITE_URL"),
 		OAuthProvider: OAuthProvider{
 			CallbackPath: getenv("ISUXPORTAL_DISCORD_CALLBACK_PATH", "/auth/discord/callback"),
 			ClientID:     os.Getenv("ISUXPORTAL_DISCORD_CLIENT_ID"),
