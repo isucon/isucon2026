@@ -317,6 +317,7 @@ func (h *Handler) DiscordCallback(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		ri.sess.ContestantID = c.ID
+		h.syncDiscordContestant(ctx, c.ID)
 		dest := "/"
 		if contestRunning {
 			dest = "/contestant"
@@ -333,14 +334,17 @@ func (h *Handler) DiscordCallback(w http.ResponseWriter, r *http.Request) {
 			h.redirectAfterAuth(w, r, "/registration")
 			return
 		}
-		h.jobs.Enqueue(ctx, "slack_webhook", job.TextArgs{Text: fmt.Sprintf(":left_right_arrow: *Switch discord account:* contestant=%d from=%s(%s) to=%s(%s)",
-			current.ID, current.DiscordTag, current.DiscordID, tag, user.ID)})
-		h.jobs.Enqueue(ctx, "maintain_discord_contestant_roles", job.MaintainRolesArgs{ForceDiscordID: current.DiscordID})
-		h.jobs.Enqueue(ctx, "sync_discord_member_state_of_contestant", job.ContestantArgs{ContestantID: current.ID})
-		if _, err := h.db.ExecContext(ctx, `UPDATE contestants SET discord_id = $1, discord_tag = $2, updated_at = now() WHERE id = $3`, user.ID, tag, current.ID); err != nil {
+		if _, err := h.db.ExecContext(ctx, `UPDATE contestants SET discord_id = $1, discord_tag = $2, is_discord_guild_member = false, updated_at = now() WHERE id = $3`, user.ID, tag, current.ID); err != nil {
 			renderInternalError(w, err)
 			return
 		}
+		// Publish jobs only after the new identity is visible to workers.
+		h.jobs.Enqueue(ctx, "slack_webhook", job.TextArgs{Text: fmt.Sprintf(":left_right_arrow: *Switch discord account:* contestant=%d from=%s(%s) to=%s(%s)",
+			current.ID, current.DiscordTag, current.DiscordID, tag, user.ID)})
+		if current.DiscordID != "" {
+			h.jobs.Enqueue(ctx, "maintain_discord_contestant_roles", job.MaintainRolesArgs{ForceDiscordID: current.DiscordID})
+		}
+		h.syncDiscordContestant(ctx, current.ID)
 		dest := "/"
 		if contestRunning {
 			dest = "/contestant"
@@ -349,6 +353,12 @@ func (h *Handler) DiscordCallback(w http.ResponseWriter, r *http.Request) {
 	default:
 		h.redirectAfterAuth(w, r, "/registration")
 	}
+}
+
+// syncDiscordContestant also repairs roles when the user joined before linking.
+func (h *Handler) syncDiscordContestant(ctx context.Context, contestantID int64) {
+	h.jobs.Enqueue(ctx, "sync_discord_member_state_of_contestant", job.ContestantArgs{ContestantID: contestantID})
+	h.jobs.Enqueue(ctx, "maintain_discord_contestant_roles", job.MaintainRolesArgs{ContestantID: contestantID})
 }
 
 func (h *Handler) teamDisqualified(ctx context.Context, c *model.Contestant) bool {
