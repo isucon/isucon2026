@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/bwmarrin/discordgo"
@@ -168,10 +169,17 @@ func (s *Service) Open(ctx context.Context, id int64) (thread string, err error)
 				return e
 			}
 		}
+		eligible := make([]string, 0, len(ids))
 		for _, uid := range ids {
-			if e = s.Discord.CheckParticipant(ctx, uid); e != nil {
+			if e = s.Discord.CheckParticipant(ctx, uid); isUnknownMember(e) {
+				continue
+			} else if e != nil {
 				return e
 			}
+			eligible = append(eligible, uid)
+		}
+		if len(eligible) == 0 {
+			return errors.New("team has no Discord members currently in the server")
 		}
 
 		if thread == "" {
@@ -183,18 +191,34 @@ func (s *Service) Open(ctx context.Context, id int64) (thread string, err error)
 				return e
 			}
 		}
-		for _, uid := range ids {
-			if e = s.Discord.CheckParticipant(ctx, uid); e != nil {
+		invited := make([]string, 0, len(eligible))
+		for _, uid := range eligible {
+			// A participant can leave between preflight and invitation.
+			if e = s.Discord.CheckParticipant(ctx, uid); isUnknownMember(e) {
+				continue
+			} else if e != nil {
 				return e
 			}
-			if e = s.Discord.AddMember(ctx, thread, uid); e != nil {
+			if e = s.Discord.AddMember(ctx, thread, uid); isUnknownMember(e) {
+				continue
+			} else if e != nil {
 				return e
 			}
+			invited = append(invited, uid)
+		}
+		if len(invited) == 0 {
+			return errors.New("team has no Discord members currently in the server")
 		}
 		if _, e = s.inviteStaff(ctx, thread); e != nil {
 			return e
 		}
-		_, e = conn.ExecContext(ctx, `UPDATE discord_support_threads SET status='open',updated_at=now() WHERE clarification_id=$1`, id)
+		raw, e := json.Marshal(invited)
+		if e != nil {
+			return e
+		}
+		// Keep the original candidates until opening succeeds so retries can
+		// include members who join while the conversation is still pending.
+		_, e = conn.ExecContext(ctx, `UPDATE discord_support_threads SET status='open',participant_ids=$2,updated_at=now() WHERE clarification_id=$1`, id, string(raw))
 		return e
 	})
 	return
@@ -341,4 +365,11 @@ func (s *Service) inviteStaff(ctx context.Context, thread string) (map[string]bo
 		staff[id] = true
 	}
 	return staff, nil
+}
+
+// Only Discord's explicit Unknown Member response means a participant is absent.
+// Permission failures, missing channels, and transport errors must remain visible.
+func isUnknownMember(err error) bool {
+	var rest *discordgo.RESTError
+	return errors.As(err, &rest) && rest.Response != nil && rest.Response.StatusCode == http.StatusNotFound && rest.Message != nil && rest.Message.Code == discordgo.ErrCodeUnknownMember
 }
