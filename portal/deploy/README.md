@@ -188,14 +188,15 @@ The registration and contestant pages prefer `ISUXPORTAL_DISCORD_INVITE_URL` whe
 and otherwise obtain `instant_invite` from the server widget.
 If neither provides an invitation, the pages ask users to contact the organizers.
 
-When the production widget returns `instant_invite: null`, set a valid invitation
-for the configured server in the target Pulumi stack:
-
-```sh
-pulumi config set --path 'environment.ISUXPORTAL_DISCORD_INVITE_URL' 'https://discord.gg/<invite-code>'
-```
+When the widget returns `instant_invite: null`, store a valid invitation for the
+configured server as `ISUXPORTAL_DISCORD_INVITE_URL` in the application JSON secret
+in Secrets Manager. Preserve the other keys when updating the secret. Add only
+the key name to the target Pulumi stack's `secretKeys` list, and remove it from
+`environment` if it was previously configured there. Never put the invitation
+value in stack configuration or deployment definitions.
 
 Apply the stack with `pulumi up`, then redeploy through ecspresso as described above.
+ECS retrieves the value from Secrets Manager when starting each application task.
 Do not update only the ECS task or generated S3 configuration.
 The invitation is displayed to portal users; do not use an operator-only invitation.
 Account linking and subsequent Discord logins synchronize membership and contestant
