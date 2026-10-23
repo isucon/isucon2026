@@ -2,14 +2,17 @@ package supportthread_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/bwmarrin/discordgo"
-	"github.com/isucon/isucon2026/portal/internal/supportthread"
-	"github.com/isucon/isucon2026/portal/tests/testkit"
+	"net/http"
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/bwmarrin/discordgo"
+	"github.com/isucon/isucon2026/portal/internal/supportthread"
+	"github.com/isucon/isucon2026/portal/tests/testkit"
 )
 
 type fakeDiscord struct {
@@ -18,10 +21,14 @@ type fakeDiscord struct {
 	fail    string
 	creates int
 	staff   []string
+	errors  map[string]error
 }
 
 func (f *fakeDiscord) call(s string) error {
 	f.calls = append(f.calls, s)
+	if err := f.errors[s]; err != nil {
+		return err
+	}
 	if f.fail == s {
 		return errors.New("injected failure")
 	}
@@ -272,5 +279,76 @@ func TestStaffAreInvitedOnOpenAndRetainedOnClose(t *testing.T) {
 	}
 	if f.creates != 1 || thread != "thread" {
 		t.Fatal("closed thread recreated")
+	}
+}
+
+func TestOpenInvitesOnlyCurrentGuildMembers(t *testing.T) {
+	missing := &discordgo.RESTError{Response: &http.Response{StatusCode: http.StatusNotFound}, Message: &discordgo.APIErrorMessage{Code: discordgo.ErrCodeUnknownMember}}
+	for _, tc := range []struct {
+		name      string
+		failures  map[string]error
+		pending   bool
+		wantError bool
+	}{
+		{name: "absent member", failures: map[string]error{"check:absent": missing}},
+		{name: "resume persisted candidates", failures: map[string]error{"check:absent": missing}, pending: true},
+		{name: "leaves before invitation", failures: map[string]error{"add:absent": missing}},
+		{name: "all absent then joins", failures: map[string]error{"check:absent": missing, "check:present": missing}, wantError: true},
+		{name: "permission failure", failures: map[string]error{"check:absent": &discordgo.RESTError{Response: &http.Response{StatusCode: 403}, Message: &discordgo.APIErrorMessage{Code: 50013}}}, wantError: true},
+		{name: "unrelated not found", failures: map[string]error{"check:absent": &discordgo.RESTError{Response: &http.Response{StatusCode: 404}, Message: &discordgo.APIErrorMessage{Code: 10003}}}, wantError: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			db := testkit.Database(t)
+			_, err := db.Exec(`INSERT INTO teams(id,name,email_address,invite_token,student,created_at,updated_at) VALUES(90001,'test','test@example.invalid','token',false,now(),now()); INSERT INTO contestants(id,name,team_id,discord_id,github_login,github_id,discord_tag,avatar_url,created_at,updated_at) VALUES(90001,'absent',90001,'absent','absent','absent','absent','',now(),now()),(90002,'present',90001,'present','present','present','present','',now(),now()); INSERT INTO clarifications(id,team_id,admin,created_at,updated_at) VALUES(90001,90001,true,now(),now()); INSERT INTO discord_support_threads(clarification_id,participant_ids,status) VALUES(90001,'[]','opening')`)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.pending {
+				if _, err = db.Exec(`UPDATE discord_support_threads SET participant_ids='["absent","present"]'`); err != nil {
+					t.Fatal(err)
+				}
+			}
+			f := &fakeDiscord{errors: tc.failures, staff: []string{"staff"}}
+			s := &supportthread.Service{DB: db, Discord: f}
+			_, err = s.Open(context.Background(), 90001)
+			if tc.wantError {
+				if err == nil {
+					t.Fatal("expected error")
+				}
+				if f.creates != 0 {
+					t.Fatal("created a thread without eligible participants")
+				}
+				if tc.name != "all absent then joins" {
+					return
+				}
+				delete(f.errors, "check:present")
+				if err = s.RetryPending(context.Background()); err != nil {
+					t.Fatal(err)
+				}
+			} else if err != nil {
+				t.Fatal(err)
+			}
+			if !slices.Contains(f.members, "present") || !slices.Contains(f.members, "staff") || slices.Contains(f.members, "absent") {
+				t.Fatalf("invited members: %v", f.members)
+			}
+			var status string
+			var raw []byte
+			if err = db.QueryRow(`SELECT status,participant_ids FROM discord_support_threads WHERE clarification_id=90001`).Scan(&status, &raw); err != nil {
+				t.Fatal(err)
+			}
+			var ids []string
+			if err = json.Unmarshal(raw, &ids); err != nil {
+				t.Fatal(err)
+			}
+			if status != "open" || !slices.Equal(ids, []string{"present"}) {
+				t.Fatalf("status=%s participants=%v", status, ids)
+			}
+			if _, err = s.OpenTeam(context.Background(), 90001); err != nil {
+				t.Fatal(err)
+			}
+			if f.creates != 1 {
+				t.Fatalf("created %d threads", f.creates)
+			}
+		})
 	}
 }
