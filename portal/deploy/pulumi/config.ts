@@ -104,6 +104,7 @@ export function validateConfig(c: PortalConfig): PortalConfig {
       (!key.startsWith("ISUXPORTAL_") &&
         !["SENTRY_DSN", "MONITOR_ENV"].includes(key)) ||
       /SECRET|PASSWORD|TOKEN|PRIVATE_KEY|DATABASE_URL|WEBHOOK_URL/.test(key) ||
+      key === "ISUXPORTAL_DISCORD_INVITE_URL" ||
       typeof value !== "string"
     ) {
       throw new Error(
