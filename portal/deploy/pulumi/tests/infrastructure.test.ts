@@ -241,6 +241,24 @@ describe("portal infrastructure", () => {
   });
 });
 
+test("requires Discord invitation URLs to use Secrets Manager", () => {
+  expect(() =>
+    validateConfig({
+      ...config,
+      environment: {
+        ...config.environment,
+        ISUXPORTAL_DISCORD_INVITE_URL: "https://example.invalid/invite",
+      },
+    })
+  ).toThrow("Use secretKeys");
+  expect(() =>
+    validateConfig({
+      ...config,
+      secretKeys: [...config.secretKeys, "ISUXPORTAL_DISCORD_INVITE_URL"],
+    })
+  ).not.toThrow();
+});
+
 test("validates the NAT count while retaining a redundant default", () => {
   expect(defaults.natGatewayCount).toBe(2);
   expect(() => validateConfig({ ...config, natGatewayCount: 0 })).toThrow(
