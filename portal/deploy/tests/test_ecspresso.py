@@ -94,7 +94,9 @@ class EcspressoTest(unittest.TestCase):
         for enabled in (False, True):
             self.infra.update(standby=True, enableBot=enabled, enableBotInStandby=True)
             (self.path / "infra.json").write_text(json.dumps(self.infra))
-            self.assertEqual(self.render("bot", "servicedef")["desiredCount"], int(enabled))
+            self.assertEqual(
+                self.render("bot", "servicedef")["desiredCount"], int(enabled)
+            )
             for service in ("worker", "notifyloop"):
                 self.assertEqual(self.render(service, "servicedef")["desiredCount"], 0)
 
@@ -124,6 +126,19 @@ class EcspressoTest(unittest.TestCase):
             {"PGUSER", "PGPASSWORD"},
         )
         self.assertNotIn("loadBalancers", self.render("migrate", "servicedef"))
+
+    def test_discord_invitation_is_loaded_from_secrets_manager(self):
+        key = "ISUXPORTAL_DISCORD_INVITE_URL"
+        self.infra["secretKeys"].append(key)
+        (self.path / "infra.json").write_text(json.dumps(self.infra))
+        for service in ("portal", "worker", "notifyloop", "bot"):
+            with self.subTest(service=service):
+                container = self.render(service, "taskdef")["containerDefinitions"][0]
+                self.assertNotIn(key, {v["name"] for v in container["environment"]})
+                self.assertIn(
+                    {"name": key, "valueFrom": "arn:application:" + key + "::"},
+                    container["secrets"],
+                )
 
     def test_discord_bot_token_is_limited_to_consumers(self):
         self.infra["secretKeys"].append("ISUXPORTAL_DISCORD_BOT_TOKEN")
