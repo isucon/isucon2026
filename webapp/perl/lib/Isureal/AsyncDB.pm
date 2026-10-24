@@ -22,8 +22,13 @@ sub query_p ($self, @args) {
 sub _dispatch ($self) {
     while ($self->active < $self->limit && (my $job = shift $self->waiting->@*)) {
         my ($promise, $args) = @$job;
+        my $db = eval { $self->pg->db };
+        unless ($db) {
+            $promise->reject($@);
+            next;
+        }
         $self->active($self->active + 1);
-        $self->pg->db->query_p(@$args)
+        $db->query_p(@$args)
             ->then(sub ($results) { $promise->resolve($results) }, sub ($err) { $promise->reject($err) })
             ->finally(sub {
                 $self->active($self->active - 1);
