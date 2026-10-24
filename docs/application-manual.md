@@ -27,6 +27,25 @@ ISURealは、日常の写真を共有するソーシャルネットワーキン�
 - 従来と異なり、初期状態で app1～app3の全てが利用されています。ルーターは対応するリージョンのサーバーにリクエストを転送します。
 - サーバーのリージョンは固定で、変更できません。
 
+### 参考実装
+
+参考実装は次の 2 つです。初期状態では Go 実装が動いています。
+
+| 言語 | ソースコード | systemd unit |
+|---|---|---|
+| Go | `/home/isucon/webapp/go` | `isureal-go.service` |
+| PHP | `/home/isucon/webapp/php` | `isureal-php.service`（php-fpm） |
+
+PHP 実装では、nginx が `127.0.0.1:8080` で受けて FastCGI で php-fpm に渡します（`/etc/nginx/sites-available/isureal-php.conf`）。
+Go 実装と同じ `:8080` を使うので、同時に動かすことはできません。PHP 実装に切り替えるには、各 app サーバーで次を実行します。
+
+```sh
+sudo systemctl disable --now isureal-go.service
+sudo ln -s /etc/nginx/sites-available/isureal-php.conf /etc/nginx/sites-enabled/isureal-php.conf
+sudo systemctl reload nginx
+sudo systemctl enable --now isureal-php.service
+```
+
 ### ルーター
 
 ルーターは、データ所在地ポリシーに対応するために導入したマネージドのルーターです。運営が管理しており、
