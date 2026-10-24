@@ -21,8 +21,12 @@
           - --directory={{ repo_root }}/webapp
           - --exclude=*_test.go
           - --exclude=go/isureal
+          - --exclude=php/vendor
+          - --exclude=php/tests
+          - --exclude=php/.phpunit.cache
           - --exclude=sql/002-seed.sql
           - go
+          - php
           - sql
       changed_when: true
       when: "'webapp' in prepare_components"
