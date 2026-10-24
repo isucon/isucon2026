@@ -9,9 +9,8 @@ x-app-environment: &app-environment
 x-app: &app
   build:
     context: .
-    dockerfile: deploy/dev/app.Dockerfile
-    args:
-      WEBAPP_LANGUAGE: ${ISUREAL_WEBAPP_LANGUAGE:-go}
+    # ISUREAL_WEBAPP_LANGUAGE で起動する実装を選ぶ（deploy/dev/app-<言語>.Dockerfile）
+    dockerfile: deploy/dev/app-${ISUREAL_WEBAPP_LANGUAGE:-go}.Dockerfile
   image: isureal-dev-app:local
   cpus: ${ISUREAL_APP_CPUS:-1.0}
   mem_limit: ${ISUREAL_APP_MEMORY:-1g}
