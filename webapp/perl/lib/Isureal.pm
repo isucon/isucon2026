@@ -20,7 +20,11 @@ sub startup ($self) {
         # 通知は接続を長く保持するので、1 worker で多数の接続を受け付ける
         clients            => 1000,
         inactivity_timeout => 60,
-        pid_file           => $self->home->child('hypnotoad.pid')->to_string,
+        # 接続数で worker を入れ替えない
+        accepts => 0,
+        # 初期化のように長くかかる同期処理の途中で worker が止められないようにする
+        heartbeat_timeout => 120,
+        pid_file          => $self->home->child('hypnotoad.pid')->to_string,
     });
     $self->max_request_size(64 * 1024 * 1024);
     $self->types->type(json => 'application/json');
