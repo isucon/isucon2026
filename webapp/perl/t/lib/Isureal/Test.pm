@@ -9,7 +9,7 @@ use Mojo::Pg;
 use Test2::V0;
 use Test::Mojo;
 use Isureal::Session qw(create_login_session);
-use Isureal::Util qw(new_uuid);
+use Isureal::Util qw(new_uuid sha256_hex);
 
 our @EXPORT_OK = qw(
     SECRET_KEY_HASH
@@ -24,8 +24,8 @@ our @EXPORT_OK = qw(
     concurrently
 );
 
-# sha256("secret")
-use constant SECRET_KEY_HASH => '2bb80d537b1da3e38bd30361aa855686bde0eacd7162fef6a25fe97bf527a25b';
+# テスト用ユーザーのシークレットキーは "secret"
+use constant SECRET_KEY_HASH => sha256_hex('secret');
 
 my $SQL_DIR = path(__FILE__)->to_abs->dirname->dirname->dirname->dirname->dirname->child('sql');
 
