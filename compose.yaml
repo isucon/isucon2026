@@ -10,6 +10,8 @@ x-app: &app
   build:
     context: .
     dockerfile: deploy/dev/app.Dockerfile
+    args:
+      WEBAPP_LANGUAGE: ${ISUREAL_WEBAPP_LANGUAGE:-go}
   image: isureal-dev-app:local
   cpus: ${ISUREAL_APP_CPUS:-1.0}
   mem_limit: ${ISUREAL_APP_MEMORY:-1g}
