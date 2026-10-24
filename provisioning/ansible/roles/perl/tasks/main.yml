@@ -1,0 +1,72 @@
+---
+# Perl は /home/isucon/local/perl にソースからビルドする（webapp/perl 用）
+- name: Install packages to build Perl and DBD::Pg
+  ansible.builtin.apt:
+    name:
+      - build-essential
+      - libpq-dev
+
+- name: Read installed Perl version
+  ansible.builtin.command:
+    argv: [/home/isucon/local/perl/bin/perl, -e, 'print $^V']
+  register: perl_installed
+  changed_when: false
+  failed_when: false
+
+- name: Install Perl
+  when: perl_installed.rc != 0 or perl_installed.stdout != 'v' ~ perl_version
+  block:
+    - name: Remove old Perl
+      ansible.builtin.file:
+        path: /home/isucon/local/perl
+        state: absent
+
+    - name: Create Perl build directory
+      ansible.builtin.file:
+        path: /tmp/perl-build
+        state: directory
+        owner: isucon
+        group: isucon
+        mode: "0755"
+
+    - name: Download and extract Perl
+      ansible.builtin.unarchive:
+        src: "https://www.cpan.org/src/5.0/perl-{{ perl_version }}.tar.gz"
+        dest: /tmp/perl-build
+        remote_src: true
+        owner: isucon
+        group: isucon
+
+    - name: Build and install Perl
+      ansible.builtin.shell: |
+        set -eu
+        ./Configure -des -Dprefix=/home/isucon/local/perl -Dman1dir=none -Dman3dir=none
+        make -j"$(nproc)"
+        make install
+      args:
+        chdir: "/tmp/perl-build/perl-{{ perl_version }}"
+      become_user: isucon
+      changed_when: true
+
+    - name: Remove Perl build directory
+      ansible.builtin.file:
+        path: /tmp/perl-build
+        state: absent
+
+- name: Install cpm and Carton
+  ansible.builtin.shell: |
+    set -eu
+    curl -fsSL "https://raw.githubusercontent.com/skaji/cpm/v{{ cpm_version }}/cpm" \
+      | /home/isucon/local/perl/bin/perl - install -g "App::cpm@{{ cpm_version }}" "Carton@v{{ carton_version }}"
+  args:
+    creates: /home/isucon/local/perl/bin/cpm
+  become_user: isucon
+
+- name: Add Perl to PATH
+  ansible.builtin.lineinfile:
+    path: /home/isucon/.profile
+    line: 'export PATH=$HOME/local/perl/bin:$PATH'
+    create: true
+    owner: isucon
+    group: isucon
+    mode: "0644"
