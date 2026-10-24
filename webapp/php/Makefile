@@ -6,7 +6,7 @@ install:
 
 # php-fpm をフォアグラウンドで起動する（nginx が :8080 で受けて FastCGI で渡す）
 run:
-	php-fpm --nodaemonize --fpm-config php-fpm.conf
+	ISUREAL_PHP_FPM_ERROR_LOG=/proc/self/fd/2 php-fpm --nodaemonize --fpm-config php-fpm.conf
 
 test:
 	composer install --no-interaction
