@@ -172,6 +172,9 @@ final class Input
         return $request->hasHeader('Transfer-Encoding') || (string) $request->getBody() !== '';
     }
 
+    /**
+     * Content-Type のメディアタイプ。webapp/go（Echo）と同じく大文字と小文字を区別して比べる
+     */
     private static function mediaType(ServerRequestInterface $request): string
     {
         return trim(explode(';', $request->getHeaderLine('Content-Type'))[0]);

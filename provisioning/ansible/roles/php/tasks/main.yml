@@ -5,6 +5,7 @@
     name:
       - build-essential
       - pkg-config
+      - libcurl4-openssl-dev
       - libicu-dev
       - libpq-dev
       - libssl-dev
@@ -48,7 +49,7 @@
         set -eu
         ./configure --prefix=/home/isucon/local/php \
           --enable-fpm --enable-intl --enable-mbstring --disable-mbregex \
-          --with-openssl --with-pdo-pgsql --with-zip --with-zlib \
+          --with-curl --with-openssl --with-pdo-pgsql --with-zip --with-zlib \
           --without-sqlite3 --without-pdo-sqlite
         make -j"$(nproc)"
         make install
