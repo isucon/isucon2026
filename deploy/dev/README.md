@@ -38,6 +38,8 @@ docker compose down -v
 ISUREAL_WEBAPP_LANGUAGE=perl make dev-up
 ```
 
+アプリのイメージは `deploy/dev/app-<言語>.Dockerfile`（`app-go.Dockerfile`、`app-perl.Dockerfile`）でビルドします。実装を追加するときは同じ名前で Dockerfile を置き、`ISUREAL_WEBAPP_LANGUAGE` にその言語名を指定します。
+
 ## 変更反映と初期化
 
 コードや SQL を変更した場合はアプリコンテナを再ビルドします。SQL 変更時は初期化 API の呼び出しも必要です。初期化は共有 DB 全体をリセットします。

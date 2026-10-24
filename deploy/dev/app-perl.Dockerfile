@@ -1,14 +1,4 @@
 # syntax=docker/dockerfile:1.10
-# WEBAPP_LANGUAGE で起動する実装（go / perl）を選ぶ
-ARG WEBAPP_LANGUAGE=go
-
-FROM golang:1.26.5-alpine AS go-build
-WORKDIR /src
-COPY webapp/go/go.mod webapp/go/go.sum ./
-RUN --mount=type=cache,target=/go/pkg/mod go mod download
-COPY webapp/go/ ./
-RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build CGO_ENABLED=0 go build -o /out/isureal ./cmd/isureal
-
 FROM perl:5.44.0-trixie@sha256:8573a88cae3ae8ff95cff0a40ab72a0cadd2cb59f0e77ecd380e586a0607a572 AS perl-build
 RUN apt-get update && apt-get install -y --no-install-recommends libpq-dev && rm -rf /var/lib/apt/lists/*
 RUN curl -fsSL https://raw.githubusercontent.com/skaji/cpm/v1.1.6/cpm | perl - install -g App::cpm@1.1.6 Carton@v1.0.35
@@ -24,19 +14,7 @@ COPY frontend/ ./
 ENV VITE_API_PREFIX=/api
 RUN npm run build
 
-FROM alpine:3.23 AS app-go
-RUN apk add --no-cache bash ca-certificates curl iproute2 nginx postgresql-client tzdata
-WORKDIR /app/go
-COPY --from=go-build /out/isureal /usr/local/bin/isureal
-COPY --from=frontend-build /src/dist /usr/share/nginx/html
-COPY webapp/sql/init.sh webapp/sql/reset.sql /app/sql/
-COPY deploy/dev/nginx.conf /etc/nginx/http.d/default.conf
-COPY deploy/dev/routes.sh deploy/dev/app-entrypoint.sh /usr/local/bin/
-RUN chmod +x /usr/local/bin/routes.sh /usr/local/bin/app-entrypoint.sh /app/sql/init.sh
-EXPOSE 80
-ENTRYPOINT ["app-entrypoint.sh"]
-
-FROM perl:5.44.0-slim-trixie@sha256:a0c68e9afd12dc9a10c0693f1dacac08e93d41a9e2f43aefc3a209c53e5147d2 AS app-perl
+FROM perl:5.44.0-slim-trixie@sha256:a0c68e9afd12dc9a10c0693f1dacac08e93d41a9e2f43aefc3a209c53e5147d2
 RUN apt-get update \
   && apt-get install -y --no-install-recommends ca-certificates curl iproute2 libpq5 nginx postgresql-client tzdata \
   && rm -rf /var/lib/apt/lists/* /etc/nginx/sites-enabled/default
@@ -53,5 +31,3 @@ COPY deploy/dev/isureal-perl.sh /usr/local/bin/isureal
 RUN chmod +x /usr/local/bin/routes.sh /usr/local/bin/app-entrypoint.sh /usr/local/bin/isureal /app/sql/init.sh
 EXPOSE 80
 ENTRYPOINT ["app-entrypoint.sh"]
-
-FROM app-${WEBAPP_LANGUAGE}
