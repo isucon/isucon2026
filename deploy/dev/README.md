@@ -1,6 +1,6 @@
 # 開発環境（deploy/dev）
 
-3 リージョンのアプリ（`app-asia`, `app-europe`, `app-america`）と共有 DB（`db-asia`）で構成される開発環境です。各アプリ内で nginx（80 番）がフロントエンド配信とリバースプロキシを行い、Go アプリ（8080 番）へ転送します。ホスト側にはポート `18090` が公開されます。
+3 リージョンのアプリ（`app-asia`, `app-europe`, `app-america`）と共有 DB（`db-asia`）で構成される開発環境です。各アプリ内で nginx（80 番）がフロントエンド配信とリバースプロキシを行い、アプリ（8080 番）へ転送します。アプリは既定で Go 実装（`webapp/go`）です。ホスト側にはポート `18090` が公開されます。
 
 ## 基本コマンド
 
@@ -29,6 +29,14 @@ docker compose down -v
 | `http://europe.127.0.0.1.nip.io:18090` | europe リージョンへ直接アクセス |
 | `http://america.127.0.0.1.nip.io:18090` | america リージョンへ直接アクセス |
 | `http://127.0.0.1.nip.io:18082` | 開発用 Portal API |
+
+## Perl 実装で起動
+
+`ISUREAL_WEBAPP_LANGUAGE=perl` を付けて起動すると、アプリコンテナが Perl 実装（`webapp/perl`）になります。Go に戻すときは付けずに起動し直します。
+
+```bash
+ISUREAL_WEBAPP_LANGUAGE=perl make dev-up
+```
 
 ## 変更反映と初期化
 
