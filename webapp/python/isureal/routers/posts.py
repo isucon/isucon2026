@@ -3,10 +3,11 @@ from http import HTTPStatus
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Response
+from psycopg.rows import DictRow
 
 from ..auth import RegionalSession
 from ..binding import Form, RequestBody, form_body, json_body
-from ..db import DB, execute, fetch_one, fetch_value, from_row
+from ..db import DB, Connection, execute, fetch_one, fetch_value, from_row
 from ..errors import APIError, NoRowsError
 from ..models.post import (
     VISIBILITIES,
@@ -33,6 +34,17 @@ def post_not_editable() -> APIError:
 
 def post_slot_unavailable() -> APIError:
     return APIError(HTTPStatus.CONFLICT, "post_slot_unavailable")
+
+
+async def lock_current_window(db: Connection, region: str) -> DictRow | None:
+    return await fetch_one(
+        db,
+        """
+        SELECT id, local_date, starts_at FROM posting_windows
+        WHERE region = %(region)s AND ended_at IS NULL FOR UPDATE
+        """,
+        {"region": region},
+    )
 
 
 @router.post("/posts", status_code=HTTPStatus.CREATED)
@@ -64,14 +76,10 @@ async def create_post(
         user = await get_user(db, user_id)
         if user is None:
             raise NoRowsError
-        window = await fetch_one(
-            db,
-            """
-            SELECT id, local_date, starts_at FROM posting_windows
-            WHERE region = %(region)s AND ended_at IS NULL FOR UPDATE
-            """,
-            {"region": user.region},
-        )
+        window = await lock_current_window(db, user.region)
+        if window is None:
+            # 窓の切り替えを待った直後は新しい窓が見えないので、もう一度探す
+            window = await lock_current_window(db, user.region)
         if window is None:
             raise post_slot_unavailable()
         counts = await fetch_one(
