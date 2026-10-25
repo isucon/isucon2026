@@ -21,8 +21,13 @@
           - --directory={{ repo_root }}/webapp
           - --exclude=*_test.go
           - --exclude=go/isureal
+          - --exclude=python/.venv
+          - --exclude=python/tests
+          - --exclude=__pycache__
+          - --exclude=.*_cache
           - --exclude=sql/002-seed.sql
           - go
+          - python
           - sql
       changed_when: true
       when: "'webapp' in prepare_components"
