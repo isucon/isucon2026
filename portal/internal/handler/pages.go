@@ -210,7 +210,7 @@ func (h *Handler) AdminShell(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) BroadcastShell(w http.ResponseWriter, r *http.Request) {
-	h.renderShell(w, r, []string{"broadcast_view", "audience"}, []string{"broadcast_view"})
+	h.renderShell(w, r, []string{"broadcast_view"}, []string{"broadcast_view"})
 }
 
 func (h *Handler) redirectTo(dest string) http.HandlerFunc {
