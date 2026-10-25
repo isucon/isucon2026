@@ -1,8 +1,12 @@
 import threading
 import time
+import uuid
+from typing import Any
 
 import psycopg
 from fastapi.testclient import TestClient
+
+from isureal.config import Config
 
 from .conftest import JPEG, Actors
 
@@ -202,3 +206,39 @@ def test_notifications(
     assert body.endswith("\n\n")
     assert f'"postingWindowId":"{opened["id"]}"' in body
     assert '"region":"asia"' in body
+
+
+def test_create_post_during_window_rollover(
+    client: TestClient, actors: Actors, config: Config
+) -> None:
+    _, alice = actors.user("alice")
+    actors.open_window()
+    result: dict[str, Any] = {}
+
+    def create_post() -> None:
+        response = client.post(
+            "/api/posts",
+            files={"image": ("a.jpg", JPEG, "image/jpeg")},
+            data={"visibility": "public", "location_kind": "none"},
+            headers=alice,
+        )
+        result.update(status=response.status_code, body=response.json())
+
+    # 窓を切り替えるトランザクションの途中で投稿し、切り替えの完了を待たせる
+    with psycopg.connect(config.database_dsn) as rollover:
+        rollover.execute(
+            "UPDATE posting_windows SET ended_at = clock_timestamp() WHERE region = 'asia' AND ended_at IS NULL"
+        )
+        rollover.execute(
+            """
+            INSERT INTO posting_windows (id, region, local_date, starts_at, on_time_deadline)
+            VALUES (%s, 'asia', '2099-01-02', clock_timestamp(), clock_timestamp() + interval '1 day')
+            """,
+            (str(uuid.uuid4()),),
+        )
+        thread = threading.Thread(target=create_post)
+        thread.start()
+        time.sleep(1)
+        rollover.commit()
+    thread.join()
+    assert result["status"] == 201, result

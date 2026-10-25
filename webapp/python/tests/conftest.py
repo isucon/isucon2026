@@ -1,14 +1,17 @@
 import hashlib
 import os
+import time
 import uuid
 from collections.abc import Iterator
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import psycopg
 import pytest
 from fastapi.testclient import TestClient
 
+from isureal import image_signature
 from isureal.config import Config
 from isureal.main import create_app
 
@@ -26,8 +29,8 @@ def sha256_hex(value: str) -> str:
 def config() -> Config:
     # DB を使うテストは ISUREAL_TEST_DATABASE=1 のときだけ実行する。
     # ISUREAL_DB_* の DB のテーブルを作り直すので、使い捨ての DB を指定すること
-    if not os.getenv("ISUREAL_TEST_DATABASE"):
-        pytest.skip("ISUREAL_TEST_DATABASE is unset")
+    if os.getenv("ISUREAL_TEST_DATABASE") != "1":
+        pytest.skip("ISUREAL_TEST_DATABASE is not 1")
     return Config.from_env()
 
 
@@ -44,7 +47,14 @@ def db(config: Config) -> Iterator[psycopg.Connection]:
 
 
 @pytest.fixture
-def client(config: Config, db: psycopg.Connection) -> Iterator[TestClient]:
+def client(
+    config: Config, db: psycopg.Connection, monkeypatch: pytest.MonkeyPatch
+) -> Iterator[TestClient]:
+    # 署名付き画像 URL の有効期限が秒の境目で変わらないよう、署名に使う時計を止める
+    signed_at = int(time.time())
+    monkeypatch.setattr(
+        image_signature, "time", SimpleNamespace(time=lambda: signed_at)
+    )
     with TestClient(create_app(config)) as client:
         yield client
 
