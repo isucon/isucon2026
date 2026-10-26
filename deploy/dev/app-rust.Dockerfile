@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.10
-FROM rust:1.95.0-slim-trixie AS rust-build
+FROM rust:1.99.1-slim-trixie AS rust-build
 WORKDIR /src
 COPY webapp/rust/Cargo.toml webapp/rust/Cargo.lock webapp/rust/rust-toolchain.toml ./
 COPY webapp/rust/src ./src
