@@ -75,7 +75,8 @@ type Model struct {
 	byWindow map[string][]*Post
 	// postExists は投稿が作成済みかどうか。作成のリクエストを送ってから応答までは不明。
 	postExists map[string]*timeline[bool]
-	pending    []*pendingPost
+	// pending は投稿者ごとの、ID のわからない投稿の作成。
+	pending map[string][]*pendingPost
 
 	friendships map[pair]*timeline[bool]
 	// friendCandidates は友達だったことがあるかもしれない相手。友達の友達の判定に使う。
@@ -83,6 +84,8 @@ type Model struct {
 	// blocks はブロックする人とされる人の組（向きあり）。
 	blocks  map[[2]string]*timeline[bool]
 	follows map[[2]string]*timeline[bool]
+	// followCandidates はフォローしたことがあるかもしれない相手。following フィードの判定に使う。
+	followCandidates map[string]map[string]bool
 }
 
 func New() *Model {
@@ -95,10 +98,12 @@ func New() *Model {
 		byAuthor:         map[string][]*Post{},
 		byWindow:         map[string][]*Post{},
 		postExists:       map[string]*timeline[bool]{},
+		pending:          map[string][]*pendingPost{},
 		friendships:      map[pair]*timeline[bool]{},
 		friendCandidates: map[string]map[string]bool{},
 		blocks:           map[[2]string]*timeline[bool]{},
 		follows:          map[[2]string]*timeline[bool]{},
+		followCandidates: map[string]map[string]bool{},
 	}
 }
 
@@ -161,6 +166,10 @@ func (m *Model) follow(follower, followee string) *timeline[bool] {
 	key := [2]string{follower, followee}
 	if m.follows[key] == nil {
 		m.follows[key] = newTimeline(false)
+		if m.followCandidates[follower] == nil {
+			m.followCandidates[follower] = map[string]bool{}
+		}
+		m.followCandidates[follower][followee] = true
 	}
 	return m.follows[key]
 }
@@ -290,8 +299,27 @@ func (m *Model) BeginCreatePost(authorID string) *PostCreation {
 	w := m.newWrite()
 	p := &pendingPost{authorID: authorID, exists: newTimeline(false)}
 	begin(w, p.exists, true)
-	m.pending = append(m.pending, p)
+	m.pending[authorID] = append(m.pending[authorID], p)
+	// 拒否された作成は一度も反映されていないので、残しておく意味がない。
+	w.after = func(o outcome) {
+		if o == rejected {
+			m.removePending(p)
+		}
+	}
 	return &PostCreation{Write: w, pending: p}
+}
+
+// removePending は ID のわからない投稿の作成から p を除く。m.mu を書き込みで持って呼ぶ。
+func (m *Model) removePending(p *pendingPost) {
+	list := m.pending[p.authorID]
+	if i := slices.Index(list, p); i >= 0 {
+		list = slices.Delete(list, i, i+1)
+	}
+	if len(list) == 0 {
+		delete(m.pending, p.authorID)
+	} else {
+		m.pending[p.authorID] = list
+	}
 }
 
 // Created は作成できた投稿を記録する。以後、この作成は ID のわかる投稿として扱う。
@@ -307,14 +335,7 @@ func (m *Model) Created(creation *PostCreation, post Post, visibility string) {
 	m.byAuthor[post.AuthorID] = append(m.byAuthor[post.AuthorID], &post)
 	m.byWindow[post.WindowID] = append(m.byWindow[post.WindowID], &post)
 	m.postExists[post.ID] = creation.pending.exists
-	creation.after = func(outcome) {
-		for i, p := range m.pending {
-			if p == creation.pending {
-				m.pending = append(m.pending[:i], m.pending[i+1:]...)
-				break
-			}
-		}
-	}
+	creation.after = func(outcome) { m.removePending(creation.pending) }
 	m.mu.Unlock()
 	creation.Applied()
 }

@@ -54,36 +54,49 @@ type Read struct {
 // 確実に反映された書き込みのうち最後のものの値（どれが最後か決まらなければそのすべて）と、
 // 反映されているかもしれない書き込みの値を返す。
 func (t *timeline[T]) possible(r Read) []T {
-	var certain, maybe []*change[T]
-	for _, c := range t.changes {
-		switch {
-		case c.outcome == rejected || c.sent.After(r.Received):
-		case c.outcome == applied && c.received.Add(r.Staleness).Before(r.Sent):
-			certain = append(certain, c)
-		default:
-			maybe = append(maybe, c)
-		}
-	}
 	var values []T
-	add := func(v T) {
+	t.each(r, func(v T) {
 		if !slices.Contains(values, v) {
 			values = append(values, v)
 		}
+	})
+	return values
+}
+
+// each は possible と同じ値ごとに f を呼ぶ（同じ値で何度も呼ぶことがある）。判定は読み取りの
+// たびに何千回も呼ぶので、スライスを作らずに数え上げる。
+func (t *timeline[T]) each(r Read, f func(T)) {
+	if len(t.changes) == 0 {
+		f(t.initial)
+		return
 	}
-	if len(certain) == 0 {
-		add(t.initial)
+	excluded := func(c *change[T]) bool { return c.outcome == rejected || c.sent.After(r.Received) }
+	certain := func(c *change[T]) bool {
+		return !excluded(c) && c.outcome == applied && c.received.Add(r.Staleness).Before(r.Sent)
 	}
-	for _, c := range certain {
-		// 別の確実な書き込みがこれより確実に後なら、これは最後ではない。
-		superseded := slices.ContainsFunc(certain, func(other *change[T]) bool { return c.received.Before(other.sent) })
-		if !superseded {
-			add(c.value)
+	if !slices.ContainsFunc(t.changes, certain) {
+		f(t.initial)
+	}
+	for _, c := range t.changes {
+		switch {
+		case excluded(c):
+		case certain(c):
+			// 別の確実な書き込みがこれより確実に後なら、これは最後ではない。
+			superseded := slices.ContainsFunc(t.changes, func(other *change[T]) bool { return certain(other) && c.received.Before(other.sent) })
+			if !superseded {
+				f(c.value)
+			}
+		default:
+			f(c.value)
 		}
 	}
-	for _, c := range maybe {
-		add(c.value)
-	}
-	return values
+}
+
+// mayBe は読み取り r が value を観測しうるか。
+func (t *timeline[T]) mayBe(r Read, value T) bool {
+	found := false
+	t.each(r, func(v T) { found = found || v == value })
+	return found
 }
 
 // Write は記録中の書き込み。リクエストを送る直前に作り、応答を受けたら結果を記録する。

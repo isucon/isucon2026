@@ -82,6 +82,42 @@ class EcspressoTest(unittest.TestCase):
         )
         self.assertEqual(service["loadBalancers"][0]["containerPort"], 8081)
 
+    def test_standby_runs_only_portal_even_with_bot_enabled(self):
+        self.infra.update(standby=True, enableBot=True)
+        (self.path / "infra.json").write_text(json.dumps(self.infra))
+        self.assertEqual(self.render("portal", "servicedef")["desiredCount"], 2)
+        for service in ("worker", "notifyloop", "bot"):
+            with self.subTest(service=service):
+                self.assertEqual(self.render(service, "servicedef")["desiredCount"], 0)
+
+    def test_standby_bot_override_keeps_workers_stopped(self):
+        for enabled in (False, True):
+            self.infra.update(standby=True, enableBot=enabled, enableBotInStandby=True)
+            (self.path / "infra.json").write_text(json.dumps(self.infra))
+            self.assertEqual(
+                self.render("bot", "servicedef")["desiredCount"], int(enabled)
+            )
+            for service in ("worker", "notifyloop"):
+                self.assertEqual(self.render(service, "servicedef")["desiredCount"], 0)
+
+    def test_create_and_update_preserve_service_defaults(self):
+        for name in ("portal", "worker", "bot", "notifyloop"):
+            with self.subTest(service=name):
+                service = self.render(name, "servicedef")
+                self.assertEqual(
+                    service["availabilityZoneRebalancing"],
+                    "DISABLED" if name in ("bot", "notifyloop") else "ENABLED",
+                )
+                self.assertEqual(service["propagateTags"], "NONE")
+                self.assertEqual(
+                    service["healthCheckGracePeriodSeconds"],
+                    60 if name == "portal" else 0,
+                )
+                self.assertEqual(
+                    self.render(name, "taskdef")["volumes"],
+                    [{"name": "tmp", "host": {}}],
+                )
+
     def test_migration_only_has_database_secrets(self):
         task = self.render("migrate", "taskdef")
         self.assertEqual(task["containerDefinitions"][0]["command"], ["migrate"])
@@ -90,6 +126,35 @@ class EcspressoTest(unittest.TestCase):
             {"PGUSER", "PGPASSWORD"},
         )
         self.assertNotIn("loadBalancers", self.render("migrate", "servicedef"))
+
+    def test_discord_invitation_is_loaded_from_secrets_manager(self):
+        key = "ISUXPORTAL_DISCORD_INVITE_URL"
+        self.infra["secretKeys"].append(key)
+        (self.path / "infra.json").write_text(json.dumps(self.infra))
+        for service in ("portal", "worker", "notifyloop", "bot"):
+            with self.subTest(service=service):
+                container = self.render(service, "taskdef")["containerDefinitions"][0]
+                self.assertNotIn(key, {v["name"] for v in container["environment"]})
+                self.assertIn(
+                    {"name": key, "valueFrom": "arn:application:" + key + "::"},
+                    container["secrets"],
+                )
+
+    def test_discord_bot_token_is_limited_to_consumers(self):
+        self.infra["secretKeys"].append("ISUXPORTAL_DISCORD_BOT_TOKEN")
+        for enabled in (False, True):
+            self.infra["enableBot"] = enabled
+            (self.path / "infra.json").write_text(json.dumps(self.infra))
+            for service in ("portal", "worker", "notifyloop", "bot", "migrate"):
+                with self.subTest(enabled=enabled, service=service):
+                    task = self.render(service, "taskdef")
+                    names = {
+                        s["name"] for s in task["containerDefinitions"][0]["secrets"]
+                    }
+                    self.assertEqual(
+                        "ISUXPORTAL_DISCORD_BOT_TOKEN" in names,
+                        service == "worker" or (service == "bot" and enabled),
+                    )
 
     def test_singletons_and_worker_secret_isolation(self):
         for name in ("bot", "notifyloop"):

@@ -32,11 +32,11 @@ import (
 const testLockKey = 0x1543_0026
 
 var tablesToClean = []string{
-	"benchmark_jobs", "benchmark_results", "clarifications", "contestant_instances", "contestants",
+	"discord_support_threads", "benchmark_jobs", "benchmark_results", "clarifications", "contestant_instances", "contestants",
 	"coupons", "env_checks", "extra_time_assignments", "notifications", "push_subscriptions",
 	"ssh_public_keys", "survey_responses", "teams",
 	"instance_command_execute_requests", "instance_command_execute_request_results",
-	"jobs", "registration_records", "registration_source_records",
+	"periodic_job_schedules", "jobs", "registration_records", "registration_source_records",
 }
 
 // Database は PostgreSQL に接続し、スキーマ適用と全テーブルの初期化を行う。

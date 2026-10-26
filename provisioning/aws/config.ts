@@ -16,9 +16,35 @@ export const config = {
 		.max(maxTeams)
 		.parse(c.getNumber("teamCount") ?? 1),
 	// Keep team networks but omit EC2 instances for retired trial teams.
-	disabledInstanceTeams: z.array(z.number().int().min(1).max(maxTeams)).parse(
-		c.getObject<number[]>("disabledInstanceTeams") ?? [],
-	),
+	disabledInstanceTeams: z
+		.array(z.number().int().min(1).max(maxTeams))
+		.parse(c.getObject<number[]>("disabledInstanceTeams") ?? []),
+	// Give additional teams their own certificate without changing shared TLS.
+	independentTlsTeams: z
+		.array(z.number().int().min(1).max(maxTeams))
+		.parse(c.getObject<number[]>("independentTlsTeams") ?? []),
+	teamAdminSshPublicKeys: z
+		.record(z.string(), z.array(z.string().min(1)))
+		.parse(c.getObject("teamAdminSshPublicKeys") ?? {}),
+	protectedDatabaseTeams: z
+		.array(z.number().int().min(1).max(maxTeams))
+		.parse(c.getObject("protectedDatabaseTeams") ?? []),
+	portalTeamIds: z
+		.record(z.string(), z.number().int().positive())
+		.parse(c.getObject("portalTeamIds") ?? {}),
+	teamSshPublicKeys: z
+		.record(z.string(), z.array(z.string().min(1)))
+		.parse(c.getObject("teamSshPublicKeys") ?? {}),
+	// Pin new environments independently, without replacing existing teams.
+	teamImages: z
+		.record(
+			z.string(),
+			z.object({
+				serviceAmiId: z.string().min(1),
+				routerAmiId: z.string().min(1),
+			}),
+		)
+		.parse(c.getObject("teamImages") ?? {}),
 	serviceAmiId: c.get("serviceAmiId"),
 	routerAmiId: c.get("routerAmiId"),
 	availabilityZone: c.get("availabilityZone") ?? "ap-northeast-1a",
