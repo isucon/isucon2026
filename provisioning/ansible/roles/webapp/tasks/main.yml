@@ -61,6 +61,18 @@
   become_user: isucon
   changed_when: true
 
+# 投稿画像の検証に使う。libjpeg なしで入った Imager は JPEG を読めない
+- name: Check that Imager for webapp/perl reads JPEG
+  ansible.builtin.command:
+    argv:
+      - /home/isucon/local/perl/bin/perl
+      - -I/home/isucon/webapp/perl/local/lib/perl5
+      - -MImager
+      - -e
+      - 'exit !$Imager::formats{jpeg}'
+  become_user: isucon
+  changed_when: false
+
 - name: Install systemd units
   ansible.builtin.copy:
     src: "{{ item }}"

@@ -1,9 +1,11 @@
 ---
 # Perl は /home/isucon/local/perl にソースからビルドする（webapp/perl 用）
-- name: Install packages to build Perl and DBD::Pg
+# Imager は libjpeg が見つからないと JPEG を読めないまま入るので、cpm install より前に入れる
+- name: Install packages to build Perl, DBD::Pg and Imager
   ansible.builtin.apt:
     name:
       - build-essential
+      - libjpeg-dev
       - libpq-dev
 
 - name: Read installed Perl version

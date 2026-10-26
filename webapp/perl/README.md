@@ -4,6 +4,7 @@
 
 - Perl 5.44 / [Mojolicious](https://mojolicious.org/)（hypnotoad）/ [Mojo::Pg](https://metacpan.org/pod/Mojo::Pg)
 - 依存モジュールは `cpanfile` と `cpanfile.snapshot` で固定しています
+- 画像の検証に [Imager](https://metacpan.org/pod/Imager) を使います。`make install` の前に libjpeg の開発用パッケージ（Debian や Ubuntu では `libjpeg-dev`）を入れてください。入れずにビルドした Imager は JPEG を読めません
 
 ## 構成
 
