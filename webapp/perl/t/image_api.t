@@ -5,10 +5,12 @@ use Digest::SHA qw(sha256);
 use MIME::Base64 qw(encode_base64url);
 use lib 't/lib';
 use Isureal::Test qw(test_app);
+use Isureal::IPBan;
 use Isureal::ImageSignature qw(image_signature);
 
-# 不正な URL は DB にアクセスする前に拒否する。
+# 不正な URL は DB にアクセスする前に拒否する。IP BAN の確認は DB を読むので外す
 local $ENV{ISUREAL_DB_HOST} = '192.0.2.1';
+my $ip_bans = mock 'Isureal::IPBan' => (override => [banned => sub { false }]);
 my $t      = test_app();
 my $now    = time;
 my $key    = sha256('test-secret');
