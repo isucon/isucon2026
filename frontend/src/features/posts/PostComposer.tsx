@@ -1,7 +1,13 @@
 import { useEffect, useRef, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { StateView } from "../../components/UI";
-import { createPost, type Location, type Visibility } from "../../api/posts";
+import { APIError } from "../../api/client";
+import {
+  createPost,
+  getCurrentPostingWindow,
+  type Location,
+  type Visibility,
+} from "../../api/posts";
 
 export function PostComposer(): React.JSX.Element {
   const navigate = useNavigate();
@@ -30,6 +36,7 @@ export function PostComposer(): React.JSX.Element {
   const locationRequest = useRef(0);
   const [locality, setLocality] = useState("");
   const [error, setError] = useState("");
+  const [hasCurrentPost, setHasCurrentPost] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   function stopCamera(): void {
@@ -181,14 +188,40 @@ export function PostComposer(): React.JSX.Element {
     }
     if (submitting) return;
     setSubmitting(true);
+    setHasCurrentPost(false);
     setError("");
     try {
       await createPost({ image, caption, visibility, location: location() });
       navigate("/posts/complete", { replace: true });
-    } catch {
-      setError(
-        "投稿できませんでした。入力内容と投稿可能期間を確認してください。",
-      );
+    } catch (reason) {
+      if (
+        reason instanceof APIError && reason.message === "post_slot_unavailable"
+      ) {
+        setError(
+          "現在は投稿できません。投稿済みか、投稿期間・削除回数の制限を確認してください。",
+        );
+        try {
+          const state = await getCurrentPostingWindow();
+          setHasCurrentPost(state.hasPosted);
+          if (state.hasPosted) {
+            setError(
+              "今日はすでに投稿済みです。現在の投稿を確認してください。",
+            );
+          } else if (state.deletionCount >= 2) {
+            setError("削除回数の上限に達したため、今日は再投稿できません。");
+          } else if (!state.canPost) {
+            setError(
+              "現在は投稿できる期間ではありません。次の投稿通知をお待ちください。",
+            );
+          }
+        } catch {
+          // Keep the slot restriction message if refreshing its details fails.
+        }
+      } else {
+        setError(
+          "投稿できませんでした。入力内容と投稿可能期間を確認してください。",
+        );
+      }
     } finally {
       setSubmitting(false);
     }
@@ -420,6 +453,11 @@ export function PostComposer(): React.JSX.Element {
         </fieldset>
         {submitting && <p role="status">あなたの一枚を送信しています…</p>}
         {error && <p role="alert">{error}</p>}
+        {hasCurrentPost && (
+          <Link className="button" to="/posts/me/current">
+            現在の投稿を確認
+          </Link>
+        )}
       </form>
     </section>
   );

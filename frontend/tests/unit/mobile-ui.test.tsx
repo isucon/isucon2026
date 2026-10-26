@@ -2,6 +2,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { PostComposer } from "../../src/features/posts/PostComposer";
 import { Brand } from "../../src/components/UI";
 import { RealMojiPanel } from "../../src/features/interactions/RealMojiPanel";
 import { FeedPage } from "../../src/features/feeds/FeedPage";
@@ -20,6 +21,7 @@ vi.mock(
 vi.mock(
   "../../src/api/posts",
   () => ({
+    createPost: vi.fn(),
     getFeed: vi.fn(async () => ({ items: [], nextPage: null })),
     getCurrentPostingWindow: vi.fn(async () => ({
       window: { id: "w" },
@@ -151,3 +153,65 @@ it("brand uses the extracted vector logo and links home", async () => {
   expect(logo?.getAttribute("src")).toBe("/isureal-logo.svg");
   expect(logo?.closest("a")?.getAttribute("href")).toBe("/");
 });
+
+it.each(
+  [
+    [
+      {
+        window: { id: "w" },
+        hasPosted: true,
+        canPost: false,
+        deletionCount: 0,
+      },
+      "今日はすでに投稿済みです。",
+      true,
+    ],
+    [
+      {
+        window: { id: "w" },
+        hasPosted: false,
+        canPost: false,
+        deletionCount: 2,
+      },
+      "削除回数の上限に達したため、今日は再投稿できません。",
+      false,
+    ],
+    [
+      { window: null, hasPosted: false, canPost: false, deletionCount: 0 },
+      "現在は投稿できる期間ではありません。",
+      false,
+    ],
+  ] as const,
+)(
+  "post slot conflict explains the current restriction and preserves the photo",
+  async (state, message, hasPost) => {
+    vi.mocked(posts.createPost).mockRejectedValueOnce(
+      new APIError(409, { error: "post_slot_unavailable" }),
+    );
+    vi.mocked(posts.getCurrentPostingWindow).mockResolvedValueOnce(
+      state as posts.CurrentPostingWindow,
+    );
+    await render(<PostComposer />);
+    const input = host.querySelector("input[type=file]")!;
+    Object.defineProperty(input, "files", {
+      value: [new File(["image"], "photo.jpg", { type: "image/jpeg" })],
+    });
+    await act(async () =>
+      input.dispatchEvent(new Event("change", { bubbles: true }))
+    );
+    await act(async () =>
+      host.querySelector("form")!.dispatchEvent(
+        new Event("submit", { bubbles: true, cancelable: true }),
+      )
+    );
+    expect(
+      [...host.querySelectorAll('[role="alert"]')].map((el) => el.textContent)
+        .join(" "),
+    ).toContain(message);
+    expect(Boolean(host.querySelector('a[href="/posts/me/current"]'))).toBe(
+      hasPost,
+    );
+    expect(host.querySelector('img[alt="投稿画像のプレビュー"]')).not
+      .toBeNull();
+  },
+);
