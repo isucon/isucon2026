@@ -43,13 +43,14 @@ datagen-test:
 	cd webapp/datagen && go test ./...
 
 # Docker Compose の DB に、ファイルを経ずに初期データを入れ直す（SCALE=large で本番の規模）。
-# bench は同じ -scale で実行する。
+# bench は同じ -scale で実行する。WEBAPP=webapp-optimized で最適化版のスキーマを使う。
 SCALE ?= small
+WEBAPP ?= webapp
 DB_PSQL = docker compose exec -T db-asia psql -U isureal -d isureal -v ON_ERROR_STOP=1 -q
 datagen-load:
-	$(DB_PSQL) < webapp/sql/001-schema.sql
+	$(DB_PSQL) < $(WEBAPP)/sql/001-schema.sql
 	cd webapp/datagen && go run . -scale $(SCALE) -out - | $(DB_PSQL)
-	$(DB_PSQL) < webapp/sql/003-initial-snapshot.sql
+	$(DB_PSQL) < $(WEBAPP)/sql/003-initial-snapshot.sql
 
 generate-api:
 	npm --prefix frontend run generate:api
@@ -157,6 +158,28 @@ aws-benchmark:
 		-host "$$(cd provisioning/aws && pulumi stack output teamOutputs --stack "$(or $(STACK),dev)" --json | jq -r '.[$(or $(TEAM),1) - 1].appHostname')" \
 		-scale large \
 		$(BENCH_ARGS)
+
+# ベンチを Fargate（本番の Supervisor と同じ 4 vCPU / 8 GiB、同じ NAT）から実行する。
+# supervisor/Dockerfile のビルド → ECR へ push → ecspresso run → 結果を var/aws-bench/ へ取得
+.PHONY: aws-bench-runner-preview aws-bench-runner-up aws-bench-run aws-bench-image aws-bench-show
+# make の中では mise の環境変数が入らないので、provisioning/aws/mise.toml と同じ backend を渡す
+BENCH_RUNNER_PULUMI = cd provisioning/aws/bench-runner && $(AWS_SDK_ENV) PULUMI_BACKEND_URL="$${PULUMI_BACKEND_URL:-s3://isucon2026-pulumi-state}" pulumi
+
+aws-bench-runner-preview:
+	$(BENCH_RUNNER_PULUMI) preview --stack "$(or $(RUNNER_STACK),dev)"
+
+aws-bench-runner-up:
+	$(BENCH_RUNNER_PULUMI) up --stack "$(or $(RUNNER_STACK),dev)"
+
+# TEAM は必須（8,9,10 のように並べると同時に流す）。IMAGE（repository@digest）を指定するとビルドと push を省く
+aws-bench-run:
+	$(AWS_SDK_ENV) TEAM="$(TEAM)" BENCH_ARGS="$(BENCH_ARGS)" IMAGE="$(IMAGE)" HOST_STATS="$(HOST_STATS)" provisioning/aws/bench-runner/run.sh run
+
+aws-bench-image:
+	$(AWS_SDK_ENV) provisioning/aws/bench-runner/run.sh image
+
+aws-bench-show:
+	provisioning/aws/bench-runner/run.sh show $(RUN)
 
 check: proto-lint vet frontend-lint frontend-typecheck contract test build
 

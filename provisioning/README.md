@@ -147,3 +147,8 @@ Routerは参加者の操作対象に含めない。
 
 変更前に全体のプレビューと追加チームに限定したプレビューを確認し、既存リソースの置換・削除・設定更新を適用しない。
 実際のAMI ID、チームと環境の対応、接続情報は[privateの運用記録](https://github.com/isucon/isucon2026-private/pull/2)で管理する。
+
+## ベンチの単発実行
+
+ベンチの開発中に手元の変更をFargateから流す手順は、[ベンチの単発実行](aws/bench-runner/README.md)を参照してください。
+`make aws-bench-run TEAM=N`で、ビルド、ECRへのpush、実行、結果の取得まで進みます。
