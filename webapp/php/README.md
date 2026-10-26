@@ -2,7 +2,7 @@
 
 `webapp/go` と同じ API を PHP で実装したものです。
 
-- PHP 8.5 / [Slim](https://www.slimframework.com/) 4 / [PHP-DI](https://php-di.org/) / PDO（pdo_pgsql）
+- PHP 8.5 / [Slim](https://www.slimframework.com/) 4 / [PHP-DI](https://php-di.org/) / PDO（pdo_pgsql） / GD（JPEG の検証）
 - php-fpm で動かし、nginx から FastCGI で受けます
 - 依存パッケージは `composer.json` と `composer.lock` で固定しています
 

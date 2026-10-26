@@ -7,6 +7,8 @@
       - pkg-config
       - libcurl4-openssl-dev
       - libicu-dev
+      - libjpeg-dev
+      - libpng-dev
       - libpq-dev
       - libssl-dev
       - libxml2-dev
@@ -15,7 +17,7 @@
 
 - name: Read installed PHP version
   ansible.builtin.command:
-    argv: [/home/isucon/local/php/bin/php, -r, 'echo PHP_VERSION;']
+    argv: [/home/isucon/local/php/bin/php, -r, 'echo PHP_VERSION, function_exists("imagecreatefromjpeg") ? "" : "-without-jpeg";']
   register: php_installed
   changed_when: false
   failed_when: false
@@ -48,7 +50,7 @@
       ansible.builtin.shell: |
         set -eu
         ./configure --prefix=/home/isucon/local/php \
-          --enable-fpm --enable-intl --enable-mbstring --disable-mbregex \
+          --enable-fpm --enable-gd --with-jpeg --enable-intl --enable-mbstring --disable-mbregex \
           --with-curl --with-openssl --with-pdo-pgsql --with-zip --with-zlib \
           --without-sqlite3 --without-pdo-sqlite
         make -j"$(nproc)"

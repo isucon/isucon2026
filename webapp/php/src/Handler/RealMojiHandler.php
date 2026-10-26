@@ -11,6 +11,7 @@ use Isureal\Http\Input;
 use Isureal\Http\Json;
 use Isureal\Http\Middleware\SessionMiddleware;
 use Isureal\Ids;
+use Isureal\Jpeg;
 use Isureal\Model\RealMoji;
 use Isureal\Repository\PostRepository;
 use Isureal\Repository\RealMojiRepository;
@@ -45,6 +46,10 @@ final readonly class RealMojiHandler
             throw new ApiError(400, 'invalid_realmoji');
         }
         $data = (string) $image->getStream();
+        [$width, $height] = Jpeg::size($data) ?? throw new ApiError(400, 'invalid_realmoji');
+        if ($width > 512 || $height > 512) {
+            throw new ApiError(400, 'invalid_realmoji');
+        }
 
         $actor = SessionMiddleware::session($request)->userId;
         $post = $this->posts->find($args['postId']) ?? throw new ApiError(403, 'interaction_forbidden');

@@ -275,14 +275,16 @@ abstract class IntegrationTestCase extends TestCase
     }
 
     /**
-     * JPEG の先頭と末尾を持つテスト用の画像データ
+     * テスト用の JPEG
+     *
+     * @param int<1, max> $width
+     * @param int<1, max> $height
      */
-    protected static function jpeg(int $size = 64): string
+    protected static function jpeg(int $width = 2, int $height = 2): string
     {
-        $body = '';
-        for ($i = 1; $i <= $size; $i++) {
-            $body .= chr(($i * 7) % 256);
-        }
-        return "\xff\xd8\xff\xe0{$body}\xff\xd9";
+        $image = imagecreatetruecolor($width, $height) ?: throw new \RuntimeException('imagecreatetruecolor failed');
+        ob_start();
+        imagejpeg($image);
+        return (string) ob_get_clean();
     }
 }

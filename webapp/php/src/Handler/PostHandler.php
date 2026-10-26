@@ -11,6 +11,7 @@ use Isureal\Http\Input;
 use Isureal\Http\Json;
 use Isureal\Http\Middleware\SessionMiddleware;
 use Isureal\Ids;
+use Isureal\Jpeg;
 use Isureal\Model\Post;
 use Isureal\Model\PostLocation;
 use Isureal\Model\User;
@@ -51,6 +52,11 @@ final readonly class PostHandler
             throw new ApiError(400, 'invalid_post');
         }
         $imageData = (string) $image->getStream();
+        // [作問] 画像のバリデーションを全データを読んでから行なっている(改善するべき)
+        [$width, $height] = Jpeg::size($imageData) ?? throw new ApiError(400, 'invalid_post');
+        if ($width > 4096 || $height > 4096) {
+            throw new ApiError(400, 'invalid_post');
+        }
 
         $userId = SessionMiddleware::session($request)->userId;
         [$post, $user] = $this->db->transaction(function (Database $db) use ($userId, $imageData, $caption, $visibility, $location): array {
