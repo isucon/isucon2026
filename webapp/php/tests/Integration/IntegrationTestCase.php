@@ -7,6 +7,7 @@ namespace Isureal\Tests\Integration;
 use Isureal\Application;
 use Isureal\Config;
 use Isureal\Database;
+use Isureal\Http\ActionLog;
 use Isureal\Ids;
 use Isureal\Repository\SessionRepository;
 use Isureal\Repository\UserRepository;
@@ -36,6 +37,13 @@ abstract class IntegrationTestCase extends TestCase
     private array $apps = [];
 
     /**
+     * 行動ログの出力先
+     *
+     * @var resource
+     */
+    private mixed $actionLogOutput;
+
+    /**
      * リージョンごとに起動した php -S のプロセスと URL
      *
      * @var array<string, array{resource, string}>
@@ -52,6 +60,7 @@ abstract class IntegrationTestCase extends TestCase
         $schema = (string) file_get_contents(__DIR__ . '/../../../sql/001-schema.sql');
         $this->db->executeScript($schema);
         $this->apps = [];
+        $this->actionLogOutput = fopen('php://memory', 'w+') ?: throw new \RuntimeException('failed to open php://memory');
     }
 
     /**
@@ -68,7 +77,27 @@ abstract class IntegrationTestCase extends TestCase
      */
     protected function app(string $region = 'asia'): App
     {
-        return $this->apps[$region] ??= Application::create([Config::class => self::config($region)]);
+        return $this->apps[$region] ??= Application::create([
+            Config::class => self::config($region),
+            ActionLog::class => new ActionLog('debug', $this->actionLogOutput),
+        ]);
+    }
+
+    /**
+     * これまでに出た行動ログを 1 行ずつ JSON として読む
+     *
+     * @return list<array<string, mixed>>
+     */
+    protected function actionLogs(): array
+    {
+        rewind($this->actionLogOutput);
+        $lines = [];
+        foreach (explode("\n", trim((string) stream_get_contents($this->actionLogOutput))) as $line) {
+            if ($line !== '') {
+                $lines[] = json_decode($line, true, flags: JSON_THROW_ON_ERROR);
+            }
+        }
+        return $lines;
     }
 
     protected function insertUser(string $username, string $region = 'asia', string $accountType = 'regular', ?string $id = null): string

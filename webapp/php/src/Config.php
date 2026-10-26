@@ -13,6 +13,7 @@ final readonly class Config
         public string $dbUser = 'isureal',
         public string $dbPassword = 'isureal',
         public string $dbName = 'isureal',
+        public string $logLevel = 'debug',
     ) {
     }
 
@@ -25,6 +26,7 @@ final readonly class Config
             dbUser: self::env('ISUREAL_DB_USER', 'isureal'),
             dbPassword: self::env('ISUREAL_DB_PASSWORD', 'isureal'),
             dbName: self::env('ISUREAL_DB_NAME', 'isureal'),
+            logLevel: self::env('ISUREAL_LOG_LEVEL', 'debug'),
         );
     }
 
