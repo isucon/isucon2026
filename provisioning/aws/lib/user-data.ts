@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import {
 	appHttpPort,
 	databaseIp,
@@ -292,16 +294,42 @@ export function envoyBootstrap(t: Team): string {
 	return `${JSON.stringify(bootstrap, null, 2)}\n`;
 }
 
-// データ用 ENI は起動後に attach されるので、アドレスが載るまで netplan を当て直してから起動する
+// data0 は 90-isucon.yaml の静的な設定だけで動かす（provisioning/scripts/router_network.py も同じ内容を書く）。
+// EC2 では cloud-init の hotplug が既定で有効で、AMI にも udev ルールが残っている。起動後に付いたデータ用 ENI を
+// 見つけると DHCP とポリシールーティングの定義を 50-cloud-init.yaml に書き足し、data0 の定義が二重になって
+// 経路を張れなくなる。network の config: disabled は hotplug には効かないので、hotplug も止める
+export const routerCloudInitConfig = `network: {config: disabled}
+updates: {network: {when: [boot-new-instance]}}
+`;
+
+// 再起動のたびに cloud-init は名前順で ens5 より先に来る data0 で DHCP を取り、1 時間で切れるアドレスを残す。
+// 切れると data0 のアドレスと経路が消えるので、cloud-init の DHCP が済んだ後の final ステージで設定し直す。
+// bootcmd の時点では D-Bus が動いておらず、networkctl を使えない
+export const routerDataReconfigurePath =
+	"/var/lib/cloud/scripts/per-boot/isucon-router-data0";
+export const routerDataReconfigureScript = `#!/bin/sh
+if [ -e /sys/class/net/data0 ]; then networkctl reconfigure data0; fi
+`;
+
+export const routerNetworkScriptPath = "/usr/local/sbin/isucon-router-network";
+
+// データ用 ENI は起動後に attach されるので、data0 に静的なアドレスと経路が載るまで netplan を当て直してから起動する。
+// ENI が init-local より先に付くと cloud-init が 50-cloud-init.yaml にも定義を書くので、スクリプトがそれを消す
 export function routerUserData(
 	t: Team,
 	dataMac: string,
 	tlsCertificate: string,
 	tlsPrivateKey: string,
 ): string {
+	const networkScript = readFileSync(
+		join(__dirname, "../../scripts/router_network.py"),
+		"utf8",
+	);
 	return `#cloud-config
 write_files:
-${file("/etc/cloud/cloud.cfg.d/99-isucon-router-network.cfg", "network: {config: disabled}\n", "0644")}
+${file("/etc/cloud/cloud.cfg.d/99-isucon-router-network.cfg", routerCloudInitConfig, "0644")}
+${file(routerDataReconfigurePath, routerDataReconfigureScript, "0755")}
+${file(routerNetworkScriptPath, networkScript, "0755")}
 ${file("/etc/netplan/90-isucon.yaml", routerNetplan(t, dataMac), "0600")}
 ${file("/etc/isucon/router.env", routerEnvironment(t), "0640", "root:isureal-router")}
 ${file("/etc/isucon/portal.env", portalEnvironment(t), "0640", "root:isureal-router")}
@@ -309,7 +337,7 @@ ${file("/etc/isucon/envoy/bootstrap.yaml", envoyBootstrap(t), "0644")}
 ${file("/etc/isucon/envoy/tls/server.crt", tlsCertificate, "0644")}
 ${file("/etc/isucon/envoy/tls/server.key", tlsPrivateKey, "0640", "root:isureal-router")}
 runcmd:
-  - until ip -4 -o address show dev data0 | grep -Fq ' ${t.routerDataIp}/'; do netplan apply; sleep 5; done
+  - until ${routerNetworkScriptPath}; do sleep 5; done
   - systemctl enable --now isureal-portal isureal-router isureal-envoy
 `;
 }
