@@ -22,8 +22,10 @@ func TestBuildRoutesMatrix(t *testing.T) {
 		DefaultCountry: "JP",
 	}
 	profile := domain.TrafficProfile{
-		SameRegionDelay: 0, CrossRegionDelay: 125 * time.Millisecond,
-		SameRegionBandwidthBPS: 80_000_000, CrossRegionBandwidthBPS: 800_000,
+		SameRegion: domain.TrafficClass{BandwidthBPS: 80_000_000},
+		APEU:       domain.TrafficClass{Delay: 125 * time.Millisecond, BandwidthBPS: 800_000},
+		EUUS:       domain.TrafficClass{Delay: 90 * time.Millisecond, BandwidthBPS: 1_600_000},
+		APUS:       domain.TrafficClass{Delay: 150 * time.Millisecond, BandwidthBPS: 2_400_000},
 	}
 	routes, err := BuildRoutes("isureal_routes", hosts, cfg, profile)
 	if err != nil {
@@ -45,7 +47,7 @@ func TestBuildRoutesMatrix(t *testing.T) {
 		"US": "app3", "CA": "app3", "MX": "app3",
 		"GB": "app2", "DE": "app2", "FR": "app2",
 	} {
-		assertCountryRoute(t, app.Routes[routeIndex(t, country)], country, server, 0, profile.SameRegionBandwidthBPS)
+		assertCountryRoute(t, app.Routes[routeIndex(t, country)], country, server, profile.SameRegion)
 		cfg.DefaultCountry = country
 		defaultRoutes, err := BuildRoutes("defaults", hosts, cfg, profile)
 		if err != nil {
@@ -57,9 +59,16 @@ func TestBuildRoutesMatrix(t *testing.T) {
 		}
 	}
 
+	app1 := virtualHost(t, routes, hosts.App1)
+	assertCountryRoute(t, app1.Routes[routeIndex(t, "FR")], "FR", "app1", profile.APEU)
+	assertCountryRoute(t, app1.Routes[routeIndex(t, "CA")], "CA", "app1", profile.APUS)
 	app2 := virtualHost(t, routes, hosts.App2)
-	assertCountryRoute(t, app2.Routes[routeIndex(t, "DE")], "DE", "app2", 0, profile.SameRegionBandwidthBPS)
-	assertCountryRoute(t, app2.Routes[routeIndex(t, "JP")], "JP", "app2", profile.CrossRegionDelay, profile.CrossRegionBandwidthBPS)
+	assertCountryRoute(t, app2.Routes[routeIndex(t, "DE")], "DE", "app2", profile.SameRegion)
+	assertCountryRoute(t, app2.Routes[routeIndex(t, "JP")], "JP", "app2", profile.APEU)
+	assertCountryRoute(t, app2.Routes[routeIndex(t, "US")], "US", "app2", profile.EUUS)
+	app3 := virtualHost(t, routes, hosts.App3)
+	assertCountryRoute(t, app3.Routes[routeIndex(t, "GB")], "GB", "app3", profile.EUUS)
+	assertCountryRoute(t, app3.Routes[routeIndex(t, "KR")], "KR", "app3", profile.APUS)
 
 	absent := app.Routes[len(domain.Countries())]
 	if absent.GetRoute().GetCluster() != "app1" {
@@ -86,7 +95,8 @@ func TestBuildRoutesMatrix(t *testing.T) {
 func TestBuildRoutesRejectsInvalidInputs(t *testing.T) {
 	t.Parallel()
 	validConfig := domain.Config{App1Region: domain.RegionAP, App2Region: domain.RegionEU, App3Region: domain.RegionUS, DefaultCountry: "JP"}
-	validProfile := domain.TrafficProfile{SameRegionBandwidthBPS: 1000, CrossRegionBandwidthBPS: 100}
+	crossRegion := domain.TrafficClass{BandwidthBPS: 100}
+	validProfile := domain.TrafficProfile{SameRegion: domain.TrafficClass{BandwidthBPS: 1000}, APEU: crossRegion, EUUS: crossRegion, APUS: crossRegion}
 	if _, err := BuildRoutes("", testHosts(), validConfig, validProfile); err == nil {
 		t.Fatal("empty route name unexpectedly succeeded")
 	}
@@ -119,7 +129,7 @@ func routeIndex(t *testing.T, country string) int {
 	return -1
 }
 
-func assertCountryRoute(t *testing.T, route *routev3.Route, country, cluster string, delay time.Duration, bandwidthBPS uint64) {
+func assertCountryRoute(t *testing.T, route *routev3.Route, country, cluster string, class domain.TrafficClass) {
 	t.Helper()
 	if len(route.Match.Headers) != 1 || route.Match.Headers[0].Name != "x-country-code" || route.Match.Headers[0].GetStringMatch().GetExact() != country {
 		t.Fatalf("unexpected country matcher: %+v", route.Match.Headers)
@@ -135,11 +145,11 @@ func assertCountryRoute(t *testing.T, route *routev3.Route, country, cluster str
 	if err := route.TypedPerFilterConfig[bandwidthFilterName].UnmarshalTo(bandwidth); err != nil {
 		t.Fatal(err)
 	}
-	wantKiB := (bandwidthBPS + 8191) / 8192
+	wantKiB := (class.BandwidthBPS + 8191) / 8192
 	if bandwidth.GetEnableMode() != bandwidthv3.BandwidthLimit_REQUEST_AND_RESPONSE || bandwidth.GetLimitKbps().GetValue() != wantKiB {
 		t.Fatalf("unexpected bandwidth config: %+v", bandwidth)
 	}
-	if delay == 0 {
+	if class.Delay == 0 {
 		if _, ok := route.TypedPerFilterConfig[faultFilterName]; ok {
 			t.Fatal("same-region route unexpectedly has fault override")
 		}
@@ -149,7 +159,7 @@ func assertCountryRoute(t *testing.T, route *routev3.Route, country, cluster str
 	if err := route.TypedPerFilterConfig[faultFilterName].UnmarshalTo(fault); err != nil {
 		t.Fatal(err)
 	}
-	if fault.GetDelay().GetFixedDelay().AsDuration() != delay || fault.GetDelay().GetPercentage().GetNumerator() != 100 {
+	if fault.GetDelay().GetFixedDelay().AsDuration() != class.Delay || fault.GetDelay().GetPercentage().GetNumerator() != 100 {
 		t.Fatalf("unexpected fault config: %+v", fault)
 	}
 }
