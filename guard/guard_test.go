@@ -44,37 +44,46 @@ func TestDetectorCountsFailuresWithinWindow(t *testing.T) {
 	}
 }
 
+// journalLine は journalctl --output json の 1 行を作る。unit が空なら _SYSTEMD_UNIT を付けない。
+func journalLine(t *testing.T, unit, message string, at time.Time) string {
+	t.Helper()
+	entry := map[string]any{
+		"MESSAGE":              message,
+		"__REALTIME_TIMESTAMP": strconv.FormatInt(at.UnixMicro(), 10),
+		"PRIORITY":             "6",
+	}
+	if unit != "" {
+		entry["_SYSTEMD_UNIT"] = unit
+	}
+	encoded, err := json.Marshal(entry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(encoded)
+}
+
+func loginFailure(ip string) string {
+	return `{"level":"info","action":"login","status":401,"ip":"` + ip + `","user_id":null,"username":"alice"}`
+}
+
 func TestRunBansRepeatedLoginFailures(t *testing.T) {
 	base := time.Unix(1_800_000_000, 0)
 	line := func(message string, offset time.Duration) string {
-		entry := map[string]any{
-			"MESSAGE":              message,
-			"__REALTIME_TIMESTAMP": strconv.FormatInt(base.Add(offset).UnixMicro(), 10),
-			"_SYSTEMD_UNIT":        "isureal-go.service",
-			"PRIORITY":             "6",
-		}
-		encoded, err := json.Marshal(entry)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return string(encoded)
-	}
-	failure := func(ip string) string {
-		return `{"level":"info","action":"login","status":401,"ip":"` + ip + `","user_id":null,"username":"alice"}`
+		return journalLine(t, "isureal-go.service", message, base.Add(offset))
 	}
 	journal := strings.Join([]string{
-		line(failure("203.0.113.7"), 0),
-		line(failure("203.0.113.7"), time.Second),
+		line(loginFailure("203.0.113.7"), 0),
+		line(loginFailure("203.0.113.7"), time.Second),
 		line(`{"level":"info","action":"login","status":200,"ip":"203.0.113.7","user_id":null,"username":"alice"}`, 2*time.Second),
 		line(`{"level":"debug","action":"get_feed","status":200,"ip":"203.0.113.7","user_id":"u"}`, 2*time.Second),
 		line(`{"time":"2026-10-17T00:00:00Z","level":"ERROR","msg":"request failed","error":"boom"}`, 2*time.Second),
 		line("not json", 2*time.Second),
 		`{"MESSAGE":[1,2,3],"__REALTIME_TIMESTAMP":"0"}`,
 		"broken journal line",
-		line(failure("203.0.113.7"), 3*time.Second),
-		line(failure("198.51.100.1"), 3*time.Second),
-		line(failure("203.0.113.7"), 4*time.Second),
-		line(failure("203.0.113.7"), 5*time.Second),
+		line(loginFailure("203.0.113.7"), 3*time.Second),
+		line(loginFailure("198.51.100.1"), 3*time.Second),
+		line(loginFailure("203.0.113.7"), 4*time.Second),
+		line(loginFailure("203.0.113.7"), 5*time.Second),
 	}, "\n")
 
 	var banned []string
@@ -83,7 +92,7 @@ func TestRunBansRepeatedLoginFailures(t *testing.T) {
 		return nil
 	}
 	var output bytes.Buffer
-	err := run(context.Background(), strings.NewReader(journal), newDetector(5, 10*time.Second), ban, log.New(&output, "", 0))
+	err := run(context.Background(), strings.NewReader(journal), "isureal-*.service", newDetector(5, 10*time.Second), ban, log.New(&output, "", 0))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,16 +104,47 @@ func TestRunBansRepeatedLoginFailures(t *testing.T) {
 	}
 }
 
+func TestRunReadsOnlyMatchingUnits(t *testing.T) {
+	base := time.Unix(1_800_000_000, 0)
+	var lines []string
+	add := func(unit, ip string) {
+		lines = append(lines, journalLine(t, unit, loginFailure(ip), base.Add(time.Duration(len(lines))*time.Millisecond)))
+	}
+	for i := range 5 {
+		// 言語の実装を切り替えても、同じ IP の失敗は続けて数える。
+		add([]string{"isureal-go.service", "isureal-rust.service"}[i%2], "203.0.113.7")
+		add("isureal-python.service", "203.0.113.8")
+		// guard 自身、パターンに合わない unit、unit のないログは数えない。
+		add("isureal-guard.service", "198.51.100.1")
+		add("nginx.service", "198.51.100.2")
+		add("", "198.51.100.3")
+	}
+
+	var banned []string
+	ban := func(_ context.Context, ip string) error {
+		banned = append(banned, ip)
+		return nil
+	}
+	journal := strings.NewReader(strings.Join(lines, "\n"))
+	if err := run(context.Background(), journal, "isureal-*.service", newDetector(5, 10*time.Second), ban, log.New(io.Discard, "", 0)); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(banned, []string{"203.0.113.7", "203.0.113.8"}) {
+		t.Fatalf("banned = %v", banned)
+	}
+}
+
 func TestLoadConfig(t *testing.T) {
 	cfg, err := loadConfig(func(string) string { return "" })
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.unit != "isureal-go.service" || cfg.threshold != 10 || cfg.window != 10*time.Second || cfg.banDuration != 2*time.Minute {
+	if cfg.unit != "isureal-*.service" || cfg.threshold != 10 || cfg.window != 10*time.Second || cfg.banDuration != 2*time.Minute {
 		t.Fatalf("defaults = %+v", cfg)
 	}
 	for key, value := range map[string]string{
 		"GUARD_FAIL_THRESHOLD": "0", "GUARD_FAIL_WINDOW": "ten", "GUARD_BAN_DURATION": "-1m",
+		"GUARD_JOURNAL_UNIT": "isureal-[.service",
 	} {
 		if _, err := loadConfig(func(k string) string {
 			if k == key {

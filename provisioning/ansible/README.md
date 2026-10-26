@@ -19,7 +19,8 @@ ENI、TLS 証明書）は Pulumi の user-data が設定します。
 - nginx: `:80` で `public/` を返し、`/api/` を `127.0.0.1:8080` へ転送する。Router の Envoy はここへ転送する
 - PostgreSQL 16: 全台に入り、初期データも全台にある。接続情報は `isureal` / `isureal` 固定
 - 監視プログラム: ソースは `/opt/isureal-guard/src`（`_test.go` を除く）、バイナリは `/opt/isureal-guard/bin/isureal-guard`。
-  `isureal-guard.service` が `/home/isucon/env.sh` を読み、`isureal-go.service` のログを journalctl で読んで DB の `ip_bans` に BAN を書く
+  `isureal-guard.service` が `/home/isucon/env.sh` を読み、`isureal-*.service`（`isureal-guard.service` を除く）のログを
+  journalctl で読んで DB の `ip_bans` に BAN を書く。言語の実装を切り替えても、unit 名がこのパターンに合えば設定は要らない
 - イメージでは isureal-go、isureal-guard、nginx、PostgreSQL をすべて止めておき、app と db で必要なものを起動時に有効にする
 
 初期データは本番の規模（datagen の `-scale large`）で、ビルド用インスタンス上で datagen の出力をそのまま
