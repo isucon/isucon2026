@@ -5,6 +5,7 @@ use Mojo::Base 'Isureal::Controller';
 
 use DBD::Pg qw(PG_BYTEA);
 use Isureal::APIError;
+use Isureal::JPEG qw(decode_jpeg);
 use Isureal::Post qw(get_post can_view_post);
 use Isureal::RealMoji qw(get_real_moji select_current_real_mojis real_moji_response);
 use Isureal::Relationship qw(begin_relationship_tx);
@@ -18,7 +19,9 @@ sub replace ($c) {
     unless ($reaction_type =~ /\A(?:like|smile|surprise|heart|laugh|instant)\z/) {
         Isureal::APIError->throw(400, 'invalid_realmoji');
     }
-    my $data = $image->slurp;
+    my $data    = $image->slurp;
+    my $decoded = decode_jpeg($data) or Isureal::APIError->throw(400, 'invalid_realmoji');
+    Isureal::APIError->throw(400, 'invalid_realmoji') if $decoded->{width} > 512 || $decoded->{height} > 512;
 
     my $db    = $c->db;
     my $actor = $c->current_session->{user_id};

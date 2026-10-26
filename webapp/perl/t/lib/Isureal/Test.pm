@@ -4,6 +4,7 @@ use utf8;
 
 use Exporter 'import';
 use FindBin;
+use Imager;
 use Mojo::File qw(path);
 use Mojo::Pg;
 use Test2::V0;
@@ -76,9 +77,12 @@ sub bearer ($token) {
     return { Authorization => "Bearer $token" };
 }
 
-# JPEG の先頭と末尾を持つテスト用の画像データ
-sub jpeg_data ($size = 64) {
-    return "\xff\xd8\xff\xe0" . join('', map { chr(($_ * 7) % 256) } 1 .. $size) . "\xff\xd9";
+# $width x $height の JPEG。大きさが同じなら同じバイト列になる
+sub jpeg_data ($width = 64, $height = $width) {
+    my $image = Imager->new(xsize => $width, ysize => $height);
+    $image->box(filled => 1, color => [($width * 7) % 256, ($height * 13) % 256, 128]);
+    $image->write(data => \my $data, type => 'jpeg') or die Imager->errstr;
+    return $data;
 }
 
 # $code を $count 個のプロセスで同時に実行し（引数はプロセスの番号）、それぞれの返り値（HTTP ステータスなど）を返す
