@@ -29,15 +29,16 @@ ISURealは、日常の写真を共有するソーシャルネットワーキン�
 
 ### 参考実装
 
-参考実装は次の 3 つです。初期状態では Go 実装が動いています。
+参考実装は次の 4 つです。初期状態では Go 実装が動いています。
 
 | 言語 | ソースコード | systemd unit |
 |---|---|---|
 | Go | `/home/isucon/webapp/go` | `isureal-go.service` |
 | Ruby | `/home/isucon/webapp/ruby` | `isureal-ruby.service` |
 | Rust | `/home/isucon/webapp/rust` | `isureal-rust.service` |
+| Node.js | `/home/isucon/webapp/nodejs` | `isureal-nodejs.service` |
 
-どれも `:8080` で待ち受けるので、同時に動かすことはできません。たとえば Ruby 実装に切り替えるには、各 app サーバーで次を実行します。Rust 実装に切り替えるときは `isureal-ruby.service` を `isureal-rust.service` に読み替えてください。
+どれも `:8080` で待ち受けるので、同時に動かすことはできません。たとえば Ruby 実装に切り替えるには、各 app サーバーで次を実行します。Rust 実装や Node.js 実装に切り替えるときは、`isureal-ruby.service` を `isureal-rust.service` や `isureal-nodejs.service` に読み替えてください。
 
 ```sh
 sudo systemctl disable --now isureal-go.service
