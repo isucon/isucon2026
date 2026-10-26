@@ -20,13 +20,11 @@ module TestHelper
     Isureal::Config.from_env.tap { |c| c.region = region }
   end
 
-  # 001-schema.sql を流してテーブルを作り直す。ip_bans はスキーマに無いブランチでも動くように作っておく。
+  # 001-schema.sql を流してテーブルを作り直す。
   def reset_database
     conn = PG.connect(**config.database_options)
     conn.exec('SET client_min_messages TO warning')
     conn.exec(SCHEMA)
-    conn.exec('CREATE TABLE IF NOT EXISTS ip_bans (ip text PRIMARY KEY, banned_until timestamptz NOT NULL)')
-    conn.exec('TRUNCATE ip_bans')
     conn
   end
 
