@@ -21,8 +21,12 @@
           - --directory={{ repo_root }}/webapp
           - --exclude=*_test.go
           - --exclude=go/isureal
+          - --exclude=ruby/.bundle
+          - --exclude=ruby/vendor
+          - --exclude=ruby/test
           - --exclude=sql/002-seed.sql
           - go
+          - ruby
           - sql
       changed_when: true
       when: "'webapp' in prepare_components"
