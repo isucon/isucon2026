@@ -2,7 +2,7 @@
 
 `webapp/go` と同じ API を Rust で実装したものです。
 
-- Rust 1.95 / [axum](https://github.com/tokio-rs/axum) 0.8 / [sqlx](https://github.com/launchbadge/sqlx) 0.8 / [tokio](https://tokio.rs/)
+- Rust 1.99 / [axum](https://github.com/tokio-rs/axum) 0.8 / [sqlx](https://github.com/launchbadge/sqlx) 0.8 / [tokio](https://tokio.rs/)
 - Rust のバージョンは `rust-toolchain.toml`、依存クレートは `Cargo.toml` と `Cargo.lock` で固定しています
 
 ## 構成
