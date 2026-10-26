@@ -36,9 +36,8 @@ const {
 	clientCidrs,
 	sshCidrs,
 } = config;
-const teams = Array.from(
-	{ length: config.teamCount },
-	(_, index) => team(index + 1),
+const teams = Array.from({ length: config.teamCount }, (_, index) =>
+	team(index + 1),
 );
 
 const tags = { Project: "isucon2026", ManagedBy: "pulumi" };
@@ -48,7 +47,10 @@ const allEgress = [
 
 // ---- 全チームで共有するリソース（VPC などはアカウントの上限があるので増やさない） ----
 
-function routerTls(): {
+function routerTls(
+	tlsTeams: Team[],
+	prefix = "",
+): {
 	certificate: pulumi.Output<string>;
 	privateKey: pulumi.Output<string>;
 } {
@@ -58,20 +60,27 @@ function routerTls(): {
 			privateKey: config.tlsPrivateKey,
 		};
 	}
-	const key = new tls.PrivateKey("router-tls-key", {
+	const key = new tls.PrivateKey(`${prefix}router-tls-key`, {
 		algorithm: "ECDSA",
 		ecdsaCurve: "P256",
 	});
-	const certificate = new tls.SelfSignedCert("router-tls-certificate", {
-		privateKeyPem: key.privateKeyPem,
-		subject: { commonName: teams[0].domain },
-		dnsNames: teams.flatMap((t) => [t.domain, `*.${t.domain}`]),
-		validityPeriodHours: 24 * 365,
-		allowedUses: ["digital_signature", "key_encipherment", "server_auth"],
-	});
+	const certificate = new tls.SelfSignedCert(
+		`${prefix}router-tls-certificate`,
+		{
+			privateKeyPem: key.privateKeyPem,
+			subject: { commonName: tlsTeams[0].domain },
+			dnsNames: tlsTeams.flatMap((t) => [t.domain, `*.${t.domain}`]),
+			validityPeriodHours: 24 * 365,
+			allowedUses: ["digital_signature", "key_encipherment", "server_auth"],
+		},
+	);
 	return { certificate: certificate.certPem, privateKey: key.privateKeyPem };
 }
-const { certificate: tlsCertificate, privateKey: tlsPrivateKey } = routerTls();
+const sharedTlsTeams = teams.filter(
+	(t) => !config.independentTlsTeams.includes(t.number),
+);
+const sharedTls =
+	sharedTlsTeams.length > 0 ? routerTls(sharedTlsTeams) : undefined;
 
 const vpc = new aws.ec2.Vpc("vpc", {
 	cidrBlock: vpcCidr,
@@ -108,12 +117,12 @@ const eiceSecurityGroup = new aws.ec2.SecurityGroup("eice-sg", {
 	],
 	tags,
 });
-const instanceConnectEndpoint = new aws.ec2transitgateway
-	.InstanceConnectEndpoint("eice", {
-	subnetId: subnet("eice", eiceSubnetCidr).id,
-	securityGroupIds: [eiceSecurityGroup.id],
-	tags,
-});
+const instanceConnectEndpoint =
+	new aws.ec2transitgateway.InstanceConnectEndpoint("eice", {
+		subnetId: subnet("eice", eiceSubnetCidr).id,
+		securityGroupIds: [eiceSecurityGroup.id],
+		tags,
+	});
 const sshFromEice = {
 	protocol: "tcp",
 	fromPort: 22,
@@ -145,11 +154,11 @@ const routerPublicSecurityGroup = new aws.ec2.SecurityGroup(
 			sshFromEice,
 			...(clientCidrs.length > 0
 				? [443, 8080].map((port) => ({
-					protocol: "tcp",
-					fromPort: port,
-					toPort: port,
-					cidrBlocks: clientCidrs,
-				}))
+						protocol: "tcp",
+						fromPort: port,
+						toPort: port,
+						cidrBlocks: clientCidrs,
+					}))
 				: []),
 		],
 		egress: allEgress,
@@ -191,6 +200,11 @@ const databaseLaunchTemplate = serverLaunchTemplate(
 
 function createTeam(t: Team) {
 	const prefix = `team${t.number}`;
+	const teamTls = config.independentTlsTeams.includes(t.number)
+		? routerTls([t], `${prefix}-`)
+		: sharedTls;
+	if (!teamTls) throw new Error("Missing Router TLS configuration");
+	const { certificate: tlsCertificate, privateKey: tlsPrivateKey } = teamTls;
 	const instancesEnabled = !config.disabledInstanceTeams.includes(t.number);
 	const teamTags = { ...tags, Team: String(t.number) };
 
@@ -233,33 +247,35 @@ function createTeam(t: Team) {
 	);
 	const router = instancesEnabled
 		? new aws.ec2.Instance(
-			`${prefix}-router`,
-			{
-				ami: routerAmiId,
-				availabilityZone,
-				instanceType: routerInstanceType,
-				iamInstanceProfile: instanceProfile.name,
-				subnetId: routerPublicSubnet.id,
-				privateIp: t.routerPublicIp,
-				associatePublicIpAddress: true,
-				vpcSecurityGroupIds: [routerPublicSecurityGroup.id],
-				userDataBase64: pulumi
-					.all([tlsCertificate, tlsPrivateKey, routerDataEni.macAddress])
-					.apply(([certificate, privateKey, dataMac]) =>
-						gzipSync(
-							Buffer.from(routerUserData(t, dataMac, certificate, privateKey)),
-						).toString("base64")
-					),
-				rootBlockDevice: { volumeSize: 20, volumeType: "gp3" },
-				tags: {
-					...teamTags,
-					Name: `isucon2026-${prefix}-router`,
-					Role: "router",
+				`${prefix}-router`,
+				{
+					ami: config.teamImages[t.number]?.routerAmiId ?? routerAmiId,
+					availabilityZone,
+					instanceType: routerInstanceType,
+					iamInstanceProfile: instanceProfile.name,
+					subnetId: routerPublicSubnet.id,
+					privateIp: t.routerPublicIp,
+					associatePublicIpAddress: true,
+					vpcSecurityGroupIds: [routerPublicSecurityGroup.id],
+					userDataBase64: pulumi
+						.all([tlsCertificate, tlsPrivateKey, routerDataEni.macAddress])
+						.apply(([certificate, privateKey, dataMac]) =>
+							gzipSync(
+								Buffer.from(
+									routerUserData(t, dataMac, certificate, privateKey),
+								),
+							).toString("base64"),
+						),
+					rootBlockDevice: { volumeSize: 20, volumeType: "gp3" },
+					tags: {
+						...teamTags,
+						Name: `isucon2026-${prefix}-router`,
+						Role: "router",
+					},
 				},
-			},
-			// プライベート IP を固定しているので、置き換え時は古いインスタンスを先に消す
-			{ dependsOn: [internetGateway], deleteBeforeReplace: true },
-		)
+				// プライベート IP を固定しているので、置き換え時は古いインスタンスを先に消す
+				{ dependsOn: [internetGateway], deleteBeforeReplace: true },
+			)
 		: undefined;
 	if (router) {
 		new aws.ec2.NetworkInterfaceAttachment(`${prefix}-router-data-attachment`, {
@@ -275,12 +291,12 @@ function createTeam(t: Team) {
 	const serverEgressAcl = router
 		? router.publicIp.apply((address) => serverEgressRules(t, address))
 		: pulumi.output(
-			serverEgressRules(t, t.routerPublicIp).filter((rule) =>
-				rule.ruleNo !== 100
-			),
-		);
+				serverEgressRules(t, t.routerPublicIp).filter(
+					(rule) => rule.ruleNo !== 100,
+				),
+			);
 	const serverSubnets = t.servers.map((server) =>
-		subnet(`${prefix}-${server.id}`, server.subnetCidr)
+		subnet(`${prefix}-${server.id}`, server.subnetCidr),
 	);
 	const servers = t.servers.map((network, index) => {
 		const name = `${prefix}-${network.id}`;
@@ -296,17 +312,19 @@ function createTeam(t: Team) {
 				gatewayId: internetGateway.id,
 			}),
 			...t.servers.flatMap((peer, peerIndex) =>
-				peer.id === network.id ? [] : [
-					new aws.ec2.Route(
-						`${name}-to-${peer.id}`,
-						{
-							routeTableId: routeTable.id,
-							destinationCidrBlock: peer.subnetCidr,
-							networkInterfaceId: routerDataEni.id,
-						},
-						{ dependsOn: [serverSubnets[peerIndex]] },
-					),
-				]
+				peer.id === network.id
+					? []
+					: [
+							new aws.ec2.Route(
+								`${name}-to-${peer.id}`,
+								{
+									routeTableId: routeTable.id,
+									destinationCidrBlock: peer.subnetCidr,
+									networkInterfaceId: routerDataEni.id,
+								},
+								{ dependsOn: [serverSubnets[peerIndex]] },
+							),
+						],
 			),
 		];
 		new aws.ec2.RouteTableAssociation(`${name}-routes`, {
@@ -342,13 +360,13 @@ function createTeam(t: Team) {
 				sshFromEice,
 				...(sshCidrs.length > 0
 					? [
-						{
-							protocol: "tcp",
-							fromPort: 22,
-							toPort: 22,
-							cidrBlocks: sshCidrs,
-						},
-					]
+							{
+								protocol: "tcp",
+								fromPort: 22,
+								toPort: 22,
+								cidrBlocks: sshCidrs,
+							},
+						]
 					: []),
 			],
 			egress: allEgress,
@@ -363,7 +381,7 @@ function createTeam(t: Team) {
 		return new aws.ec2.Instance(
 			`${name}-instance`,
 			{
-				ami: serviceAmiId,
+				ami: config.teamImages[t.number]?.serviceAmiId ?? serviceAmiId,
 				availabilityZone,
 				instanceType: isDatabase
 					? config.databaseInstanceType
@@ -373,7 +391,12 @@ function createTeam(t: Team) {
 				privateIp: network.serviceIp,
 				associatePublicIpAddress: true,
 				vpcSecurityGroupIds: [securityGroup.id],
-				userData: serviceUserData(t, network),
+				userData: serviceUserData(
+					t,
+					network,
+					config.teamSshPublicKeys[t.number],
+					config.teamAdminSshPublicKeys[t.number],
+				),
 				// ルートボリュームの容量は AMI のスナップショットに合わせる
 				launchTemplate: {
 					id: launchTemplate.id,
@@ -382,11 +405,24 @@ function createTeam(t: Team) {
 				tags: {
 					...teamTags,
 					Name: `isucon2026-${name}`,
-					Role: "problem-server",
+					Role:
+						config.portalTeamIds[t.number] === undefined
+							? "problem-server"
+							: "contestant",
+					...(config.portalTeamIds[t.number] === undefined
+						? {}
+						: {
+								IsuconTeamID: String(config.portalTeamIds[t.number]),
+								IsuconInstanceNum: String(index + 1),
+							}),
 				},
 			},
 			// プライベート IP を固定しているので、置き換え時は古いインスタンスを先に消す
-			{ dependsOn: routes, deleteBeforeReplace: true },
+			{
+				dependsOn: routes,
+				deleteBeforeReplace: true,
+				protect: isDatabase && config.protectedDatabaseTeams.includes(t.number),
+			},
 		);
 	});
 
@@ -395,9 +431,11 @@ function createTeam(t: Team) {
 		appHostname: `app.${t.domain}`,
 		routerInstanceId: router?.id,
 		routerPublicAddress: router?.publicIp,
-		serviceInstanceIds: servers.flatMap((server) => server ? [server.id] : []),
+		serviceInstanceIds: servers.flatMap((server) =>
+			server ? [server.id] : [],
+		),
 		servicePublicAddresses: servers.flatMap((server) =>
-			server ? [server.publicIp] : []
+			server ? [server.publicIp] : [],
 		),
 	};
 }

@@ -34,6 +34,26 @@ func TestReportReason(t *testing.T) {
 	}
 }
 
+func TestInvalidVerifyRate(t *testing.T) {
+	for _, tc := range []struct {
+		name, env string
+		args      []string
+	}{
+		{"zero", "", []string{"-verify-rate", "0"}},
+		{"above one", "", []string{"-verify-rate", "1.5"}},
+		{"env out of range", "-1", nil},
+		{"env not a number", "often", nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("ISUXBENCH_VERIFY_RATE", tc.env)
+			var stdout, stderr bytes.Buffer
+			if code := run(t.Context(), tc.args, &stdout, &stderr); code != 2 {
+				t.Fatalf("exit code %d, want 2: %s", code, stderr.String())
+			}
+		})
+	}
+}
+
 func TestNormalizeTarget(t *testing.T) {
 	for _, tc := range []struct{ in, want string }{
 		{"192.0.2.1", "http://192.0.2.1:80"},

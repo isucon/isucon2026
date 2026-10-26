@@ -1,6 +1,6 @@
 # ポータル（Go）の本番イメージ。ビルドコンテキストは portal/ ディレクトリ。
 #   docker build -f deploy/Dockerfile --build-arg REVISION=$(git rev-parse --short HEAD) -t isuxportal .
-# 1 イメージに portal / worker / bot / notifyloop の 5 バイナリ（migrate を含む）と SPA アセットを同梱し、
+# 1 イメージに portal / worker / bot / notifyloop の 6 バイナリ（migrate / import-registration を含む）と SPA アセットを同梱し、
 # CMD でどのサービスを起動するか選ぶ（docker-entrypoint.sh）。
 
 # --- React SPA（webpack 5 + pnpm 9）→ public/packs + manifest.json + sw.js（CT-3 / CT-4）
@@ -13,7 +13,7 @@ COPY frontend/ ./
 ENV NODE_ENV=production
 RUN pnpm run webpack
 
-# --- Go バイナリ 5 本（CGO 無効の静的リンク）
+# --- Go バイナリ 6 本（CGO 無効の静的リンク）
 FROM golang:1.26-trixie AS build
 WORKDIR /src
 COPY go.mod go.sum ./
@@ -21,7 +21,7 @@ RUN go mod download
 COPY . .
 ARG GO_BUILD_PROCS=1
 ARG GO_BUILD_MEMORY=1GiB
-RUN CGO_ENABLED=0 GOMEMLIMIT=${GO_BUILD_MEMORY} GOGC=50 go build -p ${GO_BUILD_PROCS} -trimpath -ldflags='-s -w' -o /out/ ./cmd/portal ./cmd/worker ./cmd/bot ./cmd/notifyloop ./cmd/migrate
+RUN CGO_ENABLED=0 GOMEMLIMIT=${GO_BUILD_MEMORY} GOGC=50 go build -p ${GO_BUILD_PROCS} -trimpath -ldflags='-s -w' -o /out/ ./cmd/portal ./cmd/worker ./cmd/bot ./cmd/notifyloop ./cmd/migrate ./cmd/import-registration
 
 # --- 実行イメージ
 FROM debian:trixie-slim

@@ -21,7 +21,7 @@ func TestReportFramesAndMonotonicTime(t *testing.T) {
 		}
 	}
 	var last int64
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		var length uint16
 		if err := binary.Read(&buf, binary.BigEndian, &length); err != nil {
 			t.Fatal(err)

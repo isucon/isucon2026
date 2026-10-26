@@ -27,6 +27,15 @@ USER_FIELDS = (
     "minor_parental_consent",
     "icon",
 )
+REGISTRATION_COUPON_FIELDS = (
+    "id",
+    "name",
+    "token",
+    "team_id",
+    "created_at",
+    "updated_at",
+    "used_at",
+)
 TEAM_FIELDS = (
     "id",
     "owner_id",
@@ -91,6 +100,16 @@ def export():
     from django.db import connection, transaction
     from social_django.models import UserSocialAuth
 
+    team_id_text = os.environ.get("PORTAL_EXPORT_TEAM_ID", "")
+    team_id = None
+    if team_id_text:
+        if (
+            not team_id_text.isascii()
+            or not team_id_text.isdecimal()
+            or int(team_id_text) <= 0
+        ):
+            raise ValueError("PORTAL_EXPORT_TEAM_ID must be a positive integer")
+        team_id = int(team_id_text)
     directory = Path(os.environ["PORTAL_EXPORT_DIR"])
     directory.mkdir(mode=0o700, parents=True, exist_ok=False)
     icons = directory / "avatars"
@@ -98,6 +117,7 @@ def export():
     base_url = os.environ["PORTAL_AVATAR_BASE_URL"]
     user_model = apps.get_model("authentication", "User")
     team_model = apps.get_model("authentication", "Team")
+    coupon_model = apps.get_model("authentication", "RegisterCoupon")
     if connection.vendor != "mysql":
         raise ValueError("export requires the Django MySQL/TiDB source")
     # Use a SELECT-only credential as an additional safeguard. Do not call model.save().
@@ -118,6 +138,7 @@ def export():
         for model, selected, ignored in (
             (user_model, USER_FIELDS, known_ignored),
             (team_model, TEAM_FIELDS, {"password", "envcheck_token"}),
+            (coupon_model, REGISTRATION_COUPON_FIELDS, set()),
         ):
             unknown = (
                 {field.attname for field in model._meta.concrete_fields}
@@ -126,13 +147,30 @@ def export():
             )
             if unknown:
                 raise ValueError("unmapped source fields: " + ",".join(sorted(unknown)))
-        users = list(user_model._base_manager.order_by("id").values(*USER_FIELDS))
-        teams = list(team_model._base_manager.order_by("id").values(*TEAM_FIELDS))
+        team_query = team_model._base_manager
+        user_query = user_model._base_manager
+        if team_id is not None:
+            team_query = team_query.filter(id=team_id)
+            user_query = user_query.filter(team_id=team_id)
+        teams = list(team_query.order_by("id").values(*TEAM_FIELDS))
+        if team_id is not None and not teams:
+            raise ValueError("requested team does not exist")
+        users = list(user_query.order_by("id").values(*USER_FIELDS))
+        if team_id is not None:
+            # A withdrawn team's historical owner may no longer belong to the team.
+            missing_owners = {t["owner_id"] for t in teams} - {u["id"] for u in users}
+            users.extend(
+                user_model._base_manager.filter(id__in=missing_owners)
+                .order_by("id")
+                .values(*USER_FIELDS)
+            )
+            users.sort(key=lambda user: user["id"])
         github = {}
         user_ids = {user["id"] for user in users}
-        for auth in UserSocialAuth.objects.order_by("id").values(
-            "user_id", "provider", "uid"
-        ):
+        identities = UserSocialAuth.objects
+        if team_id is not None:
+            identities = identities.filter(user_id__in=user_ids)
+        for auth in identities.order_by("id").values("user_id", "provider", "uid"):
             if auth["user_id"] not in user_ids:
                 raise ValueError("orphan social identity")
             if auth["provider"] != "github":
@@ -149,6 +187,13 @@ def export():
             for model in app.get_models():
                 if model not in (user_model, team_model):
                     other[model._meta.label] = model._base_manager.count()
+        coupon_query = coupon_model._base_manager
+        if team_id is not None:
+            coupon_query = coupon_query.filter(team_id=team_id)
+        registration_coupons = list(
+            coupon_query.order_by("id").values(*REGISTRATION_COUPON_FIELDS)
+        )
+        other["authentication.RegisterCoupon"] = len(registration_coupons)
         avatars = {}
         storage = user_model._meta.get_field("icon").storage
         for user in users:
@@ -164,6 +209,7 @@ def export():
                 )
         snapshot = {
             "version": 1,
+            "registration_coupons": registration_coupons,
             "users": users,
             "teams": teams,
             "other": other,

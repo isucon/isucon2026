@@ -152,7 +152,18 @@ func performSafely(ctx context.Context, env *Env, j *ClaimedJob) (err error) {
 // Run は ctx が終わるまでジョブを処理し続ける（cmd/worker のメインループ）。
 // キューが空のときだけ interval 待ち、それ以外は連続して claim する。
 func (q *DBQueue) Run(ctx context.Context, env *Env, interval time.Duration) {
+	var nextScheduleCheck time.Time
 	for {
+		if !time.Now().Before(nextScheduleCheck) {
+			scheduleCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+			err := q.ScheduleAccountSync(scheduleCtx, env.Discord != nil && env.Discord.BotToken != "")
+			cancel()
+			if err != nil {
+				slog.Error("account sync scheduling failed", "error", err)
+			}
+			nextScheduleCheck = time.Now().Add(time.Minute)
+		}
+
 		worked, err := q.Work(ctx, env)
 		if ctx.Err() != nil {
 			return

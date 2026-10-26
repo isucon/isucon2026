@@ -3,6 +3,7 @@ package scenario
 import (
 	"context"
 	"fmt"
+	"maps"
 	"math"
 	"math/rand/v2"
 	"slices"
@@ -117,9 +118,7 @@ func (t *ratchet) buzzCounts() map[string]int {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	out := map[string]int{}
-	for region, n := range t.buzzes {
-		out[region] = n
-	}
+	maps.Copy(out, t.buzzes)
 	return out
 }
 
@@ -127,9 +126,7 @@ func (t *ratchet) population() map[string]int {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	out := map[string]int{}
-	for region, users := range t.users {
-		out[region] = users
-	}
+	maps.Copy(out, t.users)
 	return out
 }
 
@@ -137,9 +134,7 @@ func (t *ratchet) levels() map[string]int {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	out := map[string]int{}
-	for region, level := range t.level {
-		out[region] = level
-	}
+	maps.Copy(out, t.level)
 	return out
 }
 

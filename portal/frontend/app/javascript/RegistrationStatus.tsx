@@ -1,4 +1,6 @@
 import React from "react";
+import { DiscordJoinGuide } from "./DiscordJoinGuide";
+import { EnvCheckStatus } from "../../proto/isuxportal/resources/env_check_pb";
 import { ApiClient } from "./ApiClient";
 
 import { create } from "@bufbuild/protobuf";
@@ -17,7 +19,6 @@ export interface Props {
 }
 
 export interface State {
-  discordInviteUrl: string | undefined;
   error: Error | null;
 }
 
@@ -25,17 +26,8 @@ export class RegistrationStatus extends React.Component<Props, State> {
   constructor(props: Props) {
     super(props);
     this.state = {
-      discordInviteUrl: undefined,
       error: null,
     };
-  }
-
-  componentDidMount() {
-    fetch(`https://discord.com/api/guilds/${this.props.registrationSession.discordServerId}/widget.json`)
-      .then((response) => response.json())
-      .then(({ instant_invite }: { instant_invite: string }) => {
-        this.setState({ discordInviteUrl: instant_invite });
-      });
   }
 
   onEditButtonClick(event: React.MouseEvent<HTMLButtonElement>) {
@@ -141,6 +133,7 @@ export class RegistrationStatus extends React.Component<Props, State> {
 
             <section className="column is-6">
               <h4 className="title is-4">Discord</h4>
+              <DiscordJoinGuide serverId={this.props.registrationSession.discordServerId} />
               <iframe
                 src={`https://discord.com/widget?id=${this.props.registrationSession.discordServerId}&theme=dark`}
                 width="350"
@@ -193,81 +186,60 @@ export class RegistrationStatus extends React.Component<Props, State> {
   }
 
   renderStatus() {
-    const isSshKeySynced = this.props.registrationSession.team!.members!.every(
-      (member) => member.detail!.isSshKeyRegistered,
-    );
-    const isDiscordSynced = this.props.registrationSession.team!.members!.every(
-      (member) => member.detail!.isDiscordGuildMember,
-    );
+    const members = this.props.registrationSession.team!.members!;
+    const isSshKeySynced = members.length > 0 && members.every((member) => member.detail?.isSshKeyRegistered);
+    const isDiscordSynced = members.length > 0 && members.every((member) => member.detail?.isDiscordGuildMember);
     const envCheckStatus = this.props.registrationSession.envCheckStatus;
+    const envCheckPreparing = envCheckStatus === EnvCheckStatus.PREPARING;
+    const envCheckDone = envCheckStatus === EnvCheckStatus.DONE;
+    const ready = isSshKeySynced && isDiscordSynced && envCheckDone;
+    const waiting = isSshKeySynced && isDiscordSynced && envCheckPreparing;
 
-    // FIXME: 感想戦用のメッセージ
-    // let message: React.ReactNode = "現時点での準備が整っています。次のアナウンスをお待ちください。";
-    // let isOk = true;
-    // if (!isDiscordSynced || !isSshKeySynced) {
-    //   message = (
-    //     <>
-    //       参加準備が整っていません。
-    //       <ul>
-    //         {!isSshKeySynced && (
-    //           <li>
-    //             GitHubからSSHキーを取得できていないメンバーがいます。GitHubにSSHキーを登録していない場合、
-    //             <a
-    //               target="_blank"
-    //               href="https://docs.github.com/ja/authentication/connecting-to-github-with-ssh/adding-a-new-ssh-key-to-your-github-account"
-    //             >
-    //               新しいSSHキーを追加
-    //             </a>
-    //             し、本サイト (ポータル)に再ログインしてください。
-    //           </li>
-    //         )}
-    //         {!isDiscordSynced && (
-    //           <li>
-    //             <a target="_blank" href={this.state.discordInviteUrl}>
-    //               Discordサーバーへの参加
-    //             </a>
-    //             が完了していないメンバーがいます。参加後しばらく経っても本サイト
-    //             (ポータル)に反映されない場合、Discordサーバー内 #readme チャンネルのメッセージをご覧ください。
-    //           </li>
-    //         )}
-    //       </ul>
-    //     </>
-    //   );
-    //   isOk = false;
-    // } else if (envCheckStatus !== EnvCheckStatus.PREPARING && envCheckStatus !== EnvCheckStatus.DONE) {
-    //   message = (
-    //     <>
-    //       参加準備が整っていません。<Link to="/registration/env_check">競技環境確認</Link>を行ってください。
-    //     </>
-    //   );
-    //   isOk = false;
-    // }
-    let message: React.ReactNode = "準備が整っています。右上の「競技ページ」からご参加ください。";
-    let isOk = true;
-    if (!isSshKeySynced) {
-      message = (
-        <>
-          参加準備が整っていません。
-          <ul>
+    if (ready) {
+      return <div className="notification is-info">{this.renderConditions(true, "準備が整っています。")}</div>;
+    }
+    if (waiting) {
+      return <div className="notification is-warning">競技環境確認は公開準備中です。公開後に確認してください。</div>;
+    }
+    return (
+      <div className="notification is-danger">
+        {this.renderConditions(false, "参加準備が整っていません。")}
+        <ul>
+          {!isSshKeySynced && (
             <li>
               GitHubからSSHキーを取得できていないメンバーがいます。登録直後の場合は、しばらくしてからリロードしてください。
               GitHubにSSHキーを登録していない場合、
               <a
                 target="_blank"
+                rel="noreferrer"
                 href="https://docs.github.com/ja/authentication/connecting-to-github-with-ssh/adding-a-new-ssh-key-to-your-github-account"
               >
                 新しいSSHキーを追加
               </a>
-              し、本サイト (ポータル)に再ログインしてください。
+              し、本サイト（ポータル）に再ログインしてください。
             </li>
-          </ul>
-        </>
-      );
-      isOk = false;
-    }
-
-    return (
-      <div className={`notification ${isOk ? "is-info" : "is-danger"}`}>{this.renderConditions(isOk, message)}</div>
+          )}
+          {!isDiscordSynced && (
+            <li>
+              Discordサーバーへの参加を確認できていないメンバーがいます。
+              このページの「Discord」の案内から参加してください。
+              参加後しばらく経っても反映されない場合は、運営にお問い合わせください。
+            </li>
+          )}
+          {!envCheckDone && (
+            <li>
+              {envCheckPreparing ? (
+                "競技環境確認は公開準備中です。公開後に確認してください。"
+              ) : (
+                <>
+                  <a href="/registration/env_check">競技環境確認</a>
+                  を完了してください。インスタンスの起動とSSH接続の確認が必要です。
+                </>
+              )}
+            </li>
+          )}
+        </ul>
+      </div>
     );
   }
 

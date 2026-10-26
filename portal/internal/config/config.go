@@ -79,6 +79,7 @@ type Config struct {
 
 // OAuthProvider は OAuth プロバイダの設定。エンドポイントはテスト時に差し替え可能。
 type OAuthProvider struct {
+	CallbackPath string
 	ClientID     string
 	ClientSecret string
 	AuthorizeURL string
@@ -87,6 +88,7 @@ type OAuthProvider struct {
 }
 
 type Discord struct {
+	InviteURL string // Optional invitation URL when the guild widget has no invite.
 	OAuthProvider
 
 	BotToken         string
@@ -96,7 +98,9 @@ type Discord struct {
 	ContestantRoleID string
 	AdminRoleID      string
 	// 単一開催（P-3）: qualify / final の 2 系統ロールは 1 系統に統合
-	SupportCommChannelRoles map[string]string // channel_id => role_id
+	SupportCommChannelRoles       map[string]string // channel_id => role_id
+	SupportThreadParentID         string
+	SupportThreadCommandChannelID string
 }
 
 // Timing は競技時刻の設定。未設定（nil）の扱いは Rails 実装と同じ。
@@ -157,6 +161,7 @@ func Load() (*Config, error) {
 	}
 
 	c.GitHub = OAuthProvider{
+		CallbackPath: getenv("ISUXPORTAL_GITHUB_CALLBACK_PATH", "/auth/github/callback"),
 		ClientID:     os.Getenv("ISUXPORTAL_GITHUB_CLIENT_ID"),
 		ClientSecret: os.Getenv("ISUXPORTAL_GITHUB_CLIENT_SECRET"),
 		AuthorizeURL: getenv("ISUXPORTAL_GITHUB_AUTHORIZE_URL", "https://github.com/login/oauth/authorize"),
@@ -164,20 +169,34 @@ func Load() (*Config, error) {
 		APIBaseURL:   getenv("ISUXPORTAL_GITHUB_API_BASE_URL", "https://api.github.com"),
 	}
 	c.Discord = Discord{
+		InviteURL: os.Getenv("ISUXPORTAL_DISCORD_INVITE_URL"),
 		OAuthProvider: OAuthProvider{
+			CallbackPath: getenv("ISUXPORTAL_DISCORD_CALLBACK_PATH", "/auth/discord/callback"),
 			ClientID:     os.Getenv("ISUXPORTAL_DISCORD_CLIENT_ID"),
 			ClientSecret: os.Getenv("ISUXPORTAL_DISCORD_CLIENT_SECRET"),
 			AuthorizeURL: getenv("ISUXPORTAL_DISCORD_AUTHORIZE_URL", "https://discord.com/api/oauth2/authorize"),
 			TokenURL:     getenv("ISUXPORTAL_DISCORD_TOKEN_URL", "https://discord.com/api/oauth2/token"),
 			APIBaseURL:   getenv("ISUXPORTAL_DISCORD_API_BASE_URL", "https://discord.com/api/v10"),
 		},
-		BotToken:                os.Getenv("ISUXPORTAL_DISCORD_BOT_TOKEN"),
-		APIBaseURL:              getenv("ISUXPORTAL_DISCORD_API_BASE_URL", "https://discord.com/api/v10"),
-		ServerID:                getenv("ISUXPORTAL_DISCORD_SERVER_ID", "721578039779262486"),          //gitleaks:allow isucon14 の公開 snowflake
-		ChannelID:               getenv("ISUXPORTAL_DISCORD_CHANNEL_ID", "729697803982602286"),         //gitleaks:allow isucon14 の公開 snowflake
-		ContestantRoleID:        getenv("ISUXPORTAL_DISCORD_CONTESTANT_ROLE_ID", "721583193270255617"), //gitleaks:allow isucon14 の公開 snowflake
-		AdminRoleID:             getenv("ISUXPORTAL_DISCORD_ADMIN_ROLE_ID", "721583068724592640"),      //gitleaks:allow isucon14 の公開 snowflake
-		SupportCommChannelRoles: parsePairs(os.Getenv("ISUXPORTAL_DISCORD_SUPPORT_COMM_CHANNEL_ROLES")),
+		BotToken:                      os.Getenv("ISUXPORTAL_DISCORD_BOT_TOKEN"),
+		APIBaseURL:                    getenv("ISUXPORTAL_DISCORD_API_BASE_URL", "https://discord.com/api/v10"),
+		ServerID:                      getenv("ISUXPORTAL_DISCORD_SERVER_ID", "721578039779262486"),          //gitleaks:allow isucon14 の公開 snowflake
+		ChannelID:                     getenv("ISUXPORTAL_DISCORD_CHANNEL_ID", "729697803982602286"),         //gitleaks:allow isucon14 の公開 snowflake
+		ContestantRoleID:              getenv("ISUXPORTAL_DISCORD_CONTESTANT_ROLE_ID", "721583193270255617"), //gitleaks:allow isucon14 の公開 snowflake
+		AdminRoleID:                   getenv("ISUXPORTAL_DISCORD_ADMIN_ROLE_ID", "721583068724592640"),      //gitleaks:allow isucon14 の公開 snowflake
+		SupportThreadParentID:         os.Getenv("ISUXPORTAL_DISCORD_SUPPORT_THREAD_PARENT_ID"),
+		SupportThreadCommandChannelID: os.Getenv("ISUXPORTAL_DISCORD_SUPPORT_THREAD_COMMAND_CHANNEL_ID"),
+		SupportCommChannelRoles:       parsePairs(os.Getenv("ISUXPORTAL_DISCORD_SUPPORT_COMM_CHANNEL_ROLES")),
+	}
+	switch c.GitHub.CallbackPath {
+	case "/auth/github/callback", "/complete/github/":
+	default:
+		return nil, fmt.Errorf("ISUXPORTAL_GITHUB_CALLBACK_PATH must be /auth/github/callback or /complete/github/")
+	}
+	switch c.Discord.CallbackPath {
+	case "/auth/discord/callback", "/auth/discord/complete/":
+	default:
+		return nil, fmt.Errorf("ISUXPORTAL_DISCORD_CALLBACK_PATH must be /auth/discord/callback or /auth/discord/complete/")
 	}
 
 	maxTeams, err := strconv.Atoi(getenv("ISUXPORTAL_MAX_TEAMS", "600"))
@@ -222,6 +241,16 @@ func Load() (*Config, error) {
 			return nil, fmt.Errorf("%s: %w", e.key, err)
 		}
 		*e.dst = &t
+	}
+
+	if c.Discord.SupportThreadParentID != "" && c.Discord.SupportCommChannelRoles[c.Discord.SupportThreadParentID] != "" {
+		return nil, fmt.Errorf("support thread parent cannot also be a legacy support channel")
+	}
+	if c.Discord.SupportThreadParentID != "" {
+		id := c.Discord.SupportThreadCommandChannelID
+		if id == "" || id == c.Discord.SupportThreadParentID || c.Discord.SupportCommChannelRoles[id] != "" {
+			return nil, fmt.Errorf("support threads require a separate operator command channel")
+		}
 	}
 
 	return c, nil

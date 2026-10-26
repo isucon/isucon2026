@@ -84,9 +84,22 @@ ECS の circuit breaker が旧 revision に戻した場合も、workflow は失�
 
 `portal` は既定 2 タスク、`worker` と `notifyloop` は 1 タスクです。
 `bot` は既定 0 タスクで、`enableBot: true` と token 設定後に有効化します。
+
+移行準備中は Pulumi の `standby: true` を設定します。
+この設定では portal は2タスク、worker と notifyloop は0タスクになります。
+Botも既定では0タスクですが、`enableBot: true` と `enableBotInStandby: true` を併用すると待機中でも1タスクで起動します。
+参加者への公開を防ぐ場合は、あわせて `environment.ISUXPORTAL_ADMIN_ONLY: "1"` を指定してください。
+切替時は最新データの取り込みと照合を終えてから、運営の判断で待機設定を解除して再デプロイします。
+
+DNS を変更せず既存の ACM 証明書を使う場合は、`dnsManagement: external` と `existingCertificateArn` を指定します。
+証明書は ALB と同じリージョンに必要です。
+この組み合わせでは証明書の発行・検証や DNS レコード作成を行いません。
+インポートした証明書の秘密鍵はリポジトリに保存せず、更新は証明書の管理者が行ってください。
+ACM の参照だけでは、インポート証明書の自動更新は有効になりません。
+
 タスク数は `ecspresso/service.jsonnet` の `desiredCount` で管理し、更新時にその値を適用します。
 一時的に手動スケールした値も次回デプロイで定義の値に戻ります。
-`enableBot: false` のデプロイは bot を 0 タスクに戻します。
+Botを確実に停止するときは `enableBot: false` と `enableBotInStandby: false` の両方を設定してデプロイします。
 `bot` と `notifyloop` は新旧の重複実行を避けるため、一度停止してから更新します。
 これらの desired count は 1 以下を維持してください。
 
@@ -101,6 +114,8 @@ sh portal/deploy/deploy.sh
 
 同じ環境へのローカル実行と workflow 実行を重ねないでください。
 workflow 同士は環境単位の concurrency で直列化します。
+
+本番移行時のデータ保全、DNS確認、通常稼働への切替、切り戻しは [ポータル切替手順](../../docs/research/portal-cutover.md) を参照してください。
 
 ## 更新と復旧
 
@@ -159,3 +174,55 @@ docker build -f deploy/Dockerfile -t isuxportal:local .
 
 Pulumi のテストは runtime mocks を使い、AWS の作成や課金を発生させません。
 実アカウントでの IAM、エンジン提供状況、クォータ、疎通の検証は staging で別途行います。
+
+## 環境固有の移行記録
+
+本番の接続先、証明書参照、バックアップ保存先、切替前の検証結果は[非公開の移行手順](https://github.com/isucon/isucon2026-private/tree/codex/portal-discord-environment/ops/production-portal)で管理します。
+公開リポジトリには実際の環境 ID や移行元データを保存しません。
+
+## Discord invitation and account linking
+
+Discord OAuth identifies the user; it does not automatically join the Discord server.
+After linking, users must join with the same Discord account using an invitation.
+The registration and contestant pages prefer `ISUXPORTAL_DISCORD_INVITE_URL` when set,
+and otherwise obtain `instant_invite` from the server widget.
+If neither provides an invitation, the pages ask users to contact the organizers.
+
+When the widget returns `instant_invite: null`, store a valid invitation for the
+configured server as `ISUXPORTAL_DISCORD_INVITE_URL` in the application JSON secret
+in Secrets Manager. Preserve the other keys when updating the secret. Add only
+the key name to the target Pulumi stack's `secretKeys` list, and remove it from
+`environment` if it was previously configured there. Never put the invitation
+value in stack configuration or deployment definitions.
+
+Apply the stack with `pulumi up`, then redeploy through ecspresso as described above.
+ECS retrieves the value from Secrets Manager when starting each application task.
+Do not update only the ECS task or generated S3 configuration.
+The invitation is displayed to portal users; do not use an operator-only invitation.
+Account linking and subsequent Discord logins synchronize membership and contestant
+roles after the identity update. Existing affected users can log in with Discord
+again after deployment to retry synchronization. Users outside the server must
+still accept the invitation first.
+
+### Periodic account reconciliation
+
+The worker checks a durable schedule at startup and every minute. Once per hour
+it queues SSH key, Discord membership, and Discord contestant-role checks, spread
+across the following hour. No additional service or public HTTP endpoint is used.
+The migration `004_periodic_job_schedules.sql` must run before the updated worker
+starts; the normal deployment runs migrations before updating services.
+
+SSH keys are refreshed for active teams via the public GitHub `.keys` endpoint,
+without retaining user OAuth tokens. Discord checks run only when the worker has
+a Bot token and the contestant has a linked Discord ID. Discord roles are also
+checked for disqualified/withdrawn teams so that undesired roles can be removed.
+Reconciliation does not automatically join users to Discord, and SSH key refresh
+updates the portal's key records, not `authorized_keys` on existing contest VMs.
+
+Pending/running checks are not duplicated by the next cycle. Each check uses the
+existing job retry/backoff policy independently; a failed GitHub fetch preserves
+the previously stored keys and does not block Discord reconciliation. Dead jobs
+remain available for diagnosis and a later hourly cycle schedules a fresh check.
+The schedule is persisted in PostgreSQL, so worker restarts and overlapping
+workers do not start duplicate hourly cycles. Worker downtime delays checks until
+it resumes; queue backlog and external service errors can delay completion.
