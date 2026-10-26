@@ -43,19 +43,22 @@ func Not(t Tri) Tri {
 	return True - t
 }
 
-// forAll は、ありうる状態ごとに求めた値をまとめる。すべて真なら真、すべて偽なら偽。
-func forAll[T any](states []T, f func(T) Tri) Tri {
+// forAll は、読み取り r で tl が取りうる値ごとに求めた値をまとめる。すべて真なら真、すべて偽なら偽。
+func forAll[T comparable](tl *timeline[T], r Read, f func(T) Tri) Tri {
 	seenTrue, seenFalse := false, false
-	for _, state := range states {
+	tl.each(r, func(state T) {
+		if seenTrue && seenFalse {
+			return
+		}
 		switch f(state) {
 		case True:
 			seenTrue = true
 		case False:
 			seenFalse = true
 		default:
-			return Unknown
+			seenTrue, seenFalse = true, true
 		}
-	}
+	})
 	switch {
 	case seenTrue && !seenFalse:
 		return True

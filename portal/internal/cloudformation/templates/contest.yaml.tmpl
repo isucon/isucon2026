@@ -172,7 +172,7 @@ Resources:
             encoding: b64
             content: '{{.PortalCredentials}}'
           runcmd:
-            - 'curl --retry 5 --retry-connrefused --max-time 10 --connect-timeout 5 "https://{{.PortalHost}}/api/ssh_public_keys?token={{.Token}}" | sudo -u isucon sh -c "umask 077; cat > /home/isucon/.ssh/authorized_keys"'
+{{template "ssh_public_keys" .}}
   InstanceIP1:
     Type: AWS::EC2::EIP
     Properties:
@@ -207,7 +207,7 @@ Resources:
             encoding: b64
             content: '{{.PortalCredentials}}'
           runcmd:
-            - 'curl --retry 5 --retry-connrefused --max-time 10 --connect-timeout 5 "https://{{.PortalHost}}/api/ssh_public_keys?token={{.Token}}" | sudo -u isucon sh -c "umask 077; cat > /home/isucon/.ssh/authorized_keys"'
+{{template "ssh_public_keys" .}}
   InstanceIP2:
     Type: AWS::EC2::EIP
     Properties:
@@ -242,7 +242,7 @@ Resources:
             encoding: b64
             content: '{{.PortalCredentials}}'
           runcmd:
-            - 'curl --retry 5 --retry-connrefused --max-time 10 --connect-timeout 5 "https://{{.PortalHost}}/api/ssh_public_keys?token={{.Token}}" | sudo -u isucon sh -c "umask 077; cat > /home/isucon/.ssh/authorized_keys"'
+{{template "ssh_public_keys" .}}
   InstanceIP3:
     Type: AWS::EC2::EIP
     Properties:
@@ -277,7 +277,7 @@ Resources:
             encoding: b64
             content: '{{.PortalCredentials}}'
           runcmd:
-            - 'curl --retry 5 --retry-connrefused --max-time 10 --connect-timeout 5 "https://{{.PortalHost}}/api/ssh_public_keys?token={{.Token}}" | sudo -u isucon sh -c "umask 077; cat > /home/isucon/.ssh/authorized_keys"'
+{{template "ssh_public_keys" .}}
   InstanceIP4:
     Type: AWS::EC2::EIP
     Properties:

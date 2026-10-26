@@ -19,7 +19,7 @@ Supervisorは実ポータルからジョブを取得し、ベンチを子プロ�
 | init process / stop timeout | 有効 / 120秒            | 同じ                                                           |
 | nofile / nproc              | 100000                  | 同じ                                                           |
 | runtime                     | ARM64 Fargate Spot      | 現行Dockerfileに合わせてX86_64 Fargate                         |
-| ログ                        | CloudWatch Logs         | 同じ、保持7日                                                  |
+| ログ                        | CloudWatch Logs         | 無期限保存、stack削除時にも保持                                                  |
 | AZ識別                      | metadataからAZ IDを取得 | ポータルのavailability_zoneと一致する値を明示指定              |
 | network                     | public IP、3 AZのsubnet | 指定AZのprivate subnet、NAT Gatewayで固定送信元IP              |
 | 認証設定                    | S3 env file             | SSM SecureStringまたは既存のSecrets ManagerをECS secretsで注入 |
@@ -169,3 +169,6 @@ Supervisor stackは、`routerSecurityGroupIds`で指定した既存Security Grou
 Routerの公開IPを参加者環境側で変更した場合は、`targetOverrides`も更新してください。
 新規チームは`teamIds`への追加だけでなく、Portalに登録したappの公開IPから
 Routerの公開IPと`app.teamN-aws.127.0.0.1.nip.io`への対応が必要です。
+
+チームごとに接続先を切り替える場合は、`teamEndpoints` にチームIDとポータルURLの対応を設定します。
+未指定のチームは `portalEndpoint` を使います。対象チームの task / service に適用範囲を限定し、ほかのチームの接続先を維持できます。
