@@ -40,7 +40,7 @@ nginx の設定は、競技環境では `/etc/nginx/sites-available/isureal-php.
 ## 環境変数
 
 `webapp/go` と同じ `ISUREAL_REGION`、`ISUREAL_DB_HOST`、`ISUREAL_DB_PORT`、`ISUREAL_DB_USER`、
-`ISUREAL_DB_PASSWORD`、`ISUREAL_DB_NAME` を読みます（php-fpm の `clear_env = no` で worker に渡します）。
+`ISUREAL_DB_PASSWORD`、`ISUREAL_DB_NAME`、`ISUREAL_LOG_LEVEL` を読みます（php-fpm の `clear_env = no` で worker に渡します）。
 
 ## テスト
 
