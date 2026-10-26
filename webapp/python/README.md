@@ -32,7 +32,7 @@ make run       # gunicorn を起動し、:8080 で待ち受ける
 ## 環境変数
 
 `webapp/go` と同じ `ISUREAL_REGION`、`ISUREAL_DB_HOST`、`ISUREAL_DB_PORT`、`ISUREAL_DB_USER`、
-`ISUREAL_DB_PASSWORD`、`ISUREAL_DB_NAME` を読みます。加えて次の値を変えられます。
+`ISUREAL_DB_PASSWORD`、`ISUREAL_DB_NAME`、`ISUREAL_LOG_LEVEL` を読みます。加えて次の値を変えられます。
 
 | 変数 | 既定値 | 内容 |
 |---|---|---|

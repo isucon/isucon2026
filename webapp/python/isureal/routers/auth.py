@@ -3,7 +3,7 @@ import uuid
 from http import HTTPStatus
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Depends, Request, Response
 
 from ..auth import CurrentSession
 from ..binding import RequestBody, json_body
@@ -37,8 +37,11 @@ class LoginRequest(RequestBody):
 
 @router.post("/register", status_code=HTTPStatus.CREATED)
 async def register(
-    db: DB, body: Annotated[RegisterRequest, Depends(json_body(RegisterRequest))]
+    db: DB,
+    body: Annotated[RegisterRequest, Depends(json_body(RegisterRequest))],
+    request: Request,
 ) -> RegisterResponse:
+    request.state.username = body.username
     if not (
         valid_username(body.username)
         and valid_user_text(body.display_name, 1, 100)
@@ -78,8 +81,11 @@ async def register(
 
 @router.post("/login")
 async def login(
-    db: DB, body: Annotated[LoginRequest, Depends(json_body(LoginRequest))]
+    db: DB,
+    body: Annotated[LoginRequest, Depends(json_body(LoginRequest))],
+    request: Request,
 ) -> LoginResponse:
+    request.state.username = body.username
     if not valid_username(body.username):
         raise APIError(HTTPStatus.UNAUTHORIZED, "invalid_credentials")
     async with db.transaction():

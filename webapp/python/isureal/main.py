@@ -8,10 +8,12 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException
 
+from .action_log import ActionLogMiddleware
 from .binding import http_error_message
 from .config import Config
 from .db import create_pool
 from .errors import APIError
+from .ip_ban import IPBanMiddleware
 from .models.user import valid_region
 from .routers import (
     admin,
@@ -78,6 +80,8 @@ def create_app(config: Config | None = None) -> FastAPI:
     app.add_exception_handler(HTTPException, http_exception_handler)
     app.add_exception_handler(RequestValidationError, validation_error_handler)
     app.add_exception_handler(Exception, unexpected_error_handler)
+    app.add_middleware(IPBanMiddleware)
+    app.add_middleware(ActionLogMiddleware, min_level=config.log_level)
     for module in (
         initialize,
         auth,
