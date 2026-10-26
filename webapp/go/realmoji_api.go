@@ -1,8 +1,10 @@
 package isureal
 
 import (
+	"bytes"
 	"database/sql"
 	"errors"
+	"image/jpeg"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -53,6 +55,14 @@ func replaceRealMojiHandler(h *HandlerContext) echo.HandlerFunc {
 		if err != nil {
 			return err
 		}
+		img, err := jpeg.Decode(bytes.NewReader(data))
+		if err != nil {
+			return NewAPIError(http.StatusBadRequest, "invalid_realmoji")
+		}
+		if img.Bounds().Dx() > 512 || img.Bounds().Dy() > 512 {
+			return NewAPIError(http.StatusBadRequest, "invalid_realmoji")
+		}
+
 		ctx := c.Request().Context()
 		actor := GetSession(c).UserID
 		post, err := getPost(ctx, h.DB, input.PostID)
