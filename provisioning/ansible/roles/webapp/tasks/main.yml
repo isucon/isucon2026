@@ -34,11 +34,21 @@
   become_user: isucon
   changed_when: true
 
-- name: Install systemd unit
+- name: Install gems for webapp/ruby
+  ansible.builtin.command:
+    cmd: make install
+    chdir: /home/isucon/webapp/ruby
+  environment:
+    PATH: "/home/isucon/local/ruby/bin:{{ ansible_facts.env.PATH }}"
+  become_user: isucon
+  changed_when: true
+
+- name: Install systemd units
   ansible.builtin.copy:
-    src: isureal-go.service
-    dest: /etc/systemd/system/isureal-go.service
+    src: "{{ item }}"
+    dest: "/etc/systemd/system/{{ item }}"
     mode: "0644"
+  loop: [isureal-go.service, isureal-ruby.service]
   register: webapp_unit
 
 - name: Reload systemd

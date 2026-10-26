@@ -27,6 +27,22 @@ ISURealは、日常の写真を共有するソーシャルネットワーキン�
 - 従来と異なり、初期状態で app1～app3の全てが利用されています。ルーターは対応するリージョンのサーバーにリクエストを転送します。
 - サーバーのリージョンは固定で、変更できません。
 
+### 参考実装
+
+参考実装は次の 2 つです。初期状態では Go 実装が動いています。
+
+| 言語 | ソースコード | systemd unit |
+|---|---|---|
+| Go | `/home/isucon/webapp/go` | `isureal-go.service` |
+| Ruby | `/home/isucon/webapp/ruby` | `isureal-ruby.service` |
+
+どちらも `:8080` で待ち受けるので、同時に動かすことはできません。Ruby 実装に切り替えるには、各 app サーバーで次を実行します。
+
+```sh
+sudo systemctl disable --now isureal-go.service
+sudo systemctl enable --now isureal-ruby.service
+```
+
 ### ルーター
 
 ルーターは、データ所在地ポリシーに対応するために導入したマネージドのルーターです。運営が管理しており、
