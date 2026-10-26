@@ -103,16 +103,23 @@ Controller は region local IP から interface 名を解決するため、Compo
 
 ### Traffic profile
 
+遅延と帯域は同一リージョンと、AP（asia）・EU（europe）・US（america）の3つのリージョンペアごとに設定する。
+ペアの設定は双方向に共通で、AP-EU は AP→EU と EU→AP の両方に適用される。
+
 | Environment variable | Production default | E2E override |
 |---|---:|---:|
 | `ROUTER_SAME_REGION_DELAY` | `0s` | `0s` |
-| `ROUTER_CROSS_REGION_DELAY` | `200ms` | `120ms` |
 | `ROUTER_SAME_REGION_BANDWIDTH_BPS` | `1000000000` | `100000000` |
-| `ROUTER_CROSS_REGION_BANDWIDTH_BPS` | `200000000` | `1000000` |
+| `ROUTER_AP_EU_DELAY` | `200ms` | `120ms` |
+| `ROUTER_AP_EU_BANDWIDTH_BPS` | `200000000` | `1000000` |
+| `ROUTER_EU_US_DELAY` | `200ms` | `120ms` |
+| `ROUTER_EU_US_BANDWIDTH_BPS` | `200000000` | `1000000` |
+| `ROUTER_AP_US_DELAY` | `200ms` | `120ms` |
+| `ROUTER_AP_US_BANDWIDTH_BPS` | `200000000` | `1000000` |
 
 delay は end-to-end の追加遅延を表す。HTTP は Envoy が設定値を1回注入し、サーバー間通信は往復で設定値に
 なるよう tc が各方向へ半分ずつ注入する（production の `200ms` は片道100 ms、RTT 200 ms）。
-bandwidth は bit/s で、正数かつ cross が same 以下でなければならない。delay は0または1 ms以上を受け付ける。
+bandwidth は bit/s で、正数かつ各ペアが same 以下でなければならない。delay は0または1 ms以上を受け付ける。
 E2E override は class 判定を変えず、共有 CI host でも差を測定できるよう値だけを縮尺する。
 
 ## Health and diagnostics

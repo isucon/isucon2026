@@ -81,15 +81,14 @@ Invariants:
 
 Fields:
 
-- `sameRegionDelay`（default 0 ms）
-- `crossRegionDelay`（default 200 ms end-to-end。サーバー間tcでは片道100 msずつ）
-- `sameRegionBandwidthBitsPerSecond`（default 1,000,000,000）
-- `crossRegionBandwidthBitsPerSecond`（default 200,000,000）
+- `sameRegion`（default delay 0 ms、bandwidth 1,000,000,000 bit/s）
+- `apEu` / `euUs` / `apUs`（各 region pair。default delay 200 ms end-to-end、サーバー間tcでは片道100 msずつ。
+  default bandwidth 200,000,000 bit/s。双方向で共通）
 
 Validation:
 
 - delay は0以上かつ configured maximum 以下。
-- bandwidth は正数、cross は same 以下。
+- bandwidth は正数、各 region pair は same 以下。
 - E2E override は値だけを変更し、classification を変更しない。
 
 ## NetworkCandidate

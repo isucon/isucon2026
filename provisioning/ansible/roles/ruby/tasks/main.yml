@@ -1,0 +1,67 @@
+---
+# Ruby は /home/isucon/local/ruby にソースからビルドする（webapp/ruby 用）。YJIT のビルドに rustc を使う
+- name: Install packages to build Ruby and native gems
+  ansible.builtin.apt:
+    name:
+      - build-essential
+      - libffi-dev
+      - libssl-dev
+      - libyaml-dev
+      - rustc
+      - zlib1g-dev
+
+- name: Read installed Ruby version
+  ansible.builtin.command:
+    argv: [/home/isucon/local/ruby/bin/ruby, -e, 'print RUBY_VERSION']
+  register: ruby_installed
+  changed_when: false
+  failed_when: false
+
+- name: Install Ruby
+  when: ruby_installed.rc != 0 or ruby_installed.stdout != ruby_version
+  block:
+    - name: Remove old Ruby
+      ansible.builtin.file:
+        path: /home/isucon/local/ruby
+        state: absent
+
+    - name: Create Ruby build directory
+      ansible.builtin.file:
+        path: /tmp/ruby-build
+        state: directory
+        owner: isucon
+        group: isucon
+        mode: "0755"
+
+    - name: Download and extract Ruby
+      ansible.builtin.unarchive:
+        src: "https://cache.ruby-lang.org/pub/ruby/{{ ruby_version.split('.')[:2] | join('.') }}/ruby-{{ ruby_version }}.tar.gz"
+        dest: /tmp/ruby-build
+        remote_src: true
+        owner: isucon
+        group: isucon
+
+    - name: Build and install Ruby
+      ansible.builtin.shell: |
+        set -eu
+        ./configure --prefix=/home/isucon/local/ruby --disable-install-doc --enable-yjit
+        make -j"$(nproc)"
+        make install
+      args:
+        chdir: "/tmp/ruby-build/ruby-{{ ruby_version }}"
+      become_user: isucon
+      changed_when: true
+
+    - name: Remove Ruby build directory
+      ansible.builtin.file:
+        path: /tmp/ruby-build
+        state: absent
+
+- name: Add Ruby to PATH
+  ansible.builtin.lineinfile:
+    path: /home/isucon/.profile
+    line: 'export PATH=$HOME/local/ruby/bin:$PATH'
+    create: true
+    owner: isucon
+    group: isucon
+    mode: "0644"

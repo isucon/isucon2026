@@ -30,6 +30,22 @@ docker compose down -v
 | `http://america.127.0.0.1.nip.io:18090` | america リージョンへ直接アクセス |
 | `http://127.0.0.1.nip.io:18082` | 開発用 Portal API |
 
+## Ruby 実装で起動
+
+`ISUREAL_WEBAPP_LANGUAGE=ruby` を付けて起動すると、アプリコンテナが Ruby 実装（`webapp/ruby`）になります。Go に戻すときは付けずに起動し直します。
+
+```bash
+ISUREAL_WEBAPP_LANGUAGE=ruby make dev-up
+```
+
+## Rust 実装で起動
+
+`ISUREAL_WEBAPP_LANGUAGE=rust` を付けて起動すると、アプリコンテナが Rust 実装（`webapp/rust`）になります。Go に戻すときは付けずに起動し直します。
+
+```bash
+ISUREAL_WEBAPP_LANGUAGE=rust make dev-up
+```
+
 ## Python 実装で起動
 
 `ISUREAL_WEBAPP_LANGUAGE=python` を付けて起動すると、アプリコンテナが Python 実装（`webapp/python`）になります。Go に戻すときは付けずに起動し直します。
@@ -38,7 +54,7 @@ docker compose down -v
 ISUREAL_WEBAPP_LANGUAGE=python make dev-up
 ```
 
-アプリのイメージは `deploy/dev/app-<言語>.Dockerfile`（`app-go.Dockerfile`、`app-python.Dockerfile`）でビルドします。実装を追加するときは同じ名前で Dockerfile を置き、`ISUREAL_WEBAPP_LANGUAGE` にその言語名を指定します。
+アプリのイメージは `deploy/dev/app-<言語>.Dockerfile`（`app-go.Dockerfile`、`app-ruby.Dockerfile`、`app-rust.Dockerfile`、`app-python.Dockerfile`）でビルドします。実装を追加するときは同じ名前で Dockerfile を置き、`ISUREAL_WEBAPP_LANGUAGE` にその言語名を指定します。
 
 ## 変更反映と初期化
 

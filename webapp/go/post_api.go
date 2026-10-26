@@ -1,8 +1,10 @@
 package isureal
 
 import (
+	"bytes"
 	"database/sql"
 	"errors"
+	"image/jpeg"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -73,6 +75,14 @@ func createPostHandler(h *HandlerContext) echo.HandlerFunc {
 		imageData, err := io.ReadAll(imageFile)
 		if err != nil {
 			return err
+		}
+		// [作問] 画像のバリデーションを全データを読んでから行なっている(改善するべき)
+		img, err := jpeg.Decode(bytes.NewReader(imageData))
+		if err != nil {
+			return NewAPIError(http.StatusBadRequest, "invalid_post")
+		}
+		if img.Bounds().Dx() > 4096 || img.Bounds().Dy() > 4096 {
+			return NewAPIError(http.StatusBadRequest, "invalid_post")
 		}
 
 		ctx := c.Request().Context()
