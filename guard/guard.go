@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"io"
 	"log"
+	"path"
 	"strconv"
 	"time"
 )
@@ -59,6 +60,17 @@ func (d *detector) sweep(now time.Time) {
 type journalEntry struct {
 	Message  json.RawMessage `json:"MESSAGE"`
 	Realtime string          `json:"__REALTIME_TIMESTAMP"`
+	Unit     string          `json:"_SYSTEMD_UNIT"`
+}
+
+const guardUnit = "isureal-guard.service"
+
+func readsUnit(pattern, unit string) bool {
+	if unit == guardUnit {
+		return false
+	}
+	matched, err := path.Match(pattern, unit)
+	return err == nil && matched
 }
 
 type actionLog struct {
@@ -67,11 +79,11 @@ type actionLog struct {
 	IP     string  `json:"ip"`
 }
 
-// parseLoginFailure は journalctl --output json の 1 行を読み、ログイン失敗のアクションログなら
-// IP と記録時刻を返す。アクションログでない行は ok=false になる。
-func parseLoginFailure(line []byte) (ip string, at time.Time, isAction, ok bool) {
+// parseLoginFailure は journalctl --output json の 1 行を読み、unitPattern に合う unit のログイン失敗の
+// アクションログなら IP と記録時刻を返す。アクションログでない行は ok=false になる。
+func parseLoginFailure(line []byte, unitPattern string) (ip string, at time.Time, isAction, ok bool) {
 	var entry journalEntry
-	if err := json.Unmarshal(line, &entry); err != nil {
+	if err := json.Unmarshal(line, &entry); err != nil || !readsUnit(unitPattern, entry.Unit) {
 		return "", time.Time{}, false, false
 	}
 	// MESSAGE は UTF-8 でないとバイト列の配列になる。アクションログは ASCII なので文字列だけを読む。
@@ -94,14 +106,14 @@ func parseLoginFailure(line []byte) (ip string, at time.Time, isAction, ok bool)
 }
 
 // run はジャーナルを 1 行ずつ読み、閾値を超えた IP を ban で BAN する。
-func run(ctx context.Context, journal io.Reader, d *detector, ban func(context.Context, string) error, logger *log.Logger) error {
+func run(ctx context.Context, journal io.Reader, unitPattern string, d *detector, ban func(context.Context, string) error, logger *log.Logger) error {
 	var lines, actions, failures, bans int
 	nextStats := time.Now().Add(statsInterval)
 	scanner := bufio.NewScanner(journal)
 	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
 	for scanner.Scan() {
 		lines++
-		ip, at, isAction, ok := parseLoginFailure(scanner.Bytes())
+		ip, at, isAction, ok := parseLoginFailure(scanner.Bytes(), unitPattern)
 		if isAction {
 			actions++
 		}
