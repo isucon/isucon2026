@@ -1,4 +1,5 @@
 import hashlib
+import io
 import os
 import time
 import uuid
@@ -10,6 +11,7 @@ from typing import Any
 import psycopg
 import pytest
 from fastapi.testclient import TestClient
+from PIL import Image
 
 from isureal import image_signature
 from isureal.config import Config
@@ -137,7 +139,13 @@ class Actors:
         assert accept.status_code == 200, accept.text
 
 
-JPEG = bytes.fromhex("ffd8ffe000104a46494600010100000100010000ffd9")
+def make_jpeg(width: int = 2, height: int = 2, **options: Any) -> bytes:
+    data = io.BytesIO()
+    Image.new("RGB", (width, height)).save(data, "JPEG", **options)
+    return data.getvalue()
+
+
+JPEG = make_jpeg()
 
 
 @pytest.fixture
