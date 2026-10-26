@@ -1,4 +1,5 @@
 DROP TABLE IF EXISTS
+  ip_bans,
   notifications,
   comments,
   realmojis,
@@ -184,4 +185,10 @@ CREATE TABLE notifications (
   posting_window_id varchar(36) NOT NULL REFERENCES posting_windows(id) ON DELETE RESTRICT,
   created_at timestamptz NOT NULL,
   UNIQUE(user_id,posting_window_id)
+);
+
+CREATE TABLE ip_bans (
+  ip text PRIMARY KEY,
+  banned_until timestamptz NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT clock_timestamp()
 );

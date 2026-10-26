@@ -102,11 +102,11 @@ func BuildRoutes(name string, hosts config.Hostnames, routerConfig domain.Config
 }
 
 func buildUpstreamRoute(name string, server domain.ServerID, serverRegion, clientRegion domain.Region, profile domain.TrafficProfile, headers []*routev3.HeaderMatcher, defaultCountry string) (*routev3.Route, error) {
-	delay, bandwidthBPS := profile.Class(clientRegion, serverRegion)
+	class := profile.Class(clientRegion, serverRegion)
 	bandwidth := &bandwidthv3.BandwidthLimit{
 		StatPrefix:   name,
 		EnableMode:   bandwidthv3.BandwidthLimit_REQUEST_AND_RESPONSE,
-		LimitKbps:    wrapperspb.UInt64((bandwidthBPS + 8191) / 8192),
+		LimitKbps:    wrapperspb.UInt64((class.BandwidthBPS + 8191) / 8192),
 		FillInterval: durationpb.New(50 * time.Millisecond),
 	}
 	bandwidthAny, err := anypb.New(bandwidth)
@@ -114,9 +114,9 @@ func buildUpstreamRoute(name string, server domain.ServerID, serverRegion, clien
 		return nil, fmt.Errorf("marshal bandwidth config: %w", err)
 	}
 	typedConfigs := map[string]*anypb.Any{bandwidthFilterName: bandwidthAny}
-	if delay > 0 {
+	if class.Delay > 0 {
 		fault := &faultv3.HTTPFault{Delay: &faultcommonv3.FaultDelay{
-			FaultDelaySecifier: &faultcommonv3.FaultDelay_FixedDelay{FixedDelay: durationpb.New(delay)},
+			FaultDelaySecifier: &faultcommonv3.FaultDelay_FixedDelay{FixedDelay: durationpb.New(class.Delay)},
 			Percentage:         &typev3.FractionalPercent{Numerator: 100, Denominator: typev3.FractionalPercent_HUNDRED},
 		}}
 		faultAny, err := anypb.New(fault)
@@ -138,11 +138,15 @@ func buildUpstreamRoute(name string, server domain.ServerID, serverRegion, clien
 		TypedPerFilterConfig: typedConfigs,
 	}
 	if defaultCountry != "" {
-		route.RequestHeadersToAdd = []*corev3.HeaderValueOption{{
+		route.RequestHeadersToAdd = append(route.RequestHeadersToAdd, &corev3.HeaderValueOption{
 			Header:       &corev3.HeaderValue{Key: "x-country-code", Value: defaultCountry},
 			AppendAction: corev3.HeaderValueOption_OVERWRITE_IF_EXISTS_OR_ADD,
-		}}
+		})
 	}
+	route.RequestHeadersToAdd = append(route.RequestHeadersToAdd, &corev3.HeaderValueOption{
+		Header:       &corev3.HeaderValue{Key: "x-client-ip", Value: "%DOWNSTREAM_DIRECT_REMOTE_ADDRESS_WITHOUT_PORT%"},
+		AppendAction: corev3.HeaderValueOption_ADD_IF_ABSENT,
+	})
 	return route, nil
 }
 
