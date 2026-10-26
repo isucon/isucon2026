@@ -1,0 +1,39 @@
+---
+# ソースを /opt/isureal-guard/src に置き、サーバーの Go で bin にビルドする。起動は user-data が app の役割で行う
+- name: Create guard directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - /opt/isureal-guard
+    - /opt/isureal-guard/src
+    - /opt/isureal-guard/bin
+
+- name: Extract isureal-guard source
+  ansible.builtin.unarchive:
+    src: "{{ build_dir }}/guard.tar.gz"
+    dest: /opt/isureal-guard/src
+    owner: root
+    group: root
+
+- name: Build isureal-guard
+  ansible.builtin.command:
+    argv: [go, build, -trimpath, -o, /opt/isureal-guard/bin/isureal-guard, .]
+    chdir: /opt/isureal-guard/src
+  environment:
+    PATH: "/home/isucon/local/go/bin:{{ ansible_facts.env.PATH }}"
+    CGO_ENABLED: "0"
+  changed_when: true
+
+- name: Install systemd unit
+  ansible.builtin.copy:
+    src: isureal-guard.service
+    dest: /etc/systemd/system/isureal-guard.service
+    mode: "0644"
+  register: guard_unit
+
+- name: Reload systemd
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+  when: guard_unit.changed

@@ -29,18 +29,20 @@ ISURealは、日常の写真を共有するソーシャルネットワーキン�
 
 ### 参考実装
 
-参考実装は次の 2 つです。初期状態では Go 実装が動いています。
+参考実装は次の 4 つです。初期状態では Go 実装が動いています。
 
 | 言語 | ソースコード | systemd unit |
 |---|---|---|
 | Go | `/home/isucon/webapp/go` | `isureal-go.service` |
+| Ruby | `/home/isucon/webapp/ruby` | `isureal-ruby.service` |
+| Rust | `/home/isucon/webapp/rust` | `isureal-rust.service` |
 | Python | `/home/isucon/webapp/python` | `isureal-python.service` |
 
-どちらも `:8080` で待ち受けるので、同時に動かすことはできません。Python 実装に切り替えるには、各 app サーバーで次を実行します。
+どれも `:8080` で待ち受けるので、同時に動かすことはできません。たとえば Ruby 実装に切り替えるには、各 app サーバーで次を実行します。Rust や Python の実装に切り替えるときは、`isureal-ruby.service` をそれぞれ `isureal-rust.service`、`isureal-python.service` に読み替えてください。
 
 ```sh
 sudo systemctl disable --now isureal-go.service
-sudo systemctl enable --now isureal-python.service
+sudo systemctl enable --now isureal-ruby.service
 ```
 
 ### ルーター
