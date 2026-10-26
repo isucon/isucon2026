@@ -44,7 +44,7 @@ final class RegionTest extends IntegrationTestCase
         self::assertStatus(401, $this->request('GET', '/api/me', headers: ['Authorization' => 'Bearer ']));
         // リージョンによらず使える
         self::assertStatus(200, $this->request('PATCH', '/api/me', $token, ['displayName' => 'Changed', 'bio' => 'bio']));
-        self::assertStatus(204, $this->requestRaw('PUT', '/api/me/profile-image', $token, 'image bytes', ['Content-Type' => 'image/jpeg']));
+        self::assertStatus(204, $this->requestRaw('PUT', '/api/me/profile-image', $token, self::jpeg(), ['Content-Type' => 'image/jpeg']));
         self::assertStatus(204, $this->request('DELETE', '/api/me/profile-image', $token));
         self::assertStatus(200, $this->request('PATCH', '/api/me', $token, ['region' => 'asia']));
         self::assertStatus(200, $this->request('GET', '/api/me', $token));
