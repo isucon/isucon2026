@@ -1,0 +1,137 @@
+---
+# 配布する成果物を build/ に作る。
+- name: Build artifacts on the controller
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Create build directory
+      ansible.builtin.file:
+        path: "{{ build_dir }}"
+        state: directory
+        mode: "0755"
+
+    - name: Archive webapp source
+      ansible.builtin.command:
+        argv:
+          - tar
+          - --create
+          - --gzip
+          - --file={{ build_dir }}/webapp.tar.gz
+          - --directory={{ repo_root }}/webapp
+          - --exclude=*_test.go
+          - --exclude=go/isureal
+          - --exclude=ruby/.bundle
+          - --exclude=ruby/vendor
+          - --exclude=ruby/test
+          - --exclude=rust/isureal
+          - --exclude=rust/target
+          - --exclude=rust/tests
+          - --exclude=sql/002-seed.sql
+          - go
+          - ruby
+          - rust
+          - sql
+      changed_when: true
+      when: "'webapp' in prepare_components"
+
+    - name: Archive isureal-guard source
+      ansible.builtin.command:
+        argv:
+          - tar
+          - --create
+          - --gzip
+          - --file={{ build_dir }}/guard.tar.gz
+          - --directory={{ repo_root }}/guard
+          - --exclude=*_test.go
+          - .
+      changed_when: true
+      when: "'guard' in prepare_components"
+
+    # 取り除いたあとも「作問」が残っていれば失敗する
+    - name: Remove tests and [作問] comments from distributed sources
+      ansible.builtin.command:
+        argv:
+          - python3
+          - "{{ playbook_dir }}/scripts/sanitize_archive.py"
+          - "{{ build_dir }}/{{ item }}.tar.gz"
+      loop: "{{ ['webapp', 'guard'] | intersect(prepare_components) }}"
+      changed_when: true
+
+    - name: Build frontend
+      ansible.builtin.shell: |
+        set -eu
+        npm ci
+        npm run build
+        tar --create --gzip --file={{ build_dir }}/frontend.tar.gz --directory=dist .
+      args:
+        chdir: "{{ repo_root }}/frontend"
+      changed_when: true
+      when: "'frontend' in prepare_components"
+
+    - name: Build datagen for the image build instance
+      ansible.builtin.command:
+        argv: [go, build, -trimpath, -o, "{{ build_dir }}/datagen", .]
+        chdir: "{{ repo_root }}/webapp/datagen"
+      environment:
+        CGO_ENABLED: "0"
+        GOOS: linux
+        GOARCH: amd64
+      changed_when: true
+      when: "'datagen' in prepare_components"
+
+    - name: Build Router
+      ansible.builtin.command:
+        argv:
+          [
+            go,
+            build,
+            -trimpath,
+            -o,
+            "{{ build_dir }}/isureal-router",
+            ./cmd/router,
+          ]
+        chdir: "{{ repo_root }}/router"
+      environment:
+        CGO_ENABLED: "0"
+        GOOS: linux
+        GOARCH: amd64
+      changed_when: true
+      when: "'router' in prepare_components"
+
+    - name: Build validation Portal
+      ansible.builtin.command:
+        argv:
+          [
+            go,
+            build,
+            -trimpath,
+            -o,
+            "{{ build_dir }}/isureal-portal",
+            ./cmd/portal,
+          ]
+        chdir: "{{ repo_root }}/portal-mock/server"
+      environment:
+        CGO_ENABLED: "0"
+        GOOS: linux
+        GOARCH: amd64
+      changed_when: true
+      when: "'router' in prepare_components"
+
+    - name: Extract Envoy binary from the official image
+      ansible.builtin.shell: |
+        set -eu
+        container="$(docker create --platform linux/amd64 {{ envoy_image }})"
+        trap 'docker rm -f "${container}" >/dev/null' EXIT
+        docker cp "${container}:/usr/local/bin/envoy" {{ build_dir }}/envoy
+      when: "'router' in prepare_components"
+
+    - name: Validate Envoy architecture for the Router AMI
+      ansible.builtin.command:
+        argv:
+          - python3
+          - "{{ playbook_dir }}/tests/test_envoy_artifact.py"
+      environment:
+        ENVOY_BINARY: "{{ build_dir }}/envoy"
+      changed_when: false
+      when: "'router' in prepare_components"

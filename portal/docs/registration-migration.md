@@ -1,11 +1,11 @@
 # Django / TiDB から登録情報を移行する
 
-`export_registration.py` は移行元の Django 環境で SELECT とストレージ読み取りだけを行い、秘密情報を除いた JSON とアイコンの実体を出力します。
+`export_registration.py` は移行元の Django 環境で SELECT とストレージ読み取りだけを行い、ログイン用の秘密情報を除いた JSON とアイコンの実体を出力します。
 `cmd/import-registration` は JSON を検証し、空の PostgreSQL に登録情報を取り込みます。
 既存データとのマージや差分取り込みは行いません。
 
 この手順は登録情報の移行用です。
-問い合わせ、競技結果、お知らせ、環境チェック結果、登録招待クーポンのいずれかが非空なら、取り込みを中止します。
+問い合わせ、競技結果、お知らせ、環境チェック結果のいずれかが非空なら、取り込みを中止します。
 対象モデルの一覧が欠けている場合も中止します。
 非空のデータがある場合は、その意味と変換方法を確認してから変換処理と合成データのテストを追加してください。
 `other` の件数をゼロに書き換えて検証を通してはいけません。
@@ -26,15 +26,18 @@
 | 辞退で所属を失った代表者 | 元の owner ID はチーム記録に保存。現在の代表者や所属を捏造しない |
 | 所属のないユーザー | 元のユーザー記録だけを保存。参加者や運営アカウントには変換しない |
 | AWS とさくらのクラウドのクーポン | 1チームの `coupons.code` にカンマ区切りで保存。元の提供元別コードはチーム記録にも保存。`coupon_agreed_at` が非NULLなら activate=true |
+| 登録招待クーポン | `registration_source_records` の `authentication.RegisterCoupon` に ID、宛名、トークン、関連チーム、作成・更新・使用日時を保存。Go 版の招待としては利用できず、クラウド利用クーポンにも変換しない |
 | チームパスワード | 取り込まず、ランダムな招待トークンを生成 |
 | 参加確定 | 単一開催の登録処理に合わせて `final_participation=true` |
 | Discord サーバー所属状態 | 未確認として false。移行後に通常の同期処理で確認 |
 | アイコン | オブジェクトを読み、内容の SHA-256 をファイル名にしてコピー。期限のない HTTPS URL に変換 |
 
-ユーザーとチームの元データは、列を明示して抽出した JSON として `registration_source_records` にも保存します。
+ユーザー、チーム、登録招待クーポンの元データは、列を明示して抽出した JSON として `registration_source_records` にも保存します。
 パスワード、OAuth トークン、旧環境チェックトークン、Django のセッションや権限は含めません。
 標準 Django 認証用の氏名、最終ログイン、登録日時、superuser フラグは移行対象外です。
 無効化された所属ユーザーは Go 側で同等のログイン禁止を表現できないため、取り込みを中止します。
+登録招待トークンを含むため、スナップショットと元記録は機密情報として扱い、公開リポジトリに保存しないでください。
+登録招待クーポンの件数は `other` と `registration_coupons` の一致を検証します。チームを指定した抽出では、そのチームに関連するクーポンだけを対象にします。
 既知の除外列以外に移行元の列が増えた場合、エクスポートは中止します。
 
 移行先にデータがある場合は中止します。
@@ -159,7 +162,7 @@ JSON のチーム件数、所属ユーザー件数、元レコード件数を照
 1. Django の登録、辞退、連携、同意変更、運営更新、バックグラウンド書き込みを停止します。読み取り専用の案内ページに切り替え、再開条件を記録します。
 2. TiDB とオブジェクトストレージの復元可能な最終バックアップを作成します。停止後の同一スナップショットを抽出し、件数、取得時刻、対象 DB、コードのコミットを保存します。
 3. Go 側の全サービスを停止した状態で、新しい空の DB に取り込みます。アイコン配信、上記の照合、DB ダンプの別 DB への復元を確認します。取り込み失敗時は書き込み停止を維持して原因を直します。
-4. GitHub OAuth App の callback URL を `https://実際のホスト/auth/github/callback`、Discord を `/auth/discord/callback` に設定します。Go の公開ホストとリバースプロキシの `X-Forwarded-Proto: https` を照合します。
+4. GitHub OAuth App の callback URL を `https://実際のホスト/auth/github/callback`、Discord を `/auth/discord/callback` に設定します。Discord の旧 callback `/auth/discord/complete/` を継続する場合は、Pulumi stack の `environment` に `ISUXPORTAL_DISCORD_CALLBACK_PATH: /auth/discord/complete/` を設定し、Pulumi 適用後に ecspresso で再デプロイします。同じホストと Discord Application を使う場合、旧 callback の登録を継続できます。ホストを変更する場合は新しい URL の登録が必要です。Go の公開ホストとリバースプロキシの `X-Forwarded-Proto: https` を照合します。
 5. DNS またはプロキシを切り替える前に、新しい Cookie で実 GitHub OAuth を使い、代表者と一般メンバーが元のチームへ戻ることをブラウザーで確認します。Discord 未連携ユーザーの追加連携と、既存 ID の重複拒否も確認します。
 6. Django の運営アカウントは引き継がれません。Go の運営ログインを Secret 管理で設定し、同意記録と元データを参照できること、一般ユーザーには参照できないことを確認します。
 7. Django のセッションは引き継がれないため、全員に GitHub での再ログインを案内します。チームパスワードは廃止し、代表者が新ポータルの登録画面から招待 URL を取得してメンバーへ伝える手順を案内します。旧環境チェックトークンも廃止し、Go 版の環境チェック案内を再取得します。
@@ -180,3 +183,32 @@ JSON のチーム件数、所属ユーザー件数、元レコード件数を照
 実 TiDB に対するこのエクスポーターの実行、実 OAuth App の設定、実ブラウザーでのログイン、実配信先での7日後の画像取得、本番ダンプの復元は、この変更の自動テストでは検証していません。
 本番切り替え前に上記のリハーサルで確認してください。
 問い合わせや競技結果など非空の未対応モデルがある環境への移行も、この PR の完了条件には含めません。
+
+## 1チームだけの移行検証
+
+`PORTAL_EXPORT_TEAM_ID=<TEAM_ID>` を指定すると、そのチームと所属ユーザー、元の代表者だけを抽出します。
+未対応モデルの件数は移行元全体で数え、非空なら通常どおり中止します。
+
+取り込みコマンドは非公開の `s3://bucket/key` も読み取れます。
+ECS の migrate タスクには、設定バケットの `rehearsal/*/snapshot.json` に限った読み取り権限を Pulumi で付与しています。
+スナップショットには個人情報が含まれるため、公開バケットには配置しないでください。
+このパスには登録用スナップショットだけを保存し、旧パスワードやセッションを含む復元用バックアップには別の名前と保存先を使ってください。
+
+`-apply -create-rehearsal-database rehearsal_NAME` は、設定済み PostgreSQL サーバーに新しい検証用 DB を作成して取り込みます。
+名前は `rehearsal_` で始まる小文字・数字・アンダースコアだけに制限し、同名 DB が存在したら中止します。
+元のアプリケーション DB は変更しません。
+取り込み後は ID、所属、同意、アイコン URL、元データの保存内容を照合します。
+`-verify-only` は既存の取り込み結果を読み取りだけで照合します。
+
+Go dev を検証用 DB に向ける場合は、Pulumi の `applicationDatabase` と `redisDatabase` を設定して適用し、ecspresso で各サービスを再デプロイします。
+RDS 自体の初期 DB 名は変更しません。
+元に戻すときも同じ手順で `applicationDatabase=isuxportal`、`redisDatabase=0` を設定します。
+検証用 Redis DB には元のログインセッションを移さず、実際の GitHub 再ログインで同じ参加者に戻ることを確認します。
+
+## 旧 GitHub callback を継続する場合
+
+Go 版は `/auth/github/callback` に加えて、旧 Django の `/complete/github/` も受け付けます。
+OAuth 開始時の callback を旧パスにする場合は、Pulumi stack の `environment` に `ISUXPORTAL_GITHUB_CALLBACK_PATH: /complete/github/` を設定して再デプロイします。
+トークン交換には実際に受信した callback パスを使用するため、設定変更前に開始した Go 版の認証も受け付けます。
+旧 Django の認証途中の state とログインセッションは引き継ぎません。
+同じドメインと GitHub Application を使う場合は既存の callback 登録を継続できます。

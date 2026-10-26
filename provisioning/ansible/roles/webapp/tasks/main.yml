@@ -1,0 +1,70 @@
+---
+# イメージ作成時は起動しない（app と db の役割、DB の接続先は runtime.yml で決まる）
+- name: Create webapp directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: isucon
+    group: isucon
+    mode: "0755"
+  loop:
+    - /home/isucon/webapp
+    - /home/isucon/webapp/public
+
+- name: Extract webapp source
+  ansible.builtin.unarchive:
+    src: "{{ build_dir }}/webapp.tar.gz"
+    dest: /home/isucon/webapp
+    owner: isucon
+    group: isucon
+
+- name: Extract frontend
+  ansible.builtin.unarchive:
+    src: "{{ build_dir }}/frontend.tar.gz"
+    dest: /home/isucon/webapp/public
+    owner: isucon
+    group: isucon
+
+- name: Build webapp
+  ansible.builtin.command:
+    cmd: make
+    chdir: /home/isucon/webapp/go
+  environment:
+    PATH: "/home/isucon/local/go/bin:{{ ansible_facts.env.PATH }}"
+  become_user: isucon
+  changed_when: true
+
+- name: Install gems for webapp/ruby
+  ansible.builtin.command:
+    cmd: make install
+    chdir: /home/isucon/webapp/ruby
+  environment:
+    PATH: "/home/isucon/local/ruby/bin:{{ ansible_facts.env.PATH }}"
+  become_user: isucon
+  changed_when: true
+
+- name: Build webapp/rust
+  ansible.builtin.command:
+    cmd: make
+    chdir: /home/isucon/webapp/rust
+  environment:
+    PATH: "/home/isucon/.cargo/bin:{{ ansible_facts.env.PATH }}"
+  become_user: isucon
+  changed_when: true
+
+- name: Install systemd units
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: "/etc/systemd/system/{{ item }}"
+    mode: "0644"
+  loop: [isureal-go.service, isureal-ruby.service, isureal-rust.service]
+  register: webapp_unit
+
+- name: Reload systemd
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+  when: webapp_unit.changed
+
+- name: Load initial data
+  ansible.builtin.include_tasks: data.yml
+  when: initial_data_load | default(true)

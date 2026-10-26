@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: 2010-09-09
 Description: >-
-  AWS CloudFormation for ISUCON14 Environment Checks
+  AWS CloudFormation for ISUCON2026 Environment Checks
 Resources:
   GetAvailabilityZoneFunctionExecutionRole:
     Type: AWS::IAM::Role
@@ -132,11 +132,12 @@ Resources:
       Roles:
         - !Ref InstanceRole
 
-  EnvcheckInstance:
+{{range .EnvCheckInstances}}
+  {{.LogicalID}}:
     Type: AWS::EC2::Instance
     Properties:
-      ImageId: {{.AMIID}}
-      InstanceType: t3.micro
+      ImageId: {{$.AMIID}}
+      InstanceType: {{.InstanceType}}
       SecurityGroupIds:
         - !Ref SecurityGroup
       SubnetId: !Ref Subnet
@@ -149,7 +150,7 @@ Resources:
             VolumeType: gp3
       Tags:
         - Key: Name
-          Value: isucon14-envcheck
+          Value: isucon2026-envcheck-{{.Number}}
       UserData:
         Fn::Base64: |
           #cloud-config
@@ -158,11 +159,19 @@ Resources:
             owner: root:root
             permissions: '0644'
             encoding: b64
-            content: '{{.PortalCredentials}}'
+            content: '{{$.PortalCredentials}}'
           runcmd:
-            - 'curl --retry 5 --retry-connrefused --max-time 10 --connect-timeout 5 "https://{{.PortalHost}}/api/ssh_public_keys?token={{.Token}}" | sudo -u isucon sh -c "umask 077; cat > /home/isucon/.ssh/authorized_keys"'
-  EnvcheckInstanceIP:
+{{template "ssh_public_keys" $}}
+  {{.LogicalID}}IP:
     Type: AWS::EC2::EIP
+    DependsOn: InternetGatewayAttachment
     Properties:
       Domain: vpc
-      InstanceId: !Ref EnvcheckInstance
+      InstanceId: !Ref {{.LogicalID}}
+{{end}}
+Outputs:
+{{range .EnvCheckInstances}}
+  {{.LogicalID}}PublicIP:
+    Description: Public IPv4 address for isucon2026-envcheck-{{.Number}}
+    Value: !Ref {{.LogicalID}}IP
+{{end}}

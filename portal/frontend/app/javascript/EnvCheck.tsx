@@ -37,7 +37,7 @@ export interface Props {
 export interface State {
   template: string;
   checkStatus: EnvCheckStatus | null;
-  instanceIP: string;
+  instanceIPs: string[];
   isFetching: boolean;
   intervalId: number | null;
   error: Error | null;
@@ -49,7 +49,7 @@ export class EnvCheck extends React.Component<Props, State> {
     this.state = {
       template: "",
       checkStatus: null,
-      instanceIP: "",
+      instanceIPs: [],
       isFetching: false,
       intervalId: null,
       error: null,
@@ -91,7 +91,7 @@ export class EnvCheck extends React.Component<Props, State> {
       this.setState({
         template: info.template,
         checkStatus: info.status,
-        instanceIP: info.instanceIp,
+        instanceIPs: info.instanceIps,
         isFetching: false,
       });
       return info.status;
@@ -137,7 +137,7 @@ export class EnvCheck extends React.Component<Props, State> {
           CloudFormation
           を利用します。予選実施前に実際に競技環境が用意できるかのチェックのため、以下の手順で競技環境確認を行ってください。
           <b>必ずSSHの接続まで</b>{" "}
-          行ってください。一回でも行えば確認完了と表示されますが、念の為チーム全員が行うことをお勧めします。
+          行ってください。すべてのインスタンスの起動確認と、いずれか1台へのSSH接続が成功すると確認完了になります。
         </p>
         {this.renderState()}
         {this.renderReloadButton()}
@@ -150,12 +150,8 @@ export class EnvCheck extends React.Component<Props, State> {
           </p>
           <article className="message">
             <div className="message-body">
-              このテンプレートでは{" "}
-              <a href="https://aws.amazon.com/jp/free/" target="_blank" rel="noreferrer noopener">
-                AWS 無料利用枠
-              </a>{" "}
-              に収まる範囲で EC2 インスタンス、VPC、インターネットゲートウェイ、セキュリティグループ、また Availability
-              Zone 情報取得に利用する Lambda 関数を作成します。また、EC2 環境の情報取得を行うための IAM
+              このテンプレートではEC2 インスタンス、VPC、インターネットゲートウェイ、セキュリティグループ、また
+              Availability Zone 情報取得に利用する Lambda 関数を作成します。また、EC2 環境の情報取得を行うための IAM
               ロールを含みます。IAM ロールは EC2 インスタンスおよび Lambda
               関数でのみ利用されます。また、許可されているアクションは AWS の仕様上、アカウントに存在する他の EC2
               リソースの情報も閲覧できる設定になっていますが、不要な情報は取得いたしません。
@@ -183,8 +179,8 @@ export class EnvCheck extends React.Component<Props, State> {
             「既存のテンプレートを選択」、「テンプレートファイルのアップロード」を指定し、ダウンロードしたテンプレートをアップロードする。
           </li>
           <li>
-            スタック名は任意のもの、それ以外の箇所は変更せずに画面にしたがって進める。最後の「AWS
-            CloudFormation によって IAM リソースが作成される場合があることを承認します。」に<b>チェックを入れた上で</b>
+            スタック名は任意のもの、それ以外の箇所は変更せずに画面にしたがって進める。最後の「AWS CloudFormation
+            によって IAM リソースが作成される場合があることを承認します。」に<b>チェックを入れた上で</b>
             、「送信」をクリック。
           </li>
         </ol>
@@ -195,7 +191,7 @@ export class EnvCheck extends React.Component<Props, State> {
             「スタックの作成」を実行後から約5分後、インスタンスが起動します。
             インスタンスの起動後、GitHubに登録してあるSSH鍵によりSSHができるようになるので、インスタンスに対してユーザー名「isucon」でSSHを行う。
           </p>
-          {this.renderInstanceIPAndSSHCommand()}
+          {this.renderInstanceIPAndSSHCommand(this.state.instanceIPs[0] ?? "")}
         </div>
 
         <h3 className="title is-3">4. 状態の確認とスタックの削除</h3>
@@ -249,26 +245,26 @@ export class EnvCheck extends React.Component<Props, State> {
     }
   }
 
-  async onCopyInstanceIPButtonClick(event: React.MouseEvent<HTMLButtonElement>) {
+  async onCopyInstanceIPButtonClick(ip: string, event: React.MouseEvent<HTMLButtonElement>) {
     event.preventDefault();
 
-    if (!this.state.instanceIP) return;
-    await navigator.clipboard.writeText(this.state.instanceIP);
+    if (!ip) return;
+    await navigator.clipboard.writeText(ip);
   }
 
-  async onCopySSHCommandButtonClick(event: React.MouseEvent<HTMLButtonElement>) {
+  async onCopySSHCommandButtonClick(ip: string, event: React.MouseEvent<HTMLButtonElement>) {
     event.preventDefault();
 
-    if (!this.state.instanceIP) return;
-    await navigator.clipboard.writeText(this.getSSHCommand());
+    if (!ip) return;
+    await navigator.clipboard.writeText(this.getSSHCommand(ip));
   }
 
-  private getSSHCommand() {
-    return `ssh -T isucon@${this.state.instanceIP || "{IP_ADDRESS}"}`;
+  private getSSHCommand(ip: string) {
+    return `ssh -T isucon@${ip || "{IP_ADDRESS}"}`;
   }
 
-  renderInstanceIPAndSSHCommand() {
-    const ipNotFetched = this.state.instanceIP === "";
+  renderInstanceIPAndSSHCommand(ip: string) {
+    const ipNotFetched = ip === "";
 
     return (
       <>
@@ -284,7 +280,7 @@ export class EnvCheck extends React.Component<Props, State> {
                   type="text"
                   readOnly
                   disabled={ipNotFetched}
-                  value={this.state.instanceIP ?? "取得中"}
+                  value={ip || "取得中"}
                   onClick={this.selectAllText.bind(this)}
                 />
               </div>
@@ -292,7 +288,7 @@ export class EnvCheck extends React.Component<Props, State> {
                 <button
                   className="button"
                   disabled={ipNotFetched}
-                  onClick={this.onCopyInstanceIPButtonClick.bind(this)}
+                  onClick={this.onCopyInstanceIPButtonClick.bind(this, ip)}
                 >
                   <span className="material-icons">content_copy</span>
                 </button>
@@ -312,7 +308,7 @@ export class EnvCheck extends React.Component<Props, State> {
                   type="text"
                   readOnly
                   disabled={ipNotFetched}
-                  value={this.getSSHCommand()}
+                  value={this.getSSHCommand(ip)}
                   onClick={this.selectAllText.bind(this)}
                 />
               </div>
@@ -320,7 +316,7 @@ export class EnvCheck extends React.Component<Props, State> {
                 <button
                   className="button"
                   disabled={ipNotFetched}
-                  onClick={this.onCopySSHCommandButtonClick.bind(this)}
+                  onClick={this.onCopySSHCommandButtonClick.bind(this, ip)}
                 >
                   <span className="material-icons">content_copy</span>
                 </button>

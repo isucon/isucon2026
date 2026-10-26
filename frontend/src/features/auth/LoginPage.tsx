@@ -1,3 +1,4 @@
+import { Brand } from '../../components/UI';
 import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { login } from '../../api/account';
@@ -33,14 +34,29 @@ export function LoginPage(): React.JSX.Element {
     }
   }
   return (
-    <main className="auth-page">
+    <main className='auth-page'>
+      <Brand />
       <form onSubmit={(event) => void submit(event)}>
         <h1>ログイン</h1>
-        <label>ユーザー名<input ref={usernameInput} data-login-focus required value={username} onChange={(event) => setUsername(event.target.value)} /></label>
-        <label>SecretKey<input required value={secretKey} onChange={(event) => setSecretKey(event.target.value)} /></label>
-        {error && <p role="alert">{error}</p>}
+        <label>
+          ユーザー名<input
+            ref={usernameInput}
+            data-login-focus
+            required
+            value={username}
+            onChange={(event) => setUsername(event.target.value)}
+          />
+        </label>
+        <label>
+          SecretKey<input
+            required
+            value={secretKey}
+            onChange={(event) => setSecretKey(event.target.value)}
+          />
+        </label>
+        {error && <p role='alert'>{error}</p>}
         <button>ログイン</button>
-        <Link to="/register">新規登録</Link>
+        <Link to='/register'>新規登録</Link>
       </form>
       {storedSecretKey && <SecretKeyPanel secretKey={storedSecretKey} />}
     </main>

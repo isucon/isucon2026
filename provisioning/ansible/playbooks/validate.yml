@@ -1,9 +1,0 @@
----
-- name: Validate node-local runtime health
-  hosts: all
-  become: true
-  gather_facts: false
-  tasks:
-    - name: Run bounded node-local conformance command
-      ansible.builtin.command: /usr/local/sbin/isureal-node-check
-      changed_when: false

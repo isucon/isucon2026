@@ -1,0 +1,24 @@
+---
+- name: Install nginx
+  ansible.builtin.apt:
+    name: nginx
+
+- name: Install site configuration
+  ansible.builtin.template:
+    src: isureal.conf.j2
+    dest: /etc/nginx/sites-available/isureal.conf
+    mode: "0644"
+  notify: Reload nginx
+
+- name: Enable site
+  ansible.builtin.file:
+    src: /etc/nginx/sites-available/isureal.conf
+    dest: /etc/nginx/sites-enabled/isureal.conf
+    state: link
+  notify: Reload nginx
+
+- name: Disable default site
+  ansible.builtin.file:
+    path: /etc/nginx/sites-enabled/default
+    state: absent
+  notify: Reload nginx

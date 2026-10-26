@@ -1,0 +1,23 @@
+---
+# app1〜3 と db1 で共用するイメージ。初期データ投入まで済ませる。
+- name: Build the problem server image
+  hosts: problem_servers
+  become: true
+  roles:
+    - base
+    - isucon-user
+    - golang
+    - ruby
+    - rust
+    - postgresql
+    - nginx
+    - webapp
+    - guard
+  post_tasks:
+    # どのサービスを動かすかは役割で決まるので、起動時に user-data が有効にする
+    - name: Leave role-specific services disabled in the image
+      ansible.builtin.systemd_service:
+        name: "{{ item }}"
+        state: stopped
+        enabled: false
+      loop: [isureal-go, isureal-ruby, isureal-rust, isureal-guard, nginx, postgresql]

@@ -19,7 +19,7 @@
 | 観客 API 3 本 | leaderboard・solo・チーム一覧 |
 | 運営 API 26 本 | チーム CRUD・ジョブ絞り込み/ページング/代理 enqueue/キャンセル・clarification 回答/公開・env_check 閲覧・CFn・一括コマンド実行（変則ルート含む）・最終検証 3 種・dump_leaderboard・未整備統計 3 種 |
 | bench API 4 本 | 行ロック払い出し・cancel_owned・途中報告（marked_at 順序制御）・確定報告（score センチネル CT-7） |
-| envcheck 3 本 | JSON / text/plain / 空ボディ、CheckerToken + HMAC 署名の 2 方式、インスタンス登録の副作用 |
+| envcheck 3 本 | JSON / text/plain / 空ボディ、CheckerToken 認証、インスタンス登録の副作用 |
 | ページ | SPA シェル（meta 8 個 + manifest.json 解決）、運営 3 画面、broadcast、/terms /rules /docs（競技中のみ）/site/sha |
 | ジョブ | BenchmarkCompletion / MaintainBest / UpdateContestantDashboard（Redis 事前生成）/ Clarification 系 / Web Push 配信（410 で購読削除）/ SSH 鍵同期 / Discord 同期・ロール / EC2 同期 / SSH 一括実行 / LongRunningCheck / ClearContestData |
 | 常駐 | `cmd/portal`（app）、`cmd/worker`（PostgreSQL ジョブキューの消費）、`cmd/bot`（discordgo: ロール同期・readme リアクション・support comm）、`cmd/notifyloop` |

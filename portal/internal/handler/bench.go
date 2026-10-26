@@ -65,16 +65,12 @@ func (h *Handler) BenchReceive(w http.ResponseWriter, r *http.Request) error {
 			return err
 		}
 
-		// 全 3 台の public IP と target の IP を返す
+		// 登録済みの全サーバの public IP と target の IP を返す
 		instances, err := model.TeamInstances(ctx, h.db, jobRow.TeamID)
 		if err != nil {
 			return err
 		}
-		byNumber := map[int64]string{}
-		for _, ci := range instances {
-			byNumber[ci.Number] = ci.PublicIPv4Address.String
-		}
-		allAddresses := []string{byNumber[1], byNumber[2], byNumber[3]}
+		allAddresses := instancePublicAddresses(instances)
 
 		targetIP := ""
 		if jobRow.TargetID.Valid {
@@ -232,4 +228,13 @@ func (h *Handler) BenchCompleteJob(w http.ResponseWriter, r *http.Request) error
 	h.jobs.Enqueue(ctx, "benchmark_completion", job.BenchmarkCompletionArgs{JobID: jobRow.ID})
 	renderPB(w, http.StatusOK, &pbbench.CompleteBenchmarkJobResponse{})
 	return nil
+}
+
+// instancePublicAddresses receives instances ordered by number from TeamInstances.
+func instancePublicAddresses(instances []*model.ContestantInstance) []string {
+	addresses := make([]string, 0, len(instances))
+	for _, ci := range instances {
+		addresses = append(addresses, ci.PublicIPv4Address.String)
+	}
+	return addresses
 }

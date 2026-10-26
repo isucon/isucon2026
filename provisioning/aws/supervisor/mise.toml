@@ -1,0 +1,5 @@
+[env]
+# supervisor stack の state は移行前のバケットに残っている。親の mise.toml の値を上書きする。
+PULUMI_BACKEND_URL = "s3://isucon2026-pulumi-state-124502390568/supervisor"
+# 初期作成時の passphrase provider（空 passphrase）を使う。
+PULUMI_CONFIG_PASSPHRASE = ""

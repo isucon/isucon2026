@@ -44,7 +44,12 @@ pulumi.runtime.setMocks(
 );
 const config = {
   ...defaults,
+  publishEnvcheckAmi: true,
+  environment: { ISUXPORTAL_TEST_AMI_ID: "ami-0123456789abcdef0" },
+  applicationDatabase: "rehearsal_test",
+  redisDatabase: 1,
   secretKeys: [...defaults.secretKeys, "ISUXPORTAL_SLACK_WEBHOOK_URL"],
+  natGatewayCount: 1,
   name: "portal-test",
   region: "ap-northeast-1",
   domainName: "portal.example.com",
@@ -62,10 +67,48 @@ beforeAll(async () => {
   );
 });
 describe("portal infrastructure", () => {
+  test("publishes only the explicitly configured envcheck AMI", () => {
+    const permissions = ofType(
+      "aws:ec2/amiLaunchPermission:AmiLaunchPermission",
+    );
+    expect(permissions).toHaveLength(1);
+    expect(permissions[0].inputs).toMatchObject({
+      imageId: "ami-0123456789abcdef0",
+      group: "all",
+    });
+    expect(defaults.publishEnvcheckAmi).toBe(false);
+    expect(() => validateConfig({ ...config, environment: {} })).toThrow(
+      "TEST_AMI_ID",
+    );
+  });
   test("keeps ECS services and task definitions under ecspresso ownership", () => {
     expect(ofType("aws:ecs/service:Service")).toHaveLength(0);
     expect(ofType("aws:ecs/taskDefinition:TaskDefinition")).toHaveLength(0);
     expect(ofType("aws:ecs/cluster:Cluster")).toHaveLength(1);
+  });
+  test("limits migration reads to registration snapshots, excluding raw backups", () => {
+    const policy = ofType("aws:iam/rolePolicy:RolePolicy").find((r) =>
+      r.name === "migration-snapshot-read"
+    );
+    expect(policy).toBeDefined();
+    const statements = JSON.parse(policy!.inputs.policy).Statement;
+    expect(statements).toHaveLength(1);
+    expect(statements[0].Action).toEqual(["s3:GetObject"]);
+    const pattern = new RegExp(
+      "^" +
+        statements[0].Resource.split("*").map((part: string) =>
+          part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+        ).join(".*") + "$",
+    );
+    const prefix = statements[0].Resource.split("/rehearsal/")[0];
+    expect(pattern.test(prefix + "/rehearsal/test/snapshot.json")).toBe(true);
+    expect(
+      pattern.test(
+        prefix + "/rehearsal/test/source-backup/authentication_user.json.gz",
+      ),
+    ).toBe(false);
+    expect(pattern.test(prefix + "/rehearsal/test/source-backup/manifest.json"))
+      .toBe(false);
   });
   test("uses warm encrypted Aurora Serverless v2 in two AZs", () => {
     const db = ofType("aws:rds/cluster:Cluster")[0].inputs;
@@ -90,7 +133,17 @@ describe("portal infrastructure", () => {
       });
     }
   });
-  test("keeps TLS cache and redundant outbound access", () => {
+  test("disables automatic rotation of the RDS-managed password", () => {
+    const rotations = ofType(
+      "aws:secretsmanager/secretRotation:SecretRotation",
+    );
+    expect(rotations).toHaveLength(1);
+    expect(rotations[0].inputs).toMatchObject({
+      secretId: "arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:db",
+      rotationEnabled: false,
+    });
+  });
+  test("keeps TLS cache and shares one NAT across both private AZs", () => {
     expect(
       ofType("aws:elasticache/replicationGroup:ReplicationGroup")[0].inputs,
     ).toMatchObject({
@@ -99,7 +152,15 @@ describe("portal infrastructure", () => {
       automaticFailoverEnabled: true,
       numCacheClusters: 2,
     });
-    expect(ofType("aws:ec2/natGateway:NatGateway")).toHaveLength(2);
+    expect(ofType("aws:ec2/natGateway:NatGateway")).toHaveLength(1);
+    const routes = ofType("aws:ec2/routeTable:RouteTable").filter((r) =>
+      r.name.startsWith("private-")
+    );
+    expect(routes).toHaveLength(2);
+    expect(routes.map((r) => r.inputs.routes[0].natGatewayId)).toEqual([
+      "portal-0-id",
+      "portal-0-id",
+    ]);
     const albGroup = ofType("aws:ec2/securityGroup:SecurityGroup").find((r) =>
       r.name === "alb"
     )!;
@@ -116,6 +177,12 @@ describe("portal infrastructure", () => {
   test("exports infrastructure data without rendering ECS definitions or secret values", () => {
     const object = ofType("aws:s3/bucketObjectv2:BucketObjectv2")[0];
     const data = JSON.parse(object.inputs.content);
+    expect(data.environment.ISUXPORTAL_DATABASE_URL).toBe(
+      "postgres:///rehearsal_test?sslmode=verify-full",
+    );
+    expect(data.environment.REDIS_URL).toBe(
+      "rediss://cache.example.com:6379/1",
+    );
     expect(data).toMatchObject({
       name: "portal-test",
       region: "ap-northeast-1",
@@ -155,6 +222,10 @@ describe("portal infrastructure", () => {
   test("rejects auto-pause, duplicate AZs and plaintext credentials", () => {
     const overrides: Partial<PortalConfig>[] = [
       { auroraMinAcu: 0 },
+      { applicationDatabase: "bad/name" },
+      { redisDatabase: -1 },
+      { redisDatabase: 16 },
+      { redisDatabase: 1.5 },
       { availabilityZones: ["ap-northeast-1a", "ap-northeast-1a"] },
       { environment: { ISUXPORTAL_ADMIN_PASSWORD: "bad" } },
       {
@@ -168,4 +239,32 @@ describe("portal infrastructure", () => {
       expect(() => validateConfig({ ...config, ...override })).toThrow();
     }
   });
+});
+
+test("requires Discord invitation URLs to use Secrets Manager", () => {
+  expect(() =>
+    validateConfig({
+      ...config,
+      environment: {
+        ...config.environment,
+        ISUXPORTAL_DISCORD_INVITE_URL: "https://example.invalid/invite",
+      },
+    })
+  ).toThrow("Use secretKeys");
+  expect(() =>
+    validateConfig({
+      ...config,
+      secretKeys: [...config.secretKeys, "ISUXPORTAL_DISCORD_INVITE_URL"],
+    })
+  ).not.toThrow();
+});
+
+test("validates the NAT count while retaining a redundant default", () => {
+  expect(defaults.natGatewayCount).toBe(2);
+  expect(() => validateConfig({ ...config, natGatewayCount: 0 })).toThrow(
+    "natGatewayCount",
+  );
+  expect(() => validateConfig({ ...config, natGatewayCount: 3 })).toThrow(
+    "natGatewayCount",
+  );
 });

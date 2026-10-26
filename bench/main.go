@@ -1,8 +1,9 @@
 // Command bench は ISUReal のベンチマーク（初期化 → 事前検証 → 初期データの検証 → 負荷走行 →
 // 走行後の整合性チェック）を実行する。単独でも、スーパーバイザーの子プロセスとしても動く。
 // 単独では結果 JSON を標準出力へ出す。スーパーバイザーの下では途中経過と結果を報告用の
-// パイプへ送り、詳しい結果（運営向け）は標準エラー出力、参加者に見える標準出力には pass と
-// score だけを出す。終了コードは pass=0、fail=1、設定の誤りなど=2。
+// パイプへ送り、詳しい結果（運営向け）は標準エラー出力、参加者に見える標準出力には進行ログと
+// pass、score、参加者向けメッセージの JSON を出す。単独実行の終了コードは pass=0、fail=1、設定の誤りなど=2。
+// スーパーバイザーの下では通常の fail も終了コード 0 とし、Passed=false で報告する。
 package main
 
 import (
@@ -16,6 +17,8 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"runtime/debug"
+	"runtime/pprof"
 	"strconv"
 	"strings"
 	"syscall"
@@ -30,7 +33,15 @@ import (
 // devTarget は Docker Compose の開発環境の入口。
 const devTarget = "http://app.127.0.0.1.nip.io:18090"
 
+// defaultGCPercent は GOGC を指定しないときの GC の目標。bench の常駐ヒープ（初期データと
+// モデル）は数十 MB と小さく、既定の 100 では負荷走行で HTTP と JSON が割り当てるたびに GC が
+// 走り、CPU を取られる。メモリには余裕があるので、GC の回数を減らす。
+const defaultGCPercent = 400
+
 func main() {
+	if os.Getenv("GOGC") == "" {
+		debug.SetGCPercent(defaultGCPercent)
+	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	os.Exit(run(ctx, os.Args[1:], os.Stdout, os.Stderr))
@@ -46,6 +57,10 @@ func run(parent context.Context, args []string, stdout, stderr io.Writer) int {
 	if closer != nil {
 		defer closer.Close()
 	}
+	progressLogger := logger
+	if reporter != nil {
+		progressLogger = slog.New(slog.NewTextHandler(stdout, nil))
+	}
 	flags := flag.NewFlagSet("bench", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	defaultTarget := os.Getenv("ISUXBENCH_TARGET")
@@ -60,6 +75,9 @@ func run(parent context.Context, args []string, stdout, stderr io.Writer) int {
 	scale := flags.String("scale", "small", "scale of the initial data in the target DB: small or large (must match datagen -scale)")
 	timeout := flags.Duration("timeout", 140*time.Second, "overall benchmark deadline; supervisor hard timeout must be longer")
 	postValidation := flags.Bool("only-post-validation", false, "reserved: report unsupported without initializing the application")
+	verifyRate := flags.Float64("verify-rate", scenario.DefaultVerifyRate, "fraction of load-phase operations that get heavy verification, in (0, 1] (env ISUXBENCH_VERIFY_RATE)")
+	cpuProfile := flags.String("cpuprofile", "", "write a CPU profile of the whole run to this file")
+	memProfile := flags.String("memprofile", "", "write an allocation profile to this file at the end of the run")
 	report := func(result scenario.Result, finished bool, reason string) error {
 		if reporter == nil {
 			return nil
@@ -81,6 +99,11 @@ func run(parent context.Context, args []string, stdout, stderr io.Writer) int {
 		}
 		return code
 	}
+	if value := os.Getenv("ISUXBENCH_VERIFY_RATE"); value != "" {
+		if err := flags.Set("verify-rate", value); err != nil {
+			return fail("invalid ISUXBENCH_VERIFY_RATE", 2)
+		}
+	}
 	if err := flags.Parse(args); err != nil {
 		if err == flag.ErrHelp {
 			return 0
@@ -88,7 +111,7 @@ func run(parent context.Context, args []string, stdout, stderr io.Writer) int {
 		return fail("invalid benchmark arguments", 2)
 	}
 	datasetConfig, ok := map[string]func() dataset.Config{"small": dataset.Small, "large": dataset.Large}[*scale]
-	if flags.NArg() != 0 || *users < 1 || *duration <= 0 || *timeout <= 0 || !ok {
+	if flags.NArg() != 0 || *users < 1 || *duration <= 0 || *timeout <= 0 || !ok || !(*verifyRate > 0 && *verifyRate <= 1) {
 		return fail("invalid benchmark arguments", 2)
 	}
 	if *postValidation {
@@ -98,12 +121,23 @@ func run(parent context.Context, args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		return fail("invalid benchmark target", 2)
 	}
+	if *cpuProfile != "" {
+		stopProfile, err := startCPUProfile(*cpuProfile)
+		if err != nil {
+			logger.Error("cpu profile setup failed", "error", err)
+			return fail("benchmarker setup failed", 2)
+		}
+		defer stopProfile()
+	}
+	if *memProfile != "" {
+		defer writeAllocProfile(*memProfile, logger)
+	}
 	ctx, cancel := context.WithTimeout(parent, *timeout)
 	defer cancel()
 	var reportErr error
 	runner, err := scenario.NewRunner(scenario.Config{
-		Target: normalized, Host: *host, Users: *users, Duration: *duration,
-		Dataset: dataset.Generate(datasetConfig()), Logger: logger,
+		Target: normalized, Host: *host, Users: *users, Duration: *duration, VerifyRate: *verifyRate,
+		Dataset: dataset.Generate(datasetConfig()), Logger: progressLogger,
 		OnProgress: func(result scenario.Result) {
 			if reportErr != nil {
 				return
@@ -132,27 +166,68 @@ func run(parent context.Context, args []string, stdout, stderr io.Writer) int {
 	if err := enc.Encode(result); err != nil {
 		return fail("encode result failed", 2)
 	}
-	reason := ""
-	if !result.Pass {
-		reason = "benchmark failed; contact the organizers for details"
-	}
-	if err := report(result, true, reason); err != nil {
+	if err := report(result, true, reportReason(result.Reason)); err != nil {
 		logger.Error("final report failed", "error", err)
 		return 2
 	}
 	if reporter != nil {
-		if err := json.NewEncoder(stdout).Encode(struct {
-			Pass  bool  `json:"pass"`
-			Score int64 `json:"score"`
-		}{result.Pass, result.Score}); err != nil {
+		publicEncoder := json.NewEncoder(stdout)
+		publicEncoder.SetIndent("", "  ")
+		if err := publicEncoder.Encode(struct {
+			Pass     bool     `json:"pass"`
+			Score    int64    `json:"score"`
+			Messages []string `json:"messages"`
+		}{result.Pass, result.Score, result.Messages}); err != nil {
 			logger.Error("write public result failed", "error", err)
 			return 2
 		}
 	}
-	if !result.Pass {
+	// 非ゼロ終了はポータルで運営向け障害として扱われる。
+	if reporter == nil && !result.Pass {
 		return 1
 	}
 	return 0
+}
+
+// startCPUProfile は path へ CPU プロファイルを書き始め、止める関数を返す。
+func startCPUProfile(path string) (func(), error) {
+	f, err := os.Create(path)
+	if err != nil {
+		return nil, err
+	}
+	if err := pprof.StartCPUProfile(f); err != nil {
+		_ = f.Close()
+		return nil, err
+	}
+	return func() {
+		pprof.StopCPUProfile()
+		_ = f.Close()
+	}, nil
+}
+
+// writeAllocProfile は起動からの割り当てのプロファイルを path へ書く。
+func writeAllocProfile(path string, logger *slog.Logger) {
+	f, err := os.Create(path)
+	if err != nil {
+		logger.Error("memory profile failed", "error", err)
+		return
+	}
+	defer f.Close()
+	if err := pprof.Lookup("allocs").WriteTo(f, 0); err != nil {
+		logger.Error("memory profile failed", "error", err)
+	}
+}
+
+// reportReason は結果の要約を1行で返す。詳細は stdout の messages に残す。
+func reportReason(reason string) string {
+	if reason == "" {
+		return "実行終了"
+	}
+	if end := strings.IndexAny(reason, "\r\n"); end >= 0 {
+		reason = reason[:end]
+	}
+	summary, _, _ := strings.Cut(reason, ": ")
+	return summary
 }
 
 func normalizeTarget(target string, port int) (string, error) {

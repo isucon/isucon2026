@@ -12,17 +12,25 @@ export const requiredSecrets = [
   "ISUXPORTAL_BYPASS_SECRET",
   "ISUXPORTAL_CHECKER_SECRET",
   "ISUXPORTAL_BENCH_TOKEN",
-  "ISUXPORTAL_SSH_KEY_API_SECRET",
   "ISUXPORTAL_ADMIN_PASSWORD",
 ];
 export const defaults = {
+  natGatewayCount: 2,
   availabilityZones: ["ap-northeast-1a", "ap-northeast-1c"],
   vpcCidr: "10.26.0.0/16",
   auroraEngineVersion: "17.7",
   auroraMinAcu: 2,
   auroraMaxAcu: 16,
   cacheNodeType: "cache.t4g.small",
+  publishEnvcheckAmi: false,
   enableBot: false,
+  enableBotInStandby: false,
+  standby: false,
+  existingCertificateArn: "",
+  logRetentionDays: 0, // CloudWatch: never expire; explicit stack settings may override.
+  dnsManagement: "route53" as "route53" | "external",
+  applicationDatabase: "isuxportal",
+  redisDatabase: 0,
   environment: {} as Record<string, string>,
   secretKeys: [
     ...requiredSecrets,
@@ -40,6 +48,32 @@ export type PortalConfig = typeof defaults & {
   githubOidcProviderArn: string;
 };
 export function validateConfig(c: PortalConfig): PortalConfig {
+  if (
+    c.existingCertificateArn &&
+    !new RegExp(`^arn:aws:acm:${c.region}:[0-9]{12}:certificate/[a-f0-9-]{36}$`)
+      .test(c.existingCertificateArn)
+  ) {
+    throw new Error(
+      "existingCertificateArn must be an ACM certificate in the deployment region",
+    );
+  }
+  if (!["route53", "external"].includes(c.dnsManagement)) {
+    throw new Error("dnsManagement must be route53 or external");
+  }
+  if (c.dnsManagement === "route53" && !c.route53ZoneId) {
+    throw new Error("route53ZoneId is required for Route 53 DNS");
+  }
+  if (!/^[a-z][a-z0-9_]{0,62}$/.test(c.applicationDatabase)) {
+    throw new Error(
+      "applicationDatabase must be a lowercase PostgreSQL database name",
+    );
+  }
+  if (
+    !Number.isInteger(c.redisDatabase) || c.redisDatabase < 0 ||
+    c.redisDatabase > 15
+  ) {
+    throw new Error("redisDatabase must be an integer from 0 to 15");
+  }
   if (!/^[a-z][a-z0-9-]{1,23}$/.test(c.name)) {
     throw new Error("name must be 2-24 lowercase letters, digits or hyphens");
   }
@@ -48,6 +82,9 @@ export function validateConfig(c: PortalConfig): PortalConfig {
     new Set(c.availabilityZones).size !== 2 ||
     c.availabilityZones.some((az) => !az.startsWith(c.region))
   ) throw new Error("two distinct AZs in the deployment region are required");
+  if (![1, 2].includes(c.natGatewayCount)) {
+    throw new Error("natGatewayCount must be 1 or 2");
+  }
   if (
     c.auroraMinAcu < 0.5 || c.auroraMaxAcu < c.auroraMinAcu ||
     c.auroraMaxAcu > 256 || !Number.isInteger(c.auroraMinAcu * 2) ||
@@ -67,6 +104,7 @@ export function validateConfig(c: PortalConfig): PortalConfig {
       (!key.startsWith("ISUXPORTAL_") &&
         !["SENTRY_DSN", "MONITOR_ENV"].includes(key)) ||
       /SECRET|PASSWORD|TOKEN|PRIVATE_KEY|DATABASE_URL|WEBHOOK_URL/.test(key) ||
+      key === "ISUXPORTAL_DISCORD_INVITE_URL" ||
       typeof value !== "string"
     ) {
       throw new Error(
@@ -82,6 +120,16 @@ export function validateConfig(c: PortalConfig): PortalConfig {
       "enableBot requires ISUXPORTAL_DISCORD_BOT_TOKEN in secretKeys",
     );
   }
+  if (
+    c.publishEnvcheckAmi &&
+    !/^ami-[0-9a-f]{8}([0-9a-f]{9})?$/.test(
+      c.environment.ISUXPORTAL_TEST_AMI_ID ?? "",
+    )
+  ) {
+    throw new Error(
+      "publishEnvcheckAmi requires a valid ISUXPORTAL_TEST_AMI_ID",
+    );
+  }
   return c;
 }
 export function loadConfig(): PortalConfig {
@@ -90,10 +138,14 @@ export function loadConfig(): PortalConfig {
     name: config.require("name"),
     region: new pulumi.Config("aws").require("region"),
     domainName: config.require("domainName"),
-    route53ZoneId: config.require("route53ZoneId"),
+    route53ZoneId: config.get("route53ZoneId") ?? "",
+    dnsManagement: config.get<"route53" | "external">("dnsManagement") ??
+      defaults.dnsManagement,
     githubRepository: config.require("githubRepository"),
     githubEnvironment: config.require("githubEnvironment"),
     githubOidcProviderArn: config.require("githubOidcProviderArn"),
+    natGatewayCount: config.getNumber("natGatewayCount") ??
+      defaults.natGatewayCount,
     availabilityZones: config.getObject<string[]>("availabilityZones") ??
       defaults.availabilityZones,
     vpcCidr: config.get("vpcCidr") ?? defaults.vpcCidr,
@@ -102,7 +154,19 @@ export function loadConfig(): PortalConfig {
     auroraMinAcu: config.getNumber("auroraMinAcu") ?? defaults.auroraMinAcu,
     auroraMaxAcu: config.getNumber("auroraMaxAcu") ?? defaults.auroraMaxAcu,
     cacheNodeType: config.get("cacheNodeType") ?? defaults.cacheNodeType,
+    publishEnvcheckAmi: config.getBoolean("publishEnvcheckAmi") ??
+      defaults.publishEnvcheckAmi,
     enableBot: config.getBoolean("enableBot") ?? defaults.enableBot,
+    enableBotInStandby: config.getBoolean("enableBotInStandby") ??
+      defaults.enableBotInStandby,
+    standby: config.getBoolean("standby") ?? defaults.standby,
+    existingCertificateArn: config.get("existingCertificateArn") ??
+      defaults.existingCertificateArn,
+    logRetentionDays: config.getNumber("logRetentionDays") ??
+      defaults.logRetentionDays,
+    applicationDatabase: config.get("applicationDatabase") ??
+      defaults.applicationDatabase,
+    redisDatabase: config.getNumber("redisDatabase") ?? defaults.redisDatabase,
     environment: config.getObject<Record<string, string>>("environment") ??
       defaults.environment,
     secretKeys: config.getObject<string[]>("secretKeys") ?? defaults.secretKeys,

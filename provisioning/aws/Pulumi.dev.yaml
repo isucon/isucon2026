@@ -1,0 +1,23 @@
+config:
+  aws:region: ap-northeast-1
+  isucon2026:clientCidrs:
+    - 115.66.155.173/32
+  isucon2026:sshCidrs:
+    - 0.0.0.0/0
+  isucon2026:disabledInstanceTeams:
+    - 1
+    - 2
+    - 3
+  isucon2026:teamCount: "10"
+  isucon2026:serviceAmiId: ami-01487c3091ea6bb38
+  isucon2026:routerAmiId: ami-014229b8fe33e4ab6
+  isucon2026:independentTlsTeams: '[7,8,9,10]'
+  isucon2026:teamSshPublicKeys: '{"7": ["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGxQ/ennINQpZeK/y8jMiSXyyOcPY/5siVCXaxootA3W", "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIA6IsYMK+QjC8452K2iiUBAarbnjmnhUfZId48AyRtga", "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDPhOV4xw6iqjDb1XGeH/78NQjUwgLHDx+0m9v9J7o1/", "ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBL+w6BsJz7uS4wyBHJ3IDzQ8B8Zebme6vECvJQ9QJXOj0O2e33RYOPQouNjISpMkFvw8GOqsDtJQTl4K928P0LY="]}'
+  isucon2026:teamAdminSshPublicKeys: '{"7": ["ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDTk28UNHecmOxDarWVXwqlBYih6jd+S4Vq5T6sYWa7DfVBiCKy7SVPKgppo9OS1yp830hrqz/w685RtXKlIt7CCZp6Ij7I6+w0wZd+XE3YvklPfbCVVI5ndGvIDNHwuhJhnjfeW7Lpedp7gylJiiFaCOqHL+QwCeSvn8SPVAKA6tlV3zzsozz24wbgQw8Kxps4f1JQaQGMYH0cDELZ7gDWpVl7fGELs8yZ1AXCLP750CYfxjZiLshMcBbAshBkODJdEJ+dw9CPNE6Ju0bAzONk4uvjHYOFVe6R3bOIEYF3RQigpSDnQYXH2pZ8FZR8qCcESQhci8m9FqubOt6K2BUxwLV05eBqZISS1o+pjYwF2tt9FaTqu1v4xXnC+MoXh3iw6N2zPcMyzKxjfmahg6gHcjByR9mJPloTWxBaaUdDQm4Ut8HXb7e4TN1a3nYd8Z0cQxT+G8LRT9mZ3cEoRZvQTJd0Dxs4qW3BidN7sgs2j3HHWcMDzNLF/N4ngleyLWM="]}'
+  isucon2026:portalTeamIds: '{"7":30001}'
+  isucon2026:guardTeams: '[7,8,9,10]'
+  isucon2026:teamImages: '{"7":{"serviceAmiId":"ami-018ab50ccd1678fbb","routerAmiId":"ami-0aedccf34c4eb1284"},"8":{"serviceAmiId":"ami-018ab50ccd1678fbb","routerAmiId":"ami-0aedccf34c4eb1284"},"9":{"serviceAmiId":"ami-018ab50ccd1678fbb","routerAmiId":"ami-0aedccf34c4eb1284"},"10":{"serviceAmiId":"ami-018ab50ccd1678fbb","routerAmiId":"ami-0aedccf34c4eb1284"}}'
+  isucon2026:protectedDatabaseTeams: '[7]'
+secretsprovider: awskms://alias/isucon2026-pulumi-secrets
+# KMS-encrypted Pulumi data key; not a plaintext credential.
+encryptedkey: AQICAHioA4JfE9al7GvEIETDDEboTRl7KwYdv1v9MIs+GSB6/AHfVZ4tUpeacgemRWrcYA8+AAAAfjB8BgkqhkiG9w0BBwagbzBtAgEAMGgGCSqGSIb3DQEHATAeBglghkgBZQMEAS4wEQQMtw6SsRihafoz4tD8AgEQgDscGAJm+cKLdcvg2jALeRXrfwPwocYPScnBc3fOk5LrvwDinq/weOBFJ+RAoUGnwo6bPgdj70S1lRUMlA== # gitleaks:allow
