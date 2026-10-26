@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 
 from isureal.config import Config
 
-from .conftest import JPEG, Actors
+from .conftest import JPEG, Actors, make_jpeg
 
 
 def test_create_post(client: TestClient, actors: Actors) -> None:
@@ -44,6 +44,15 @@ def test_create_post(client: TestClient, actors: Actors) -> None:
             headers=alice,
         )
         assert response.json() == {"error": "invalid_post"}, data
+    # 画像は JPEG として最後まで復号でき、縦横とも 4096px 以下であること
+    for image in (b"jpeg", JPEG[:-2], make_jpeg(4097, 1), make_jpeg(1, 4097)):
+        response = client.post(
+            "/api/posts",
+            files={"image": ("a.jpg", image, "image/jpeg")},
+            data={"visibility": "public", "location_kind": "none"},
+            headers=alice,
+        )
+        assert response.json() == {"error": "invalid_post"}
     assert (
         client.post(
             "/api/posts", data={"visibility": "public"}, headers=alice

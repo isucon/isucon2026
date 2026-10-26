@@ -11,6 +11,7 @@ from ..auth import CurrentSession, RegionalSession
 from ..binding import RequestBody, json_body
 from ..db import DB, execute, fetch_all, fetch_one
 from ..errors import APIError, NoRowsError
+from ..jpeg import valid_jpeg
 from ..models.post import POST_COLUMNS, Post
 from ..models.user import get_user, valid_region, valid_user_text
 from ..schemas import ExportPostResponse, MeResponse
@@ -74,6 +75,8 @@ async def put_profile_image(
     if request.headers.get("content-type") != "image/jpeg":
         raise APIError(HTTPStatus.UNSUPPORTED_MEDIA_TYPE, "unsupported_media_type")
     data = await request.body()
+    if not await valid_jpeg(data, 512):
+        raise APIError(HTTPStatus.BAD_REQUEST, "invalid_profile_image")
     async with db.transaction():
         row = await fetch_one(
             db,

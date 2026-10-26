@@ -5,7 +5,7 @@ from typing import Any
 
 from fastapi.testclient import TestClient
 
-from .conftest import JPEG, Actors
+from .conftest import JPEG, Actors, make_jpeg
 
 
 def test_comments(client: TestClient, actors: Actors) -> None:
@@ -78,6 +78,15 @@ def test_realmojis_memories_and_export(client: TestClient, actors: Actors) -> No
         headers=alice[1],
     )
     assert own.json() == {"error": "interaction_forbidden"}
+    # 画像は JPEG として最後まで復号でき、縦横とも 512px 以下であること
+    for image in (b"jpeg", JPEG[:-2], make_jpeg(513, 1)):
+        invalid = client.post(
+            path,
+            files={"image": ("r.jpg", image, "image/jpeg")},
+            data={"reactionType": "like"},
+            headers=bob[1],
+        )
+        assert invalid.json() == {"error": "invalid_realmoji"}
     first = react(bob[1], "heart")
     second = react(bob[1], "laugh")
     # 置き換えられたリアクションの画像は見られない

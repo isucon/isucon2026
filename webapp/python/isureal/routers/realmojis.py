@@ -8,6 +8,7 @@ from ..auth import RegionalSession
 from ..binding import Form, cursor_time, form_body
 from ..db import DB, execute, fetch_one
 from ..errors import APIError, NoRowsError
+from ..jpeg import valid_jpeg
 from ..models.post import can_view_post, get_post
 from ..models.realmoji import REACTION_TYPES, get_realmoji, select_current_realmojis
 from ..models.relationship import relationship_transaction
@@ -33,6 +34,8 @@ async def replace_realmoji(
     if image is None or reaction_type not in REACTION_TYPES:
         raise APIError(HTTPStatus.BAD_REQUEST, "invalid_realmoji")
     data = await image.read()
+    if not await valid_jpeg(data, 512):
+        raise APIError(HTTPStatus.BAD_REQUEST, "invalid_realmoji")
     actor = session.user_id
     post = await get_post(db, post_id)
     if post is None or actor == post.author_id:

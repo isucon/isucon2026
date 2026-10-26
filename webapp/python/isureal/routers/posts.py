@@ -9,6 +9,7 @@ from ..auth import RegionalSession
 from ..binding import Form, RequestBody, form_body, json_body
 from ..db import DB, Connection, execute, fetch_one, fetch_value, from_row
 from ..errors import APIError, NoRowsError
+from ..jpeg import valid_jpeg
 from ..models.post import (
     VISIBILITIES,
     Location,
@@ -68,6 +69,9 @@ async def create_post(
     ):
         raise APIError(HTTPStatus.BAD_REQUEST, "invalid_post")
     image_data = await image.read()
+    # [作問] 画像のバリデーションを全データを読んでから行なっている(改善するべき)
+    if not await valid_jpeg(image_data, 4096):
+        raise APIError(HTTPStatus.BAD_REQUEST, "invalid_post")
 
     user_id = session.user_id
     async with db.transaction():
