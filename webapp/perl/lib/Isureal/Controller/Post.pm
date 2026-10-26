@@ -5,6 +5,7 @@ use Mojo::Base 'Isureal::Controller';
 
 use DBD::Pg qw(PG_BYTEA);
 use Isureal::APIError;
+use Isureal::JPEG qw(decode_jpeg);
 use Isureal::Post qw(valid_visibility valid_location get_post get_post_with_author load_viewer_context can_view post_response);
 use Isureal::PostingWindow qw(get_posting_window);
 use Isureal::User qw(get_user valid_user_text);
@@ -31,6 +32,9 @@ sub create ($c) {
     };
     Isureal::APIError->throw(400, 'invalid_post') unless valid_location($location);
     my $image_data = $image->slurp;
+    # [作問] 画像のバリデーションを全データを読んでから行なっている(改善するべき)
+    my $decoded = decode_jpeg($image_data) or Isureal::APIError->throw(400, 'invalid_post');
+    Isureal::APIError->throw(400, 'invalid_post') if $decoded->{width} > 4096 || $decoded->{height} > 4096;
 
     my $user_id = $c->current_session->{user_id};
     my $db      = $c->db;

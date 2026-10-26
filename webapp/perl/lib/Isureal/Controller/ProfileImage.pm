@@ -5,13 +5,16 @@ use Mojo::Base 'Isureal::Controller';
 
 use DBD::Pg qw(PG_BYTEA);
 use Isureal::APIError;
+use Isureal::JPEG qw(decode_jpeg);
 use Isureal::Util qw(new_uuid);
 
 sub update ($c) {
     if (($c->req->headers->content_type // '') ne 'image/jpeg') {
         Isureal::APIError->throw(415, 'unsupported_media_type');
     }
-    my $data = $c->req->body;
+    my $data    = $c->req->body;
+    my $decoded = decode_jpeg($data) or Isureal::APIError->throw(400, 'invalid_profile_image');
+    Isureal::APIError->throw(400, 'invalid_profile_image') if $decoded->{width} > 512 || $decoded->{height} > 512;
 
     my $user_id = $c->current_session->{user_id};
     my $db      = $c->db;

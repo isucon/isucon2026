@@ -17,11 +17,12 @@ my $t         = test_app();
 my $jpeg      = jpeg_data();
 
 my sub post_form (%location) {
+    my $image = delete $location{image} // $jpeg;
     return (form => {
         caption    => 'こんにちは',
         visibility => 'public',
         %location,
-        image => { content => $jpeg, filename => 'image.jpg', 'Content-Type' => 'image/jpeg' },
+        image => { content => $image, filename => 'image.jpg', 'Content-Type' => 'image/jpeg' },
     });
 }
 # form の値は送信時に消費されるので、毎回作り直す
@@ -35,6 +36,19 @@ $db->query(
 );
 $t->post_ok('/api/posts' => bearer($token) => post_form(location_kind => 'exact', latitude => 91, longitude => 139))
     ->status_is(400)->json_is('/error' => 'invalid_post');
+
+# 画像は JPEG として復号でき、縦横とも 4096 px 以下でなければならない
+for my $case (
+    ['not a JPEG' => 'not a jpeg'],
+    ['truncated'  => substr(jpeg_data(64), 0, -100)],
+    ['too wide'   => jpeg_data(4097, 8)],
+    ['too tall'   => jpeg_data(8, 4097)],
+) {
+    my ($name, $image) = @$case;
+    $t->post_ok('/api/posts' => bearer($token) => post_form(location_kind => 'none', image => $image))
+        ->status_is(400, $name)->json_is('/error' => 'invalid_post');
+}
+is $db->query(q{SELECT count(*) FROM image_objects})->array->[0], 0, 'rejected images are not stored';
 
 my @statuses = concurrently(8, sub { test_app()->ua->post('/api/posts' => bearer($token) => exact())->res->code });
 is [sort @statuses], [201, (409) x 7], 'only one post is created in a posting window';

@@ -60,6 +60,13 @@ subtest 'profile' => sub {
         ->json_is('/bio' => 'こんにちは')->json_is('/displayName' => 'ボブ');
     $t->put_ok('/api/me/profile-image' => { bearer($bob->{token})->%*, 'Content-Type' => 'image/png' } => 'x')->status_is(415);
     $t->delete_ok('/api/me/profile-image' => bearer($bob->{token}))->status_is(404);
+    for my $case (['not a JPEG' => 'x'], ['too wide' => jpeg_data(513, 8)], ['too tall' => jpeg_data(8, 513)]) {
+        my ($name, $image) = @$case;
+        $t->put_ok('/api/me/profile-image' => { bearer($bob->{token})->%*, 'Content-Type' => 'image/jpeg' } => $image)
+            ->status_is(400, $name)->json_is('/error' => 'invalid_profile_image');
+    }
+    $t->put_ok('/api/me/profile-image' => { bearer($bob->{token})->%*, 'Content-Type' => 'image/jpeg' } => jpeg_data(512))
+        ->status_is(204);
     my $jpeg = jpeg_data(100);
     $t->put_ok('/api/me/profile-image' => { bearer($bob->{token})->%*, 'Content-Type' => 'image/jpeg' } => $jpeg)->status_is(204);
     $t->get_ok('/api/me' => bearer($bob->{token}))->status_is(200);
@@ -204,6 +211,11 @@ subtest 'posts, feeds and interactions' => sub {
     $t->get_ok("/api/posts/$posts{dave}{id}/comments" => bearer($dave->{token}))->status_is(200)->json_is('/items/0/id' => $comment);
 
     $t->post_ok("/api/posts/$posts{dave}{id}/realmojis" => bearer($carol->{token}) => image_form({ reactionType => 'unknown' }))->status_is(400);
+    for my $case (['not a JPEG' => 'x'], ['too wide' => jpeg_data(513, 8)], ['too tall' => jpeg_data(8, 513)]) {
+        my ($name, $image) = @$case;
+        $t->post_ok("/api/posts/$posts{dave}{id}/realmojis" => bearer($carol->{token}) => image_form({ reactionType => 'like' }, $image))
+            ->status_is(400, $name)->json_is('/error' => 'invalid_realmoji');
+    }
     $t->post_ok("/api/posts/$posts{dave}{id}/realmojis" => bearer($dave->{token}) => image_form({ reactionType => 'like' }))->status_is(403);
     $t->post_ok("/api/posts/$posts{dave}{id}/realmojis" => bearer($carol->{token}) => image_form({ reactionType => 'like' }))->status_is(201);
     my $replaced = $t->tx->res->json;
