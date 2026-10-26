@@ -314,7 +314,7 @@ func TestCheckerSampled(t *testing.T) {
 			t.Fatal(err)
 		}
 		months := c.HistoryMonths()
-		if err := c.CheckMemories(t.Context(), a, months[len(months)-1], func(client.Post) bool { return false }, 2); err != nil {
+		if err := c.CheckMemories(t.Context(), a, months[len(months)-1], func(client.Post) bool { return false }, 2, true); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -334,9 +334,15 @@ func TestCheckMemoriesSampledSignatures(t *testing.T) {
 	if err := a.Login(t.Context()); err != nil {
 		t.Fatal(err)
 	}
+	// thorough でなければ署名は確かめない。
+	for _, month := range c.HistoryMonths() {
+		if err := c.CheckMemories(t.Context(), a, month, func(client.Post) bool { return false }, 2, false); err != nil {
+			t.Fatalf("signatures checked without thorough check: %v", err)
+		}
+	}
 	var err error
 	for _, month := range c.HistoryMonths() {
-		if err = c.CheckMemories(t.Context(), a, month, func(client.Post) bool { return false }, 2); err != nil {
+		if err = c.CheckMemories(t.Context(), a, month, func(client.Post) bool { return false }, 2, true); err != nil {
 			break
 		}
 	}

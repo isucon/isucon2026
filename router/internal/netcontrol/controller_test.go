@@ -78,7 +78,7 @@ func TestApplyRawRecreatesEachDedicatedTCTree(t *testing.T) {
 		outputs: [][]byte{[]byte("1\n")},
 		errors:  errorsByCall,
 	}
-	controller := NewController(config.Config{CommandTimeout: time.Second}, executor, nil)
+	controller := NewController(config.Config{CommandTimeout: time.Second, Servers: testNetworks()}, executor, nil)
 	candidate := Candidate{
 		Interfaces: map[domain.ServerID]string{
 			domain.App1: "eth1",
@@ -86,11 +86,11 @@ func TestApplyRawRecreatesEachDedicatedTCTree(t *testing.T) {
 			domain.App3: "eth3",
 			domain.DB1:  "eth4",
 		},
-		TCBatches: map[domain.ServerID]string{
-			domain.App1: "qdisc replace dev eth1 root handle 1: htb\n",
-			domain.App2: "qdisc replace dev eth2 root handle 1: htb\n",
-			domain.App3: "qdisc replace dev eth3 root handle 1: htb\n",
-			domain.DB1:  "qdisc replace dev eth4 root handle 1: htb\n",
+		TCBatches: map[string]string{
+			"eth1": "qdisc replace dev eth1 root handle 1: htb\n",
+			"eth2": "qdisc replace dev eth2 root handle 1: htb\n",
+			"eth3": "qdisc replace dev eth3 root handle 1: htb\n",
+			"eth4": "qdisc replace dev eth4 root handle 1: htb\n",
 		},
 	}
 	if err := controller.applyRaw(context.Background(), candidate); err != nil {
@@ -104,5 +104,27 @@ func TestApplyRawRecreatesEachDedicatedTCTree(t *testing.T) {
 		if apply.Name != "tc" || len(apply.Args) < 1 || apply.Args[0] != "-batch" {
 			t.Fatalf("command %d does not apply tc batch: %+v", pair[1], apply)
 		}
+	}
+}
+
+func TestApplyRawSharedInterfaceAppliesTCOnce(t *testing.T) {
+	t.Parallel()
+	executor := &recordingExecutor{outputs: [][]byte{[]byte("1\n")}}
+	controller := NewController(config.Config{CommandTimeout: time.Second, Servers: testNetworks()}, executor, nil)
+	candidate := Candidate{
+		Interfaces: map[domain.ServerID]string{domain.App1: "data0", domain.App2: "data0", domain.App3: "data0", domain.DB1: "data0"},
+		TCBatches:  map[string]string{"data0": "qdisc replace dev data0 root handle 1: htb\n"},
+	}
+	if err := controller.applyRaw(context.Background(), candidate); err != nil {
+		t.Fatal(err)
+	}
+	batches := 0
+	for _, command := range executor.commands {
+		if command.Name == "tc" && len(command.Args) > 0 && command.Args[0] == "-batch" {
+			batches++
+		}
+	}
+	if batches != 1 {
+		t.Fatalf("tc batch count = %d, want 1", batches)
 	}
 }

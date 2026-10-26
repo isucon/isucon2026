@@ -8,6 +8,8 @@ require (
 	google.golang.org/protobuf v1.36.11
 )
 
+require github.com/goccy/go-json v0.11.2
+
 replace (
 	github.com/isucon/isucon2026/dataset => ../dataset
 	github.com/isucon/isucon2026/portal => ../portal

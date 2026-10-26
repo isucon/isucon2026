@@ -32,11 +32,11 @@ import (
 const testLockKey = 0x1543_0026
 
 var tablesToClean = []string{
-	"benchmark_jobs", "benchmark_results", "clarifications", "contestant_instances", "contestants",
+	"discord_support_threads", "benchmark_jobs", "benchmark_results", "clarifications", "contestant_instances", "contestants",
 	"coupons", "env_checks", "extra_time_assignments", "notifications", "push_subscriptions",
 	"ssh_public_keys", "survey_responses", "teams",
 	"instance_command_execute_requests", "instance_command_execute_request_results",
-	"jobs", "registration_records", "registration_source_records",
+	"periodic_job_schedules", "jobs", "registration_records", "registration_source_records",
 }
 
 // Database は PostgreSQL に接続し、スキーマ適用と全テーブルの初期化を行う。
@@ -99,7 +99,6 @@ func Config(t *testing.T) *config.Config {
 		BenchToken:        "token",
 		BypassTokenSecret: mustBase64(t, "5AQQyz/7oFnJYrxnq/HiLKYmh7QrdIrpCDpKlfvkYAg="), //gitleaks:allow isucon14 由来のダミー値
 		CheckerSecret:     mustBase64(t, "2RHAlLoifERG1EEc/5dwyzcZGitfUn1k9YkHTwk7HiRO"), //gitleaks:allow isucon14 由来のダミー値
-		SSHKeyAPISecret:   "himitsudayo",
 		SessionSecret:     "testkit-session-secret",
 		AvailabilityZones: []string{"apne1-az1", "apne1-az2", "apne1-az4"},
 		TestAMIID:         "ami-test",

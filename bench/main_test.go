@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
-	"fmt"
 	pb "github.com/isucon/isucon2026/portal/gen/pb/isuxportal/resources"
 	"google.golang.org/protobuf/proto"
 	"io"
@@ -17,6 +16,43 @@ import (
 	"sync/atomic"
 	"testing"
 )
+
+func TestReportReason(t *testing.T) {
+	for _, tc := range []struct{ name, reason, want string }{
+		{"success", "", "実行終了"},
+		{"initialize", "初期化に失敗しました: POST /api/initialize: ステータスコード 500", "初期化に失敗しました"},
+		{"multiple failures", "初期データの検証に失敗しました: ユーザーAの画像署名が不正\nユーザーBの画像署名が不正", "初期データの検証に失敗しました"},
+		{"no detail", "初期化の応答の language が空です", "初期化の応答の language が空です"},
+		{"interrupted", "ベンチマークが中断されました: context deadline exceeded", "ベンチマークが中断されました"},
+		{"multiline without prefix", "検証に失敗しました\r\n追加の詳細", "検証に失敗しました"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := reportReason(tc.reason); got != tc.want {
+				t.Fatalf("got %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestInvalidVerifyRate(t *testing.T) {
+	for _, tc := range []struct {
+		name, env string
+		args      []string
+	}{
+		{"zero", "", []string{"-verify-rate", "0"}},
+		{"above one", "", []string{"-verify-rate", "1.5"}},
+		{"env out of range", "-1", nil},
+		{"env not a number", "often", nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("ISUXBENCH_VERIFY_RATE", tc.env)
+			var stdout, stderr bytes.Buffer
+			if code := run(t.Context(), tc.args, &stdout, &stderr); code != 2 {
+				t.Fatalf("exit code %d, want 2: %s", code, stderr.String())
+			}
+		})
+	}
+}
 
 func TestNormalizeTarget(t *testing.T) {
 	for _, tc := range []struct{ in, want string }{
@@ -53,8 +89,16 @@ func TestSupervisorIntegration(t *testing.T) {
 		http.Error(w, "operator-only-detail", 500)
 	}))
 	defer server.Close()
-	for _, post := range []bool{false, true} {
-		t.Run(fmt.Sprint("post=", post), func(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		option   string
+		wantExit int
+	}{
+		{name: "contestant failure"},
+		{name: "unsupported post validation", option: "--only-post-validation", wantExit: 1},
+		{name: "invalid configuration", option: "--users=0", wantExit: 2},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
 			before := requests.Load()
 			read, write, err := os.Pipe()
 			if err != nil {
@@ -62,8 +106,8 @@ func TestSupervisorIntegration(t *testing.T) {
 			}
 			defer read.Close()
 			args := []string{"--target", server.URL, "--duration", "1s"}
-			if post {
-				args = append(args, "--only-post-validation")
+			if tc.option != "" {
+				args = append(args, tc.option)
 			}
 			cmd := exec.Command(os.Args[0], "-test.run=^TestSupervisorChild$")
 			cmd.Env = append(os.Environ(), "BENCH_TEST_CHILD=1", "ISUXBENCH_REPORT_FD=3", "BENCH_TEST_ARGS="+strings.Join(args, "\n"))
@@ -96,7 +140,7 @@ func TestSupervisorIntegration(t *testing.T) {
 				reports = append(reports, p)
 			}
 			err = cmd.Wait()
-			if err == nil || cmd.ProcessState.ExitCode() != 1 {
+			if cmd.ProcessState.ExitCode() != tc.wantExit {
 				t.Fatalf("exit: %v stderr=%s", err, &stderr)
 			}
 			if len(reports) == 0 {
@@ -106,26 +150,58 @@ func TestSupervisorIntegration(t *testing.T) {
 			if !final.Finished || final.Passed || final.Score != 0 || final.Execution == nil || final.MarkedAt == nil {
 				t.Fatalf("final: %v", final)
 			}
-			if post {
+			if tc.option != "" {
 				if requests.Load() != before {
-					t.Fatal("post-validation touched target")
+					t.Fatal("configuration failure touched target")
 				}
 			} else {
 				if len(reports) < 2 || reports[0].Finished {
 					t.Fatal("missing progress")
 				}
 				var public map[string]any
-				if err := json.Unmarshal(stdout.Bytes(), &public); err != nil {
+				lines := strings.Split(strings.TrimSpace(stdout.String()), "\n")
+				if len(lines) < 2 || !strings.Contains(lines[0], `msg="phase: initialize"`) {
+					t.Fatalf("missing public progress: %s", &stdout)
+				}
+				if strings.Contains(stderr.String(), `msg="phase: initialize"`) {
+					t.Fatalf("progress sent to stderr: %s", &stderr)
+				}
+				resultStart := strings.Index(stdout.String(), "\n{")
+				if resultStart < 0 {
+					t.Fatalf("missing public result: %s", &stdout)
+				}
+				publicJSON := stdout.Bytes()[resultStart+1:]
+				if err := json.Unmarshal(publicJSON, &public); err != nil {
 					t.Fatal(err)
 				}
-				if len(public) != 2 || public["pass"] != false || public["score"] != float64(0) {
+				var indented bytes.Buffer
+				if err := json.Indent(&indented, bytes.TrimSpace(publicJSON), "", "  "); err != nil {
+					t.Fatal(err)
+				}
+				indented.WriteByte('\n')
+				if !bytes.Equal(publicJSON, indented.Bytes()) {
+					t.Fatalf("public output formatting: got %q, want %q", publicJSON, indented.Bytes())
+				}
+				if len(public) != 3 || public["pass"] != false || public["score"] != float64(0) {
 					t.Fatalf("public: %s", &stdout)
 				}
-				if !strings.Contains(stderr.String(), "ステータスコード 500 が返りました（期待値 200") {
+				diagnostic := "ステータスコード 500 が返りました（期待値 200"
+				if final.Execution.Reason != "初期化に失敗しました" {
+					t.Fatalf("reason: got %q, want %q", final.Execution.Reason, "初期化に失敗しました")
+				}
+				messages, ok := public["messages"].([]any)
+				if !ok || len(messages) == 0 {
+					t.Fatalf("missing contestant messages: %s", &stdout)
+				}
+				message, ok := messages[0].(string)
+				if !ok || !strings.Contains(message, diagnostic) {
+					t.Fatalf("missing contestant messages: %s", &stdout)
+				}
+				if !strings.Contains(stderr.String(), diagnostic) {
 					t.Fatalf("missing private diagnostic: %s", &stderr)
 				}
 			}
-			if strings.Contains(stdout.String(), "ステータスコード 500 が返りました（期待値 200") || strings.Contains(final.Execution.Reason, "ステータスコード 500 が返りました（期待値 200") {
+			if strings.Contains(stdout.String(), "operator-only-detail") || strings.Contains(final.Execution.Reason, "operator-only-detail") {
 				t.Fatal("private diagnostic leaked")
 			}
 		})

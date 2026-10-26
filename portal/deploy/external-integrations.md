@@ -31,7 +31,6 @@ OAuth が未設定の検証環境ではその client secret を空文字にで�
 | `ISUXPORTAL_BYPASS_SECRET` | 32 バイト以上のランダム値を base64 化 |
 | `ISUXPORTAL_CHECKER_SECRET` | 32 バイト以上のランダム値を base64 化。checker 実行側にも配布 |
 | `ISUXPORTAL_BENCH_TOKEN` | supervisor と共有するランダム token |
-| `ISUXPORTAL_SSH_KEY_API_SECRET` | 公開鍵取得 API と共有するランダム値 |
 | `ISUXPORTAL_ADMIN_PASSWORD` | 運営ログイン用パスワード |
 | `ISUXPORTAL_GITHUB_CLIENT_SECRET` | GitHub OAuth App の secret |
 | `ISUXPORTAL_DISCORD_CLIENT_SECRET` | Discord OAuth2 の secret |
@@ -54,6 +53,7 @@ worker は外部接続に NAT を使います。
 |---|---|
 | GitHub | `ISUXPORTAL_GITHUB_CLIENT_ID`。callback は `https://<domain>/auth/github/callback`。ログイン、ログアウト、再ログインを確認 |
 | Discord OAuth | `ISUXPORTAL_DISCORD_CLIENT_ID`。redirect は `https://<domain>/auth/discord/callback`。紐付けと差し替えを確認 |
+| Discord OAuth callback compatibility | Set `ISUXPORTAL_DISCORD_CALLBACK_PATH` to `/auth/discord/complete/` in the Pulumi stack `environment` to retain the Django callback URL. The default is `/auth/discord/callback`; both routes remain available. The trailing slash on the Django path is required. |
 | Discord bot | `ISUXPORTAL_DISCORD_SERVER_ID`、`ISUXPORTAL_DISCORD_CHANNEL_ID`、`ISUXPORTAL_DISCORD_CONTESTANT_ROLE_ID`、`ISUXPORTAL_DISCORD_ADMIN_ROLE_ID`、`ISUXPORTAL_DISCORD_SUPPORT_COMM_CHANNEL_ROLES`。intents、ロール順位、チャンネル権限を実接続で確認 |
 | 選手 EC2 | `ISUXPORTAL_TEST_AMI_ID`、`ISUXPORTAL_QUALIFY_AMI_ID`、`ISUXPORTAL_CLOUDFORMATION_STAGING`。AMI の公開範囲、選手側 IAM、EC2 クォータ、作成と削除を確認 |
 | Web Push | `ISUXPORTAL_VAPID_SUBJECT`。HTTPS で購読と配信を確認。再デプロイで鍵を変更しない |
@@ -79,3 +79,5 @@ S3 の bucket、CORS、公開 GET policy は Pulumi が管理します。
 
 ドメイン変更時は、OAuth callback、Discord redirect、S3 CORS、Cookie、DNS、証明書を合わせて変更してください。
 公開前の移行と負荷試験は [deploy README](README.md) にまとめています。
+
+Bot トークン `ISUXPORTAL_DISCORD_BOT_TOKEN` は worker と、有効化した場合の bot タスクだけに注入します。所属確認は worker の REST API 呼び出しで実行でき、常駐 bot の起動は不要です。参加者ロール同期を使う場合は `ISUXPORTAL_DISCORD_CONTESTANT_ROLE_ID` に対象環境のロール ID を指定します。現在の同期対象は参加者ロールのみで、現地参加ロールは管理しません。

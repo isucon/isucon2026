@@ -106,27 +106,33 @@ func Load(lookup LookupFunc) (Config, error) {
 		if err != nil || !serverIP.Is4() {
 			return Config{}, fmt.Errorf("%s_IP must be IPv4", prefix)
 		}
-		if !subnet.Contains(routerIP) || !subnet.Contains(serverIP) || routerIP == serverIP {
-			return Config{}, fmt.Errorf("%s addresses must be distinct members of subnet", prefix)
+		// The router address may sit outside the server subnet when every server
+		// subnet is routed through one shared router interface.
+		if !subnet.Contains(serverIP) || routerIP == serverIP {
+			return Config{}, fmt.Errorf("%s server address must be in its subnet and differ from the router address", prefix)
 		}
 		cfg.Servers[server] = ServerNetwork{Subnet: subnet, RouterIP: routerIP, ServerIP: serverIP}
 	}
 
-	cfg.Traffic.SameRegionDelay, err = durationValue(lookup, "ROUTER_SAME_REGION_DELAY", 0)
-	if err != nil {
-		return Config{}, err
-	}
-	cfg.Traffic.CrossRegionDelay, err = durationValue(lookup, "ROUTER_CROSS_REGION_DELAY", 200*time.Millisecond)
-	if err != nil {
-		return Config{}, err
-	}
-	cfg.Traffic.SameRegionBandwidthBPS, err = uint64Value(lookup, "ROUTER_SAME_REGION_BANDWIDTH_BPS", 1_000_000_000)
-	if err != nil {
-		return Config{}, err
-	}
-	cfg.Traffic.CrossRegionBandwidthBPS, err = uint64Value(lookup, "ROUTER_CROSS_REGION_BANDWIDTH_BPS", 200_000_000)
-	if err != nil {
-		return Config{}, err
+	crossRegion := domain.TrafficClass{Delay: 200 * time.Millisecond, BandwidthBPS: 200_000_000}
+	for _, class := range []struct {
+		prefix   string
+		target   *domain.TrafficClass
+		fallback domain.TrafficClass
+	}{
+		{"ROUTER_SAME_REGION", &cfg.Traffic.SameRegion, domain.TrafficClass{BandwidthBPS: 1_000_000_000}},
+		{"ROUTER_AP_EU", &cfg.Traffic.APEU, crossRegion},
+		{"ROUTER_EU_US", &cfg.Traffic.EUUS, crossRegion},
+		{"ROUTER_AP_US", &cfg.Traffic.APUS, crossRegion},
+	} {
+		class.target.Delay, err = durationValue(lookup, class.prefix+"_DELAY", class.fallback.Delay)
+		if err != nil {
+			return Config{}, err
+		}
+		class.target.BandwidthBPS, err = uint64Value(lookup, class.prefix+"_BANDWIDTH_BPS", class.fallback.BandwidthBPS)
+		if err != nil {
+			return Config{}, err
+		}
 	}
 	cfg.XDSAckTimeout, err = durationValue(lookup, "ROUTER_XDS_ACK_TIMEOUT", 5*time.Second)
 	if err != nil {

@@ -2,6 +2,7 @@ package domain
 
 import (
 	"testing"
+	"time"
 
 	portalv1 "github.com/isucon/isucon2026/gen/go/portal/v1"
 )
@@ -114,6 +115,63 @@ func TestSnapshotFromProto(t *testing.T) {
 	}
 	if s.ID != "snapshot-1" || s.Generation != 7 {
 		t.Fatalf("unexpected snapshot: %+v", s)
+	}
+}
+
+func TestTrafficProfileClassPerRegionPair(t *testing.T) {
+	t.Parallel()
+	profile := TrafficProfile{
+		SameRegion: TrafficClass{BandwidthBPS: 1000},
+		APEU:       TrafficClass{Delay: 1 * time.Millisecond, BandwidthBPS: 100},
+		EUUS:       TrafficClass{Delay: 2 * time.Millisecond, BandwidthBPS: 200},
+		APUS:       TrafficClass{Delay: 3 * time.Millisecond, BandwidthBPS: 300},
+	}
+	if err := profile.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		source, destination Region
+		want                TrafficClass
+	}{
+		{RegionAP, RegionAP, profile.SameRegion},
+		{RegionEU, RegionEU, profile.SameRegion},
+		{RegionUS, RegionUS, profile.SameRegion},
+		{RegionAP, RegionEU, profile.APEU},
+		{RegionEU, RegionAP, profile.APEU},
+		{RegionEU, RegionUS, profile.EUUS},
+		{RegionUS, RegionEU, profile.EUUS},
+		{RegionAP, RegionUS, profile.APUS},
+		{RegionUS, RegionAP, profile.APUS},
+	}
+	for _, test := range tests {
+		if got := profile.Class(test.source, test.destination); got != test.want {
+			t.Errorf("Class(%s, %s) = %+v, want %+v", test.source, test.destination, got, test.want)
+		}
+	}
+}
+
+func TestTrafficProfileRejectsInvalidPair(t *testing.T) {
+	t.Parallel()
+	valid := func() TrafficProfile {
+		class := TrafficClass{Delay: 200 * time.Millisecond, BandwidthBPS: 200}
+		return TrafficProfile{SameRegion: TrafficClass{BandwidthBPS: 1000}, APEU: class, EUUS: class, APUS: class}
+	}
+	tests := map[string]func(*TrafficProfile){
+		"negative same delay": func(p *TrafficProfile) { p.SameRegion.Delay = -time.Millisecond },
+		"negative pair delay": func(p *TrafficProfile) { p.EUUS.Delay = -time.Millisecond },
+		"zero same bandwidth": func(p *TrafficProfile) { p.SameRegion.BandwidthBPS = 0 },
+		"zero pair bandwidth": func(p *TrafficProfile) { p.APUS.BandwidthBPS = 0 },
+		"pair over same":      func(p *TrafficProfile) { p.APEU.BandwidthBPS = 1001 },
+	}
+	for name, mutate := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			profile := valid()
+			mutate(&profile)
+			if err := profile.Validate(); err == nil {
+				t.Fatal("Validate unexpectedly succeeded")
+			}
+		})
 	}
 }
 

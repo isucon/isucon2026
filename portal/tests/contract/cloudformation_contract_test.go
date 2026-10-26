@@ -3,6 +3,7 @@ package contract_test
 import (
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -108,6 +109,48 @@ func TestCloudFormationTestTemplateRequiresAMI(t *testing.T) {
 	}
 }
 
+func TestEnvCheckTemplateUsesISUCON2026(t *testing.T) {
+	cfg := cfnConfig(t)
+	template, err := cloudformation.TestTemplate(cfg, 42, "apne1-az2", time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"AWS CloudFormation for ISUCON2026 Environment Checks", "Value: isucon2026-envcheck-001", "InstanceType: c7i.large"} {
+		if !strings.Contains(template, want) {
+			t.Errorf("envcheck template must contain %q", want)
+		}
+	}
+	if strings.Contains(strings.ToLower(template), "isucon14") {
+		t.Error("envcheck template must not retain ISUCON14 branding")
+	}
+	for text, count := range map[string]int{
+		"Type: AWS::EC2::Instance\n":                            5,
+		"InstanceType: c7i.large":                               3,
+		"InstanceType: c6in.large":                              2,
+		"Type: AWS::EC2::EIP\n":                                 5,
+		"path: /opt/isucon-env-checker/portal_credentials.json": 5,
+	} {
+		if got := strings.Count(template, text); got != count {
+			t.Errorf("%q count = %d, want %d", text, got, count)
+		}
+	}
+	for _, name := range []string{"isucon2026-envcheck-001", "isucon2026-envcheck-002", "isucon2026-envcheck-003", "isucon2026-envcheck-004", "isucon2026-envcheck-005"} {
+		if !strings.Contains(template, "Value: "+name) {
+			t.Errorf("missing envcheck instance %s", name)
+		}
+	}
+	for _, line := range strings.Split(template, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "Value:") || strings.HasPrefix(trimmed, "Description:") || (strings.HasPrefix(line, "  ") && !strings.HasPrefix(line, "   ") && strings.HasSuffix(line, ":")) {
+			for _, role := range []string{"app", "db", "router"} {
+				if strings.Contains(strings.ToLower(line), role) {
+					t.Errorf("envcheck template exposes role %q in %q", role, line)
+				}
+			}
+		}
+	}
+}
+
 func TestCloudFormationRequiresZone(t *testing.T) {
 	cfg := cfnConfig(t)
 	if _, err := cloudformation.ContestTemplate(cfg, 1, "", time.Now()); err == nil {
@@ -134,4 +177,24 @@ func extractPortalCredentials(t *testing.T, template string) []byte {
 	}
 	t.Fatal("portal_credentials not found in template")
 	return nil
+}
+
+func TestContestTemplateProvidesFourServers(t *testing.T) {
+	template, err := cloudformation.ContestTemplate(cfnConfig(t), 42, "apne1-az2", time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Count(template, "Type: AWS::EC2::Instance\n"); got != 4 {
+		t.Errorf("instance count = %d, want 4", got)
+	}
+	if got := strings.Count(template, "Type: AWS::EC2::EIP\n"); got != 4 {
+		t.Errorf("public IP count = %d, want 4", got)
+	}
+	for n := 1; n <= 4; n++ {
+		for _, want := range []string{fmt.Sprintf("  Instance%d:", n), fmt.Sprintf("InstanceId: !Ref Instance%d", n), fmt.Sprintf("PrivateIpAddress: \"192.168.0.1%d\"", n)} {
+			if !strings.Contains(template, want) {
+				t.Errorf("missing %s", want)
+			}
+		}
+	}
 }

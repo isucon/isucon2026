@@ -12,3 +12,10 @@ export const databaseEndpoint = portal.databaseEndpoint;
 export const url = portal.url;
 export const natPublicIps = portal.natPublicIps;
 export const alertsTopicArn = portal.alertsTopicArn;
+
+export const vpcId = portal.vpcId;
+export const privateSubnetIds = portal.privateSubnetIds;
+
+export const certificateArn = portal.certificateArn;
+export const certificateValidationRecords = portal.certificateValidationRecords;
+export const loadBalancerDnsName = portal.loadBalancerDnsName;
