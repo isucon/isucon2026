@@ -2,10 +2,11 @@
 FROM php:8.5.12-fpm-trixie@sha256:f49965c6e6a237eb3b27a6fc565e167839dc8abc65ee0652af0078f6ecdf4bbd AS php-base
 # 拡張をビルドしたら、ビルドにだけ要るパッケージを消す
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends libicu-dev libpq-dev libzip-dev \
-  && docker-php-ext-install -j"$(nproc)" intl pdo_pgsql zip \
-  && apt-mark manual libicu76 libpq5 libzip5 \
-  && apt-get purge -y --auto-remove libicu-dev libpq-dev libzip-dev \
+  && apt-get install -y --no-install-recommends libicu-dev libjpeg62-turbo-dev libpng-dev libpq-dev libzip-dev \
+  && docker-php-ext-configure gd --with-jpeg \
+  && docker-php-ext-install -j"$(nproc)" gd intl pdo_pgsql zip \
+  && apt-mark manual libicu76 libjpeg62-turbo libpng16-16t64 libpq5 libzip5 \
+  && apt-get purge -y --auto-remove libicu-dev libjpeg62-turbo-dev libpng-dev libpq-dev libzip-dev \
   && rm -rf /var/lib/apt/lists/*
 
 FROM php-base AS php-build

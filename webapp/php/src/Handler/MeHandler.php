@@ -11,6 +11,7 @@ use Isureal\Http\Input;
 use Isureal\Http\Json;
 use Isureal\Http\Middleware\SessionMiddleware;
 use Isureal\Ids;
+use Isureal\Jpeg;
 use Isureal\Model\Region;
 use Isureal\Model\User;
 use Isureal\Repository\UserRepository;
@@ -74,6 +75,10 @@ final readonly class MeHandler
             throw new ApiError(415, 'unsupported_media_type');
         }
         $data = (string) $request->getBody();
+        [$width, $height] = Jpeg::size($data) ?? throw new ApiError(400, 'invalid_profile_image');
+        if ($width > 512 || $height > 512) {
+            throw new ApiError(400, 'invalid_profile_image');
+        }
         $userId = SessionMiddleware::session($request)->userId;
         $this->db->transaction(function (Database $db) use ($userId, $data): void {
             $row = $db->fetchOne('SELECT profile_image_id FROM users WHERE id = :id FOR NO KEY UPDATE', ['id' => $userId])

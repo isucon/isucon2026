@@ -11,11 +11,6 @@ final class RealMojiApiTest extends IntegrationTestCase
     private const string PATH = '/api/posts/author-post/realmojis';
 
     /**
-     * 画像として扱われるが JPEG ではないバイト列。そのまま保存されることを確かめる
-     */
-    private const string PAYLOAD = "unchanged image bytes\x00\xff";
-
-    /**
      * @var array<string, string>
      */
     private array $tokens = [];
@@ -43,7 +38,7 @@ final class RealMojiApiTest extends IntegrationTestCase
         // 自分の投稿にはリアクションできない
         self::assertStatus(403, $this->create('author'));
         self::assertStatus(403, $this->create('stranger'));
-        self::assertStatus(400, $this->requestMultipart('POST', self::PATH, $this->tokens['reactor'], ['reactionType' => 'bad'], ['image' => self::PAYLOAD]));
+        self::assertStatus(400, $this->requestMultipart('POST', self::PATH, $this->tokens['reactor'], ['reactionType' => 'bad'], ['image' => self::jpeg()]));
         self::assertStatus(400, $this->requestMultipart('POST', self::PATH, $this->tokens['reactor'], ['reactionType' => 'like'], []));
         self::assertSame([], $this->list()['items']);
 
@@ -138,7 +133,7 @@ final class RealMojiApiTest extends IntegrationTestCase
     private function create(?string $actor): ResponseInterface
     {
         $token = $actor === null ? null : $this->tokens[$actor];
-        return $this->requestMultipart('POST', self::PATH, $token, ['reactionType' => 'heart'], ['image' => self::PAYLOAD]);
+        return $this->requestMultipart('POST', self::PATH, $token, ['reactionType' => 'heart'], ['image' => self::jpeg()]);
     }
 
     /**
@@ -175,7 +170,7 @@ final class RealMojiApiTest extends IntegrationTestCase
         $response = $this->request('GET', $reaction['imageUrl'], $this->tokens[$actor]);
         self::assertStatus($status, $response, "image of {$reaction['id']}");
         if ($status === 200) {
-            self::assertSame(self::PAYLOAD, (string) $response->getBody(), 'image bytes changed');
+            self::assertSame(self::jpeg(), (string) $response->getBody(), 'image bytes changed');
         }
     }
 
@@ -194,7 +189,7 @@ final class RealMojiApiTest extends IntegrationTestCase
             curl_setopt_array($handle, [
                 CURLOPT_POST => true,
                 CURLOPT_HTTPHEADER => ["Authorization: Bearer {$this->tokens[$actor]}"],
-                CURLOPT_POSTFIELDS => ['reactionType' => 'heart', 'image' => new \CURLStringFile(self::PAYLOAD, 'image.jpg', 'image/jpeg')],
+                CURLOPT_POSTFIELDS => ['reactionType' => 'heart', 'image' => new \CURLStringFile(self::jpeg(), 'image.jpg', 'image/jpeg')],
                 CURLOPT_RETURNTRANSFER => true,
                 CURLOPT_TIMEOUT => 30,
             ]);
