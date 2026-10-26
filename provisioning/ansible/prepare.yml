@@ -24,9 +24,13 @@
           - --exclude=ruby/.bundle
           - --exclude=ruby/vendor
           - --exclude=ruby/test
+          - --exclude=rust/isureal
+          - --exclude=rust/target
+          - --exclude=rust/tests
           - --exclude=sql/002-seed.sql
           - go
           - ruby
+          - rust
           - sql
       changed_when: true
       when: "'webapp' in prepare_components"
