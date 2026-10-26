@@ -159,6 +159,28 @@ aws-benchmark:
 		-scale large \
 		$(BENCH_ARGS)
 
+# ベンチを Fargate（本番の Supervisor と同じ 4 vCPU / 8 GiB、同じ NAT）から実行する。
+# supervisor/Dockerfile のビルド → ECR へ push → ecspresso run → 結果を var/aws-bench/ へ取得
+.PHONY: aws-bench-runner-preview aws-bench-runner-up aws-bench-run aws-bench-image aws-bench-show
+# make の中では mise の環境変数が入らないので、provisioning/aws/mise.toml と同じ backend を渡す
+BENCH_RUNNER_PULUMI = cd provisioning/aws/bench-runner && $(AWS_SDK_ENV) PULUMI_BACKEND_URL="$${PULUMI_BACKEND_URL:-s3://isucon2026-pulumi-state}" pulumi
+
+aws-bench-runner-preview:
+	$(BENCH_RUNNER_PULUMI) preview --stack "$(or $(RUNNER_STACK),dev)"
+
+aws-bench-runner-up:
+	$(BENCH_RUNNER_PULUMI) up --stack "$(or $(RUNNER_STACK),dev)"
+
+# TEAM は必須（8,9,10 のように並べると同時に流す）。IMAGE（repository@digest）を指定するとビルドと push を省く
+aws-bench-run:
+	$(AWS_SDK_ENV) TEAM="$(TEAM)" BENCH_ARGS="$(BENCH_ARGS)" IMAGE="$(IMAGE)" HOST_STATS="$(HOST_STATS)" provisioning/aws/bench-runner/run.sh run
+
+aws-bench-image:
+	$(AWS_SDK_ENV) provisioning/aws/bench-runner/run.sh image
+
+aws-bench-show:
+	provisioning/aws/bench-runner/run.sh show $(RUN)
+
 check: proto-lint vet frontend-lint frontend-typecheck contract test build
 
 .PHONY: dev-up dev-down dev-logs dev-check
