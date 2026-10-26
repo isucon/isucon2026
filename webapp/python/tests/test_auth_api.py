@@ -1,6 +1,6 @@
 from fastapi.testclient import TestClient
 
-from .conftest import Actors
+from .conftest import JPEG, Actors, make_jpeg
 
 
 def test_register_login_logout(client: TestClient, actors: Actors) -> None:
@@ -104,16 +104,31 @@ def test_update_me_and_profile_image(client: TestClient, actors: Actors) -> None
         headers={**alice, "Content-Type": "image/png"},
     )
     assert put.status_code == 415
+    # JPEG として復号できないものと、512px を超えるものは受け付けない
+    for content in (b"jpeg", JPEG[:-2], make_jpeg(513, 1), make_jpeg(1, 513)):
+        put = client.put(
+            "/api/me/profile-image",
+            content=content,
+            headers={**alice, "Content-Type": "image/jpeg"},
+        )
+        assert put.json() == {"error": "invalid_profile_image"}
+    assert client.get("/api/me", headers=alice).json()["profileImageUrl"] is None
     put = client.put(
         "/api/me/profile-image",
-        content=b"jpeg",
+        content=make_jpeg(512, 512),
+        headers={**alice, "Content-Type": "image/jpeg"},
+    )
+    assert put.status_code == 204
+    put = client.put(
+        "/api/me/profile-image",
+        content=JPEG,
         headers={**alice, "Content-Type": "image/jpeg"},
     )
     assert put.status_code == 204
     url = client.get("/api/me", headers=alice).json()["profileImageUrl"]
     image = client.get(url)
     assert image.status_code == 200
-    assert image.content == b"jpeg"
+    assert image.content == JPEG
     assert image.headers["content-type"] == "image/jpeg"
     assert image.headers["cache-control"] == "no-store"
 
