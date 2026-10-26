@@ -7,6 +7,7 @@
     - base
     - isucon-user
     - golang
+    - ruby
     - postgresql
     - nginx
     - webapp
@@ -18,4 +19,4 @@
         name: "{{ item }}"
         state: stopped
         enabled: false
-      loop: [isureal-go, isureal-guard, nginx, postgresql]
+      loop: [isureal-go, isureal-ruby, isureal-guard, nginx, postgresql]
