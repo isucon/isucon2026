@@ -23,8 +23,10 @@ func RenderTC(interfaces map[domain.ServerID]string, networks map[domain.ServerI
 	if err := profile.Validate(); err != nil {
 		return nil, err
 	}
-	if (profile.SameRegionDelay > 0 && profile.SameRegionDelay < time.Millisecond) || (profile.CrossRegionDelay > 0 && profile.CrossRegionDelay < time.Millisecond) {
-		return nil, fmt.Errorf("configured round-trip delay must be zero or at least 1ms")
+	for _, class := range []domain.TrafficClass{profile.SameRegion, profile.APEU, profile.EUUS, profile.APUS} {
+		if class.Delay > 0 && class.Delay < time.Millisecond {
+			return nil, fmt.Errorf("configured round-trip delay must be zero or at least 1ms")
+		}
 	}
 	if err := validateNetworks(networks); err != nil {
 		return nil, err
@@ -37,11 +39,10 @@ func RenderTC(interfaces map[domain.ServerID]string, networks map[domain.ServerI
 		// Traffic that does not match a server pair, such as Envoy forwarding to
 		// an application, uses the same-region class.
 		fmt.Fprintf(&builder, "qdisc replace dev %s root handle 1: htb default 10\n", device)
-		writeClass(&builder, device, "10", profile.SameRegionDelay, profile.SameRegionBandwidthBPS)
+		writeClass(&builder, device, "10", profile.SameRegion)
 		for _, sourceRegion := range regions {
 			for _, destinationRegion := range regions {
-				delay, bandwidth := profile.Class(sourceRegion, destinationRegion)
-				writeClass(&builder, device, pairClassID(sourceRegion, destinationRegion), delay, bandwidth)
+				writeClass(&builder, device, pairClassID(sourceRegion, destinationRegion), profile.Class(sourceRegion, destinationRegion))
 			}
 		}
 		priority := 11
@@ -60,10 +61,10 @@ func RenderTC(interfaces map[domain.ServerID]string, networks map[domain.ServerI
 	return batches, nil
 }
 
-func writeClass(builder *strings.Builder, device, classID string, roundTripDelay time.Duration, bandwidthBPS uint64) {
-	delay := oneWayDelay(roundTripDelay)
-	fmt.Fprintf(builder, "class replace dev %s parent 1: classid 1:%s htb rate %s ceil %s\n", device, classID, rateKbit(bandwidthBPS), rateKbit(bandwidthBPS))
-	fmt.Fprintf(builder, "qdisc replace dev %s parent 1:%s handle %s: netem delay %s limit %d\n", device, classID, classID, delayString(delay), netemLimit(delay, bandwidthBPS))
+func writeClass(builder *strings.Builder, device, classID string, class domain.TrafficClass) {
+	delay := oneWayDelay(class.Delay)
+	fmt.Fprintf(builder, "class replace dev %s parent 1: classid 1:%s htb rate %s ceil %s\n", device, classID, rateKbit(class.BandwidthBPS), rateKbit(class.BandwidthBPS))
+	fmt.Fprintf(builder, "qdisc replace dev %s parent 1:%s handle %s: netem delay %s limit %d\n", device, classID, classID, delayString(delay), netemLimit(delay, class.BandwidthBPS))
 }
 
 func pairClassID(source, destination domain.Region) string {
