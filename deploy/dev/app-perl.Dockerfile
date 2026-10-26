@@ -17,7 +17,7 @@ RUN npm run build
 
 FROM perl:5.44.0-slim-trixie@sha256:a0c68e9afd12dc9a10c0693f1dacac08e93d41a9e2f43aefc3a209c53e5147d2
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends ca-certificates curl iproute2 libjpeg62-turbo libpq5 nginx postgresql-client tzdata \
+  && apt-get install -y --no-install-recommends ca-certificates curl iproute2 iputils-ping libjpeg62-turbo libpq5 nginx postgresql-client tzdata \
   && rm -rf /var/lib/apt/lists/* /etc/nginx/sites-enabled/default
 ENV MOJO_MODE=production
 WORKDIR /app/perl
