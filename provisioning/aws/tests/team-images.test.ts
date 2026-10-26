@@ -3,6 +3,7 @@ import { expect, test } from "vitest";
 
 process.env.PULUMI_CONFIG = JSON.stringify({
 	"isucon2026:teamCount": "7",
+	"isucon2026:guardTeams": "[7]",
 	"isucon2026:independentTlsTeams": "[7]",
 	"isucon2026:protectedDatabaseTeams": "[7]",
 	"isucon2026:portalTeamIds": JSON.stringify({ 7: 700 }),
@@ -76,6 +77,13 @@ test("uses new images only for the selected team and preserves existing instance
 			: `ami-${role}`;
 		expect(instance.inputs.ami, instance.name).toBe(expected);
 		if (role === "service") {
+			const guardExpected = instance.name.startsWith("team7-app");
+			expect(
+				instance.inputs.userData.includes(
+					"systemctl enable --now isureal-guard",
+				),
+				instance.name,
+			).toBe(guardExpected);
 			const encoded = Buffer.from("ssh-ed25519 AAAA fixture\n").toString(
 				"base64",
 			);

@@ -34,6 +34,24 @@
   become_user: isucon
   changed_when: true
 
+- name: Install gems for webapp/ruby
+  ansible.builtin.command:
+    cmd: make install
+    chdir: /home/isucon/webapp/ruby
+  environment:
+    PATH: "/home/isucon/local/ruby/bin:{{ ansible_facts.env.PATH }}"
+  become_user: isucon
+  changed_when: true
+
+- name: Build webapp/rust
+  ansible.builtin.command:
+    cmd: make
+    chdir: /home/isucon/webapp/rust
+  environment:
+    PATH: "/home/isucon/.cargo/bin:{{ ansible_facts.env.PATH }}"
+  become_user: isucon
+  changed_when: true
+
 - name: Install Perl modules for webapp/perl
   ansible.builtin.command:
     cmd: make install
@@ -48,7 +66,7 @@
     src: "{{ item }}"
     dest: "/etc/systemd/system/{{ item }}"
     mode: "0644"
-  loop: [isureal-go.service, isureal-perl.service]
+  loop: [isureal-go.service, isureal-ruby.service, isureal-rust.service, isureal-perl.service]
   register: webapp_unit
 
 - name: Reload systemd
