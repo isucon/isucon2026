@@ -12,6 +12,7 @@ use constant POLL_INTERVAL => 0.5;
 
 # 通知が届くまで接続を保持するので、DB への問い合わせは非同期で行う
 async sub stream ($c) {
+    delete $c->stash->{'isureal.db'};
     my $session  = $c->current_session;
     my $user_id  = $session->{user_id};
     my $async_db = $c->async_db;
