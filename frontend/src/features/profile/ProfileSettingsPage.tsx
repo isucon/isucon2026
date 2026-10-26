@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useEffect, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   cachedMe,
   deleteProfileImage,
@@ -9,41 +9,41 @@ import {
   putProfileImage,
   requestAccountDeletion,
   updateMe,
-} from "../../api/account";
-import { APIError } from "../../api/client";
-import { clearToken, getSecretKey } from "../../app/auth";
-import { LogoutButton } from "../../app/LogoutButton";
-import { SecretKeyPanel } from "../auth/SecretKeyPanel";
-import { RegionSettings } from "./RegionSettings";
+} from '../../api/account';
+import { APIError } from '../../api/client';
+import { clearToken, getSecretKey } from '../../app/auth';
+import { LogoutButton } from '../../app/LogoutButton';
+import { SecretKeyPanel } from '../auth/SecretKeyPanel';
+import { RegionSettings } from './RegionSettings';
 import {
   Avatar,
   ConfirmButton,
   StateView,
   useObjectURL,
-} from "../../components/UI";
+} from '../../components/UI';
 export type SettingsView =
-  | "profile"
-  | "menu"
-  | "account"
-  | "region"
-  | "secret"
-  | "export"
-  | "delete";
+  | 'profile'
+  | 'menu'
+  | 'account'
+  | 'region'
+  | 'secret'
+  | 'export'
+  | 'delete';
 export function ProfileSettingsPage(
-  { view = "profile" }: { view?: SettingsView },
+  { view = 'profile' }: { view?: SettingsView },
 ) {
   const [exporting, setExporting] = useState(false);
-  const [exportError, setExportError] = useState("");
-  const [exportStatus, setExportStatus] = useState("");
-  const [error, setError] = useState("");
-  const [saved, setSaved] = useState("");
+  const [exportError, setExportError] = useState('');
+  const [exportStatus, setExportStatus] = useState('');
+  const [error, setError] = useState('');
+  const [saved, setSaved] = useState('');
   const [busy, setBusy] = useState(false);
   const [me, setMe] = useState<Me | null>(null);
-  const [display, setDisplay] = useState("");
-  const [bio, setBio] = useState("");
+  const [display, setDisplay] = useState('');
+  const [bio, setBio] = useState('');
   const [image, setImage] = useState<File | null>(null);
   const preview = useObjectURL(image);
-  const [secretKey, setSecretKey] = useState("");
+  const [secretKey, setSecretKey] = useState('');
   const navigate = useNavigate();
   async function load() {
     let value: Me;
@@ -59,11 +59,11 @@ export function ProfileSettingsPage(
     setMe(value);
     setDisplay(value.displayName);
     setBio(value.bio);
-    setError("");
+    setError('');
   }
   useEffect(() => {
     void load().catch(() =>
-      setError("プロフィールを取得できませんでした。もう一度お試しください。")
+      setError('プロフィールを取得できませんでした。もう一度お試しください。')
     );
     void getSecretKey().then((value) => {
       if (value) setSecretKey(value);
@@ -72,7 +72,7 @@ export function ProfileSettingsPage(
   async function save(event: React.FormEvent) {
     event.preventDefault();
     setBusy(true);
-    setSaved("");
+    setSaved('');
     try {
       setMe(await updateMe({ displayName: display, bio }));
       if (image) {
@@ -80,9 +80,9 @@ export function ProfileSettingsPage(
         setImage(null);
       }
       await load();
-      setSaved("保存しました。");
+      setSaved('保存しました。');
     } catch {
-      setError("保存できませんでした。");
+      setError('保存できませんでした。');
     } finally {
       setBusy(false);
     }
@@ -90,14 +90,14 @@ export function ProfileSettingsPage(
   async function downloadPosts() {
     if (exporting) return;
     setExporting(true);
-    setExportError("");
-    setExportStatus("");
+    setExportError('');
+    setExportStatus('');
     try {
       const blob = await exportPosts();
       const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
+      const link = document.createElement('a');
       link.href = url;
-      link.download = "isureal-posts.zip";
+      link.download = 'isureal-posts.zip';
       document.body.appendChild(link);
       try {
         link.click();
@@ -105,12 +105,12 @@ export function ProfileSettingsPage(
         link.remove();
         window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
       }
-      setExportStatus("ダウンロードを開始しました。");
+      setExportStatus('ダウンロードを開始しました。');
     } catch (reason) {
       setExportError(
         reason instanceof APIError && reason.status === 403
-          ? "接続先の地域を確認してください。"
-          : "エクスポートできませんでした。もう一度お試しください。",
+          ? '接続先の地域を確認してください。'
+          : 'エクスポートできませんでした。もう一度お試しください。',
       );
     } finally {
       setExporting(false);
@@ -120,13 +120,13 @@ export function ProfileSettingsPage(
     return (
       <StateView
         busy={!error}
-        title={error || "プロフィールを読み込んでいます…"}
+        title={error || 'プロフィールを読み込んでいます…'}
       >
         {error && (
           <button
             onClick={() =>
               void load().catch(() =>
-                setError("プロフィールを取得できませんでした。")
+                setError('プロフィールを取得できませんでした。')
               )}
           >
             再読み込み
@@ -136,24 +136,24 @@ export function ProfileSettingsPage(
     );
   }
   const titles: Record<SettingsView, string> = {
-    profile: "プロフィール設定",
-    menu: "プロフィールメニュー",
-    account: "アカウント・データ",
-    region: "地域設定",
-    secret: "SecretKeyの確認",
-    export: "投稿のエクスポート",
-    delete: "退会の確認",
+    profile: 'プロフィール設定',
+    menu: 'プロフィールメニュー',
+    account: 'アカウント・データ',
+    region: '地域設定',
+    secret: 'SecretKeyの確認',
+    export: '投稿のエクスポート',
+    delete: '退会の確認',
   };
   return (
-    <section className="panel">
-      <Link className="back-link" to={view === "menu" ? "/" : "/settings"}>
-        ‹ {view === "menu" ? "ホーム" : "プロフィールメニュー"}
+    <section className='panel'>
+      <Link className='back-link' to={view === 'menu' ? '/' : '/settings'}>
+        ‹ {view === 'menu' ? 'ホーム' : 'プロフィールメニュー'}
       </Link>
       <h1>{titles[view]}</h1>
-      {error && <p role="alert">{error}</p>}
-      {view === "profile" && (
+      {error && <p role='alert'>{error}</p>}
+      {view === 'profile' && (
         <>
-          <div className="profile-avatar">
+          <div className='profile-avatar'>
             <Avatar
               src={preview || me.profileImageUrl}
               name={display || me.displayName}
@@ -162,8 +162,8 @@ export function ProfileSettingsPage(
           <form onSubmit={(event) => void save(event)}>
             <label>
               プロフィール画像<input
-                type="file"
-                accept="image/jpeg"
+                type='file'
+                accept='image/jpeg'
                 onChange={(event) => setImage(event.target.files?.[0] ?? null)}
               />
             </label>
@@ -182,62 +182,62 @@ export function ProfileSettingsPage(
                 onChange={(event) => setBio(event.target.value)}
               />
             </label>
-            <button disabled={busy}>{busy ? "保存中…" : "保存"}</button>
+            <button disabled={busy}>{busy ? '保存中…' : '保存'}</button>
           </form>
           {me.profileImageUrl && (
             <button
-              className="secondary"
+              className='secondary'
               onClick={() =>
                 void deleteProfileImage().then(load).catch(() =>
-                  setError("画像を削除できませんでした。")
+                  setError('画像を削除できませんでした。')
                 )}
             >
               画像を削除
             </button>
           )}
-          {saved && <p role="status">{saved}</p>}
+          {saved && <p role='status'>{saved}</p>}
         </>
       )}
-      {view === "menu" && (
+      {view === 'menu' && (
         <>
-          <div className="menu-list">
-            <Link to="/posts/me/current">
+          <div className='menu-list'>
+            <Link to='/posts/me/current'>
               自分の投稿 <span>›</span>
             </Link>
-            <Link to="/settings/profile">
+            <Link to='/settings/profile'>
               プロフィール設定 <span>›</span>
             </Link>
-            <Link to="/users">
+            <Link to='/users'>
               ユーザー検索 <span>›</span>
             </Link>
-            <Link to="/settings/account">
+            <Link to='/settings/account'>
               アカウント・データ <span>›</span>
             </Link>
           </div>
           <LogoutButton />
         </>
       )}
-      {view === "account" && (
-        <div className="menu-list">
-          <Link to="/settings/secret">
+      {view === 'account' && (
+        <div className='menu-list'>
+          <Link to='/settings/secret'>
             SecretKey <span>›</span>
           </Link>
-          <Link to="/settings/region">
+          <Link to='/settings/region'>
             地域設定 <span>›</span>
           </Link>
-          <Link to="/settings/export">
+          <Link to='/settings/export'>
             投稿のエクスポート <span>›</span>
           </Link>
-          <Link to="/settings/delete">
+          <Link to='/settings/delete'>
             退会する <span>›</span>
           </Link>
         </div>
       )}
-      {view === "region" && <RegionSettings me={me} onChange={setMe} />}
-      {view === "secret" && (secretKey
+      {view === 'region' && <RegionSettings me={me} onChange={setMe} />}
+      {view === 'secret' && (secretKey
         ? <SecretKeyPanel secretKey={secretKey} />
         : <p>このブラウザにはSecretKeyが保存されていません。</p>)}
-      {view === "export" && (
+      {view === 'export' && (
         <>
           <p>
             全投稿の画像と投稿情報（JSON）を ZIP
@@ -247,26 +247,26 @@ export function ProfileSettingsPage(
             disabled={exporting}
             onClick={() => void downloadPosts()}
           >
-            {exporting ? "エクスポート中…" : "全投稿をダウンロード"}
+            {exporting ? 'エクスポート中…' : '全投稿をダウンロード'}
           </button>
-          <p role="status">
+          <p role='status'>
             {exporting
-              ? "ZIP ファイルを準備しています。投稿数によって時間がかかります。"
+              ? 'ZIP ファイルを準備しています。投稿数によって時間がかかります。'
               : exportStatus}
           </p>
-          {exportError && <p role="alert">{exportError}</p>}
+          {exportError && <p role='alert'>{exportError}</p>}
         </>
       )}
-      {view === "delete" && (
+      {view === 'delete' && (
         <>
           <p>このアカウントは復元できず、同じユーザー名で再登録できません。</p>
           <ConfirmButton
-            title="退会の確認"
-            detail="すべてのデータが削除されます。退会しますか？"
+            title='退会の確認'
+            detail='すべてのデータが削除されます。退会しますか？'
             onConfirm={async () => {
               await requestAccountDeletion();
               await clearToken();
-              navigate("/login");
+              navigate('/login');
             }}
           >
             退会する

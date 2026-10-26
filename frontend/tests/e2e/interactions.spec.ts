@@ -1,18 +1,18 @@
-import { expect, test } from "@playwright/test";
-const postId = "10000000-0000-0000-0000-000000000001";
-async function session(page: import("@playwright/test").Page) {
-  await page.goto("/");
+import { expect, test } from '@playwright/test';
+const postId = '10000000-0000-0000-0000-000000000001';
+async function session(page: import('@playwright/test').Page) {
+  await page.goto('/');
   await page.evaluate(async () => {
-    const request = indexedDB.open("isureal-session", 1);
+    const request = indexedDB.open('isureal-session', 1);
     await new Promise<void>((resolve, reject) => {
       request.onupgradeneeded = () =>
-        request.result.createObjectStore("credentials");
+        request.result.createObjectStore('credentials');
       request.onsuccess = () => {
         const transaction = request.result.transaction(
-          "credentials",
-          "readwrite",
+          'credentials',
+          'readwrite',
         );
-        transaction.objectStore("credentials").put("token", "user-token");
+        transaction.objectStore('credentials').put('token', 'user-token');
         transaction.oncomplete = () => resolve();
         transaction.onerror = () => reject(transaction.error);
       };
@@ -20,52 +20,55 @@ async function session(page: import("@playwright/test").Page) {
     });
   });
 }
-test("RealMojiとコメントを操作できる", async ({ page }) => {
+test('RealMojiとコメントを操作できる', async ({ page }) => {
   await page.addInitScript(() => {
-    Object.defineProperty(navigator, "mediaDevices", {
+    Object.defineProperty(navigator, 'mediaDevices', {
       value: { getUserMedia: async () => new MediaStream() },
     });
   });
-  await page.route("**://*/api/**", async (route) => {
+  await page.route('**://*/api/**', async (route) => {
     const path = new URL(route.request().url()).pathname;
+    if (path === '/api/me') {
+      return route.fulfill({ json: { id: 'me', displayName: 'Me' } });
+    }
     if (path === `/api/posts/${postId}`) {
       await route.fulfill({
         json: {
           id: postId,
           author: {
-            id: "a",
-            username: "a",
-            displayName: "Alice",
-            accountType: "regular",
+            id: 'a',
+            username: 'a',
+            displayName: 'Alice',
+            accountType: 'regular',
           },
-          postingWindowId: "w",
-          imageUrl: "/image.jpg",
-          caption: "today",
-          visibility: "public",
-          location: { kind: "none" },
-          postedAt: "2026-07-19T12:00:00Z",
+          postingWindowId: 'w',
+          imageUrl: '/image.jpg',
+          caption: 'today',
+          visibility: 'public',
+          location: { kind: 'none' },
+          postedAt: '2026-07-19T12:00:00Z',
           onTime: true,
           lateSeconds: 0,
         },
       });
       return;
     }
-    if (path.endsWith("/realmojis") && route.request().method() === "GET") {
+    if (path.endsWith('/realmojis') && route.request().method() === 'GET') {
       await route.fulfill({ json: { items: [], hasMore: false } });
       return;
     }
-    if (path.endsWith("/comments") && route.request().method() === "GET") {
+    if (path.endsWith('/comments') && route.request().method() === 'GET') {
       await route.fulfill({ json: { items: [], hasMore: false } });
       return;
     }
-    if (path.endsWith("/comments")) {
+    if (path.endsWith('/comments')) {
       await route.fulfill({
         status: 201,
         json: {
-          id: "c",
+          id: 'c',
           author: {},
-          body: "hello",
-          createdAt: "2026-07-19T12:00:00Z",
+          body: 'hello',
+          createdAt: '2026-07-19T12:00:00Z',
         },
       });
       return;
@@ -75,44 +78,44 @@ test("RealMojiとコメントを操作できる", async ({ page }) => {
   await session(page);
   await page.goto(`/posts/${postId}/realmoji`);
   await expect(
-    page.getByRole("heading", { name: "RealMojiを作成", exact: true }),
+    page.getByRole('heading', { name: 'RealMojiを作成', exact: true }),
   )
     .toBeVisible();
-  await expect(page.locator("input[type=file]")).toHaveCount(1);
-  await page.getByRole("button", { name: "カメラを開始" }).click();
-  await expect(page.getByRole("button", { name: "撮影する" })).toBeVisible();
+  await expect(page.locator('input[type=file]')).toHaveCount(1);
+  await page.getByRole('button', { name: 'カメラを開始' }).click();
+  await expect(page.getByRole('button', { name: '撮影する' })).toBeVisible();
   await page.goto(`/posts/${postId}/comments`);
-  await page.getByLabel("コメント").fill("hello");
-  await page.getByRole("button", { name: "送信" }).click();
+  await page.getByLabel('コメント').fill('hello');
+  await page.getByRole('button', { name: '送信' }).click();
 });
-test("カメラ拒否時にも画像ファイルを選択できる", async ({ page }) => {
+test('カメラ拒否時にも画像ファイルを選択できる', async ({ page }) => {
   await page.addInitScript(() => {
-    Object.defineProperty(navigator, "mediaDevices", {
+    Object.defineProperty(navigator, 'mediaDevices', {
       value: {
         getUserMedia: async () => {
-          throw new DOMException("denied", "NotAllowedError");
+          throw new DOMException('denied', 'NotAllowedError');
         },
       },
     });
   });
-  await page.route("**://*/api/**", async (route) => {
+  await page.route('**://*/api/**', async (route) => {
     const path = new URL(route.request().url()).pathname;
     if (path === `/api/posts/${postId}`) {
       await route.fulfill({
         json: {
           id: postId,
           author: {
-            id: "a",
-            username: "a",
-            displayName: "Alice",
-            accountType: "regular",
+            id: 'a',
+            username: 'a',
+            displayName: 'Alice',
+            accountType: 'regular',
           },
-          postingWindowId: "w",
-          imageUrl: "/i",
-          caption: "",
-          visibility: "public",
-          location: { kind: "none" },
-          postedAt: "2026-07-19T12:00:00Z",
+          postingWindowId: 'w',
+          imageUrl: '/i',
+          caption: '',
+          visibility: 'public',
+          location: { kind: 'none' },
+          postedAt: '2026-07-19T12:00:00Z',
           onTime: true,
           lateSeconds: 0,
         },
@@ -121,7 +124,7 @@ test("カメラ拒否時にも画像ファイルを選択できる", async ({ pa
   });
   await session(page);
   await page.goto(`/posts/${postId}/realmoji`);
-  await page.getByRole("button", { name: "カメラを開始" }).click();
-  await expect(page.getByRole("alert")).toContainText("拒否");
-  await expect(page.locator("input[type=file]")).toHaveCount(1);
+  await page.getByRole('button', { name: 'カメラを開始' }).click();
+  await expect(page.getByRole('alert')).toContainText('拒否');
+  await expect(page.locator('input[type=file]')).toHaveCount(1);
 });

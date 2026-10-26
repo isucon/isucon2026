@@ -1,26 +1,28 @@
-import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
-import { getPost, type Post } from "../../api/posts";
-import { RealMojiPanel } from "../interactions/RealMojiPanel";
-import { CommentPanel } from "../interactions/CommentPanel";
-import { StateView } from "../../components/UI";
+import { useEffect, useState } from 'react';
+import { Link, useParams } from 'react-router-dom';
+import { getPost, type Post } from '../../api/posts';
+import { RealMojiPanel } from '../interactions/RealMojiPanel';
+import { CommentPanel } from '../interactions/CommentPanel';
+import { useCurrentUser } from '../../app/currentUser';
+import { StateView } from '../../components/UI';
 export function PostDetail(
-  { mode = "detail" }: { mode?: "detail" | "comments" | "realmoji" },
+  { mode = 'detail' }: { mode?: 'detail' | 'comments' | 'realmoji' },
 ) {
-  const { postId = "" } = useParams();
+  const me = useCurrentUser();
+  const { postId = '' } = useParams();
   const [post, setPost] = useState<Post | null>(null);
-  const [error, setError] = useState("");
+  const [error, setError] = useState('');
   const [retry, setRetry] = useState(0);
   useEffect(() => {
     let active = true;
     setPost(null);
-    setError("");
+    setError('');
     void getPost(postId).then((value) => {
       if (active) setPost(value);
     }).catch(() => {
       if (active) {
         setError(
-          "投稿を読み込めませんでした。閲覧できないか、削除された可能性があります。",
+          '投稿を読み込めませんでした。閲覧できないか、削除された可能性があります。',
         );
       }
     });
@@ -34,37 +36,37 @@ export function PostDetail(
         <button onClick={() => setRetry((value) => value + 1)}>
           再読み込み
         </button>
-        <Link to="/">ホームへ</Link>
+        <Link to='/'>ホームへ</Link>
       </StateView>
     );
   }
-  if (!post) return <StateView busy title="投稿を読み込んでいます…" />;
+  if (!post) return <StateView busy title='投稿を読み込んでいます…' />;
   return (
     <section>
       <Link
-        className="back-link"
-        to={mode === "detail" ? "/" : `/posts/${postId}`}
+        className='back-link'
+        to={mode === 'detail' ? '/' : `/posts/${postId}`}
       >
-        ‹ {mode === "detail" ? "ホーム" : "投稿詳細"}
+        ‹ {mode === 'detail' ? 'ホーム' : '投稿詳細'}
       </Link>
-      {mode !== "realmoji" && (
-        <h1>{mode === "detail" ? "投稿詳細" : "コメント"}</h1>
+      {mode !== 'realmoji' && (
+        <h1>{mode === 'detail' ? '投稿詳細' : 'コメント'}</h1>
       )}
-      {mode !== "realmoji" && (
+      {mode !== 'realmoji' && (
         <article>
-          <Link className="author-name" to={`/users/${post.author.id}`}>
+          <Link className='author-name' to={`/users/${post.author.id}`}>
             {post.author.displayName}
           </Link>
-          <img className="post-image" src={post.imageUrl} alt="投稿画像" />
+          <img className='post-image' src={post.imageUrl} alt='投稿画像' />
           <p>{post.caption}</p>
-          <time className="muted" dateTime={post.postedAt}>
-            {new Date(post.postedAt).toLocaleString("ja-JP")}
+          <time className='muted' dateTime={post.postedAt}>
+            {new Date(post.postedAt).toLocaleString('ja-JP')}
           </time>
         </article>
       )}
-      {mode === "detail"
+      {mode === 'detail'
         ? (
-          <div className="menu-list">
+          <div className='menu-list'>
             <Link to={`/posts/${postId}/realmoji`}>
               RealMoji <span>›</span>
             </Link>
@@ -73,9 +75,15 @@ export function PostDetail(
             </Link>
           </div>
         )
-        : mode === "comments"
+        : mode === 'comments'
         ? <CommentPanel postId={post.id} />
-        : <RealMojiPanel postId={post.id} />}
+        : (
+          <RealMojiPanel
+            key={post.id}
+            postId={post.id}
+            canCreate={!!me && me.id !== post.author.id}
+          />
+        )}
     </section>
   );
 }
