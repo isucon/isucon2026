@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"path"
 	"strconv"
 	"syscall"
 	"time"
@@ -22,13 +23,14 @@ import (
 
 const usage = `Usage: isureal-guard
 
-isureal-guard reads the action log of a systemd unit through journalctl and bans an IP address
+isureal-guard reads the action log of systemd units through journalctl and bans an IP address
 when it fails to log in GUARD_FAIL_THRESHOLD times within GUARD_FAIL_WINDOW. A failed login is
 an action log line with "action":"login" and "status":401. A ban is written to the ip_bans table
 and lasts GUARD_BAN_DURATION.
 
 Environment variables:
-  GUARD_JOURNAL_UNIT    systemd unit whose log is read (default: isureal-go.service)
+  GUARD_JOURNAL_UNIT    pattern of systemd units whose log is read; isureal-guard.service is
+                        never read (default: isureal-*.service)
   GUARD_FAIL_THRESHOLD  failed logins from one IP address that trigger a ban (default: 10)
   GUARD_FAIL_WINDOW     period in which failed logins are counted (default: 10s)
   GUARD_BAN_DURATION    how long a ban lasts (default: 2m)
@@ -59,12 +61,15 @@ func loadConfig(getenv func(string) string) (config, error) {
 		return defaultValue
 	}
 	cfg := config{
-		unit:       get("GUARD_JOURNAL_UNIT", "isureal-go.service"),
+		unit:       get("GUARD_JOURNAL_UNIT", "isureal-*.service"),
 		dbHost:     get("ISUREAL_DB_HOST", "127.0.0.1"),
 		dbPort:     get("ISUREAL_DB_PORT", "5432"),
 		dbUser:     get("ISUREAL_DB_USER", "isureal"),
 		dbPassword: get("ISUREAL_DB_PASSWORD", "isureal"),
 		dbName:     get("ISUREAL_DB_NAME", "isureal"),
+	}
+	if _, err := path.Match(cfg.unit, ""); err != nil {
+		return config{}, fmt.Errorf("GUARD_JOURNAL_UNIT must be a valid pattern")
 	}
 	var err error
 	if cfg.threshold, err = strconv.Atoi(get("GUARD_FAIL_THRESHOLD", "10")); err != nil || cfg.threshold < 1 {
@@ -110,7 +115,7 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
-	journal := exec.CommandContext(ctx, "journalctl", "--unit", cfg.unit, "--follow", "--lines", "0", "--output", "json")
+	journal := exec.CommandContext(ctx, "journalctl", "--follow", "--lines", "0", "--output", "json")
 	journal.Stderr = os.Stderr
 	stdout, err := journal.StdoutPipe()
 	if err != nil {
@@ -120,7 +125,7 @@ func main() {
 		logger.Fatal(err)
 	}
 	banner := &dbBanner{db: db, duration: cfg.banDuration}
-	err = run(ctx, stdout, newDetector(cfg.threshold, cfg.window), banner.ban, logger)
+	err = run(ctx, stdout, cfg.unit, newDetector(cfg.threshold, cfg.window), banner.ban, logger)
 	_ = journal.Wait()
 	if err != nil && ctx.Err() == nil {
 		logger.Fatal(err)
