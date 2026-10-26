@@ -193,31 +193,59 @@ type ActiveSnapshot struct {
 	CommittedAt time.Time
 }
 
+type TrafficClass struct {
+	Delay        time.Duration
+	BandwidthBPS uint64
+}
+
+// TrafficProfile has one class per unordered region pair, so both directions
+// between two regions are shaped alike.
 type TrafficProfile struct {
-	SameRegionDelay         time.Duration
-	CrossRegionDelay        time.Duration
-	SameRegionBandwidthBPS  uint64
-	CrossRegionBandwidthBPS uint64
+	SameRegion TrafficClass
+	APEU       TrafficClass
+	EUUS       TrafficClass
+	APUS       TrafficClass
 }
 
 func (p TrafficProfile) Validate() error {
-	if p.SameRegionDelay < 0 || p.CrossRegionDelay < 0 {
-		return errors.New("traffic delay must not be negative")
-	}
-	if p.SameRegionBandwidthBPS == 0 || p.CrossRegionBandwidthBPS == 0 {
-		return errors.New("traffic bandwidth must be positive")
-	}
-	if p.CrossRegionBandwidthBPS > p.SameRegionBandwidthBPS {
-		return errors.New("cross-region bandwidth must not exceed same-region bandwidth")
+	for _, class := range []struct {
+		name string
+		TrafficClass
+	}{
+		{"same-region", p.SameRegion},
+		{"AP-EU", p.APEU},
+		{"EU-US", p.EUUS},
+		{"AP-US", p.APUS},
+	} {
+		if class.Delay < 0 {
+			return fmt.Errorf("%s traffic delay must not be negative", class.name)
+		}
+		if class.BandwidthBPS == 0 {
+			return fmt.Errorf("%s traffic bandwidth must be positive", class.name)
+		}
+		if class.BandwidthBPS > p.SameRegion.BandwidthBPS {
+			return fmt.Errorf("%s bandwidth must not exceed same-region bandwidth", class.name)
+		}
 	}
 	return nil
 }
 
-func (p TrafficProfile) Class(source, destination Region) (delay time.Duration, bandwidthBPS uint64) {
-	if source == destination {
-		return p.SameRegionDelay, p.SameRegionBandwidthBPS
+func (p TrafficProfile) Class(source, destination Region) TrafficClass {
+	between := func(left, right Region) bool {
+		return (source == left && destination == right) || (source == right && destination == left)
 	}
-	return p.CrossRegionDelay, p.CrossRegionBandwidthBPS
+	switch {
+	case source == destination:
+		return p.SameRegion
+	case between(RegionAP, RegionEU):
+		return p.APEU
+	case between(RegionEU, RegionUS):
+		return p.EUUS
+	case between(RegionAP, RegionUS):
+		return p.APUS
+	default:
+		return TrafficClass{}
+	}
 }
 
 func regionFromProto(value portalv1.Region) (Region, error) {
