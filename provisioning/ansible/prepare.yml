@@ -27,10 +27,13 @@
           - --exclude=rust/isureal
           - --exclude=rust/target
           - --exclude=rust/tests
+          - --exclude=nodejs/node_modules
+          - --exclude=nodejs/test
           - --exclude=sql/002-seed.sql
           - go
           - ruby
           - rust
+          - nodejs
           - sql
       changed_when: true
       when: "'webapp' in prepare_components"
