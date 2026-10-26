@@ -28,8 +28,9 @@ type serverConfig struct {
 }
 
 type identityResponse struct {
-	Server        string   `json:"server"`
-	CountryValues []string `json:"country_values"`
+	Server         string   `json:"server"`
+	CountryValues  []string `json:"country_values"`
+	ClientIPValues []string `json:"client_ip_values"`
 }
 
 type fetchResponse struct {
@@ -72,6 +73,7 @@ func newHandler(config serverConfig) http.Handler {
 	mux.HandleFunc("GET /identity", func(writer http.ResponseWriter, request *http.Request) {
 		writeJSON(writer, http.StatusOK, identityResponse{
 			Server: config.ID, CountryValues: request.Header.Values("X-Country-Code"),
+			ClientIPValues: request.Header.Values("X-Client-IP"),
 		})
 	})
 	mux.HandleFunc("GET /blob", func(writer http.ResponseWriter, request *http.Request) {
