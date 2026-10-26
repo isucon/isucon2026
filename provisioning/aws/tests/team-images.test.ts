@@ -58,6 +58,12 @@ test("uses new images only for the selected team and preserves existing instance
 	);
 	expect(instances).toHaveLength(20);
 	expect(options.get("team7-router")?.deleteBeforeReplace).toBe(true);
+	// ユーザーデータを変えても、既存の Router を止めて起動し直さない
+	for (const instance of instances) {
+		expect(options.get(instance.name)?.ignoreChanges, instance.name).toEqual(
+			instance.name.endsWith("-router") ? ["userDataBase64"] : undefined,
+		);
+	}
 	expect(options.get("team7-db1-instance")?.protect).toBe(true);
 	expect(options.get("team7-app1-instance")?.protect).not.toBe(true);
 	const certificates = resources.filter(
