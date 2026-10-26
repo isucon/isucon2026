@@ -40,6 +40,16 @@
       changed_when: true
       when: "'guard' in prepare_components"
 
+    # 取り除いたあとも「作問」が残っていれば失敗する
+    - name: Remove tests and [作問] comments from distributed sources
+      ansible.builtin.command:
+        argv:
+          - python3
+          - "{{ playbook_dir }}/scripts/sanitize_archive.py"
+          - "{{ build_dir }}/{{ item }}.tar.gz"
+      loop: "{{ ['webapp', 'guard'] | intersect(prepare_components) }}"
+      changed_when: true
+
     - name: Build frontend
       ansible.builtin.shell: |
         set -eu
