@@ -3,6 +3,7 @@ use v5.44;
 use utf8;
 
 use Exporter 'import';
+use File::Spec;
 use FindBin;
 use Imager;
 use Mojo::File qw(path);
@@ -53,9 +54,12 @@ sub reset_schema () {
     test_pg()->db->dbh->do($SQL_DIR->child('001-schema.sql')->slurp('UTF-8'));
 }
 
+# 行動ログは TAP の出力に混ざらないように捨てる
 sub test_app () {
     my $t = Test::Mojo->new('Isureal');
     $t->app->log->level('fatal');
+    open my $null, '>', File::Spec->devnull or die "devnull: $!";
+    $t->app->action_log->output($null);
     return $t;
 }
 

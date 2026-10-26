@@ -11,6 +11,7 @@ use Isureal::Util qw(NO_ROWS new_uuid sha256_hex);
 sub register ($c) {
     # [作問] 登録時は自動的に国からリージョンを決めるべきかも。新方針では各リージョン1台ずつになったので
     my $input = $c->json_body(username => 'string', displayName => 'string', region => 'string');
+    $c->stash('isureal.username' => $input->{username});
     unless (valid_username($input->{username}) && valid_user_text($input->{displayName}, 1, 100) && valid_region($input->{region})) {
         Isureal::APIError->throw(400, 'invalid_registration');
     }
@@ -34,6 +35,7 @@ sub register ($c) {
 
 sub login ($c) {
     my $input = $c->json_body(username => 'string', secretKey => 'string');
+    $c->stash('isureal.username' => $input->{username});
     Isureal::APIError->throw(401, 'invalid_credentials') unless valid_username($input->{username});
 
     my $db   = $c->db;

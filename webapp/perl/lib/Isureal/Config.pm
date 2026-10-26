@@ -10,6 +10,7 @@ sub from_env ($class) {
         db_user    => env_or_default('ISUREAL_DB_USER',     'isureal'),
         db_password => env_or_default('ISUREAL_DB_PASSWORD', 'isureal'),
         db_name    => env_or_default('ISUREAL_DB_NAME',     'isureal'),
+        log_level  => env_or_default('ISUREAL_LOG_LEVEL',   'debug'),
         port       => env_or_default('ISUREAL_PORT',        '8080'),
         # hypnotoad の worker 数。各 worker は同期クエリ用と通知用の非同期クエリ用の DB 接続を持つ
         workers              => env_or_default('ISUREAL_WORKERS',              8),
