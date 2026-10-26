@@ -26,6 +26,9 @@ export const config = {
 	teamAdminSshPublicKeys: z
 		.record(z.string(), z.array(z.string().min(1)))
 		.parse(c.getObject("teamAdminSshPublicKeys") ?? {}),
+	guardTeams: z
+		.array(z.number().int().min(1).max(maxTeams))
+		.parse(c.getObject<number[]>("guardTeams") ?? []),
 	protectedDatabaseTeams: z
 		.array(z.number().int().min(1).max(maxTeams))
 		.parse(c.getObject("protectedDatabaseTeams") ?? []),

@@ -12,14 +12,17 @@ export function serviceUserData(
 	network: ServerNetwork,
 	sshPublicKeys: string[] = [],
 	adminSshPublicKeys: string[] = [],
+	guardEnabled = false,
 ): string {
 	const commands =
 		network.region === undefined
 			? ["systemctl enable --now postgresql"]
 			: [
 					`sed -i -e 's/^ISUREAL_REGION=.*/ISUREAL_REGION=${network.region}/' -e 's/^ISUREAL_DB_HOST=.*/ISUREAL_DB_HOST=${databaseIp(t)}/' /home/isucon/env.sh`,
-					"systemctl enable --now isureal-go isureal-guard nginx",
+					"systemctl enable --now isureal-go nginx",
 				];
+	if (network.region !== undefined && guardEnabled)
+		commands.push("systemctl enable --now isureal-guard");
 	commands.unshift(...authorizedKeyCommands("isucon", sshPublicKeys));
 	if (adminSshPublicKeys.length > 0) {
 		commands.unshift(
