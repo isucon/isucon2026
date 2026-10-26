@@ -12,6 +12,25 @@ AMI の中身を作ります。Packer（`provisioning/packer`）から呼ばれ�
 チームごとに違うもの（app のリージョンと DB の接続先、どのサービスを動かすか、Router の設定ファイル、
 ENI、TLS 証明書）は Pulumi の user-data が設定します。
 
+## 配布するソースから取り除くもの
+
+`prepare.yml` は webapp と isureal-guard のソースを tar で固めたあと、`scripts/sanitize_archive.py` で
+次のものを取り除きます。すべての言語の実装に同じ規則を使うので、実装ごとの設定は要りません。
+
+- テスト: `test/`、`tests/`、`testdata/`、`t/`、`spec/`、`__tests__/` の各ディレクトリの中身と、
+  `*_test.go`、`*_test.rb`、`*_spec.rb`、`test_*.py`、`*_test.py`、`conftest.py`、`*Test.php`、`*.t`、
+  `*.test.{ts,js}`、`*.spec.{ts,js}`
+- `[作問]` コメント: 行コメント（`//`、`#`、`--`）の直後に `[作問]` を書いたもの。コメントだけの行は消し、
+  コードの後ろに書いたものはコメントの部分を切り落とす。消した跡が残らないよう、前後の空行は 1 行にまとめ、
+  書き換えた Go のファイルは gofmt で整える（コントローラーの PATH に `gofmt` が要る）
+
+取り除いたあとも「作問」という文字列が残るファイル（ブロックコメントや docstring に書いたものなど）があれば、
+ファイル名と行番号を出して `prepare.yml` が失敗します。規則のテストは次で実行します。
+
+```sh
+python3 -m unittest discover -s provisioning/ansible/tests -p 'test_sanitize_archive.py'
+```
+
 ## サーバー内の構成
 
 - アプリ: `/home/isucon/webapp/{go,ruby,sql,public}`。`isureal-go.service`（Go 実装）か `isureal-ruby.service`（Ruby 実装）が `/home/isucon/env.sh` を読んで `:8080` で起動する。user-data が有効にするのは Go 実装
