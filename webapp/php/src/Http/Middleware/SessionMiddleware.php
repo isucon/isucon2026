@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Isureal\Http\Middleware;
 
+use Isureal\Http\ActionLogEntry;
 use Isureal\Http\ApiError;
 use Isureal\Model\LoginSession;
 use Isureal\Repository\SessionRepository;
@@ -34,7 +35,9 @@ final readonly class SessionMiddleware implements MiddlewareInterface
         if ($token === null) {
             throw new ApiError(401, 'invalid_session');
         }
-        return $this->sessions->findByToken($token) ?? throw new ApiError(401, 'invalid_session');
+        $session = $this->sessions->findByToken($token) ?? throw new ApiError(401, 'invalid_session');
+        ActionLogEntry::of($request)->userId = $session->userId;
+        return $session;
     }
 
     public static function session(ServerRequestInterface $request): LoginSession

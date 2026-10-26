@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Isureal\Handler;
 
 use Isureal\Database;
+use Isureal\Http\ActionLogEntry;
 use Isureal\Http\ApiError;
 use Isureal\Http\Input;
 use Isureal\Http\Json;
@@ -34,6 +35,7 @@ final readonly class AuthHandler
         // [作問] 登録時は自動的に国からリージョンを決めるべきかも。新方針では各リージョン1台ずつになったので
         $body = Input::json($request);
         $input = ['username' => $body->string('username'), 'displayName' => $body->string('displayName'), 'region' => $body->string('region')];
+        ActionLogEntry::of($request)->username = $input['username'];
         if (!User::validUsername($input['username']) || !User::validText($input['displayName'], 1, 100) || !Region::isValid($input['region'])) {
             throw new ApiError(400, 'invalid_registration');
         }
@@ -67,6 +69,7 @@ final readonly class AuthHandler
     {
         $body = Input::json($request);
         $input = ['username' => $body->string('username'), 'secretKey' => $body->string('secretKey')];
+        ActionLogEntry::of($request)->username = $input['username'];
         if (!User::validUsername($input['username'])) {
             throw new ApiError(401, 'invalid_credentials');
         }

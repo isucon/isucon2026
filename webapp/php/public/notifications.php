@@ -6,7 +6,9 @@ declare(strict_types=1);
 require __DIR__ . '/../vendor/autoload.php';
 
 use Isureal\Config;
+use Isureal\Http\ActionLog;
 use Isureal\Notification\NotificationStream;
 use Slim\Factory\ServerRequestCreatorFactory;
 
-new NotificationStream(Config::fromEnv())->handle(ServerRequestCreatorFactory::create()->createServerRequestFromGlobals());
+$config = Config::fromEnv();
+new NotificationStream($config, ActionLog::toStdout($config))->handle(ServerRequestCreatorFactory::create()->createServerRequestFromGlobals());

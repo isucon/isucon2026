@@ -6,11 +6,15 @@ namespace Isureal\Notification;
 
 use Isureal\Config;
 use Isureal\Database;
+use Isureal\Http\ActionLog;
+use Isureal\Http\ActionLogEntry;
 use Isureal\Http\ApiError;
+use Isureal\Http\ClientIp;
 use Isureal\Http\ErrorHandler;
 use Isureal\Http\Json;
 use Isureal\Http\Middleware\SessionMiddleware;
 use Isureal\Model\LoginSession;
+use Isureal\Repository\IpBanRepository;
 use Isureal\Repository\SessionRepository;
 use Isureal\Repository\UserRepository;
 use Isureal\Time;
@@ -34,35 +38,44 @@ final class NotificationStream
      */
     private const int PING_EVERY_POLLS = 10;
 
-    public function __construct(private readonly Config $config)
+    public function __construct(private readonly Config $config, private readonly ActionLog $log)
     {
     }
 
     public function handle(ServerRequestInterface $request): void
     {
+        $entry = new ActionLogEntry();
+        $request = $request->withAttribute(ActionLogEntry::ATTRIBUTE, $entry);
+        $route = $request->getMethod() === 'GET' && $request->getUri()->getPath() === '/api/notifications' ? '/api/notifications' : null;
         try {
-            if ($request->getMethod() !== 'GET') {
-                throw new ApiError(405, 'Method Not Allowed');
-            }
-            if ($request->getUri()->getPath() !== '/api/notifications') {
-                throw new ApiError(404, 'Not Found');
-            }
             [$session, $connectedAt] = $this->open($request);
         } catch (\Throwable $e) {
-            new ResponseEmitter()->emit(ErrorHandler::render(new Response(), $e));
+            $response = ErrorHandler::render(new Response(), $e);
+            new ResponseEmitter()->emit($response);
+            $this->log->write($request, $route, $response->getStatusCode(), $entry);
             return;
         }
         $this->stream($session, $connectedAt);
+        $this->log->write($request, $route, 200, $entry);
     }
 
     /**
-     * セッションを確かめ、通知を探し始める時刻を返す
+     * リクエストとセッションを確かめ、通知を探し始める時刻を返す
      *
      * @return array{LoginSession, string}
      */
     private function open(ServerRequestInterface $request): array
     {
         $db = Database::connect($this->config, persistent: false);
+        if (new IpBanRepository($db)->isBanned(ClientIp::of($request))) {
+            throw new ApiError(403, 'ip_banned');
+        }
+        if ($request->getMethod() !== 'GET') {
+            throw new ApiError(405, 'Method Not Allowed');
+        }
+        if ($request->getUri()->getPath() !== '/api/notifications') {
+            throw new ApiError(404, 'Not Found');
+        }
         $session = new SessionMiddleware(new SessionRepository($db, new UserRepository($db)))->authenticate($request);
         if ($session->region !== $this->config->region) {
             throw new ApiError(403, 'region_mismatch');
