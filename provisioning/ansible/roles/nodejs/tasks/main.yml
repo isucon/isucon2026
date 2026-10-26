@@ -1,0 +1,47 @@
+---
+# 公式のビルド済みバイナリで Node.js を /home/isucon/local/node に入れる（webapp/nodejs 用）
+# xz-utils は配布アーカイブの展開に、libatomic1 は node バイナリの実行に要る
+- name: Install packages for Node.js
+  ansible.builtin.apt:
+    name: [xz-utils, libatomic1]
+
+- name: Read installed Node.js version
+  ansible.builtin.command:
+    argv: [/home/isucon/local/node/bin/node, --version]
+  register: node_installed
+  changed_when: false
+  failed_when: false
+
+- name: Install Node.js
+  when: node_installed.rc != 0 or node_installed.stdout != 'v' ~ node_version
+  block:
+    - name: Remove old Node.js
+      ansible.builtin.file:
+        path: /home/isucon/local/node
+        state: absent
+
+    - name: Create /home/isucon/local/node
+      ansible.builtin.file:
+        path: /home/isucon/local/node
+        state: directory
+        owner: isucon
+        group: isucon
+        mode: "0755"
+
+    - name: Download and extract Node.js
+      ansible.builtin.unarchive:
+        src: "https://nodejs.org/dist/v{{ node_version }}/node-v{{ node_version }}-linux-x64.tar.xz"
+        dest: /home/isucon/local/node
+        remote_src: true
+        extra_opts: [--strip-components=1]
+        owner: isucon
+        group: isucon
+
+- name: Add Node.js to PATH
+  ansible.builtin.lineinfile:
+    path: /home/isucon/.profile
+    line: 'export PATH=$HOME/local/node/bin:$PATH'
+    create: true
+    owner: isucon
+    group: isucon
+    mode: "0644"
