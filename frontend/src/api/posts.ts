@@ -1,16 +1,16 @@
-import { pageRequest } from "./pagination";
-import { jsonRequest } from "./client";
+import { pageRequest } from './pagination';
+import { jsonRequest } from './client';
 
-export type Visibility = "friends" | "friends_of_friends" | "public";
+export type Visibility = 'friends' | 'friends_of_friends' | 'public';
 export type FeedKind =
-  | "friends"
-  | "friends-of-friends"
-  | "public"
-  | "following";
+  | 'friends'
+  | 'friends-of-friends'
+  | 'public'
+  | 'following';
 export type Location =
-  | { kind: "none" }
-  | { kind: "exact"; latitude: number; longitude: number }
-  | { kind: "approximate"; locality: string };
+  | { kind: 'none' }
+  | { kind: 'exact'; latitude: number; longitude: number }
+  | { kind: 'approximate'; locality: string };
 
 export interface Post {
   id: string;
@@ -44,22 +44,22 @@ export function createPost(
   },
 ): Promise<Post> {
   const body = new FormData();
-  body.set("image", input.image);
-  body.set("caption", input.caption);
-  body.set("visibility", input.visibility);
-  body.set("location_kind", input.location.kind);
-  if (input.location.kind === "exact") {
-    body.set("latitude", String(input.location.latitude));
-    body.set("longitude", String(input.location.longitude));
+  body.set('image', input.image);
+  body.set('caption', input.caption);
+  body.set('visibility', input.visibility);
+  body.set('location_kind', input.location.kind);
+  if (input.location.kind === 'exact') {
+    body.set('latitude', String(input.location.latitude));
+    body.set('longitude', String(input.location.longitude));
   }
-  if (input.location.kind === "approximate") {
-    body.set("locality", input.location.locality);
+  if (input.location.kind === 'approximate') {
+    body.set('locality', input.location.locality);
   }
-  return jsonRequest<Post>("/posts", { method: "POST", body });
+  return jsonRequest<Post>('/posts', { method: 'POST', body });
 }
 
 export function getMyCurrentPost(): Promise<Post> {
-  return jsonRequest<Post>("/posts/me/current");
+  return jsonRequest<Post>('/posts/me/current');
 }
 export function getPost(postId: string): Promise<Post> {
   return jsonRequest<Post>(`/posts/${postId}`);
@@ -70,14 +70,14 @@ export function updatePost(
   input: { caption?: string; visibility?: Visibility },
 ): Promise<Post> {
   return jsonRequest<Post>(`/posts/${postId}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
   });
 }
 
 export function deletePost(postId: string): Promise<void> {
-  return jsonRequest<void>(`/posts/${postId}`, { method: "DELETE" });
+  return jsonRequest<void>(`/posts/${postId}`, { method: 'DELETE' });
 }
 
 export function getFeed(feed: FeedKind, next?: string): Promise<PostPage> {
@@ -101,4 +101,4 @@ export interface CurrentPostingWindow {
   deletionCount: number;
 }
 export const getCurrentPostingWindow = () =>
-  jsonRequest<CurrentPostingWindow>("/posting-window/current");
+  jsonRequest<CurrentPostingWindow>('/posting-window/current');
