@@ -2,9 +2,12 @@
 # prepare.yml が成果物を置き、各 role がここから配布する
 repo_root: "{{ playbook_dir }}/../.."
 build_dir: "{{ playbook_dir }}/build"
-prepare_components: [webapp, frontend, datagen, router]
+prepare_components: [webapp, frontend, datagen, router, guard]
 
 go_version: "1.26.5"
+ruby_version: "4.0.9"
+rust_version: "1.99.1"
+rustup_version: "1.29.2"
 php_version: "8.5.12"
 composer_version: "2.10.3"
 envoy_image: envoyproxy/envoy:v1.32.2

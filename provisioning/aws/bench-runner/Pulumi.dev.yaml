@@ -1,0 +1,9 @@
+secretsprovider: awskms://alias/isucon2026-pulumi-secrets
+# KMS-encrypted Pulumi data key; not a plaintext credential.
+encryptedkey: AQICAHioA4JfE9al7GvEIETDDEboTRl7KwYdv1v9MIs+GSB6/AGwLcLnD319iJYQCj6oa//AAAAAfjB8BgkqhkiG9w0BBwagbzBtAgEAMGgGCSqGSIb3DQEHATAeBglghkgBZQMEAS4wEQQM64BCVPvEWyasNkamAgEQgDvg35WSIOpbx4D+v7RX906NQO2JXHk6i40Jwk/0dwPZqFqVYT0DvtueB22tjEuHvFGi8KZmo0gsSxnCDQ== # gitleaks:allow
+config:
+  aws:region: ap-northeast-1
+  isucon2026-bench-runner:vpcId: vpc-0e2be8c91c07a48f3
+  isucon2026-bench-runner:subnetId: subnet-055a5ee88a1c5764b
+  isucon2026-bench-runner:instanceRoleArns:
+    - arn:aws:iam::124502390568:role/instance-role-2058dd9

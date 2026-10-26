@@ -73,7 +73,7 @@ snapshot ごとに生成する。
 - `X-Country-Code` は US/CA/MX、JP/KR/CN/AU、GB/DE/FR の10値だけを exact match する。
 - header がない場合だけ Portal の `defaultCountry` を1値挿入する。
 - 空値、未知値、小文字、複数値は `400`、未知 Host は `404` を Envoy が直接返す。
-- client country と target server の region が同じ route は same profile、異なる route は cross profile を使う。
+- client country と target server の region が同じ route は same profile、異なる route はその region pair の profile を使う。
 - delay は HTTP fault filter、rate は bandwidth-limit filter の route-level override で適用する。
 
 Envoy が対象 version/nonce を ACK するまで RDS は commit 済みと扱わない。NACK の error detail と timeout は apply
@@ -87,20 +87,23 @@ Router は namespaced `net.ipv4.ip_forward=1` を確認し、専用 `inet isurea
 forward allow に含めない。
 
 各 destination interface の egress には HTB root を置き、US・AP・EU の class と netem leaf を作る。source server IP
-の u32 filter で source region class を選び、destination server region との同異から delay/rate を決める。
-app1↔db1 の2方向は same profile、それ以外の10方向は cross profile を使う。
+の u32 filter で source region class を選び、source/destination server region の組から delay/rate を決める。
+app1↔db1 の2方向は same profile、それ以外の10方向は AP-EU・EU-US・AP-US のいずれかの region pair profile を使う。
+pair profile は双方向で共通である。
 
 既存 child を持つ HTB root は in-place replace できないため、更新 transaction ごとに Router 専用 root qdisc を
 削除して完全な tree を再構築する。途中失敗時は直前の candidate について同じ処理を行い、last-known-good を戻す。
 nft batch は一括検査後に table 単位で反映する。tc の複数 interface 更新自体は kernel 上で原子的ではないため、
 外部 commit と成功報告は全 interface と RDS が成功した後に限定し、失敗時 rollback で整合させる。
 
-production default は次のとおりである。
+production default は次のとおりである。各値は Router の環境変数で個別に変更できる。
 
 | Classification | Additional end-to-end delay | Bandwidth ceiling |
 |---|---:|---:|
 | same region | 0 ms | 1 Gbps |
-| cross region | 200 ms | 200 Mbps |
+| AP↔EU | 200 ms | 200 Mbps |
+| EU↔US | 200 ms | 200 Mbps |
+| AP↔US | 200 ms | 200 Mbps |
 
 サーバー間の200 msはRTTであり、Routerは各方向のtcへ100 msずつ設定する。クライアントからのHTTP通信では、
 Envoyがリクエスト処理へ200 msを1回注入する。

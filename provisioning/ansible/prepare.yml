@@ -21,15 +21,46 @@
           - --directory={{ repo_root }}/webapp
           - --exclude=*_test.go
           - --exclude=go/isureal
+          - --exclude=ruby/.bundle
+          - --exclude=ruby/vendor
+          - --exclude=ruby/test
+          - --exclude=rust/isureal
+          - --exclude=rust/target
+          - --exclude=rust/tests
           - --exclude=php/vendor
           - --exclude=php/tests
           - --exclude=php/.phpunit.cache
           - --exclude=sql/002-seed.sql
           - go
+          - ruby
+          - rust
           - php
           - sql
       changed_when: true
       when: "'webapp' in prepare_components"
+
+    - name: Archive isureal-guard source
+      ansible.builtin.command:
+        argv:
+          - tar
+          - --create
+          - --gzip
+          - --file={{ build_dir }}/guard.tar.gz
+          - --directory={{ repo_root }}/guard
+          - --exclude=*_test.go
+          - .
+      changed_when: true
+      when: "'guard' in prepare_components"
+
+    # 取り除いたあとも「作問」が残っていれば失敗する
+    - name: Remove tests and [作問] comments from distributed sources
+      ansible.builtin.command:
+        argv:
+          - python3
+          - "{{ playbook_dir }}/scripts/sanitize_archive.py"
+          - "{{ build_dir }}/{{ item }}.tar.gz"
+      loop: "{{ ['webapp', 'guard'] | intersect(prepare_components) }}"
+      changed_when: true
 
     - name: Build frontend
       ansible.builtin.shell: |
