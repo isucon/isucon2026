@@ -33,8 +33,10 @@ export function userHandlers(db: pg.Pool) {
       } = await readJSON(c, {
         username: "string",
         displayName: "string",
+        // [作問] 登録時は自動的に国からリージョンを決めるべきかも。新方針では各リージョン1台ずつになったので
         region: "string",
       });
+      c.set("username", username);
       if (
         !usernamePattern.test(username) ||
         !validUserText(displayName, 1, 100) ||
@@ -71,6 +73,7 @@ export function userHandlers(db: pg.Pool) {
         username: "string",
         secretKey: "string",
       });
+      c.set("username", username);
       if (!usernamePattern.test(username)) fail(401, "invalid_credentials");
       const result = await transaction(db, async (tx) => {
         const user =
@@ -150,6 +153,7 @@ export function userHandlers(db: pg.Pool) {
       )
         fail(400, "invalid_profile");
       const user = await transaction(db, async (tx) => {
+        // [作問] 退会後に更新されることがあるが、それを参照する手段がないので良しとし、仕様を定めない
         if (b.displayName != null)
           await exec(
             tx,

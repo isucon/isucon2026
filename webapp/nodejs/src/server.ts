@@ -2,9 +2,10 @@ import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
-import { logger } from "hono/logger";
 import type pg from "pg";
 import { validRegion } from "./core.js";
+import { actionLogMiddleware, type LogOutput } from "./action_log.js";
+import { ipBanMiddleware } from "./ip_ban.js";
 import {
   type Env,
   sessionMiddleware,
@@ -22,17 +23,23 @@ import { notificationsHandler } from "./notification_api.js";
 export function createApp(
   db: pg.Pool,
   region: string,
-  options: { logging?: boolean } = {},
+  options: { logLevel?: string; logOutput?: LogOutput } = {},
 ) {
   if (!validRegion(region)) throw new Error("invalid server region: " + region);
   const app = new Hono<Env>();
-  if (options.logging !== false) app.use(logger());
+  app.use(
+    actionLogMiddleware(
+      options.logLevel ?? "debug",
+      options.logOutput ?? process.stdout,
+    ),
+  );
   app.onError((error, c) => {
     const status = error instanceof HTTPException ? error.status : 500;
     if (status >= 500) console.error(error);
     return c.json({ error: error.message }, status);
   });
   app.notFound((c) => c.json({ error: "Not Found" }, 404));
+  app.use(ipBanMiddleware(db));
   const auth = sessionMiddleware(db),
     regional = regionMiddleware(region),
     adminAuth = adminSessionMiddleware(db);

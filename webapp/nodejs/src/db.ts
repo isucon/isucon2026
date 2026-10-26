@@ -11,6 +11,7 @@ export const configFromEnv = () => ({
   user: process.env.ISUREAL_DB_USER || "isureal",
   password: process.env.ISUREAL_DB_PASSWORD || "isureal",
   database: process.env.ISUREAL_DB_NAME || "isureal",
+  logLevel: process.env.ISUREAL_LOG_LEVEL || "debug",
 });
 export type Config = ReturnType<typeof configFromEnv>;
 export type DB = pg.Pool | pg.PoolClient;

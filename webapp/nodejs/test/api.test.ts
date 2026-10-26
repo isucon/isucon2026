@@ -5,6 +5,18 @@ import pg from "pg";
 import { unzipSync, strFromU8 } from "fflate";
 import { createApp } from "../src/server.js";
 import { hash } from "../src/core.js";
+import jpeg from "jpeg-js";
+
+const jpegImage = (width: number, height: number) =>
+  new Uint8Array(
+    jpeg.encode(
+      { width, height, data: Buffer.alloc(width * height * 4, 128) },
+      80,
+    ).data,
+  );
+const postImage = jpegImage(64, 64),
+  mojiImage = jpegImage(32, 32),
+  profileImage = jpegImage(16, 16);
 
 const dsn = process.env.ISUREAL_NODE_TEST_DSN;
 test(
@@ -24,7 +36,7 @@ test(
           request: (path: string, init?: RequestInit) =>
             fetch(new URL(path, process.env.ISUREAL_TEST_BASE_URL), init),
         }
-      : createApp(db, "asia", { logging: false });
+      : createApp(db, "asia", { logOutput: { write: () => true } });
     const request = async (
       method: string,
       path: string,
@@ -155,7 +167,7 @@ test(
       const form = new FormData();
       form.set(
         "image",
-        new Blob(["jpeg"], { type: "image/jpeg" }),
+        new Blob([postImage], { type: "image/jpeg" }),
         "image.jpg",
       );
       form.set("caption", "caption");
@@ -188,7 +200,7 @@ test(
       400,
     );
     const img = await request("GET", ap.imageUrl);
-    assert.equal(await img.text(), "jpeg");
+    assert.deepEqual(new Uint8Array(await img.arrayBuffer()), postImage);
     assert.equal(img.headers.get("cache-control"), "no-store");
     await request("GET", ap.imageUrl + "&exp=1", "", undefined, 403);
     await request(
@@ -220,7 +232,7 @@ test(
     );
     const react = async () => {
       const f = new FormData();
-      f.set("image", new Blob(["reaction"]), "r.jpg");
+      f.set("image", new Blob([mojiImage]), "r.jpg");
       f.set("reactionType", "heart");
       return (
         await request(
@@ -234,6 +246,21 @@ test(
     };
     const r1 = await react(),
       r2 = await react();
+    for (const [image, path, error] of [
+      [jpegImage(4097, 1), "/api/posts", "invalid_post"],
+      [new TextEncoder().encode("jpeg"), "/api/posts", "invalid_post"],
+      [jpegImage(513, 1), `/api/posts/${ap.id}/realmojis`, "invalid_realmoji"],
+      [jpegImage(1, 513), `/api/posts/${ap.id}/realmojis`, "invalid_realmoji"],
+    ] as const) {
+      const f = new FormData();
+      f.set("image", new Blob([image]), "image.jpg");
+      f.set("caption", "caption");
+      f.set("visibility", "public");
+      f.set("location_kind", "none");
+      f.set("reactionType", "heart");
+      const res = await request("POST", path, bob.token, f, 400);
+      assert.deepEqual(await res.json(), { error });
+    }
     await request("GET", r1.imageUrl, "", undefined, 403);
     await request("GET", r2.imageUrl);
     assert.equal(
@@ -264,7 +291,7 @@ test(
         ).arrayBuffer(),
       ),
     );
-    assert.equal(strFromU8(zip["images/000001.jpg"]), "jpeg");
+    assert.deepEqual(zip["images/000001.jpg"], postImage);
     assert.equal(JSON.parse(strFromU8(zip["posts.json"]))[0].id, ap.id);
     const fr = await (
       await request(
@@ -361,9 +388,23 @@ test(
         Authorization: "Bearer " + alice.token,
         "Content-Type": "image/jpeg",
       },
-      body: "profile",
+      body: profileImage,
     });
     assert.equal(profile.status, 204);
+    for (const body of [jpegImage(513, 1), new TextEncoder().encode("jpeg")]) {
+      const rejected = await app.request("/api/me/profile-image", {
+        method: "PUT",
+        headers: {
+          Authorization: "Bearer " + alice.token,
+          "Content-Type": "image/jpeg",
+        },
+        body,
+      });
+      assert.equal(rejected.status, 400);
+      assert.deepEqual(await rejected.json(), {
+        error: "invalid_profile_image",
+      });
+    }
     const me = await (await request("GET", "/api/me", alice.token)).json();
     await request("GET", me.profileImageUrl);
     await request(
@@ -478,7 +519,7 @@ test(
           request: (path: string, init?: RequestInit) =>
             fetch(new URL(path, process.env.ISUREAL_TEST_BASE_URL), init),
         }
-      : createApp(db, "asia", { logging: false });
+      : createApp(db, "asia", { logOutput: { write: () => true } });
     const req = async (path: string, method = "GET", body?: unknown) =>
       app.request(path, {
         method,
@@ -612,5 +653,73 @@ test(
     } finally {
       await db.query("DROP FUNCTION reject_node_test_session() CASCADE");
     }
+  },
+);
+test(
+  "IP bans and action logs follow Go",
+  { skip: !dsn || !!process.env.ISUREAL_TEST_BASE_URL },
+  async (t) => {
+    const db = new pg.Pool({ connectionString: dsn, max: 30 });
+    t.after(() => db.end());
+    await db.query(
+      await readFile(
+        new URL("../../sql/001-schema.sql", import.meta.url),
+        "utf8",
+      ),
+    );
+    const lines: string[] = [];
+    const app = createApp(db, "asia", {
+      logOutput: { write: (line: string) => lines.push(line) },
+    });
+    const lastLog = () => JSON.parse(lines.at(-1)!);
+    const login = (ip: string) =>
+      app.request("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Client-IP": ip },
+        body: JSON.stringify({ username: "nobody", secretKey: "x" }),
+      });
+    assert.equal((await login("192.0.2.1")).status, 401);
+    assert.equal(
+      lines.at(-1),
+      '{"action":"login","ip":"192.0.2.1","level":"info","status":401,"user_id":null,"username":"nobody"}\n',
+    );
+    await app.request("/api/me", { headers: { "X-Client-IP": "192.0.2.1" } });
+    assert.deepEqual(lastLog(), {
+      action: "get_me",
+      ip: "192.0.2.1",
+      level: "debug",
+      status: 401,
+      user_id: null,
+    });
+    await app.request("/api/unknown", { method: "POST" });
+    assert.equal(lastLog().action, null);
+    assert.equal(lastLog().status, 404);
+
+    await db.query(
+      "INSERT INTO ip_bans (ip, banned_until) VALUES ('192.0.2.1', clock_timestamp() + interval '1 minute'), ('192.0.2.2', clock_timestamp() - interval '1 second')",
+    );
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    const banned = await login("192.0.2.1");
+    assert.equal(banned.status, 403);
+    assert.deepEqual(await banned.json(), { error: "ip_banned" });
+    assert.deepEqual(lastLog(), {
+      action: "login",
+      ip: "192.0.2.1",
+      level: "info",
+      status: 403,
+      user_id: null,
+      username: null,
+    });
+    assert.equal((await login("192.0.2.2")).status, 401);
+
+    const quiet: string[] = [];
+    const infoApp = createApp(db, "asia", {
+      logLevel: "info",
+      logOutput: { write: (line: string) => quiet.push(line) },
+    });
+    await infoApp.request("/api/me");
+    assert.equal(quiet.length, 0);
+    await infoApp.request("/api/auth/logout", { method: "POST" });
+    assert.equal(JSON.parse(quiet[0]).action, "logout");
   },
 );

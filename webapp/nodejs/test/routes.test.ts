@@ -6,11 +6,13 @@ import { createApp } from "../src/server.js";
 
 test("every Go route is present with the same authentication boundary", async () => {
   const db = {
-    query: () => {
+    // Only the IP ban list, which every request checks, may be read.
+    query: (sql: string) => {
+      if (sql.includes("FROM ip_bans")) return { rows: [] };
       throw new Error("unexpected database access");
     },
   } as unknown as pg.Pool;
-  const app = createApp(db, "asia", { logging: false });
+  const app = createApp(db, "asia", { logOutput: { write: () => true } });
   const source = await readFile(
     new URL("../../go/server.go", import.meta.url),
     "utf8",
@@ -38,11 +40,13 @@ test("every Go route is present with the same authentication boundary", async ()
 });
 test("malformed image signatures are rejected before querying the database", async () => {
   const db = {
-    query: () => {
+    // Only the IP ban list, which every request checks, may be read.
+    query: (sql: string) => {
+      if (sql.includes("FROM ip_bans")) return { rows: [] };
       throw new Error("unexpected database access");
     },
   } as unknown as pg.Pool;
-  const app = createApp(db, "asia", { logging: false });
+  const app = createApp(db, "asia", { logOutput: { write: () => true } });
   for (const query of [
     "",
     "exp=999999999999999999999999&sig=x",

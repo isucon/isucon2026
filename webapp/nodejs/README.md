@@ -35,11 +35,16 @@ Configuration matches Go:
 | `ISUREAL_DB_USER` | `isureal` |
 | `ISUREAL_DB_PASSWORD` | `isureal` |
 | `ISUREAL_DB_NAME` | `isureal` |
+| `ISUREAL_LOG_LEVEL` | `debug` |
 
 The connection pool has a maximum of 30 connections.
 Initialization uses the shared SQL reset script and returns `{"language":"nodejs"}`.
-Existing provisioning and container definitions continue to select Go; this
-directory provides the separately runnable Node.js implementation.
+As in Go, every request is written to stdout as one JSON action log line
+(`ISUREAL_LOG_LEVEL` is `debug`, `info`, or `error`), requests from IPs in
+`ip_bans` get `403 ip_banned`, and uploaded images must decode as JPEG within
+the Go size limits. On the problem servers the implementation runs as
+`isureal-nodejs.service`; in the dev environment, start it with
+`ISUREAL_WEBAPP_LANGUAGE=nodejs make dev-up`.
 
 ## Verify
 
@@ -50,7 +55,7 @@ npm run format:check
 npm test
 ```
 
-Without a database URL, the two database integration tests are skipped.
+Without a database URL, the database integration tests are skipped.
 To run all tests, provide a **disposable database**: the tests recreate its
 application tables using `../sql/001-schema.sql`.
 

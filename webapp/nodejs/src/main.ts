@@ -4,5 +4,5 @@ import { createApp } from "./server.js";
 const config = configFromEnv();
 const db = createPool(config);
 await db.query("SELECT 1");
-const app = createApp(db, config.region);
+const app = createApp(db, config.region, { logLevel: config.logLevel });
 serve({ fetch: app.fetch, port: 8080 });

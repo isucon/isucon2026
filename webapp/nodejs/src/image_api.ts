@@ -3,6 +3,7 @@ import type pg from "pg";
 import { type C, noContent } from "./http.js";
 import { fail, imageSigningKey, imageSignature } from "./core.js";
 import { exec, first, firstScalar, transaction } from "./db.js";
+import { decodeJPEG } from "./jpeg.js";
 export function imageHandlers(db: pg.Pool) {
   return {
     get: async (c: C) => {
@@ -53,8 +54,11 @@ export function imageHandlers(db: pg.Pool) {
     putProfile: async (c: C) => {
       if (c.req.header("Content-Type") !== "image/jpeg")
         fail(415, "unsupported_media_type");
-      const data = Buffer.from(await c.req.arrayBuffer()),
-        id = c.var.session.user_id;
+      const data = Buffer.from(await c.req.arrayBuffer());
+      const img = decodeJPEG(data) ?? fail(400, "invalid_profile_image");
+      if (img.width > 512 || img.height > 512)
+        fail(400, "invalid_profile_image");
+      const id = c.var.session.user_id;
       await transaction(db, async (tx) => {
         const oldID = await firstScalar<string | null>(
           tx,
