@@ -1,27 +1,27 @@
-import { Link, NavLink } from "react-router-dom";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Link, NavLink } from 'react-router-dom';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   type CurrentPostingWindow,
   type FeedKind,
   getCurrentPostingWindow,
   getFeed,
   type Post,
-} from "../../api/posts";
-import { APIError } from "../../api/client";
-import { StateView } from "../../components/UI";
+} from '../../api/posts';
+import { APIError } from '../../api/client';
+import { StateView } from '../../components/UI';
 const labels: Record<FeedKind, string> = {
-  friends: "My friends",
-  "friends-of-friends": "Friends of friends",
-  public: "公開",
-  following: "フォロー中",
+  friends: 'My friends',
+  'friends-of-friends': 'Friends of friends',
+  public: '公開',
+  following: 'フォロー中',
 };
 export function FeedTabs() {
   return (
-    <nav className="tabs feed-tabs" aria-label="フィード">
+    <nav className='tabs feed-tabs' aria-label='フィード'>
       {Object.entries(labels).map(([kind, label]) => (
         <NavLink
           key={kind}
-          to={kind === "friends" ? "/" : `/feeds/${kind}`}
+          to={kind === 'friends' ? '/' : `/feeds/${kind}`}
           end
         >
           {label}
@@ -34,21 +34,23 @@ export function FeedPage({ feed }: { feed: FeedKind }) {
   const [items, setItems] = useState<Post[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [error, setError] = useState('');
   const [gate, setGate] = useState<CurrentPostingWindow | null>(null);
   const request = useRef(0);
   const load = useCallback(async (next?: string) => {
     const id = ++request.current;
     setLoading(true);
-    setError("");
+    setError('');
     try {
-      const state = await getCurrentPostingWindow();
-      if (id !== request.current) return;
-      setGate(state);
-      if (!state.hasPosted) {
-        setItems([]);
-        setCursor(null);
-        return;
+      if (!next) {
+        const state = await getCurrentPostingWindow();
+        if (id !== request.current) return;
+        setGate(state);
+        if (!state.hasPosted) {
+          setItems([]);
+          setCursor(null);
+          return;
+        }
       }
       const page = await getFeed(feed, next);
       if (id !== request.current) return;
@@ -57,9 +59,9 @@ export function FeedPage({ feed }: { feed: FeedKind }) {
     } catch (reason) {
       if (id === request.current) {
         setError(
-          reason instanceof APIError && reason.message === "region_mismatch"
-            ? "接続先の地域を確認してください。"
-            : "写真を読み込めませんでした。",
+          reason instanceof APIError && reason.message === 'region_mismatch'
+            ? '接続先の地域を確認してください。'
+            : '写真を読み込めませんでした。',
         );
       }
     } finally {
@@ -77,13 +79,13 @@ export function FeedPage({ feed }: { feed: FeedKind }) {
   }, [load]);
   return (
     <section>
-      <h1 className="sr-only">{labels[feed]}フィード</h1>
+      <h1 className='sr-only'>{labels[feed]}フィード</h1>
       <FeedTabs />
       {error
         ? (
           <StateView
             title={error}
-            detail="接続を確認して、もう一度お試しください。"
+            detail='接続を確認して、もう一度お試しください。'
           >
             <button onClick={() => void load()}>再読み込み</button>
           </StateView>
@@ -91,35 +93,35 @@ export function FeedPage({ feed }: { feed: FeedKind }) {
         : !loading && gate && !gate.hasPosted
         ? (
           <StateView
-            icon="lock"
+            icon='lock'
             title={gate.canPost
-              ? "まずは、あなたの一枚。"
-              : "次の一枚を、待っています。"}
+              ? 'まずは、あなたの一枚。'
+              : '次の一枚を、待っています。'}
             detail={gate.canPost
-              ? "投稿すると、友達の写真が見られます。"
+              ? '投稿すると、友達の写真が見られます。'
               : gate.deletionCount >= 2
-              ? "この投稿期間の削除回数の上限に達しました。"
-              : "投稿時間が始まるとお知らせします。"}
+              ? 'この投稿期間の削除回数の上限に達しました。'
+              : '投稿時間が始まるとお知らせします。'}
           >
             {gate.canPost && (
-              <Link className="button" to="/posts/new">今日の一枚を投稿</Link>
+              <Link className='button' to='/posts/new'>今日の一枚を投稿</Link>
             )}
-            <Link className="text-link" to="/notifications">通知を見る</Link>
+            <Link className='text-link' to='/notifications'>通知を見る</Link>
           </StateView>
         )
         : (
           <>
-            <div className="feed-grid">
+            <div className='feed-grid'>
               {items.map((post) => (
-                <article className="post-card" key={post.id}>
-                  <div className="card-meta">
+                <article className='post-card' key={post.id}>
+                  <div className='card-meta'>
                     <Link to={`/users/${post.author.id}`}>
                       {post.author.displayName}
                     </Link>
                     <time dateTime={post.postedAt}>
-                      {new Date(post.postedAt).toLocaleTimeString("ja-JP", {
-                        hour: "2-digit",
-                        minute: "2-digit",
+                      {new Date(post.postedAt).toLocaleTimeString('ja-JP', {
+                        hour: '2-digit',
+                        minute: '2-digit',
                       })}
                     </time>
                   </div>
@@ -128,17 +130,17 @@ export function FeedPage({ feed }: { feed: FeedKind }) {
                     aria-label={`${post.author.displayName}の投稿を見る`}
                   >
                     <img
-                      className="post-image"
+                      className='post-image'
                       src={post.imageUrl}
                       alt={`${post.author.displayName}の投稿画像`}
                     />
                   </Link>
                   <p>{post.caption}</p>
-                  <p className="muted">
-                    {post.onTime ? "時間内" : `${post.lateSeconds}秒遅れ`}
-                    {post.location.kind === "approximate" &&
+                  <p className='muted'>
+                    {post.onTime ? '時間内' : `${post.lateSeconds}秒遅れ`}
+                    {post.location.kind === 'approximate' &&
                       ` · ${post.location.locality}`}
-                    {post.location.kind === "exact" &&
+                    {post.location.kind === 'exact' &&
                       ` · ${post.location.latitude}, ${post.location.longitude}`}
                   </p>
                 </article>
@@ -146,22 +148,22 @@ export function FeedPage({ feed }: { feed: FeedKind }) {
             </div>
             {!loading && items.length === 0 && (
               <StateView
-                title="まだ、一枚もありません。"
-                detail="友達が投稿すると、ここに写真が届きます。"
+                title='まだ、一枚もありません。'
+                detail='友達が投稿すると、ここに写真が届きます。'
               >
-                <Link className="button" to="/users">友達を探す</Link>
+                <Link className='button' to='/users'>友達を探す</Link>
               </StateView>
             )}
             {loading && (
               <StateView
                 busy
-                title="少しだけ、お待ちください。"
-                detail="みんなの一枚を読み込んでいます…"
+                title='少しだけ、お待ちください。'
+                detail='みんなの一枚を読み込んでいます…'
               />
             )}
             {cursor && !loading && (
               <button
-                className="secondary more"
+                className='secondary more'
                 onClick={() => void load(cursor)}
               >
                 さらに読み込む
