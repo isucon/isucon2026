@@ -33,6 +33,7 @@ async def current_session(request: Request, db: DB) -> Session:
     session = await find_session(db, token) if token is not None else None
     if session is None:
         raise APIError(HTTPStatus.UNAUTHORIZED, "invalid_session")
+    request.state.session = session
     return session
 
 
