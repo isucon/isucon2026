@@ -20,6 +20,7 @@ import {
 } from "./models.js";
 import { relationshipTx } from "./relationship_api.js";
 import { multipart } from "./post_api.js";
+import { decodeJPEG } from "./jpeg.js";
 export interface Comment {
   id: string;
   post_id: string;
@@ -178,8 +179,10 @@ export function interactionHandlers(db: pg.Pool) {
         )
       )
         return fail(400, "invalid_realmoji");
-      const data = Buffer.from(await image.arrayBuffer()),
-        actor = c.var.session.user_id,
+      const data = Buffer.from(await image.arrayBuffer());
+      const img = decodeJPEG(data) ?? fail(400, "invalid_realmoji");
+      if (img.width > 512 || img.height > 512) fail(400, "invalid_realmoji");
+      const actor = c.var.session.user_id,
         post =
           (await getPost(db, c.req.param("postId")!)) ??
           fail(403, "interaction_forbidden");

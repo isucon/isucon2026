@@ -15,7 +15,11 @@ export interface AdminSession {
   created_at: string;
 }
 export type Env = {
-  Variables: { session: Session; adminSession: AdminSession };
+  Variables: {
+    session: Session;
+    adminSession: AdminSession;
+    username: string;
+  };
 };
 export type C = Context<Env>;
 type FieldType = "string" | "number";

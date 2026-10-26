@@ -31,6 +31,7 @@ import {
   windowResponse,
   type PostingWindow,
 } from "./models.js";
+import { decodeJPEG } from "./jpeg.js";
 const validVisibility = (v: string) =>
   ["friends", "friends_of_friends", "public"].includes(v);
 export async function multipart(c: C) {
@@ -69,8 +70,11 @@ export function postHandlers(db: pg.Pool) {
         locality: form.has("locality") ? field(form, "locality") : null,
       };
       if (!validLocation(location)) fail(400, "invalid_post");
-      const data = Buffer.from(await image.arrayBuffer()),
-        userID = c.var.session.user_id;
+      const data = Buffer.from(await image.arrayBuffer());
+      // [作問] 画像のバリデーションを全データを読んでから行なっている(改善するべき)
+      const img = decodeJPEG(data) ?? fail(400, "invalid_post");
+      if (img.width > 4096 || img.height > 4096) fail(400, "invalid_post");
+      const userID = c.var.session.user_id;
       const result = await transaction(db, async (tx) => {
         await one(
           tx,
