@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	routev3 "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
 	bandwidthv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/bandwidth_limit/v3"
 	faultv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/fault/v3"
@@ -67,9 +68,10 @@ func TestBuildRoutesMatrix(t *testing.T) {
 	if len(absent.Match.Headers) != 1 || !absent.Match.Headers[0].GetPresentMatch() || !absent.Match.Headers[0].InvertMatch {
 		t.Fatalf("default route does not match header absence: %+v", absent.Match.Headers)
 	}
-	if len(absent.RequestHeadersToAdd) != 1 || absent.RequestHeadersToAdd[0].GetHeader().GetValue() != "JP" {
+	if len(absent.RequestHeadersToAdd) != 2 || absent.RequestHeadersToAdd[0].GetHeader().GetValue() != "JP" {
 		t.Fatalf("default country was not inserted: %+v", absent.RequestHeadersToAdd)
 	}
+	assertClientIPHeader(t, absent)
 
 	invalid := app.Routes[len(domain.Countries())+1]
 	if invalid.GetDirectResponse().GetStatus() != 400 {
@@ -125,6 +127,10 @@ func assertCountryRoute(t *testing.T, route *routev3.Route, country, cluster str
 	if route.GetRoute().GetCluster() != cluster {
 		t.Fatalf("cluster = %q, want %q", route.GetRoute().GetCluster(), cluster)
 	}
+	if len(route.RequestHeadersToAdd) != 1 {
+		t.Fatalf("unexpected headers to add: %+v", route.RequestHeadersToAdd)
+	}
+	assertClientIPHeader(t, route)
 	bandwidth := new(bandwidthv3.BandwidthLimit)
 	if err := route.TypedPerFilterConfig[bandwidthFilterName].UnmarshalTo(bandwidth); err != nil {
 		t.Fatal(err)
@@ -145,6 +151,15 @@ func assertCountryRoute(t *testing.T, route *routev3.Route, country, cluster str
 	}
 	if fault.GetDelay().GetFixedDelay().AsDuration() != delay || fault.GetDelay().GetPercentage().GetNumerator() != 100 {
 		t.Fatalf("unexpected fault config: %+v", fault)
+	}
+}
+
+func assertClientIPHeader(t *testing.T, route *routev3.Route) {
+	t.Helper()
+	option := route.RequestHeadersToAdd[len(route.RequestHeadersToAdd)-1]
+	if option.GetHeader().GetKey() != "x-client-ip" || option.GetHeader().GetValue() != "%DOWNSTREAM_DIRECT_REMOTE_ADDRESS_WITHOUT_PORT%" ||
+		option.GetAppendAction() != corev3.HeaderValueOption_ADD_IF_ABSENT {
+		t.Fatalf("client IP is not filled only when absent: %+v", option)
 	}
 }
 
