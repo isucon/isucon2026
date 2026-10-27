@@ -52,6 +52,24 @@
   become_user: isucon
   changed_when: true
 
+- name: Install Python packages for webapp/python
+  ansible.builtin.command:
+    cmd: make install
+    chdir: /home/isucon/webapp/python
+  environment:
+    PATH: "/home/isucon/local/uv:{{ ansible_facts.env.PATH }}"
+  become_user: isucon
+  changed_when: true
+
+- name: Install packages for webapp/php
+  ansible.builtin.command:
+    cmd: make install
+    chdir: /home/isucon/webapp/php
+  environment:
+    PATH: "/home/isucon/local/php/bin:{{ ansible_facts.env.PATH }}"
+  become_user: isucon
+  changed_when: true
+
 - name: Install Perl modules for webapp/perl
   ansible.builtin.command:
     cmd: make install
@@ -78,8 +96,15 @@
     src: "{{ item }}"
     dest: "/etc/systemd/system/{{ item }}"
     mode: "0644"
-  loop: [isureal-go.service, isureal-ruby.service, isureal-rust.service, isureal-perl.service]
+  loop: [isureal-go.service, isureal-ruby.service, isureal-rust.service, isureal-python.service, isureal-php.service, isureal-perl.service]
   register: webapp_unit
+
+# Go 実装と同じ :8080 を使うので、有効にはしない（docs/application-manual.md の手順で切り替える）
+- name: Install nginx site for webapp/php
+  ansible.builtin.copy:
+    src: isureal-php.nginx.conf
+    dest: /etc/nginx/sites-available/isureal-php.conf
+    mode: "0644"
 
 - name: Reload systemd
   ansible.builtin.systemd_service:
