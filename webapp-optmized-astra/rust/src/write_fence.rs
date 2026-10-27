@@ -1,4 +1,5 @@
 //! Wait for global write visibility after committing, outside the DB transaction.
+use axum::body::HttpBody as _;
 use axum::extract::{Request, State};
 use axum::http::{Method, StatusCode};
 use axum::middleware::Next;
@@ -38,12 +39,17 @@ pub async fn write_fence_middleware(
     next: Next,
 ) -> Response {
     let mutation = !matches!(*req.method(), Method::GET | Method::HEAD);
+    let _admission = if mutation && let Some(WriteFence::Native(native)) = &fence {
+        Some(native.admit(req.body().size_hint().exact()).await)
+    } else {
+        None
+    };
     let response = next.run(req).await;
     // Capture WAL only after the handler has completed its commits. Failed
     // responses are fenced as well, since a handler may have committed work.
     // The outer run_to_completion layer also finishes this after disconnects.
     if mutation
-        && let Some(fence) = fence
+        && let Some(fence) = &fence
         && let Err(err) = fence.wait().await
     {
         logger::error("failed to make write visible on replicas", &err);
@@ -273,6 +279,14 @@ mod tests {
                     .await
                     .is_err()
             );
+            if native {
+                // The second batch must reach its own replay barrier while
+                // the first is still pending; it cannot reuse an older LSN.
+                let barriers: i64 = sqlx::query_scalar(
+                    "SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND query='COMMIT' AND wait_event='SyncRep'",
+                ).fetch_one(&primary).await.unwrap();
+                assert!(barriers >= 2, "only {barriers} concurrent barriers");
+            }
             // GET has no additional regional barrier in this mode.
             assert_eq!(
                 timeout(
@@ -368,6 +382,38 @@ mod tests {
                         .unwrap(),
                     0
                 );
+                // A large body consumes the admission budget until remote
+                // visibility, even after its handler releases all SQL locks.
+                sqlx::query("SELECT pg_wal_replay_pause()")
+                    .execute(&replica2).await.unwrap();
+                timeout(Duration::from_secs(2), async {
+                    while !sqlx::query_scalar::<_, bool>("SELECT pg_get_wal_replay_pause_state()='paused'")
+                        .fetch_one(&replica2).await.unwrap() {
+                        sleep(Duration::from_millis(5)).await;
+                    }
+                }).await.unwrap();
+                let large = tokio::spawn(app.clone().oneshot(
+                    HttpRequest::builder().method("POST").uri("/write")
+                        .body(Body::from(vec![0u8; 8 * 1024 * 1024])).unwrap(),
+                ));
+                wait_value(&primary, &table, 5).await;
+                let mut queued = tokio::spawn(app.clone().oneshot(
+                    HttpRequest::builder().method("POST").uri("/write")
+                        .body(Body::empty()).unwrap(),
+                ));
+                assert!(timeout(Duration::from_millis(100), &mut queued).await.is_err());
+                assert_eq!(value(&primary, &table).await, 5, "queued mutation bypassed admission");
+                assert_eq!(value(&replica2, &table).await, 4);
+                assert_eq!(timeout(Duration::from_millis(100), app.clone().oneshot(
+                    HttpRequest::get("/read").body(Body::empty()).unwrap(),
+                )).await.unwrap().unwrap().status(), StatusCode::OK);
+                sqlx::query("SELECT pg_wal_replay_resume()")
+                    .execute(&replica2).await.unwrap();
+                for response in [large, queued] {
+                    assert_eq!(timeout(Duration::from_secs(3), response).await.unwrap().unwrap().unwrap().status(), StatusCode::NO_CONTENT);
+                }
+                assert_eq!(value(&replica, &table).await, 6);
+                assert_eq!(value(&replica2, &table).await, 6);
             }
         })
         .catch_unwind()
