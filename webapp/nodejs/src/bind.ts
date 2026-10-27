@@ -1,5 +1,5 @@
 import type { Context } from "hono";
-import { HTTPError } from "./api_error.ts";
+import { errorMessage, HTTPError } from "./api_error.ts";
 import { parseRFC3339 } from "./time.ts";
 
 type FieldTypes = {
@@ -72,7 +72,7 @@ export function parseQuery(raw: string): { values: Values; error: string | null 
       key = queryUnescape(separator < 0 ? pair : pair.slice(0, separator));
       value = queryUnescape(separator < 0 ? "" : pair.slice(separator + 1));
     } catch (err) {
-      error ??= (err as Error).message;
+      error ??= errorMessage(err);
       continue;
     }
     const list = values.get(key);
@@ -132,7 +132,7 @@ function bindValues(
     try {
       input[name] = convert(values[0], field.type ?? "string");
     } catch (err) {
-      throw HTTPError.badRequest(`${key}: ${(err as Error).message}`);
+      throw HTTPError.badRequest(`${key}: ${errorMessage(err)}`);
     }
   }
 }
@@ -254,13 +254,13 @@ function bindJSON(input: Record<string, unknown>, spec: BindSpec, text: string):
   if (typeof data !== "object" || Array.isArray(data)) {
     throw HTTPError.badRequest(`json: cannot unmarshal ${jsonType(data)} into request`);
   }
-  const object = data as Record<string, unknown>;
+  const fields = new Map(Object.entries(data));
   for (const [name, field] of Object.entries(spec)) {
     const key = field.json;
-    if (key === undefined || !Object.hasOwn(object, key) || object[key] === null) {
+    const value = key === undefined ? undefined : fields.get(key);
+    if (key === undefined || value === undefined || value === null) {
       continue;
     }
-    const value = object[key];
     switch (field.type ?? "string") {
       case "string":
       case "stringPointer":

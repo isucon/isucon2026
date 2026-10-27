@@ -114,6 +114,11 @@ export async function createLoginSessionTx(tx: Tx, userID: string): Promise<Sess
 }
 
 async function getLoginSession(db: Queryer, sessionID: string): Promise<Session> {
-  const row = must(await db.get(`SELECT user_id, token_hash, created_at FROM login_sessions WHERE id = $1`, sessionID));
+  const row = must(
+    await db.get<{ user_id: string; token_hash: string; created_at: Temporal.Instant }>(
+      `SELECT user_id, token_hash, created_at FROM login_sessions WHERE id = $1`,
+      sessionID,
+    ),
+  );
   return { region: "", token: "", userID: row.user_id, tokenHash: row.token_hash, createdAt: row.created_at };
 }

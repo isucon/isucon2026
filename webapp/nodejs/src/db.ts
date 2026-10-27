@@ -1,6 +1,5 @@
 import pg from "pg";
 import type { Config } from "./config.ts";
-import { lookup } from "./lookup.ts";
 import { parsePostgresTimestamp } from "./time.ts";
 import { logError } from "./response.ts";
 
@@ -18,19 +17,18 @@ export class NoRowsError extends Error {
   }
 }
 
-export function must<T>(value: T): Exclude<T, undefined> {
+export function must<T>(value: T | undefined): T {
   if (value === undefined) {
     throw new NoRowsError();
   }
-  return value as Exclude<T, undefined>;
+  return value;
 }
 
-const typeParsers = {
-  [pg.types.builtins.INT8]: Number,
-  [pg.types.builtins.NUMERIC]: Number,
-  [pg.types.builtins.DATE]: (value: string) => value,
-  [pg.types.builtins.TIMESTAMPTZ]: parsePostgresTimestamp,
-} as const;
+const types = new pg.TypeOverrides();
+types.setTypeParser(pg.types.builtins.INT8, Number);
+types.setTypeParser(pg.types.builtins.NUMERIC, Number);
+types.setTypeParser(pg.types.builtins.DATE, (value) => value);
+types.setTypeParser(pg.types.builtins.TIMESTAMPTZ, parsePostgresTimestamp);
 
 const statementNames = new Map<string, string>();
 
@@ -54,10 +52,7 @@ export class DB implements Queryer {
       password: config.dbPassword,
       database: config.dbName,
       max: size,
-      types: {
-        getTypeParser: ((oid: number, format?: "text" | "binary") =>
-          lookup(typeParsers, oid) ?? pg.types.getTypeParser(oid, format)) as typeof pg.types.getTypeParser,
-      },
+      types,
     });
     this.#pool.on("error", (err) => logError("database connection failed", err));
   }
@@ -86,7 +81,7 @@ export class DB implements Queryer {
     try {
       await client.query("BEGIN");
     } catch (err) {
-      client.release(err as Error);
+      client.release(true);
       throw err;
     }
     return new Tx(client);
@@ -139,7 +134,7 @@ export class Tx implements Queryer {
     try {
       await this.#client.query(command);
     } catch (err) {
-      this.#client.release(err as Error);
+      this.#client.release(true);
       throw err;
     }
     this.#client.release();
