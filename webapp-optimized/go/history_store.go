@@ -348,9 +348,9 @@ func (s *historyStore) sign() {
 			posts, reactions := len(s.posts), len(s.reactions)
 			s.mu.RUnlock()
 			// The current step (at startup) is signed by every CPU at once.
-			workers, pace := runtime.NumCPU(), 0
+			workers := runtime.NumCPU()
 			if exp != current {
-				workers, pace = 1, signPace
+				workers = 1
 			}
 			var wg sync.WaitGroup
 			for w := range workers {
@@ -358,7 +358,10 @@ func (s *historyStore) sign() {
 					for start := w * 256; start < posts+reactions; start += workers * 256 {
 						t := time.Now()
 						s.signRange(start, min(start+256, posts+reactions), posts, exp)
-						time.Sleep(time.Since(t) * time.Duration(pace))
+						// Once the step has begun, the rest is signed at full speed.
+						if exp != imageURLExpiry(time.Now()) {
+							time.Sleep(time.Since(t) * signPace)
+						}
 					}
 				})
 			}
