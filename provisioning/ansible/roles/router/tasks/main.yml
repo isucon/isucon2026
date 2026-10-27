@@ -37,3 +37,10 @@
     src: 90-isucon-router.conf
     dest: /etc/sysctl.d/90-isucon-router.conf
     mode: "0644"
+
+
+- name: Batch ENA interrupts into NAPI polling
+  ansible.builtin.copy:
+    src: 90-isucon-router-napi.rules
+    dest: /etc/udev/rules.d/90-isucon-router-napi.rules
+    mode: "0644"
