@@ -27,6 +27,13 @@
           - --exclude=rust/isureal
           - --exclude=rust/target
           - --exclude=rust/tests
+          - --exclude=python/.venv
+          - --exclude=python/tests
+          - --exclude=__pycache__
+          - --exclude=.*_cache
+          - --exclude=php/vendor
+          - --exclude=php/tests
+          - --exclude=php/.phpunit.cache
           - --exclude=perl/local
           - --exclude=perl/t
           - --exclude=perl/hypnotoad.pid
@@ -34,6 +41,8 @@
           - go
           - ruby
           - rust
+          - python
+          - php
           - perl
           - sql
       changed_when: true
