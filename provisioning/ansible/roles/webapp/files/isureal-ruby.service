@@ -8,6 +8,7 @@ User=isucon
 Group=isucon
 WorkingDirectory=/home/isucon/webapp/ruby
 EnvironmentFile=/home/isucon/env.sh
+Environment=MALLOC_ARENA_MAX=2
 ExecStart=/home/isucon/local/ruby/bin/bundle exec puma -C config/puma.rb
 Restart=on-failure
 RestartSec=5
