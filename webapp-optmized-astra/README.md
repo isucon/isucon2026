@@ -190,3 +190,4 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261027T233258Z-team10 | Separate small image uploads from account mutation admission slots | PASS | 89,592 |
 | 20261027T233712Z-team10 | Retain Asia post upload bytes locally without cross-region cache push | PASS | 89,306 |
 | 20261027T234159Z-team10 | Expand pure image signature memoization from 8192 to 65536 entries | PASS | 95,017 |
+| 20261027T234548Z-team10 | Compare four Tokio workers per application with unchanged validation and write fences | PASS | 93,852 |
