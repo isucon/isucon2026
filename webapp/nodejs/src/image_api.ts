@@ -51,7 +51,7 @@ export function imageHandlers(db: pg.Pool) {
         )) ?? fail(403, "image_forbidden");
       if (exp <= unixSeconds(Temporal.Now.instant()))
         fail(403, "image_forbidden");
-      return new Response(new Uint8Array(object.data), {
+      return new Response(object.data, {
         headers: {
           "Content-Type": object.media_type,
           "Cache-Control": "no-store",
