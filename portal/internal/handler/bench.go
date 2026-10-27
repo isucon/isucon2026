@@ -37,6 +37,8 @@ func (h *Handler) BenchReceive(w http.ResponseWriter, r *http.Request) error {
 			args = append(args, req.InstanceName)
 			query += fmt.Sprintf(` AND instance_name = $%d`, len(args))
 		}
+		// Newly registered contest environments must wait for the Router.
+		query += ` AND NOT EXISTS (SELECT 1 FROM team_routers r WHERE r.team_id=benchmark_jobs.team_id AND r.public_ipv4_address IS NULL)`
 		query += ` ORDER BY id ASC LIMIT 1 FOR UPDATE`
 
 		jobs, err := model.QueryJobs(ctx, tx, query, args...)
@@ -53,6 +55,11 @@ func (h *Handler) BenchReceive(w http.ResponseWriter, r *http.Request) error {
 		if jobRow.Status != model.JobPending {
 			tx.Rollback()
 			continue
+		}
+		router, err := model.FindTeamRouter(ctx, tx, jobRow.TeamID)
+		if err != nil {
+			tx.Rollback()
+			return err
 		}
 		if err := model.StartJob(ctx, tx, jobRow, req.InstanceName); err != nil {
 			tx.Rollback()
@@ -84,6 +91,10 @@ func (h *Handler) BenchReceive(w http.ResponseWriter, r *http.Request) error {
 		}
 
 		extraArgs := []string{}
+		if router != nil && router.PublicIP.Valid {
+			targetIP = router.PublicIP.String
+			extraArgs = append(extraArgs, "--host", fmt.Sprintf("app.team%d-aws.127.0.0.1.nip.io", jobRow.TeamID))
+		}
 		if jobRow.PostValidation {
 			extraArgs = append(extraArgs, "--only-post-validation")
 		}
