@@ -21,7 +21,7 @@ func TestSurveyLatestAndHistory(t *testing.T) {
 	}
 	for i, data := range []string{
 		`{"language":"go","agent":"human","harness":"manual"}`,
-		`{"language":"rust","agent":"model-a","harness":"tool-a"}`,
+		`{"language":"rust","agent":"agent-a","harness":"tool-a","model":"model-a,model-b"}`,
 		`{"language":"go"}`,
 	} {
 		var jobID int64
@@ -52,18 +52,18 @@ func TestSurveyLatestAndHistory(t *testing.T) {
 			}
 		}
 		var latestJob int64
-		var language, agent, harness string
-		if err := conn.QueryRow(`SELECT benchmark_job_id,language,agent,harness FROM survey_responses WHERE team_id=$1`, teamID).Scan(&latestJob, &language, &agent, &harness); err != nil {
+		var language, agent, harness, models string
+		if err := conn.QueryRow(`SELECT benchmark_job_id,language,agent,harness,model FROM survey_responses WHERE team_id=$1`, teamID).Scan(&latestJob, &language, &agent, &harness, &models); err != nil {
 			t.Fatal(err)
 		}
-		wantAgent, wantHarness := "", ""
+		wantAgent, wantHarness, wantModels := "", "", ""
 		if i == 0 {
 			wantAgent, wantHarness = "human", "manual"
 		}
 		if i == 1 {
-			wantAgent, wantHarness = "model-a", "tool-a"
+			wantAgent, wantHarness, wantModels = "agent-a", "tool-a", "model-a,model-b"
 		}
-		if latestJob != jobID || language != survey.Language || agent != wantAgent || harness != wantHarness {
+		if latestJob != jobID || language != survey.Language || agent != wantAgent || harness != wantHarness || models != wantModels {
 			t.Fatalf("latest: %d %s %s %s", latestJob, language, agent, harness)
 		}
 		var count int
@@ -105,12 +105,12 @@ func TestSurveyLatestAndHistory(t *testing.T) {
 	if latestJobID == emptyJobID || historyCount != 3 {
 		t.Fatal("empty survey overwrote collected data")
 	}
-	var language, agent, harness string
+	var language, agent, harness, models string
 	var created, updated time.Time
-	if err := conn.QueryRow(`SELECT language,agent,harness,created_at,updated_at FROM survey_response_history WHERE team_id=$1 ORDER BY benchmark_job_id LIMIT 1`, teamID).Scan(&language, &agent, &harness, &created, &updated); err != nil {
+	if err := conn.QueryRow(`SELECT language,agent,harness,model,created_at,updated_at FROM survey_response_history WHERE team_id=$1 ORDER BY benchmark_job_id LIMIT 1`, teamID).Scan(&language, &agent, &harness, &models, &created, &updated); err != nil {
 		t.Fatal(err)
 	}
-	if language != "go" || agent != "human" || harness != "manual" || updated.Before(created) {
+	if language != "go" || agent != "human" || harness != "manual" || models != "" || updated.Before(created) {
 		t.Fatal("first survey snapshot was lost")
 	}
 	env := &job.Env{DB: conn}
@@ -131,7 +131,7 @@ func TestSurveyLatestAndHistory(t *testing.T) {
 func TestSurveyMigrationPreservesLegacyData(t *testing.T) {
 	conn := testkit.Database(t)
 	// Reproduce the schema before this migration, including its existing survey.
-	_, err := conn.Exec(`DROP TABLE IF EXISTS survey_response_history; ALTER TABLE survey_responses DROP COLUMN IF EXISTS agent, DROP COLUMN IF EXISTS harness; DELETE FROM schema_migrations WHERE version='005_survey_metadata.sql'; INSERT INTO survey_responses(team_id,benchmark_job_id,language,created_at,updated_at) VALUES(123,456,'ruby','2026-01-01','2026-01-02')`)
+	_, err := conn.Exec(`DROP TABLE IF EXISTS survey_response_history; ALTER TABLE survey_responses DROP COLUMN IF EXISTS agent, DROP COLUMN IF EXISTS harness; DELETE FROM schema_migrations WHERE version IN ('005_survey_metadata.sql','006_survey_model.sql'); INSERT INTO survey_responses(team_id,benchmark_job_id,language,created_at,updated_at) VALUES(123,456,'ruby','2026-01-01','2026-01-02')`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -142,11 +142,37 @@ func TestSurveyMigrationPreservesLegacyData(t *testing.T) {
 	}
 	for _, table := range []string{"survey_responses", "survey_response_history"} {
 		var count int
-		if err := conn.QueryRow(`SELECT count(*) FROM ` + table + ` WHERE team_id=123 AND benchmark_job_id=456 AND language='ruby' AND agent='' AND harness='' AND created_at='2026-01-01' AND updated_at='2026-01-02'`).Scan(&count); err != nil {
+		if err := conn.QueryRow(`SELECT count(*) FROM ` + table + ` WHERE team_id=123 AND benchmark_job_id=456 AND language='ruby' AND agent='' AND harness='' AND model='' AND created_at='2026-01-01' AND updated_at='2026-01-02'`).Scan(&count); err != nil {
 			t.Fatal(err)
 		}
 		if count != 1 {
 			t.Fatalf("%s: legacy data not preserved", table)
+		}
+	}
+}
+
+func TestSurveyModelMigrationPreservesSnapshots(t *testing.T) {
+	conn := testkit.Database(t)
+	for _, table := range []string{"survey_responses", "survey_response_history"} {
+		if _, err := conn.Exec(`ALTER TABLE ` + table + ` DROP COLUMN model; INSERT INTO ` + table + `(team_id,benchmark_job_id,language,agent,harness,created_at,updated_at) VALUES(123,456,'go','agent-a','tool-a','2026-01-01','2026-01-02')`); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := conn.Exec(`DELETE FROM schema_migrations WHERE version='006_survey_model.sql'`); err != nil {
+		t.Fatal(err)
+	}
+	for range 2 {
+		if err := db.Migrate(t.Context(), conn); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, table := range []string{"survey_responses", "survey_response_history"} {
+		var count int
+		if err := conn.QueryRow(`SELECT count(*) FROM ` + table + ` WHERE team_id=123 AND benchmark_job_id=456 AND language='go' AND agent='agent-a' AND harness='tool-a' AND model='' AND created_at='2026-01-01' AND updated_at='2026-01-02'`).Scan(&count); err != nil {
+			t.Fatal(err)
+		}
+		if count != 1 {
+			t.Fatalf("%s: snapshot changed on model migration", table)
 		}
 	}
 }

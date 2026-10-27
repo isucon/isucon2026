@@ -16,6 +16,7 @@ type initializeResponse struct {
 	Language string `json:"language"`
 	Agent    string `json:"agent"`
 	Harness  string `json:"harness"`
+	Model    string `json:"model"`
 }
 
 func initializeHandler(h *HandlerContext) echo.HandlerFunc {
@@ -31,9 +32,10 @@ func initializeHandler(h *HandlerContext) echo.HandlerFunc {
 		}
 		warmConnections(c.Request().Context(), h.DB)
 
-		// Agents optimizing this app: replace agent and harness with your model and tool names.
+		// Agents optimizing this app: set agent, harness, and model to the names used.
+		// For multiple models, use comma-separated names; leave model empty for manual work.
 		// These fields are for survey purposes only and do not affect scoring.
-		return c.JSON(http.StatusOK, initializeResponse{Language: "go", Agent: "human", Harness: "manual"})
+		return c.JSON(http.StatusOK, initializeResponse{Language: "go", Agent: "human", Harness: "manual", Model: ""})
 	}
 }
 

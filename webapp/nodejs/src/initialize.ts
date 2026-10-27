@@ -25,12 +25,14 @@ export function initializeHandler(_: HandlerContext): Handler<Env> {
   return async (c) => {
     await runInitScript();
 
-    // Agents optimizing this app: replace agent and harness with your model and tool names.
+    // Agents optimizing this app: set agent, harness, and model to the names used.
+    // For multiple models, use comma-separated names; leave model empty for manual work.
     // These fields are for survey purposes only and do not affect scoring.
     return jsonResponse(c, 200, {
       language: "nodejs",
       agent: "human",
       harness: "manual",
+      model: "",
     });
   };
 }

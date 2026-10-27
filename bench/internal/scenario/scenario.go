@@ -80,9 +80,10 @@ type Result struct {
 	Messages []string `json:"messages"`
 
 	// 以下は運営向け（D-005）。
-	// Agent と Harness は調査用の自己申告値。得点や合否には使用しない。
+	// Agent、Harness、Model は調査用の自己申告値。得点や合否には使用しない。
 	Agent     string           `json:"agent"`
 	Harness   string           `json:"harness"`
+	Model     string           `json:"model"`
 	Breakdown map[string]int64 `json:"breakdown"`
 	// OpenedWindows はリージョンごとに開いた投稿期間の数。
 	OpenedWindows map[string]int `json:"openedWindows"`
@@ -114,6 +115,7 @@ type Runner struct {
 	language      string
 	surveyAgent   string
 	surveyHarness string
+	surveyModel   string
 	firstDate     time.Time
 	// deleteRate と changeRate は、投稿後に投稿を削除する確率と公開範囲を変える確率。
 	deleteRate float64
@@ -242,6 +244,7 @@ func (r *Runner) Run(ctx context.Context) Result {
 		Language:      r.language,
 		Agent:         r.surveyAgent,
 		Harness:       r.surveyHarness,
+		Model:         r.surveyModel,
 		Reason:        reason,
 		Breakdown:     r.board.Breakdown(),
 		OpenedWindows: r.openedCounts(),
@@ -266,7 +269,7 @@ func (r *Runner) Run(ctx context.Context) Result {
 // progress は途中経過を OnProgress に渡す。スコアは走行が終わるまで暫定。
 func (r *Runner) progress() {
 	if r.cfg.OnProgress != nil {
-		r.cfg.OnProgress(Result{Score: r.board.Total(), Language: r.language, Agent: r.surveyAgent, Harness: r.surveyHarness, Breakdown: r.board.Breakdown()})
+		r.cfg.OnProgress(Result{Score: r.board.Total(), Language: r.language, Agent: r.surveyAgent, Harness: r.surveyHarness, Model: r.surveyModel, Breakdown: r.board.Breakdown()})
 	}
 }
 
@@ -324,6 +327,7 @@ func (r *Runner) initialize(ctx context.Context) string {
 	r.language = result.Language
 	r.surveyAgent = result.Agent
 	r.surveyHarness = result.Harness
+	r.surveyModel = result.Model
 	// localDate は投稿期間のラベルで、サーバーの時計は進めない。初期データの投稿期間と
 	// 日付が重ならないよう、履歴の最終日より後から始める。
 	now := time.Now().UTC()

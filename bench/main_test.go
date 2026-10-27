@@ -89,7 +89,7 @@ func TestSupervisorIntegration(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests.Add(1)
 		if r.URL.Path == "/api/initialize" && initialized.Load() {
-			io.WriteString(w, `{"language":"go","agent":"human","harness":"manual"}`)
+			io.WriteString(w, `{"language":"go","agent":"custom-agent","harness":"custom-tool","model":"model-a,model-b"}`)
 			return
 		}
 		http.Error(w, "operator-only-detail", 500)
@@ -186,7 +186,7 @@ func TestSupervisorIntegration(t *testing.T) {
 					if err := json.Unmarshal(data, &survey); err != nil {
 						t.Fatal(err)
 					}
-					if survey["language"] != "go" || survey["agent"] != "human" || survey["harness"] != "manual" {
+					if survey["language"] != "go" || survey["agent"] != "custom-agent" || survey["harness"] != "custom-tool" || survey["model"] != "model-a,model-b" {
 						t.Fatalf("survey missing from report: %s", data)
 					}
 				}
