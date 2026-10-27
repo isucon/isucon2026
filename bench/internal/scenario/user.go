@@ -216,7 +216,7 @@ func (r *Runner) listen(ctx context.Context, u *user, out chan notice, subscribe
 		}
 		if valid {
 			seen[n.PostingWindowID] = true
-			r.board.Add(score.TagNotification)
+			r.award(u, r.dayNow(u.Region), score.TagNotification)
 			// 古い通知が残っていれば新しい通知で置き換える。
 			select {
 			case <-out:
@@ -376,7 +376,7 @@ func (r *Runner) post(ctx context.Context, u *user, windowID string) (client.Pos
 func (r *Runner) afterPost(ctx context.Context, u *user, post client.Post, visibility string) bool {
 	r.checkMyCurrentPost(ctx, u, post)
 	if r.checkImage(ctx, u, post.FeedPost()) {
-		r.board.Add(score.TagImage)
+		r.award(u, r.dayNow(u.Region), score.TagImage)
 	}
 	switch n := u.rng.Float64(); {
 	case n < r.deleteRate:
@@ -430,7 +430,7 @@ func (r *Runner) checkMyCurrentPost(ctx context.Context, u *user, post client.Po
 			r.invalid(ctx, u, "%s: 今日の投稿が投稿した投稿 %s と違います（%s）", u.Username, post.ID, current.ID)
 		}
 	default:
-		r.board.Add(score.TagPostDetail)
+		r.award(u, r.dayNow(u.Region), score.TagPostDetail)
 	}
 }
 
@@ -521,7 +521,7 @@ func (r *Runner) checkMemory(ctx context.Context, u *user, previous *client.Post
 			}
 			seen[post.ID] = true
 			if post.ID == previous.ID {
-				r.board.Add(score.TagMemory)
+				r.award(u, r.dayNow(u.Region), score.TagMemory)
 				return
 			}
 		}
@@ -553,9 +553,9 @@ func (r *Runner) gatePassed(u *user, day int, took time.Duration) {
 		return
 	}
 	if r.tt.isGrandPrix(day) {
-		r.board.Add(score.TagGrandPrix)
+		r.award(u, day, score.TagGrandPrix)
 	} else {
-		r.board.Add(score.TagGatePass)
+		r.award(u, day, score.TagGatePass)
 	}
 }
 

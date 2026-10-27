@@ -102,6 +102,8 @@ type DayReport struct {
 	Ops      int64         `json:"ops"`
 	Failures int64         `json:"failures"`
 	FailRate float64       `json:"failRate"`
+	// Points はその日にそのリージョンの利用者が得た得点。
+	Points int64 `json:"points"`
 }
 
 // book はリージョンと日ごとの集計。

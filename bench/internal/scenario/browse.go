@@ -61,7 +61,7 @@ func (r *Runner) browse(ctx context.Context, u *user, s *session) {
 	}
 	if s.feeds < scoredFeedsPerDay {
 		s.feeds++
-		r.board.Add(score.TagFeed)
+		r.award(u, s.day, score.TagFeed)
 	}
 	var candidates []client.FeedPost
 	for _, post := range page.Items {
@@ -78,7 +78,7 @@ func (r *Runner) browse(ctx context.Context, u *user, s *session) {
 	}
 	if s.images < scoredImagesPerDay && u.rng.Float64() < 0.5 && r.checkImage(ctx, u, post) {
 		s.images++
-		r.board.Add(score.TagImage)
+		r.award(u, s.day, score.TagImage)
 	}
 	if u.rng.Float64() < 0.15 {
 		r.viewProfile(ctx, u, s, post.Author.ID)
@@ -139,7 +139,7 @@ func (r *Runner) openPost(ctx context.Context, u *user, s *session, post client.
 	}
 	if err == nil && len(problems) == 0 && s.details < scoredDetailsPerDay {
 		s.details++
-		r.board.Add(score.TagPostDetail)
+		r.award(u, s.day, score.TagPostDetail)
 	}
 }
 
@@ -161,7 +161,7 @@ func (r *Runner) viewProfile(ctx context.Context, u *user, s *session, userID st
 	default:
 		if s.profiles < scoredProfilesPerDy {
 			s.profiles++
-			r.board.Add(score.TagProfileView)
+			r.award(u, s.day, score.TagProfileView)
 		}
 	}
 }
@@ -183,7 +183,7 @@ func (r *Runner) react(ctx context.Context, u *user, s *session, post client.Fee
 		r.board.Criticalf("%s: 見えない投稿 %s に RealMoji を送れてしまいました", u.Username, post.ID)
 	case err == nil:
 		r.model.ReplacedRealMoji(w, reaction.ID)
-		r.board.Add(score.TagRealMoji)
+		r.award(u, s.day, score.TagRealMoji)
 		r.reacted(post.Author.ID, post.PostingWindowID)
 		s.myReactions = append(s.myReactions, post.ID)
 		return true
@@ -212,7 +212,7 @@ func (r *Runner) deleteRealMoji(ctx context.Context, u *user, s *session) {
 	settle(w, err)
 	switch {
 	case err == nil:
-		r.board.Add(score.TagDeleteReaction)
+		r.award(u, s.day, score.TagDeleteReaction)
 	case isStatus(err, http.StatusNotFound) || isStatus(err, http.StatusForbidden):
 		// 投稿が削除されたり、投稿者が先に消したりしていれば正しい拒否。
 	default:
@@ -244,7 +244,7 @@ func (r *Runner) listRealMojis(ctx context.Context, u *user, s *session, postID 
 	}
 	if len(problems) == 0 && s.lists < scoredListsPerDay {
 		s.lists++
-		r.board.Add(score.TagReactionList)
+		r.award(u, s.day, score.TagReactionList)
 	}
 }
 
@@ -267,7 +267,7 @@ func (r *Runner) comment(ctx context.Context, u *user, s *session, post client.F
 		r.invalid(ctx, u, "%s: コメントの応答が送った内容と違います", u.Username)
 	case err == nil:
 		r.model.CreatedComment(creation, created, u.ID)
-		r.board.Add(score.TagComment)
+		r.award(u, s.day, score.TagComment)
 		r.reacted(post.Author.ID, post.PostingWindowID)
 		s.myComments = append(s.myComments, created.ID)
 		return true
@@ -292,7 +292,7 @@ func (r *Runner) deleteComment(ctx context.Context, u *user, s *session) {
 	settle(w, err)
 	switch {
 	case err == nil:
-		r.board.Add(score.TagDeleteReaction)
+		r.award(u, s.day, score.TagDeleteReaction)
 	case isStatus(err, http.StatusNotFound) || isStatus(err, http.StatusForbidden):
 	default:
 		r.requestError(ctx, u, "%s: コメント %s を消せません: %v", u.Username, id, err)
@@ -323,7 +323,7 @@ func (r *Runner) listComments(ctx context.Context, u *user, s *session, postID s
 	}
 	if len(problems) == 0 && s.lists < scoredListsPerDay {
 		s.lists++
-		r.board.Add(score.TagReactionList)
+		r.award(u, s.day, score.TagReactionList)
 	}
 }
 
@@ -359,9 +359,9 @@ func (r *Runner) answerRequest(ctx context.Context, u *user, request client.Rela
 	switch {
 	case err == nil && action == "accept":
 		r.addFriendship(request.User.ID, u.ID)
-		r.board.Add(score.TagFriendAccept)
+		r.award(u, r.dayNow(u.Region), score.TagFriendAccept)
 	case err == nil:
-		r.board.Add(score.TagFriendDecline)
+		r.award(u, r.dayNow(u.Region), score.TagFriendDecline)
 	case isStatus(err, http.StatusForbidden) || isStatus(err, http.StatusConflict) || isStatus(err, http.StatusNotFound):
 	default:
 		r.requestError(ctx, u, "%s: 友達申請を%sできません: %v", u.Username, map[string]string{"accept": "承認", "reject": "拒否"}[action], err)
