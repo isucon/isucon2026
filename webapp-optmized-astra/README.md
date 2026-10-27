@@ -15,8 +15,8 @@ export AWS_CONFIG_FILE="$PWD/provisioning/aws-sdk.config"
 export AWS_SDK_LOAD_CONFIG=1
 export PULUMI_BACKEND_URL=s3://isucon2026-pulumi-state
 pulumi preview -C provisioning/aws/astra --stack dev --diff
-pulumi up -C provisioning/aws/astra --stack dev
-make aws-bench-run TEAM=10
+webapp-optmized-astra/deploy/apply.sh
+webapp-optmized-astra/deploy/benchmark.sh "experiment label"
 ```
 
 アプリは各VMの`/home/isucon/webapp-optmized-astra`へ配置し、同名のsystemdサービスで実行する。
@@ -26,7 +26,7 @@ DB認証設定は既存VMの`/home/isucon/env.sh`を参照する。追加の秘�
 ## 検証
 
 ```sh
-cargo test --manifest-path webapp-optmized-astra/rust/Cargo.toml
+cargo +1.99.1 test --manifest-path webapp-optmized-astra/rust/Cargo.toml
 cd provisioning/aws
 node_modules/.bin/tsc --noEmit -p astra
 ```
@@ -45,3 +45,4 @@ RustのDB接続を伴うキャンセル検証は`ISUREAL_SESSION_TEST_DSN`がな
 | 実行 | 変更 | 合否 | スコア |
 | --- | --- | --- | ---: |
 | 20261027T121146Z-team10 | Rust基準版、asia単一DB | PASS | 9,022 |
+| 20261027T121933Z-team10 | indexes, shared posting locks and cached HMAC | PASS | 16,363 |

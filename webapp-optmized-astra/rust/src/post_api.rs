@@ -129,14 +129,14 @@ pub async fn create_post_handler(
         starts_at: DateTime<Utc>,
     }
     let mut window: Option<Window> = sqlx::query_as(
-        "SELECT id, local_date, starts_at FROM posting_windows WHERE region = $1 AND ended_at IS NULL FOR UPDATE",
+        "SELECT id, local_date, starts_at FROM posting_windows WHERE region = $1 AND ended_at IS NULL FOR SHARE",
     )
     .bind(&user.region)
     .fetch_optional(&mut *tx)
     .await?;
     if window.is_none() {
         window = sqlx::query_as(
-            "SELECT id, local_date, starts_at FROM posting_windows WHERE region = $1 AND ended_at IS NULL FOR UPDATE",
+            "SELECT id, local_date, starts_at FROM posting_windows WHERE region = $1 AND ended_at IS NULL FOR SHARE",
         )
         .bind(&user.region)
         .fetch_optional(&mut *tx)
