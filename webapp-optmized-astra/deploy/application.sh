@@ -38,6 +38,7 @@ printf '[Service]\nEnvironment=ISUREAL_DB_READ_HOST=%s\nEnvironment=ISUREAL_READ
 printf '[Service]\nEnvironment=ISUREAL_WRITE_FENCE_HOSTS=%s\nEnvironment=ISUREAL_WRITE_FENCE_MODE=%s\n' "$write_fence_hosts" "$write_fence_mode" >/etc/systemd/system/webapp-optmized-astra.service.d/writer.conf
 systemctl stop isureal-go isureal-rust
 systemctl disable isureal-go isureal-rust
+bash "$(dirname "$0")/tokio-runtime.sh" webapp-optmized-astra
 bash "$(dirname "$0")/image-store-runtime.sh" webapp-optmized-astra
 bash "$(dirname "$0")/upload-proxy-runtime.sh" webapp-optmized-astra "$region"
 systemctl daemon-reload
