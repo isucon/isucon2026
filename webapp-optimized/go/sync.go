@@ -151,7 +151,7 @@ func registerSyncHandlers(e *echo.Echo, h *HandlerContext) {
 		if c.Request().Header.Get("X-Isureal-Sync") != syncToken {
 			return c.NoContent(http.StatusForbidden)
 		}
-		notificationWrites.discard()
+		notificationWrites.drain()
 		store.clear()
 		if err := hot.load(c.Request().Context(), h.DB); err != nil {
 			return err
