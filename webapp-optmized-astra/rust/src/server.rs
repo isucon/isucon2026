@@ -40,6 +40,7 @@ use crate::post_api::{
 };
 use crate::posting_window_api::get_current_posting_window_handler;
 use crate::profile_image_api::{delete_profile_image_handler, put_profile_image_handler};
+use crate::read_fence::{ReadFence, read_fence_middleware};
 use crate::realmoji_api::{
     delete_real_moji_handler, get_real_mojis_handler, replace_real_moji_handler,
 };
@@ -61,6 +62,7 @@ pub struct HandlerContext {
     pub config: Config,
     pub ip_bans: IpBanList,
     pub notifications: NotificationHub,
+    pub read_fence: Option<ReadFence>,
 }
 
 pub async fn new_server(config: Config) -> Router {
@@ -87,10 +89,10 @@ pub async fn new_server(config: Config) -> Router {
         config,
         ip_bans: IpBanList::default(),
         notifications: NotificationHub::default(),
+        read_fence: None,
     });
-    // Every read is routed to either the primary or a synchronous local standby.
-    // Never enable local reads with asynchronous replication: successful writes
-    // must already be visible in both remote regions.
+    // Standby reads require either remote_apply commits or a fresh WAL fence
+    // before reading. Fences release write locks without sacrificing freshness.
     let read_context = match std::env::var("ISUREAL_DB_READ_HOST") {
         Ok(host) if !host.is_empty() => {
             let mode: String = sqlx::query_scalar("SHOW synchronous_commit")
@@ -101,11 +103,22 @@ pub async fn new_server(config: Config) -> Router {
                 .fetch_one(&handler_context.db)
                 .await
                 .expect("read synchronous standbys");
-            assert_eq!(mode, "remote_apply", "local reads require remote_apply");
-            assert_eq!(
-                standbys, "FIRST 2 (astra_europe, astra_america)",
-                "local reads require both regional standbys"
-            );
+            let fenced = std::env::var("ISUREAL_READ_FENCE").is_ok_and(|value| value == "1");
+            if fenced {
+                assert!(
+                    matches!(mode.as_str(), "on" | "remote_apply"),
+                    "fenced reads require durable primary commits"
+                );
+            } else {
+                assert_eq!(
+                    mode, "remote_apply",
+                    "unfenced local reads require remote_apply"
+                );
+                assert_eq!(
+                    standbys, "FIRST 2 (astra_europe, astra_america)",
+                    "unfenced local reads require both regional standbys"
+                );
+            }
             let mut read_config = handler_context.config.clone();
             read_config.db_host = host;
             let options = PgConnectOptions::from_str(&read_config.database_dsn())
@@ -122,7 +135,15 @@ pub async fn new_server(config: Config) -> Router {
                 .await
                 .expect("read recovery state");
             assert!(in_recovery, "local read database must be a standby");
+            let read_fence = fenced.then(|| {
+                ReadFence::new(
+                    handler_context.db.clone(),
+                    read_db.clone(),
+                    std::time::Duration::from_secs(10),
+                )
+            });
             Arc::new(HandlerContext {
+                read_fence,
                 db: read_db,
                 config: handler_context.config.clone(),
                 ip_bans: IpBanList::default(),
@@ -196,6 +217,7 @@ pub async fn new_server(config: Config) -> Router {
                 .layer(from_fn(run_to_completion))
                 .layer(from_fn_with_state(action_log, action_log_middleware))
                 .layer(CatchPanicLayer::custom(recover))
+                .layer(from_fn_with_state(read_context.read_fence.clone(), read_fence_middleware))
                 .layer(from_fn_with_state(read_context.clone(), ip_ban_middleware)),
         )
         .with_state(handler_context);

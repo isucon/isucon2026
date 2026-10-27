@@ -97,6 +97,7 @@ async fn cached_image_checks_current_content_visibility_and_credentials() {
         config: config_from_env(),
         ip_bans: Default::default(),
         notifications: Default::default(),
+        read_fence: None,
     });
     let app = Router::new()
         .route("/api/images/{imageId}", get(get_image_handler))

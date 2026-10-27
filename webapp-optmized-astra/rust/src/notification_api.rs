@@ -18,6 +18,7 @@ use tokio::time::{MissedTickBehavior, interval};
 use crate::api_error::Error;
 use crate::image_signature::image_signing_key;
 use crate::logger;
+use crate::read_fence::ReadFence;
 use crate::server::HandlerContext;
 use crate::session::Session;
 use crate::timefmt::rfc3339_nano;
@@ -71,6 +72,7 @@ impl NotificationHub {
     fn subscribe(
         &self,
         db: PgPool,
+        fence: Option<ReadFence>,
         user_id: String,
         region: String,
         connected_at: DateTime<Utc>,
@@ -94,12 +96,12 @@ impl NotificationHub {
         if !state.running {
             state.running = true;
             let hub = self.clone();
-            tokio::spawn(async move { hub.poll(db).await });
+            tokio::spawn(async move { hub.poll(db, fence).await });
         }
         receiver
     }
 
-    async fn poll(self, db: PgPool) {
+    async fn poll(self, db: PgPool, fence: Option<ReadFence>) {
         let mut ticker = interval(Duration::from_millis(100));
         ticker.set_missed_tick_behavior(MissedTickBehavior::Skip);
         loop {
@@ -117,6 +119,16 @@ impl NotificationHub {
                     .map(|entry| entry.recipient.clone())
                     .collect()
             };
+            if let Some(fence) = &fence
+                && let Err(err) = fence.wait().await
+            {
+                logger::error("failed to synchronize notification replica", &err);
+                let mut state = self.0.lock().unwrap();
+                for recipient in &recipients {
+                    state.entries.remove(&recipient.id);
+                }
+                continue;
+            }
             // Chunking bounds the query and lets other database work interleave
             // when thousands of clients are waiting for a notification.
             for batch in recipients.chunks(512) {
@@ -203,9 +215,13 @@ pub async fn get_notifications_handler(
     let connected_at: DateTime<Utc> = sqlx::query_scalar("SELECT clock_timestamp()")
         .fetch_one(&h.db)
         .await?;
-    let receiver =
-        h.notifications
-            .subscribe(h.db.clone(), session.user_id, session.region, connected_at);
+    let receiver = h.notifications.subscribe(
+        h.db.clone(),
+        h.read_fence.clone(),
+        session.user_id,
+        session.region,
+        connected_at,
+    );
     let event = async move { receiver.await.ok().map(Ok::<_, Infallible>) };
     let stream = futures_util::stream::once(event).filter_map(|event| async move { event });
     Ok(Response::builder()
@@ -259,7 +275,7 @@ mod tests {
             .execute(&db).await.unwrap();
         let hub = NotificationHub::default();
         let subscribe =
-            |user: &str, when| hub.subscribe(db.clone(), user.into(), "asia".into(), when);
+            |user: &str, when| hub.subscribe(db.clone(), None, user.into(), "asia".into(), when);
         let mut first = subscribe("a", connected);
         let mut later = subscribe("a", connected + chrono::Duration::seconds(2));
         let other = subscribe("b", connected);
@@ -356,5 +372,89 @@ mod tests {
             .await
             .unwrap();
         admin.close().await;
+    }
+
+    #[tokio::test]
+    async fn fenced_poll_does_not_deliver_to_a_deleted_recipient_on_lagging_replica() {
+        use futures_util::FutureExt;
+        use std::panic::AssertUnwindSafe;
+        let (Ok(primary_dsn), Ok(replica_dsn)) = (
+            std::env::var("ISUREAL_FENCE_PRIMARY_DSN"),
+            std::env::var("ISUREAL_FENCE_REPLICA_DSN"),
+        ) else {
+            return;
+        };
+        let _serial = crate::read_fence::TEST_REPLICA_LOCK.lock().await;
+        let admin = PgPool::connect(&primary_dsn).await.unwrap();
+        let replica_admin = PgPool::connect(&replica_dsn).await.unwrap();
+        let schema = format!("astra_notify_fence_{}", uuid::Uuid::new_v4().simple());
+        sqlx::query(&format!("CREATE SCHEMA {schema}"))
+            .execute(&admin)
+            .await
+            .unwrap();
+        let db = PgPoolOptions::new()
+            .max_connections(3)
+            .connect_with(
+                PgConnectOptions::from_str(&primary_dsn)
+                    .unwrap()
+                    .options([("search_path", schema.as_str())]),
+            )
+            .await
+            .unwrap();
+        let replica = PgPoolOptions::new()
+            .max_connections(3)
+            .connect_with(
+                PgConnectOptions::from_str(&replica_dsn)
+                    .unwrap()
+                    .options([("search_path", schema.as_str())]),
+            )
+            .await
+            .unwrap();
+        let fence = ReadFence::new(admin.clone(), replica_admin.clone(), Duration::from_secs(3));
+        let result = AssertUnwindSafe(async {
+            sqlx::raw_sql(r#"
+                CREATE TABLE users (id text PRIMARY KEY, region text, status text, secret_key_hash text);
+                CREATE TABLE posting_windows (id text PRIMARY KEY, region text, ended_at timestamptz);
+                CREATE TABLE notifications (id text PRIMARY KEY, user_id text, posting_window_id text, created_at timestamptz);
+                INSERT INTO users VALUES ('recipient','asia','active',repeat('ab',32));
+                INSERT INTO posting_windows VALUES ('window','asia',NULL);
+                INSERT INTO notifications VALUES ('notice','recipient','window',clock_timestamp());
+            "#).execute(&db).await.unwrap();
+            let connected: DateTime<Utc> = sqlx::query_scalar("SELECT created_at - interval '1 second' FROM notifications")
+                .fetch_one(&db).await.unwrap();
+            fence.wait().await.unwrap();
+            sqlx::query("SELECT pg_wal_replay_pause()").execute(&replica_admin).await.unwrap();
+            timeout(Duration::from_secs(2), async {
+                loop {
+                    if sqlx::query_scalar::<_,bool>("SELECT pg_get_wal_replay_pause_state()='paused'").fetch_one(&replica_admin).await.unwrap() { break; }
+                    sleep(Duration::from_millis(5)).await;
+                }
+            }).await.unwrap();
+            sqlx::query("UPDATE users SET status='deleted'").execute(&db).await.unwrap();
+            let hub = NotificationHub::default();
+            let mut pending = hub.subscribe(replica.clone(), Some(fence.clone()), "recipient".into(), "asia".into(), connected);
+            assert!(timeout(Duration::from_millis(120), &mut pending).await.is_err());
+            sqlx::query("SELECT pg_wal_replay_resume()").execute(&replica_admin).await.unwrap();
+            assert!(timeout(Duration::from_secs(3), pending).await.unwrap().is_err());
+            sqlx::query("UPDATE users SET status='active'").execute(&db).await.unwrap();
+            let pending = hub.subscribe(replica.clone(), Some(fence.clone()), "recipient".into(), "asia".into(), connected);
+            assert!(timeout(Duration::from_secs(3), pending).await.unwrap().unwrap().contains("notice"));
+            sleep(Duration::from_millis(150)).await;
+        }).catch_unwind().await;
+        sqlx::query("SELECT pg_wal_replay_resume()")
+            .execute(&replica_admin)
+            .await
+            .unwrap();
+        db.close().await;
+        replica.close().await;
+        sqlx::query(&format!("DROP SCHEMA {schema} CASCADE"))
+            .execute(&admin)
+            .await
+            .unwrap();
+        admin.close().await;
+        replica_admin.close().await;
+        if let Err(panic) = result {
+            std::panic::resume_unwind(panic);
+        }
     }
 }

@@ -8,8 +8,8 @@ const config = new pulumi.Config();
 export const runtime = JSON.parse(
 	readFileSync(config.require("runtimeConfigPath"), "utf8"),
 );
-if (runtime.replicaReads && !runtime.replicasSynchronous) {
-	throw new Error("Replica reads require synchronous remote_apply replication");
+if (runtime.replicaReads && !runtime.replicasSynchronous && !runtime.readFenceEnabled) {
+	throw new Error("Replica reads require synchronous remote_apply replication or read fences");
 }
 export const artifactSha256 = createHash("sha256")
 	.update(readFileSync("../../../" + runtime.archivePath))

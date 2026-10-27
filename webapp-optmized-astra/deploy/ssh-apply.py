@@ -16,7 +16,8 @@ DEPLOY = ROOT / "webapp-optmized-astra/deploy"
 runtime = json.loads((DEPLOY / "runtime.json").read_text())
 mode = sys.argv[1] if len(sys.argv) > 1 else "all"
 assert mode in ("all", "application", "database", "replication")
-assert not runtime["replicaReads"] or runtime["replicasSynchronous"]
+read_fence = runtime.get("readFenceEnabled", False)
+assert not runtime["replicaReads"] or runtime["replicasSynchronous"] or read_fence
 ssh = str(DEPLOY / "ssh.sh")
 database = runtime["database"]["instanceId"]
 applications = runtime["applications"]
@@ -63,7 +64,8 @@ def application(app):
     instance = app["instanceId"]
     copy(instance, ROOT / runtime["archivePath"], "/home/isucon/astra-release.tar.gz")
     read_host = "127.0.0.1" if runtime["replicaReads"] and "replicaName" in app else ""
-    remote(instance, "sudo bash /home/isucon/astra-deploy/application.sh /home/isucon/astra-release.tar.gz " + shlex.quote(read_host))
+    fenced = "1" if read_host and read_fence else "0"
+    remote(instance, "sudo bash /home/isucon/astra-deploy/application.sh /home/isucon/astra-release.tar.gz " + shlex.quote(read_host) + " " + fenced)
 
 
 def write_frontend(app):
@@ -77,6 +79,11 @@ if mode in ("all", "application") and not write_proxy:
 
 # Disable local reads before turning off synchronous replication on rollback.
 if mode in ("all", "application") and not runtime["replicaReads"]:
+    parallel(application, applications)
+
+# In a combined deployment, readers must gain fences before sync commits stop.
+early_fenced_apps = mode == "all" and runtime["replicaReads"] and read_fence and not runtime["replicasSynchronous"]
+if early_fenced_apps:
     parallel(application, applications)
 
 if mode in ("all", "database"):
@@ -96,7 +103,7 @@ if mode in ("all", "replication") and runtime["replicasEnabled"]:
     synchronous = str(runtime["replicasSynchronous"]).lower()
     if not runtime["replicasSynchronous"]:
         for app in replicas:
-            remote(app["instanceId"], "if systemctl show webapp-optmized-astra -p Environment --value | grep -q ISUREAL_DB_READ_HOST=127.0.0.1; then echo 'Disable local reads before disabling synchronous replication' >&2; exit 1; fi")
+            remote(app["instanceId"], "if systemctl show webapp-optmized-astra -p Environment --value | grep -q ISUREAL_DB_READ_HOST=127.0.0.1 && ! systemctl show webapp-optmized-astra -p Environment --value | grep -q ISUREAL_READ_FENCE=1; then echo 'Enable read fences or disable local reads before disabling synchronous replication' >&2; exit 1; fi")
     remote(database, "sudo bash /home/isucon/astra-deploy/replication-primary.sh " + synchronous)
 
     def standby(app):
@@ -104,7 +111,7 @@ if mode in ("all", "replication") and runtime["replicasEnabled"]:
 
     parallel(standby, replicas)
 
-if mode in ("all", "application") and runtime["replicaReads"]:
+if mode in ("all", "application") and runtime["replicaReads"] and not early_fenced_apps:
     parallel(application, applications)
 
 if mode in ("all", "application"):
