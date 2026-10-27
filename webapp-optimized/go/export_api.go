@@ -2,7 +2,7 @@ package isureal
 
 import (
 	"archive/zip"
-	"bytes"
+	"bufio"
 	"compress/flate"
 	"context"
 	"encoding/json"
@@ -74,25 +74,26 @@ func exportPostsHandler(h *HandlerContext) echo.HandlerFunc {
 			return err
 		}
 
-		var body bytes.Buffer
-		size := 64 << 10
-		for _, data := range imageData {
-			size += len(data) + 128
-		}
-		body.Grow(size + len(posts)*1024)
-		writer := zip.NewWriter(&body)
-		defer writer.Close()
 		items := make([]exportPostResponse, 0, len(posts))
 		for i, post := range posts {
-			imagePath := fmt.Sprintf("images/%06d.jpg", i+1)
-			image, err := writer.CreateHeader(&zip.FileHeader{Name: imagePath, Method: zip.Store})
+			items = append(items, exportPostResponse{createPostResponse: newPostResponse(post, author), ImagePath: fmt.Sprintf("images/%06d.jpg", i+1)})
+		}
+		// Everything that can fail is done; the archive is written straight to
+		// the connection instead of being assembled in memory first.
+		c.Response().Header().Set(echo.HeaderContentType, "application/zip")
+		c.Response().Header().Set(echo.HeaderContentDisposition, `attachment; filename="isureal-posts.zip"`)
+		c.Response().Header().Set(echo.HeaderCacheControl, "no-store")
+		c.Response().WriteHeader(http.StatusOK)
+		out := bufio.NewWriterSize(c.Response(), 64<<10)
+		writer := zip.NewWriter(out)
+		for i, post := range posts {
+			image, err := writer.CreateHeader(&zip.FileHeader{Name: items[i].ImagePath, Method: zip.Store})
 			if err != nil {
-				return err
+				return nil
 			}
 			if _, err := image.Write(imageData[post.ImageID]); err != nil {
-				return err
+				return nil
 			}
-			items = append(items, exportPostResponse{createPostResponse: newPostResponse(post, author), ImagePath: imagePath})
 		}
 		// The manifest shrinks several times; the images are stored as they are.
 		writer.RegisterCompressor(zip.Deflate, func(out io.Writer) (io.WriteCloser, error) {
@@ -100,17 +101,16 @@ func exportPostsHandler(h *HandlerContext) echo.HandlerFunc {
 		})
 		manifest, err := writer.Create("posts.json")
 		if err != nil {
-			return err
+			return nil
 		}
 		if err := json.NewEncoder(manifest).Encode(items); err != nil {
-			return err
+			return nil
 		}
 		if err := writer.Close(); err != nil {
-			return err
+			return nil
 		}
-		c.Response().Header().Set(echo.HeaderContentDisposition, `attachment; filename="isureal-posts.zip"`)
-		c.Response().Header().Set(echo.HeaderCacheControl, "no-store")
-		return c.Blob(http.StatusOK, "application/zip", body.Bytes())
+		_ = out.Flush()
+		return nil
 	}
 }
 
