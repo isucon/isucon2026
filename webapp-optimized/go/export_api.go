@@ -5,11 +5,14 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jmoiron/sqlx"
 	"github.com/labstack/echo/v5"
 	"golang.org/x/sync/errgroup"
@@ -25,6 +28,9 @@ type exportPostResponse struct {
 // pruned to their month partitions instead of probing every partition per
 // image; an image not found that way is read by ID alone.
 const exportImageBatch = 64
+
+// exportStatementTimeout bounds each image batch on the server.
+const exportStatementTimeout = 5 * time.Second
 
 func exportPostsHandler(h *HandlerContext) echo.HandlerFunc {
 	return func(c *echo.Context) error {
@@ -58,6 +64,10 @@ func exportPostsHandler(h *HandlerContext) echo.HandlerFunc {
 			}
 		}
 		imageData, err := exportImages(ctx, h.DB, posts)
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "57014" {
+			return NewAPIError(http.StatusServiceUnavailable, "export_busy")
+		}
 		if err != nil {
 			return err
 		}
@@ -114,8 +124,25 @@ func exportImages(ctx context.Context, db *sqlx.DB, posts []Post) (map[string][]
 				ID   string `db:"id"`
 				Data []byte `db:"data"`
 			}
-			if err := db.SelectContext(gctx, &rows, `SELECT id, data FROM image_objects
-              WHERE id = ANY($1::text[]) AND created_at = ANY($2::timestamptz[])`, ids, times); err != nil {
+			// A join with the (id, time) pairs is pruned per row to one month
+			// partition; "= ANY(array)" conditions were not. The statement is
+			// bounded on the server: when the database is saturated (the grand
+			// prix's simultaneous posts) the export answers 503 instead of
+			// holding the connection past the client's deadline.
+			tx, err := db.BeginTxx(gctx, nil)
+			if err != nil {
+				return err
+			}
+			defer tx.Rollback()
+			if _, err := tx.ExecContext(gctx, `SET LOCAL statement_timeout = `+strconv.Itoa(int(exportStatementTimeout/time.Millisecond))); err != nil {
+				return err
+			}
+			if err := tx.SelectContext(gctx, &rows, `SELECT i.id, i.data
+              FROM unnest($1::text[], $2::timestamptz[]) AS n(id, at)
+              JOIN image_objects i ON i.id = n.id AND i.created_at = n.at`, ids, times); err != nil {
+				return err
+			}
+			if err := tx.Commit(); err != nil {
 				return err
 			}
 			mu.Lock()

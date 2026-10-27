@@ -9,5 +9,6 @@ import (
 // the edits at once, so the liveness grace of cached images is disabled.
 func TestMain(m *testing.M) {
 	imageLivenessTTL = 0
+	notificationWriteDelay = 0
 	os.Exit(m.Run())
 }

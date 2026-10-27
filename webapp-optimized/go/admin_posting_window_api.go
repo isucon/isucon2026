@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"slices"
 	"sync"
 	"time"
 
@@ -47,6 +48,14 @@ func newNotificationWriter() *notificationWriter {
 	return &notificationWriter{ctx: ctx, cancel: cancel}
 }
 
+// notificationWriteDelay and notificationWriteChunk pace the rows: a region's
+// users post within the first seconds of a day, and a burst of thousands of
+// index inserts into the cold notifications table (tens of seconds at the
+// grand prix) would compete with them for the database.
+var notificationWriteDelay = 4 * time.Second
+
+const notificationWriteChunk = 500
+
 func (w *notificationWriter) write(db *sqlx.DB, windowID string, startsAt time.Time, userIDs []string) {
 	w.mu.Lock()
 	ctx := w.ctx
@@ -54,28 +63,49 @@ func (w *notificationWriter) write(db *sqlx.DB, windowID string, startsAt time.T
 	w.mu.Unlock()
 	go func() {
 		defer w.wg.Done()
-		ids := make([]string, len(userIDs))
-		for i, userID := range userIDs {
-			ids[i] = notificationID(windowID, userID)
+		select {
+		case <-time.After(notificationWriteDelay):
+		case <-ctx.Done():
+			return
 		}
-		ctx, cancel := context.WithTimeout(ctx, time.Minute)
-		defer cancel()
-		// Rows in user order enter the (user_id, posting_window_id) index
-		// mostly sequentially instead of at thousands of random leaf pages.
-		if _, err := db.ExecContext(ctx, `INSERT INTO notifications (id, user_id, posting_window_id, created_at)
-          SELECT n.id, n.user_id, $3, $4 FROM unnest($1::text[], $2::text[]) AS n(id, user_id) ORDER BY n.user_id
-          ON CONFLICT DO NOTHING`, ids, userIDs, windowID, startsAt); err != nil && ctx.Err() == nil {
-			slog.Error("notification rows", "window", windowID, "error", err)
+		sorted := slices.Clone(userIDs)
+		slices.Sort(sorted)
+		for start := 0; start < len(sorted) && ctx.Err() == nil; start += notificationWriteChunk {
+			chunk := sorted[start:min(start+notificationWriteChunk, len(sorted))]
+			ids := make([]string, len(chunk))
+			for i, userID := range chunk {
+				ids[i] = notificationID(windowID, startsAt, userID)
+			}
+			// One write per window and time-ordered IDs: every index of the
+			// table is appended to, not probed at random (see the schema).
+			if _, err := db.ExecContext(ctx, `INSERT INTO notifications (id, user_id, posting_window_id, created_at)
+          SELECT n.id, n.user_id, $3, $4 FROM unnest($1::text[], $2::text[]) AS n(id, user_id)`, ids, chunk, windowID, startsAt); err != nil {
+				if ctx.Err() == nil {
+					slog.Error("notification rows", "window", windowID, "error", err)
+				}
+				return
+			}
+			select {
+			case <-time.After(50 * time.Millisecond):
+			case <-ctx.Done():
+				return
+			}
 		}
 	}()
 }
 
-// drain stops pending writes and waits for them, before a reset.
-func (w *notificationWriter) drain() {
+// discard stops pending writes and waits for them, before a reset deletes
+// the windows they belong to.
+func (w *notificationWriter) discard() {
 	w.mu.Lock()
 	w.cancel()
 	w.ctx, w.cancel = context.WithCancel(context.Background())
 	w.mu.Unlock()
+	w.wg.Wait()
+}
+
+// drain waits for pending writes to finish.
+func (w *notificationWriter) drain() {
 	w.wg.Wait()
 }
 
@@ -95,7 +125,8 @@ func openPostingWindowHandler(h *HandlerContext) echo.HandlerFunc {
 			seconds = *input.OnTimeSeconds
 		}
 		ctx := c.Request().Context()
-		tx, err := h.DB.BeginTxx(ctx, nil)
+		began := time.Now()
+		tx, err := h.adminDB().BeginTxx(ctx, nil)
 		if err != nil {
 			return err
 		}
@@ -147,10 +178,13 @@ func openPostingWindowHandler(h *HandlerContext) echo.HandlerFunc {
 		if err := tx.Commit(); err != nil {
 			return err
 		}
+		committed := time.Now()
 		notificationWrites.write(h.DB, windowID, startsAt, notified)
 		broadcast(ctx, stateEvent{Version: version, Kind: "window", Window: &hotWindow{
 			ID: window.ID, Region: window.Region, LocalDate: window.LocalDate, StartsAt: window.StartsAt,
 			OnTimeDeadline: window.OnTimeDeadline, Notified: notified}})
+		slog.Info("posting window opened", "region", region, "notified", len(notified),
+			"db_ms", committed.Sub(began).Milliseconds(), "broadcast_ms", time.Since(committed).Milliseconds())
 		return c.JSON(http.StatusCreated, openPostingWindowResponse{
 			ID: window.ID, Region: window.Region, LocalDate: window.LocalDate.Format(time.DateOnly),
 			StartsAt: window.StartsAt, OnTimeDeadline: window.OnTimeDeadline,

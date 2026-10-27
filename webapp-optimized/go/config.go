@@ -41,6 +41,9 @@ func (c *Config) dsn(host, port string) string {
 	// Describe/Prepare exchange once per connection. Generic plans avoid
 	// re-planning the large visibility queries on every execution.
 	q := u.Query()
+	// The database link is private; TLS costs both ends CPU (AES-GCM over
+	// tens of MB/s of images) for nothing.
+	q.Set("sslmode", "disable")
 	q.Set("default_query_exec_mode", "cache_statement")
 	q.Set("plan_cache_mode", "force_generic_plan")
 	u.RawQuery = q.Encode()

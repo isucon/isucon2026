@@ -69,7 +69,7 @@ func createPostHandler(h *HandlerContext) echo.HandlerFunc {
 			return err
 		}
 		defer imageFile.Close()
-		imageData, ok, err := readJPEG(imageFile, 4096)
+		imageData, ok, err := readJPEG(imageFile, 4096, input.Image.Size)
 		if err != nil {
 			return err
 		}

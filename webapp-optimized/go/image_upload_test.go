@@ -31,7 +31,7 @@ func (c *countingReader) Read(p []byte) (int, error) {
 
 func TestReadJPEG(t *testing.T) {
 	valid := encodeJPEG(t, 512, 3)
-	data, ok, err := readJPEG(bytes.NewReader(valid), 512)
+	data, ok, err := readJPEG(bytes.NewReader(valid), 512, 0)
 	if err != nil || !ok || !bytes.Equal(data, valid) {
 		t.Fatalf("valid JPEG: ok=%v err=%v same=%v", ok, err, bytes.Equal(data, valid))
 	}
@@ -40,7 +40,7 @@ func TestReadJPEG(t *testing.T) {
 		"empty": nil, "not JPEG": []byte("not a jpeg"), "truncated": valid[:2],
 		"too wide": encodeJPEG(t, 513, 3), "too tall": tall,
 	} {
-		if data, ok, err := readJPEG(bytes.NewReader(input), 512); err != nil || ok || data != nil {
+		if data, ok, err := readJPEG(bytes.NewReader(input), 512, 0); err != nil || ok || data != nil {
 			t.Fatalf("%s: ok=%v err=%v", name, ok, err)
 		}
 	}
@@ -48,7 +48,7 @@ func TestReadJPEG(t *testing.T) {
 	// An oversized image is rejected from its header without reading the rest.
 	padded := append(append([]byte{}, tall...), make([]byte, 1<<20)...)
 	reader := &countingReader{r: bytes.NewReader(padded)}
-	if _, ok, err := readJPEG(reader, 512); err != nil || ok {
+	if _, ok, err := readJPEG(reader, 512, 0); err != nil || ok {
 		t.Fatalf("padded: ok=%v err=%v", ok, err)
 	}
 	if reader.n >= 64<<10 {
