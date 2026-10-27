@@ -70,3 +70,14 @@ func TestContestTemplateConfiguredRouterAMIDefault(t *testing.T) {
 		t.Fatal("Router must use the prefilled parameter")
 	}
 }
+
+func TestContestTemplateUploadSizeForPortalDevTeam(t *testing.T) {
+	cfg := &config.Config{PublicURLHost: "portal-dev.isucon.net", ContestAMIID: "ami-01a0c5844ea355efd", RouterAMIID: "ami-069a13171cf378369", CheckerSecret: []byte("test"), CloudFormationStaging: true}
+	document, err := ContestTemplate(cfg, 60001, "apne1-az2", time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(document) > 51200 {
+		t.Fatalf("template exceeds upload limit: %d", len(document))
+	}
+}
