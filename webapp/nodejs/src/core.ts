@@ -95,7 +95,7 @@ export function validTimestamp(value: string) {
       { year, month, day, hour, minute, second },
       { overflow: "reject" },
     );
-    if (m[7] !== undefined)
+    if (m[7])
       Temporal.PlainTime.from(
         { hour: offsetHour, minute: offsetMinute },
         { overflow: "reject" },

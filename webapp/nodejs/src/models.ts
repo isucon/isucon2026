@@ -110,7 +110,7 @@ export async function canViewPost(db: DB, viewerID: string, postID: string) {
   const post = await getPostWithAuthor(db, postID);
   if (!post) return false;
   const viewer = await loadViewerContext(db, viewerID);
-  return viewer !== undefined && canView(viewer, post);
+  return !!viewer && canView(viewer, post);
 }
 export async function canComment(db: DB, viewerID: string, postID: string) {
   const post = await getPostWithAuthor(db, postID);
