@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/labstack/echo/v5"
 )
 
@@ -76,13 +77,19 @@ func createPostHandler(h *HandlerContext) echo.HandlerFunc {
 			return NewAPIError(http.StatusBadRequest, "invalid_post")
 		}
 
+		imageID := uuid.NewString()
+		if err := storeUploadedImage(imageID, imageData); err != nil {
+			return err
+		}
 		result, err := runWrite(c.Request().Context(), h.DB, "post_create", GetSession(c).UserID,
 			map[string]any{"caption": input.Caption, "visibility": input.Visibility, "kind": location.Kind,
-				"latitude": location.Latitude, "longitude": location.Longitude, "locality": location.Locality}, imageData)
+				"latitude": location.Latitude, "longitude": location.Longitude, "locality": location.Locality,
+				"imageId": imageID}, []byte{})
 		if err != nil {
 			return err
 		}
 		post, user := result.Post, result.User
+		cacheUploadedImage(imageID, user.SecretKeyHash, imageData)
 		return c.JSON(http.StatusCreated, newPostResponse(post, user))
 	}
 }
