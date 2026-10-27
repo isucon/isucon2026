@@ -77,7 +77,7 @@ pub async fn replace_real_moji_handler(
         _ => return Err(new_api_error(StatusCode::BAD_REQUEST, "invalid_realmoji")),
     }
     let data = image.open();
-    let img = match jpeg::decode(data.clone()).await {
+    let img = match jpeg::decode(data.clone(), 512).await {
         Ok(img) => img,
         Err(_) => return Err(new_api_error(StatusCode::BAD_REQUEST, "invalid_realmoji")),
     };

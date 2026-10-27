@@ -72,3 +72,4 @@ RustのDB接続を伴うキャンセル検証は`ISUREAL_SESSION_TEST_DSN`がな
 | 20261027T122322Z-team10 | repeat indexed Rust with warm database | PASS | 14,156 |
 | 20261027T130427Z-team10 | synchronous Europe and America PostgreSQL replicas with local reads | PASS | 8,742 |
 | 20261027T131543Z-team10 | distributed DB with one-round-trip post creation | PASS | 12,945 |
+| 20261027T133107Z-team10 | distributed DB with bounded cached JPEG validation | PASS | 13,910 |
