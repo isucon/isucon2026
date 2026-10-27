@@ -30,7 +30,7 @@ export declare type SurveyResponse = Message<"isuxportal.proto.resources.SurveyR
   harness: string;
 
   /**
-   * Comma-separated model names; empty for manual work or an unreported value.
+   * Comma-separated model names; brain means no AI model, empty means unreported.
    *
    * @generated from field: string model = 4;
    */

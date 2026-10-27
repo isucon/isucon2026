@@ -187,17 +187,18 @@ sudo systemctl status isureal-go.service
 フィールド名は `language` です（`lang` ではありません）。
 
 ```json
-{"language":"go","agent":"human","harness":"manual","model":""}
+{"language":"go","agent":"human","harness":"manual","model":"brain"}
 ```
 
 `agent` には使用したエージェント名、`harness` にはその実行ツール名、`model` にはモデル名を設定します。
 エージェントで最適化する場合は、使用したものに合わせて各項目を書き換えてください。
-手作業の場合は `agent: "human"`、`harness: "manual"`、`model: ""` とします。
+手作業の場合は `agent: "human"`、`harness: "manual"`、`model: "brain"` とします。
 これらの申告項目は調査と集計に使用し、得点や合否の判定には使用しません。
 ポータルにはチームごとの最新値とベンチ実行ごとの履歴が保存されます。
 
 `model` に複数のモデルを記録する場合は、`"model-a,model-b"` のようにカンマで区切ります。
-手作業やモデル名が未申告の場合は空文字とします。
+`brain` は AI モデル未使用を表します。
+未申告や不明の場合は空文字とし、`brain` と区別します。
 申告文字列は分割や正規化をせず、最新値と履歴にそのまま保存します。
 
 初期化または検証に失敗した走行はFAILとなり、その走行のスコアは0点です。

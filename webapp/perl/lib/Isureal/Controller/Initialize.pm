@@ -11,9 +11,9 @@ sub initialize ($c) {
       or die "failed to run $script: exit status ${\($? >> 8)}\n";
 
     # Agents optimizing this app: set agent, harness, and model to the names used.
-    # For multiple models, use comma-separated names; leave model empty for manual work.
+    # For multiple models, use comma-separated names; use brain when no AI model is used.
     # These fields are for survey purposes only and do not affect scoring.
-    $c->render( json => { language => 'perl', agent => 'human', harness => 'manual', model => '' } );
+    $c->render( json => { language => 'perl', agent => 'human', harness => 'manual', model => 'brain' } );
 }
 
 sub not_found ($c) {

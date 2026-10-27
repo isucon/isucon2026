@@ -20,7 +20,7 @@ func TestSurveyLatestAndHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 	for i, data := range []string{
-		`{"language":"go","agent":"human","harness":"manual"}`,
+		`{"language":"go","agent":"human","harness":"manual","model":"brain"}`,
 		`{"language":"rust","agent":"agent-a","harness":"tool-a","model":"model-a,model-b"}`,
 		`{"language":"go"}`,
 	} {
@@ -58,7 +58,7 @@ func TestSurveyLatestAndHistory(t *testing.T) {
 		}
 		wantAgent, wantHarness, wantModels := "", "", ""
 		if i == 0 {
-			wantAgent, wantHarness = "human", "manual"
+			wantAgent, wantHarness, wantModels = "human", "manual", "brain"
 		}
 		if i == 1 {
 			wantAgent, wantHarness, wantModels = "agent-a", "tool-a", "model-a,model-b"
@@ -110,7 +110,7 @@ func TestSurveyLatestAndHistory(t *testing.T) {
 	if err := conn.QueryRow(`SELECT language,agent,harness,model,created_at,updated_at FROM survey_response_history WHERE team_id=$1 ORDER BY benchmark_job_id LIMIT 1`, teamID).Scan(&language, &agent, &harness, &models, &created, &updated); err != nil {
 		t.Fatal(err)
 	}
-	if language != "go" || agent != "human" || harness != "manual" || models != "" || updated.Before(created) {
+	if language != "go" || agent != "human" || harness != "manual" || models != "brain" || updated.Before(created) {
 		t.Fatal("first survey snapshot was lost")
 	}
 	env := &job.Env{DB: conn}

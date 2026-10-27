@@ -26,13 +26,13 @@ export function initializeHandler(_: HandlerContext): Handler<Env> {
     await runInitScript();
 
     // Agents optimizing this app: set agent, harness, and model to the names used.
-    // For multiple models, use comma-separated names; leave model empty for manual work.
+    // For multiple models, use comma-separated names; use brain when no AI model is used.
     // These fields are for survey purposes only and do not affect scoring.
     return jsonResponse(c, 200, {
       language: "nodejs",
       agent: "human",
       harness: "manual",
-      model: "",
+      model: "brain",
     });
   };
 }
