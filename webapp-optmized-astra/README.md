@@ -177,3 +177,4 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261027T214135Z-team10 | reserve bounded posting window control admission with independent image storage | PASS | 76,087 |
 | 20261027T215923Z-team10 | warm immutable post image bytes in the owning region cache | PASS | 72,343 |
 | 20261027T220520Z-team10 | disable regional cache pushes to compare network contention | PASS | 75,948 |
+| 20261027T221041Z-team10 | avoid full owner scans and directly query known image partitions | PASS | 83,899 |
