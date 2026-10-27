@@ -59,6 +59,20 @@ pub async fn search_users_handler(
         return Err(new_api_error(StatusCode::BAD_REQUEST, "invalid_pagination"));
     }
     let viewer = &session.user_id;
+    let query = search_text::normalize(&input.q);
+    // C collation folds ASCII exactly like Rust. Retain every non-ASCII name
+    // for the full NFC/case-fold check below (for example, ß can match "ss").
+    // An ASCII-only name cannot match a normalized non-ASCII query.
+    // PostgreSQL text cannot contain NUL; such queries cannot match stored names.
+    let ascii_pattern = (query.is_ascii() && !query.contains('\0')).then(|| {
+        format!(
+            "%{}%",
+            query
+                .replace('!', "!!")
+                .replace('%', "!%")
+                .replace('_', "!_")
+        )
+    });
     // Keep candidate matching and returned account fields in one snapshot.
     // Most candidates do not match; their bio, key, and other large fields
     // need not be transferred from PostgreSQL or decoded by SQLx.
@@ -75,12 +89,15 @@ pub async fn search_users_handler(
         "SELECT u.id, u.username, u.display_name FROM users u \
          WHERE u.status='active' AND u.id<>$1 \
          AND ($2='' OR (u.username,u.id)>($2,$3)) \
+         AND (octet_length(convert_to(u.username,'UTF8'))<>char_length(u.username) \
+           OR octet_length(convert_to(u.display_name,'UTF8'))<>char_length(u.display_name) \
+           OR lower(u.username COLLATE \"C\") LIKE $4 ESCAPE '!' \
+           OR lower(u.display_name COLLATE \"C\") LIKE $4 ESCAPE '!') \
          AND NOT EXISTS(SELECT 1 FROM block_relations b WHERE b.blocker_id=$1 AND b.blocked_id=u.id) \
          AND NOT EXISTS(SELECT 1 FROM block_relations b WHERE b.blocked_id=$1 AND b.blocker_id=u.id) \
          ORDER BY u.username,u.id")
-        .bind(viewer).bind(&input.before_username).bind(&input.before_id)
+        .bind(viewer).bind(&input.before_username).bind(&input.before_id).bind(&ascii_pattern)
         .fetch_all(&mut *tx).await?;
-    let query = search_text::normalize(&input.q);
     let ids: Vec<String> = candidates
         .into_iter()
         .filter(|user| {
