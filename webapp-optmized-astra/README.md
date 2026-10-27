@@ -167,3 +167,4 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261027T170518Z-team10 | raise nginx worker connection capacity after observed EOF and 502 saturation | PASS | 43,902 |
 | 20261027T171057Z-team10 | skip ineffective TOAST compression of image bytes while preserving PostgreSQL storage | PASS | 38,237 |
 | 20261027T204142Z-team10 | bound pending mutation bytes and pipeline replica response barriers | PASS | 50,680 |
+| 20261027T205127Z-team10 | fetch full search profiles only for matched users | PASS | 50,565 |
