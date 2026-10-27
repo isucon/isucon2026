@@ -28,6 +28,13 @@ export declare type SurveyResponse = Message<"isuxportal.proto.resources.SurveyR
    * @generated from field: string harness = 3;
    */
   harness: string;
+
+  /**
+   * Comma-separated model names; empty for manual work or an unreported value.
+   *
+   * @generated from field: string model = 4;
+   */
+  model: string;
 };
 
 /**

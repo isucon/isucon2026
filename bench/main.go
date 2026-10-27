@@ -86,7 +86,7 @@ func run(parent context.Context, args []string, stdout, stderr io.Writer) int {
 		p := &pb.BenchmarkResult{Finished: finished, Passed: finished && result.Pass, Score: result.Score,
 			ScoreBreakdown: &pb.BenchmarkResult_ScoreBreakdown{Raw: result.Score}}
 		if result.Language != "" {
-			p.SurveyResponse = &pb.SurveyResponse{Language: result.Language, Agent: result.Agent, Harness: result.Harness}
+			p.SurveyResponse = &pb.SurveyResponse{Language: result.Language, Agent: result.Agent, Harness: result.Harness, Model: result.Model}
 		}
 		if finished {
 			p.Execution = &pb.BenchmarkResult_Execution{Reason: reason}

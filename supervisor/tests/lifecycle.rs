@@ -119,11 +119,11 @@ async fn run_case(case: &str) {
         hard_timeout: 5,
         interval_after_empty_receive: 1,
     };
-    // frame: length=27, finished=true, passed=true, score=29, survey=go/human/manual. Exit immediately to
+    // frame: length=44, finished=true, passed=true, score=29, survey=go/human/manual/model-a,model-b. Exit immediately to
     // exercise the race between process exit and draining the final report.
     let script = r#"test "$ISUXBENCH_TARGET" = 127.0.0.1 || exit 2
  test "$ISUXBENCH_ALL_ADDRESSES" = 127.0.0.1,127.0.0.2,127.0.0.3,127.0.0.4 || exit 2
- eval "printf '\000\033\010\001\020\001\030\035\102\023\012\002go\022\005human\032\006manual' >&$ISUXBENCH_REPORT_FD"
+ eval "printf '\000\054\010\001\020\001\030\035\102\044\012\002go\022\005human\032\006manual\042\017model-a,model-b' >&$ISUXBENCH_REPORT_FD"
  echo public-output
  echo private-output >&2"#;
     let script = match case {
@@ -142,7 +142,7 @@ async fn run_case(case: &str) {
         assert_eq!(reports.last().unwrap().score, 29);
         assert_eq!(
             reports.last().unwrap().survey_response.as_ref().unwrap().encode_to_vec(),
-            b"\x0a\x02go\x12\x05human\x1a\x06manual"
+            b"\x0a\x02go\x12\x05human\x1a\x06manual\x22\x0fmodel-a,model-b"
         );
     }
     let result = completion.lock().unwrap().clone().unwrap();
@@ -152,7 +152,7 @@ async fn run_case(case: &str) {
     if case == "pass" || case == "exit-error" {
         assert_eq!(
             result.survey_response.as_ref().unwrap().encode_to_vec(),
-            b"\x0a\x02go\x12\x05human\x1a\x06manual"
+            b"\x0a\x02go\x12\x05human\x1a\x06manual\x22\x0fmodel-a,model-b"
         );
     }
     let execution = result.execution.unwrap();

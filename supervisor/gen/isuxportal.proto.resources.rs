@@ -9,6 +9,9 @@ pub struct SurveyResponse {
     pub agent: ::prost::alloc::string::String,
     #[prost(string, tag = "3")]
     pub harness: ::prost::alloc::string::String,
+    /// Comma-separated model names; empty for manual work or an unreported value.
+    #[prost(string, tag = "4")]
+    pub model: ::prost::alloc::string::String,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

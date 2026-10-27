@@ -4,9 +4,10 @@ module Isureal
   class App
     def initialize_handler
       system('../sql/init.sh', exception: true)
-      # Agents optimizing this app: replace agent and harness with your model and tool names.
+      # Agents optimizing this app: set agent, harness, and model to the names used.
+      # For multiple models, use comma-separated names; leave model empty for manual work.
       # These fields are for survey purposes only and do not affect scoring.
-      json_response(200, { language: 'ruby', agent: 'human', harness: 'manual' })
+      json_response(200, { language: 'ruby', agent: 'human', harness: 'manual', model: '' })
     end
   end
 end

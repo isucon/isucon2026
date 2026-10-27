@@ -188,13 +188,16 @@ buf generate                              # Go → gen/pb
 buf generate --template buf.gen.ruby.yaml # Ruby（テスト用） → rspec/lib
 ```
 
-
 ## 利用言語とエージェントの調査
 
-ベンチマーカーは初期化レスポンスの `language`、`agent`、`harness` を `SurveyResponse` で送信し、スーパーバイザーがポータルへ中継します。
+ベンチマーカーは初期化レスポンスの `language`、`agent`、`harness`、`model` を `SurveyResponse` で送信し、スーパーバイザーがポータルへ中継します。
 申告は調査用で、得点や合否の判定には使いません。
-`agent` と `harness` が未申告の場合は空文字で保存します。
+`agent`、`harness`、`model` が未申告の場合は空文字で保存します。
 初期化前など `language` が空の報告は、既存の申告を上書きしません。
+
+`model` に複数のモデルを記録する場合は、`"model-a,model-b"` のようにカンマで区切ります。
+手作業やモデル名が未申告の場合は空文字とします。
+申告文字列は分割や正規化をせず、最新値と履歴にそのまま保存します。
 
 | テーブル | 保存単位 | 更新方法 |
 | --- | --- | --- |
@@ -210,24 +213,28 @@ buf generate --template buf.gen.ruby.yaml # Ruby（テスト用） → rspec/lib
 チームごとの最新の組み合わせを集計する例です。
 
 ```sql
-SELECT language, agent, harness, COUNT(*) AS teams
+SELECT language, agent, harness, model, COUNT(*) AS teams
 FROM survey_responses
-GROUP BY language, agent, harness
+GROUP BY language, agent, harness, model
 ORDER BY teams DESC;
 ```
+
+この集計では `model-a,model-b` を1つの組み合わせとして扱います。
+モデルごとの件数が必要な場合は `string_to_array(model, ',')` で分割して集計してください。
 
 チームの変遷をベンチ実行順に確認する例です。
 `$1` には対象のチーム ID を指定します。
 
 ```sql
-SELECT benchmark_job_id, language, agent, harness, created_at, updated_at
+SELECT benchmark_job_id, language, agent, harness, model, created_at, updated_at
 FROM survey_response_history
 WHERE team_id = $1
 ORDER BY benchmark_job_id;
 ```
 
-既存 DB には `005_survey_metadata.sql` を適用します。
-移行時点の最新の申告を履歴へコピーし、過去の未収集の `agent` と `harness` は空文字で残します。
+既存 DB には `005_survey_metadata.sql` と `006_survey_model.sql` を適用します。
+`005` が適用済みの場合も、`006` が最新値と履歴の両方へ `model` 列を追加します。
+移行時点の最新の申告を履歴へコピーし、過去の未収集の `agent`、`harness`、`model` は空文字で残します。
 移行前に上書きされた申告は復元できません。
 既存の運用手順どおり、ポータルのサービス更新前に `cmd/migrate` を実行し、ベンチマーカーを含むスーパーバイザーも更新してください。
 古いスーパーバイザーは追加フィールドを中継時に破棄するため、ポータルだけの更新では収集できません。

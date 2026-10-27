@@ -46,6 +46,12 @@ func TestInitializeSurvey(t *testing.T) {
 			if err := json.Unmarshal(recorder.Body.Bytes(), &body); err != nil {
 				t.Fatal(err)
 			}
+			if _, ok := body["model"]; !ok {
+				t.Fatal("missing model field")
+			}
+			if body["model"] != "" {
+				t.Fatal("manual work must have an empty model")
+			}
 			if recorder.Code != http.StatusOK || body["language"] != "go" || body["agent"] != "human" || body["harness"] != "manual" {
 				t.Fatalf("status=%d body=%v", recorder.Code, body)
 			}
