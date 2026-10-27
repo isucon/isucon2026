@@ -1,5 +1,6 @@
 import pg from "pg";
 import type { Config } from "./config.ts";
+import { lookup } from "./lookup.ts";
 import { parsePostgresTimestamp } from "./time.ts";
 import { logError } from "./response.ts";
 
@@ -24,12 +25,12 @@ export function must<T>(value: T): Exclude<T, undefined> {
   return value as Exclude<T, undefined>;
 }
 
-const typeParsers: Record<number, (value: string) => unknown> = {
+const typeParsers = {
   [pg.types.builtins.INT8]: Number,
   [pg.types.builtins.NUMERIC]: Number,
-  [pg.types.builtins.DATE]: (value) => value,
+  [pg.types.builtins.DATE]: (value: string) => value,
   [pg.types.builtins.TIMESTAMPTZ]: parsePostgresTimestamp,
-};
+} as const;
 
 const statementNames = new Map<string, string>();
 
@@ -55,7 +56,7 @@ export class DB implements Queryer {
       max: size,
       types: {
         getTypeParser: ((oid: number, format?: "text" | "binary") =>
-          typeParsers[oid] ?? pg.types.getTypeParser(oid, format)) as typeof pg.types.getTypeParser,
+          lookup(typeParsers, oid) ?? pg.types.getTypeParser(oid, format)) as typeof pg.types.getTypeParser,
       },
     });
     this.#pool.on("error", (err) => logError("database connection failed", err));

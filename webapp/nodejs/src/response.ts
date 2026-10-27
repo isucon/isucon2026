@@ -1,16 +1,17 @@
 import type { Context } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
+import { lookup } from "./lookup.ts";
 
-const jsonEscapes: Record<string, string> = {
+const jsonEscapes = {
   "<": "\\u003c",
   ">": "\\u003e",
   "&": "\\u0026",
   "\u2028": "\\u2028",
   "\u2029": "\\u2029",
-};
+} as const;
 
 export function marshalJSON(value: unknown): string {
-  return JSON.stringify(value).replace(/[<>&\u2028\u2029]/g, (char) => jsonEscapes[char]);
+  return JSON.stringify(value).replace(/[<>&\u2028\u2029]/g, (char) => lookup(jsonEscapes, char) ?? char);
 }
 
 export function encodeJSON(value: unknown): string {
