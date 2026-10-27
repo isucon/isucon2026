@@ -2,15 +2,21 @@ use axum::{
     Extension, Router,
     body::Body,
     http::{Request, StatusCode},
-    routing::{get, post},
+    routing::{delete, get, post, put},
 };
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::Utc;
 use http_body_util::BodyExt;
 use isureal::{
-    HandlerContext, config_from_env, export_api::export_posts_handler,
-    image_api::get_image_handler, image_signature::image_signature, image_store::ImageStore,
-    post_api::create_post_handler, session::Session,
+    HandlerContext, config_from_env,
+    export_api::export_posts_handler,
+    image_api::get_image_handler,
+    image_signature::image_signature,
+    image_store::ImageStore,
+    post_api::create_post_handler,
+    profile_image_api::{delete_profile_image_handler, put_profile_image_handler},
+    realmoji_api::{delete_real_moji_handler, replace_real_moji_handler},
+    session::Session,
 };
 use serde_json::Value;
 use sqlx::{
@@ -45,6 +51,7 @@ fn upload(data: &[u8]) -> Request<Body> {
         ("caption", "image store test"),
         ("visibility", "public"),
         ("location_kind", "none"),
+        ("reactionType", "like"),
     ] {
         body.extend_from_slice(
             format!(
@@ -79,6 +86,18 @@ fn app(db: PgPool, store: Option<ImageStore>) -> Router {
     });
     Router::new()
         .route("/api/posts", post(create_post_handler))
+        .route(
+            "/api/me/profile-image",
+            put(put_profile_image_handler).delete(delete_profile_image_handler),
+        )
+        .route(
+            "/api/posts/{postId}/realmojis",
+            post(replace_real_moji_handler),
+        )
+        .route(
+            "/api/realmojis/{realMojiId}",
+            delete(delete_real_moji_handler),
+        )
         .route("/api/images/{imageId}", get(get_image_handler))
         .route("/api/me/export", get(export_posts_handler))
         .layer(Extension(Session {
@@ -695,6 +714,197 @@ async fn independent_bytes_publish_atomically_and_preserve_visibility_export_and
         )
         .await,
         (StatusCode::OK, original.to_vec())
+    );
+    // Profile replacement and realmoji replacement keep independent public
+    // lifetimes even when every image refers to the same immutable bytes.
+    let mut previous_profile = None;
+    for _ in 0..2 {
+        assert_eq!(
+            request(
+                routed.clone(),
+                Request::put("/api/me/profile-image")
+                    .header("content-type", "image/jpeg")
+                    .body(Body::from(original.to_vec()))
+                    .unwrap()
+            )
+            .await
+            .0,
+            StatusCode::NO_CONTENT
+        );
+        let profile_id: String =
+            sqlx::query_scalar("SELECT profile_image_id FROM users WHERE id='owner'")
+                .fetch_one(&db)
+                .await
+                .unwrap();
+        let reference: (String, i32) =
+            sqlx::query_as("SELECT asset_key,octet_length(data) FROM image_objects WHERE id=$1")
+                .bind(&profile_id)
+                .fetch_one(&db)
+                .await
+                .unwrap();
+        assert_eq!(reference, (shared_key.clone(), 0));
+        assert_eq!(
+            request(
+                routed.clone(),
+                Request::get(image_url(&profile_id, &key))
+                    .body(Body::empty())
+                    .unwrap()
+            )
+            .await,
+            (StatusCode::OK, original.to_vec())
+        );
+        if let Some(previous) = previous_profile {
+            assert_eq!(
+                request(
+                    routed.clone(),
+                    Request::get(previous).body(Body::empty()).unwrap()
+                )
+                .await
+                .0,
+                StatusCode::FORBIDDEN
+            );
+        }
+        previous_profile = Some(image_url(&profile_id, &key));
+    }
+    sqlx::query("UPDATE posts SET deleted_at=NULL WHERE id=$1")
+        .bind(response["id"].as_str().unwrap())
+        .execute(&db)
+        .await
+        .unwrap();
+    let mut previous_reaction = None;
+    let mut reaction_id = String::new();
+    for _ in 0..2 {
+        let mut upload = upload(original);
+        *upload.uri_mut() = "/api/posts/other/realmojis".parse().unwrap();
+        let (status, response) = request(routed.clone(), upload).await;
+        assert_eq!(
+            status,
+            StatusCode::CREATED,
+            "{}",
+            String::from_utf8_lossy(&response)
+        );
+        let reaction: Value = serde_json::from_slice(&response).unwrap();
+        reaction_id = reaction["id"].as_str().unwrap().to_owned();
+        let url = reaction["imageUrl"].as_str().unwrap().to_owned();
+        let reference: (String, i32) = sqlx::query_as("SELECT i.asset_key,octet_length(i.data) FROM image_objects i JOIN realmojis r ON r.image_id=i.id WHERE r.id=$1")
+            .bind(&reaction_id).fetch_one(&db).await.unwrap();
+        assert_eq!(reference, (shared_key.clone(), 0));
+        assert_eq!(
+            request(
+                routed.clone(),
+                Request::get(&url).body(Body::empty()).unwrap()
+            )
+            .await,
+            (StatusCode::OK, original.to_vec())
+        );
+        if let Some(previous) = previous_reaction {
+            assert_eq!(
+                request(
+                    routed.clone(),
+                    Request::get(previous).body(Body::empty()).unwrap()
+                )
+                .await
+                .0,
+                StatusCode::FORBIDDEN
+            );
+        }
+        previous_reaction = Some(url);
+    }
+    assert_eq!(
+        request(
+            routed.clone(),
+            Request::delete("/api/me/profile-image")
+                .body(Body::empty())
+                .unwrap()
+        )
+        .await
+        .0,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(
+        request(
+            routed.clone(),
+            Request::get(previous_profile.unwrap())
+                .body(Body::empty())
+                .unwrap()
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        request(
+            routed.clone(),
+            Request::get(previous_reaction.as_ref().unwrap())
+                .body(Body::empty())
+                .unwrap()
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        request(
+            routed.clone(),
+            Request::delete(format!("/api/realmojis/{reaction_id}"))
+                .body(Body::empty())
+                .unwrap()
+        )
+        .await
+        .0,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(
+        request(
+            routed.clone(),
+            Request::get(previous_reaction.unwrap())
+                .body(Body::empty())
+                .unwrap()
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        request(
+            routed.clone(),
+            Request::get(image_url(&other_id, &other_key))
+                .body(Body::empty())
+                .unwrap()
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    assert_eq!(count(&assets, "astra_image_data").await, 2);
+    // The rollout switch also preserves inline profile writes and rejects
+    // invalid oversized images before publication.
+    assert_eq!(
+        request(
+            local.clone(),
+            Request::put("/api/me/profile-image")
+                .header("content-type", "image/jpeg")
+                .body(Body::from(original.to_vec()))
+                .unwrap()
+        )
+        .await
+        .0,
+        StatusCode::NO_CONTENT
+    );
+    let inline: (Option<String>, i32) = sqlx::query_as("SELECT i.asset_key,octet_length(i.data) FROM image_objects i JOIN users u ON u.profile_image_id=i.id WHERE u.id='owner'")
+        .fetch_one(&db).await.unwrap();
+    assert_eq!(inline, (None, original.len() as i32));
+    assert_eq!(
+        request(
+            routed.clone(),
+            Request::put("/api/me/profile-image")
+                .header("content-type", "image/jpeg")
+                .body(Body::from(second.to_vec()))
+                .unwrap()
+        )
+        .await
+        .0,
+        StatusCode::BAD_REQUEST
     );
     let uncached_store = ImageStore::new(assets.clone(), true, None).with_cache_enabled(false);
     let uncached_id = uuid::Uuid::new_v4().to_string();

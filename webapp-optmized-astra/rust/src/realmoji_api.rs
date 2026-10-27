@@ -101,6 +101,13 @@ pub async fn replace_real_moji_handler(
             "interaction_forbidden",
         ));
     }
+    let image_id = Uuid::new_v4().to_string();
+    let asset_key = if let Some(store) = h.image_store.as_ref().filter(|store| store.writes_enabled)
+    {
+        Some(store.put(&image_id, &data).await?)
+    } else {
+        None
+    };
     let mut tx = begin_relationship_tx(&h.db, actor, &post.author_id).await?;
     let allowed = can_view_post(&mut tx, actor, &post.id).await?;
     if !allowed {
@@ -114,13 +121,13 @@ pub async fn replace_real_moji_handler(
         .bind(actor)
         .execute(&mut *tx)
         .await?;
-    let image_id = Uuid::new_v4().to_string();
     sqlx::query(
-        "INSERT INTO image_objects(id,owner_user_id,data,media_type) VALUES($1,$2,$3,'image/jpeg')",
+        "INSERT INTO image_objects(id,owner_user_id,data,media_type,asset_key) VALUES($1,$2,$3,'image/jpeg',$4)",
     )
     .bind(&image_id)
     .bind(actor)
-    .bind(&data[..])
+    .bind(if asset_key.is_some() { &[][..] } else { &data[..] })
+    .bind(&asset_key)
     .execute(&mut *tx)
     .await?;
     let id = Uuid::new_v4().to_string();
