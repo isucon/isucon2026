@@ -114,8 +114,11 @@ func exportImages(ctx context.Context, db *sqlx.DB, posts []Post) (map[string][]
 				ID   string `db:"id"`
 				Data []byte `db:"data"`
 			}
-			if err := db.SelectContext(gctx, &rows, `SELECT id, data FROM image_objects
-              WHERE id = ANY($1::text[]) AND created_at = ANY($2::timestamptz[])`, ids, times); err != nil {
+			// A join with the (id, time) pairs is pruned per row to one month
+			// partition; "= ANY(array)" conditions were not.
+			if err := db.SelectContext(gctx, &rows, `SELECT i.id, i.data
+              FROM unnest($1::text[], $2::timestamptz[]) AS n(id, at)
+              JOIN image_objects i ON i.id = n.id AND i.created_at = n.at`, ids, times); err != nil {
 				return err
 			}
 			mu.Lock()

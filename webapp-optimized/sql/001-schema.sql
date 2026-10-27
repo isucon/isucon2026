@@ -356,9 +356,10 @@ BEGIN
  SELECT * INTO w FROM posting_windows WHERE id=p.posting_window_id;
  IF actor=p.author_id AND NOT comment_mode THEN RETURN true; END IF;
  IF w.ended_at IS NOT NULL THEN RETURN false; END IF;
- SELECT EXISTS(SELECT 1 FROM posts own JOIN posting_windows pw ON pw.id=own.posting_window_id
-  JOIN posting_windows current ON current.region=v.region AND current.ended_at IS NULL AND current.local_date=pw.local_date
-  WHERE own.author_id=actor AND own.deleted_at IS NULL) INTO posted;
+ SELECT EXISTS(SELECT 1 FROM posts own
+  WHERE own.author_id=actor AND own.deleted_at IS NULL AND own.posting_window_id IN (
+   SELECT pw.id FROM posting_windows pw JOIN posting_windows current ON current.local_date=pw.local_date
+   WHERE current.region=v.region AND current.ended_at IS NULL)) INTO posted;
  IF NOT posted THEN RETURN false; END IF;
  IF actor=p.author_id THEN RETURN true; END IF;
  IF opt_blocked(actor,p.author_id) THEN RETURN false; END IF;
@@ -433,17 +434,24 @@ BEGIN
   IF action='post_create' THEN
    IF u.status<>'active' THEN RAISE EXCEPTION 'user not active'; END IF;
    result:=opt_user(u);
-   SELECT * INTO w FROM posting_windows WHERE region=u.region AND ended_at IS NULL FOR SHARE;
+   -- FOR KEY SHARE: closing the window (an update of ended_at, a non-key
+   -- column) neither waits for posts in flight nor makes new posts queue
+   -- behind it; a post that overlaps the closing lands in the window its
+   -- statement saw open.
+   SELECT * INTO w FROM posting_windows WHERE region=u.region AND ended_at IS NULL FOR KEY SHARE;
    IF NOT FOUND THEN
     -- The open window may have just been replaced: the locked row no longer
     -- matches and the new one is not in this statement's snapshot. A new
     -- statement sees the new window.
-    SELECT * INTO w FROM posting_windows WHERE region=u.region AND ended_at IS NULL FOR SHARE;
+    SELECT * INTO w FROM posting_windows WHERE region=u.region AND ended_at IS NULL FOR KEY SHARE;
    END IF;
    IF NOT FOUND THEN PERFORM opt_fail(409,'post_slot_unavailable'); END IF;
+   -- Windows of the date first (3 at most), then the author's posts in them by
+   -- (author_id, posting_window_id): a join over all the author's posts costs
+   -- hundreds of probes for a user with a year of history.
    SELECT count(*) FILTER(WHERE pp.deleted_at IS NULL),count(*) FILTER(WHERE pp.deleted_at IS NOT NULL)
-    INTO active_count,deleted_count FROM posts pp JOIN posting_windows pw ON pw.id=pp.posting_window_id
-    WHERE pp.author_id=actor AND pw.local_date=w.local_date;
+    INTO active_count,deleted_count FROM posts pp
+    WHERE pp.author_id=actor AND pp.posting_window_id IN (SELECT id FROM posting_windows WHERE local_date=w.local_date);
    at_time:=clock_timestamp();
    IF active_count<>0 OR deleted_count>=2 OR at_time<w.starts_at THEN PERFORM opt_fail(409,'post_slot_unavailable'); END IF;
    imageid:=coalesce(a->>'imageId',gen_random_uuid()::text); newid:=gen_random_uuid()::text;
@@ -457,8 +465,9 @@ BEGIN
    IF p.author_id<>actor THEN PERFORM opt_fail(403,'post_not_editable'); END IF;
    SELECT * INTO w FROM posting_windows WHERE id=p.posting_window_id;
    IF action='post_delete' THEN
-    SELECT count(*) INTO deleted_count FROM posts pp JOIN posting_windows pw ON pw.id=pp.posting_window_id
-     WHERE pp.author_id=actor AND pw.local_date=w.local_date AND pp.deleted_at IS NOT NULL;
+    SELECT count(*) INTO deleted_count FROM posts pp
+     WHERE pp.author_id=actor AND pp.deleted_at IS NOT NULL
+      AND pp.posting_window_id IN (SELECT id FROM posting_windows WHERE local_date=w.local_date);
     IF deleted_count>=2 THEN PERFORM opt_fail(409,'post_slot_unavailable'); END IF;
     UPDATE posts SET deleted_at=clock_timestamp() WHERE id=p.id;
     RETURN '{}'::jsonb;
