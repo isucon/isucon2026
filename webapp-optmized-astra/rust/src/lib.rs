@@ -36,6 +36,7 @@ pub mod relationship;
 pub mod relationship_api;
 pub mod relationship_list_api;
 pub mod response;
+mod search_text;
 pub mod server;
 pub mod session;
 pub mod timefmt;

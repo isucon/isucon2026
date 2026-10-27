@@ -5,7 +5,6 @@ use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::Response;
 use serde::{Deserialize, Serialize};
-use unicode_normalization::UnicodeNormalization;
 
 use crate::api_error::{Error, new_api_error};
 use crate::bind::{Bind, Bindable, Binder};
@@ -13,6 +12,7 @@ use crate::post::{get_blocked_user_ids, get_friend_ids};
 use crate::relationship::is_blocked;
 use crate::relationship_list_api::RelationshipUserResponse;
 use crate::response::json;
+use crate::search_text;
 use crate::server::HandlerContext;
 use crate::session::Session;
 use crate::user::{USER_COLUMNS, User, get_user, valid_user_text};
@@ -44,12 +44,6 @@ pub struct SearchUsersResponse {
     pub has_more: bool,
 }
 
-fn normalize_search_text(value: &str) -> String {
-    caseless::default_case_fold_str(&value.nfc().collect::<String>())
-        .nfc()
-        .collect()
-}
-
 pub async fn search_users_handler(
     State(h): State<Arc<HandlerContext>>,
     Extension(session): Extension<Session>,
@@ -72,11 +66,11 @@ pub async fn search_users_handler(
         .fetch_all(&h.db)
         .await?;
     let blocked = get_blocked_user_ids(&h.db, viewer).await?;
-    let query = normalize_search_text(&input.q);
+    let query = search_text::normalize(&input.q);
     let mut items = Vec::new();
     for mut user in users {
-        if !normalize_search_text(&user.username).contains(&query)
-            && !normalize_search_text(&user.display_name).contains(&query)
+        if !search_text::matches(&user.username, &query)
+            && !search_text::matches(&user.display_name, &query)
         {
             continue;
         }
