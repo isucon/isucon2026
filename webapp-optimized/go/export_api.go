@@ -109,6 +109,24 @@ func exportPostsHandler(h *HandlerContext) echo.HandlerFunc {
 // image store for images uploaded during the load.
 func exportImages(ctx context.Context, db *sqlx.DB, posts []Post) (map[string][]byte, error) {
 	data := make(map[string][]byte, len(posts))
+	if pack != nil {
+		ids := make([]string, len(posts))
+		for i, p := range posts {
+			ids[i] = p.ImageID
+		}
+		packed, err := pack.readMany(ids)
+		if err != nil {
+			return nil, err
+		}
+		data = packed
+		rest := make([]Post, 0, len(posts)-len(packed))
+		for _, p := range posts {
+			if _, ok := packed[p.ImageID]; !ok {
+				rest = append(rest, p)
+			}
+		}
+		posts = rest
+	}
 	var mu sync.Mutex
 	group, gctx := errgroup.WithContext(ctx)
 	group.SetLimit(4)
