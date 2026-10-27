@@ -226,3 +226,31 @@ team4は初期化・負荷試験・最終検証まで進みましたが、全体
 team5は参加者環境がないため実行していません。
 設定変更後、SupervisorのPulumi適用は5サービスの更新・5 task definitionの置換でした。
 既存の型チェックと15件のテストは通過しました。
+
+## 2026-10-27 写真のアーカイブを同梱したイメージへの更新
+
+ベンチ（`feature/claude-benchmark-improve` の `a0cd2da`）を、投稿に使う写真のアーカイブ `assets/merged.zip`
+（113,674,833 バイト、sha256 `ed8a47505a3ba8eaa9ee2c21754e94fa245960e0f2f46a2fd0f939cf28908b43`）ごとイメージに同梱し、
+`make supervisor-image` で ECR へ push しました。
+
+| 項目 | 値 |
+|---|---|
+| イメージ digest | `sha256:a70d4cf10b3d4623a9446016797260108f108e0b4e99c2b388d0303f8f16530e`（タグ `photos-a70d4cf10b3d4623`、157 MB） |
+| アーカイブの場所 | `/opt/isucon/photos/merged.zip`（`benchmarkImages` → 環境変数 `ISUXBENCH_IMAGES`） |
+| タスク定義 | team1〜3 は revision 14、team4・5 は 10、team6 は 6 |
+| `desiredCount` | 0（退役したまま。変更なし） |
+
+`teamImages` の team5 向け上書き（`eeb23b1` の初期データ検証の抜き取りを先行反映した `3fe1c827…`）は、
+現状のベンチが同じ抜き取り（`initialdata.Config.ImageFetches`）を含むため外し、全チームを同じ digest にしました。
+`ISUXPORTAL_SUPERVISOR_HARD_TIMEOUT` はコードどおり 210 になりました（適用前は 150）。
+Pulumi の差分はタスク定義 6 件の置き換えとサービス 6 件の更新だけで、適用後の preview は 27 リソースすべて変更なしでした。
+最初に push した `sha256:38a37363…` は、scratch のルートを `COPY --from` する作りで BuildKit のキャッシュが
+アーカイブの有無を見分けない問題が見つかったため、`/photos/` を写す作りに直して作り直し、ECR から削除しました
+（中身は同じで、タスク定義 revision 13・9・5 はこの digest を指したまま INACTIVE です）。
+
+このとき portal-dev のベンチを実際に実行しているのは共有プール `isucon2026-shared-supervisor`
+（接続先 `https://portal-dev.isucon.net`、イメージ `sha256:aec29420…`、`--timeout 300s`、`HARD_TIMEOUT` 310）で、
+この stack のチーム別 service は `desiredCount: 0` です。この stack の適用ではポータルから走るベンチは変わりません。
+共有プールの定義は同日に `isucon2026-private` から [provisioning/aws/shared-supervisor](../shared-supervisor/README.md)
+へ移し、同じ digest と `ISUXBENCH_IMAGES=/opt/isucon/photos/merged.zip` で task definition revision 6 を
+ecspresso で配備しました（3 タスク）。経緯はそちらの適用記録にあります。
