@@ -10,11 +10,13 @@ primary = next(app for app in apps if app['region'] == 'asia')
 print('true' if runtime.get('writeProxyEnabled', False) else 'false')
 print(primary['host'])
 print(json.dumps({app['host']: app['region'] for app in apps if app['region'] != 'asia'}, separators=(',', ':')))
+print(','.join(app['host'] for app in apps if 'replicaName' in app) if runtime.get('writeFenceEnabled', False) else '')
 PY
 )
 enabled=${values[0]}
 backend_host=${values[1]}
 ingress_json=${values[2]}
+write_fence_hosts=${values[3]}
 if [ "$role" = backend ]; then
     if [ "$enabled" = true ]; then
         # Public topology only; the existing env.sh provides DB credentials.
@@ -40,6 +42,8 @@ LimitNOFILE=65536
 [Install]
 WantedBy=multi-user.target
 UNIT
+        mkdir -p /etc/systemd/system/webapp-optmized-astra-writer.service.d
+        printf '[Service]\nEnvironment=ISUREAL_WRITE_FENCE_HOSTS=%s\n' "$write_fence_hosts" >/etc/systemd/system/webapp-optmized-astra-writer.service.d/writer.conf
         systemctl daemon-reload
         systemctl enable webapp-optmized-astra-writer
         systemctl restart webapp-optmized-astra-writer

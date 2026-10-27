@@ -55,6 +55,7 @@ use crate::user_api::{
     get_me_handler, login_handler, logout_handler, register_handler, update_me_handler,
 };
 use crate::user_read_api::{get_user_handler, search_users_handler};
+use crate::write_fence::{WriteFence, write_fence_middleware};
 use crate::write_ingress::{WriteIngress, write_ingress_middleware};
 
 pub struct HandlerContext {
@@ -91,8 +92,56 @@ pub async fn new_server(config: Config) -> Router {
         notifications: NotificationHub::default(),
         read_fence: None,
     });
-    // Standby reads require either remote_apply commits or a fresh WAL fence
-    // before reading. Fences release write locks without sacrificing freshness.
+    let write_fence = match std::env::var("ISUREAL_WRITE_FENCE_HOSTS") {
+        Ok(hosts) if !hosts.is_empty() => {
+            let hosts: Vec<_> = hosts.split(',').collect();
+            assert_eq!(
+                hosts.len(),
+                2,
+                "write fences require both regional standbys"
+            );
+            assert_ne!(hosts[0], hosts[1], "write fence hosts must be distinct");
+            let mode: String = sqlx::query_scalar("SHOW synchronous_commit")
+                .fetch_one(&handler_context.db)
+                .await
+                .expect("read commit mode");
+            assert!(
+                matches!(mode.as_str(), "on" | "remote_apply"),
+                "write fences require durable primary commits"
+            );
+            let mut fences = Vec::new();
+            for host in hosts {
+                assert!(!host.is_empty(), "write fence host must not be empty");
+                let mut replica_config = handler_context.config.clone();
+                replica_config.db_host = host.to_owned();
+                let options = PgConnectOptions::from_str(&replica_config.database_dsn())
+                    .expect("write fence database options")
+                    .options([("default_transaction_read_only", "on")]);
+                // Avoid a separate cross-region ping before every WAL query.
+                // A dead connection fails the barrier closed instead.
+                let replica = PgPoolOptions::new()
+                    .max_connections(2)
+                    .test_before_acquire(false)
+                    .connect_with(options)
+                    .await
+                    .expect("connect write fence standby");
+                let in_recovery: bool = sqlx::query_scalar("SELECT pg_is_in_recovery()")
+                    .fetch_one(&replica)
+                    .await
+                    .expect("read write fence recovery state");
+                assert!(in_recovery, "write fence target must be a standby");
+                fences.push(ReadFence::new(
+                    handler_context.db.clone(),
+                    replica,
+                    std::time::Duration::from_secs(30),
+                ));
+            }
+            Some(WriteFence::new(fences))
+        }
+        _ => None,
+    };
+    // Standby reads require synchronous commits, a fresh read barrier, or a
+    // response barrier on every writer (enforced by the deployment scripts).
     let read_context = match std::env::var("ISUREAL_DB_READ_HOST") {
         Ok(host) if !host.is_empty() => {
             let mode: String = sqlx::query_scalar("SHOW synchronous_commit")
@@ -104,7 +153,7 @@ pub async fn new_server(config: Config) -> Router {
                 .await
                 .expect("read synchronous standbys");
             let fenced = std::env::var("ISUREAL_READ_FENCE").is_ok_and(|value| value == "1");
-            if fenced {
+            if fenced || write_fence.is_some() {
                 assert!(
                     matches!(mode.as_str(), "on" | "remote_apply"),
                     "fenced reads require durable primary commits"
@@ -216,6 +265,7 @@ pub async fn new_server(config: Config) -> Router {
             ServiceBuilder::new()
                 .layer(from_fn(run_to_completion))
                 .layer(from_fn_with_state(action_log, action_log_middleware))
+                .layer(from_fn_with_state(write_fence, write_fence_middleware))
                 .layer(CatchPanicLayer::custom(recover))
                 .layer(from_fn_with_state(read_context.read_fence.clone(), read_fence_middleware))
                 .layer(from_fn_with_state(read_context.clone(), ip_ban_middleware)),
