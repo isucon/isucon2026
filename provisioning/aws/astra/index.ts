@@ -38,3 +38,7 @@ if (runtime.imageStore) {
 if (runtime.imageCachePushEnabled && !runtime.imageStore?.enabled) {
     throw new Error("Image cache warming requires immutable image storage");
 }
+
+if (runtime.guardJournalUnit !== "webapp-optmized-astra*.service") {
+    throw new Error("The existing login guard must monitor both application and private writer units");
+}
