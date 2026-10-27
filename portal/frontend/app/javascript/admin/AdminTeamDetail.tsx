@@ -113,6 +113,7 @@ class AdminTeamDetailInternal extends React.Component<Props, State> {
                 isStudent={this.state.team.student?.status ?? false}
                 withdrawn={this.state.team.withdrawn!}
                 disqualified={this.state.team.disqualified!}
+                onsiteSupportExcluded={this.state.team.onsiteSupportExcluded}
                 hidden={this.state.team.hidden!}
                 finalParticipation={this.state.team.finalParticipation!}
               />

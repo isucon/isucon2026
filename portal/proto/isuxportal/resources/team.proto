@@ -13,6 +13,8 @@ message Team {
   bool hidden = 6;
   bool withdrawn = 7;
   bool disqualified = 9;
+  // Support eligibility only; does not affect participation or ranking.
+  bool onsite_support_excluded = 11;
 
   message StudentStatus { bool status = 1; }
   StudentStatus student = 10;

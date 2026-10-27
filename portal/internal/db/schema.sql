@@ -217,6 +217,7 @@ CREATE TABLE IF NOT EXISTS teams (
   updated_at timestamptz NOT NULL,
   withdrawn boolean NOT NULL DEFAULT false,
   disqualified boolean NOT NULL DEFAULT false,
+  onsite_support_excluded boolean NOT NULL DEFAULT false,
   student boolean NOT NULL,
   availability_zone varchar(255) DEFAULT 'apne1-az2',
   best_benchmark_result_id bigint,

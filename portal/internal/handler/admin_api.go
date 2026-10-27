@@ -109,7 +109,7 @@ func (h *Handler) AdminSoloDashboard(w http.ResponseWriter, r *http.Request) err
 func (h *Handler) AdminTeamsIndex(w http.ResponseWriter, r *http.Request) error {
 	ctx := r.Context()
 	rows, err := h.db.QueryContext(ctx, `
-		SELECT t.id, t.name, t.final_participation, t.is_hidden, t.student, t.withdrawn, t.disqualified, c.name
+		SELECT t.id, t.name, t.final_participation, t.is_hidden, t.student, t.withdrawn, t.disqualified, t.onsite_support_excluded, c.name
 		FROM teams t LEFT JOIN contestants c ON c.team_id = t.id
 		ORDER BY t.id ASC, c.id ASC`)
 	if err != nil {
@@ -122,20 +122,21 @@ func (h *Handler) AdminTeamsIndex(w http.ResponseWriter, r *http.Request) error 
 	for rows.Next() {
 		var teamID int64
 		var name string
-		var finalParticipation, hidden, student, withdrawn, disqualified bool
+		var finalParticipation, hidden, student, withdrawn, disqualified, onsiteSupportExcluded bool
 		var memberName *string
-		if err := rows.Scan(&teamID, &name, &finalParticipation, &hidden, &student, &withdrawn, &disqualified, &memberName); err != nil {
+		if err := rows.Scan(&teamID, &name, &finalParticipation, &hidden, &student, &withdrawn, &disqualified, &onsiteSupportExcluded, &memberName); err != nil {
 			return err
 		}
 		if current == nil || current.TeamId != teamID {
 			current = &pbadmin.ListTeamsResponse_TeamListItem{
-				TeamId:             teamID,
-				Name:               name,
-				FinalParticipation: finalParticipation,
-				Hidden:             hidden,
-				IsStudent:          student,
-				Withdrawn:          withdrawn,
-				Disqualified:       disqualified,
+				TeamId:                teamID,
+				Name:                  name,
+				FinalParticipation:    finalParticipation,
+				Hidden:                hidden,
+				IsStudent:             student,
+				Withdrawn:             withdrawn,
+				Disqualified:          disqualified,
+				OnsiteSupportExcluded: onsiteSupportExcluded,
 			}
 			items = append(items, current)
 		}
@@ -223,11 +224,11 @@ func (h *Handler) AdminTeamsUpdate(w http.ResponseWriter, r *http.Request) error
 	}
 
 	if _, err := tx.ExecContext(ctx, `
-		UPDATE teams SET name = $1, leader_id = $2, final_participation = $3, is_hidden = $4, withdrawn = $5, disqualified = $6, email_address = $7, updated_at = now()
+		UPDATE teams SET name = $1, leader_id = $2, final_participation = $3, is_hidden = $4, withdrawn = $5, disqualified = $6, email_address = $7, onsite_support_excluded = $9, updated_at = now()
 		WHERE id = $8`,
 		req.Team.Name, sql.NullInt64{Int64: req.Team.LeaderId, Valid: req.Team.LeaderId != 0},
 		req.Team.FinalParticipation, req.Team.Hidden, req.Team.Withdrawn, req.Team.Disqualified,
-		req.Team.Detail.EmailAddress, id); err != nil {
+		req.Team.Detail.EmailAddress, id, req.Team.OnsiteSupportExcluded); err != nil {
 		return err
 	}
 	for _, c := range req.Contestants {
@@ -966,7 +967,7 @@ func (h *Handler) AdminEnvCheckStats(w http.ResponseWriter, r *http.Request) err
 
 func (h *Handler) visibleActiveTeams(r *http.Request) ([]*model.Team, error) {
 	rows, err := h.db.QueryContext(r.Context(), `
-		SELECT teams.id, teams.name, teams.leader_id, teams.is_hidden, teams.final_participation, teams.email_address, teams.invite_token, teams.withdrawn, teams.disqualified, teams.student, teams.availability_zone
+		SELECT teams.id, teams.name, teams.leader_id, teams.is_hidden, teams.final_participation, teams.email_address, teams.invite_token, teams.withdrawn, teams.disqualified, teams.onsite_support_excluded, teams.student, teams.availability_zone
 		FROM teams WHERE withdrawn = false AND disqualified = false AND is_hidden = false ORDER BY id ASC`)
 	if err != nil {
 		return nil, err
@@ -975,7 +976,7 @@ func (h *Handler) visibleActiveTeams(r *http.Request) ([]*model.Team, error) {
 	var out []*model.Team
 	for rows.Next() {
 		t := &model.Team{}
-		if err := rows.Scan(&t.ID, &t.Name, &t.LeaderID, &t.IsHidden, &t.FinalParticipation, &t.EmailAddress, &t.InviteToken, &t.Withdrawn, &t.Disqualified, &t.Student, &t.AvailabilityZone); err != nil {
+		if err := rows.Scan(&t.ID, &t.Name, &t.LeaderID, &t.IsHidden, &t.FinalParticipation, &t.EmailAddress, &t.InviteToken, &t.Withdrawn, &t.Disqualified, &t.OnsiteSupportExcluded, &t.Student, &t.AvailabilityZone); err != nil {
 			return nil, err
 		}
 		out = append(out, t)
