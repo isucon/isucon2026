@@ -1,6 +1,7 @@
 package cloudformation
 
 import (
+	"fmt"
 	"os/exec"
 	"strings"
 	"testing"
@@ -65,5 +66,28 @@ func TestContestTemplateUploadSizeForPortalDevTeam(t *testing.T) {
 	}
 	if len(document) > 51200 {
 		t.Fatalf("template exceeds upload limit: %d", len(document))
+	}
+}
+
+func TestContestRouterInterfacesAttachedAtLaunch(t *testing.T) {
+	cfg := &config.Config{PublicURLHost: "portal-dev.isucon.net", ContestAMIID: "ami-service", RouterAMIID: "ami-router", CheckerSecret: []byte("test")}
+	document, err := ContestTemplate(cfg, 60001, "apne1-az2", time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(document, "AWS::EC2::NetworkInterfaceAttachment") || strings.Contains(document, "RouterDataAttachment") {
+		t.Fatal("a separate attachment can change Router interfaces during CloudFormation stabilization")
+	}
+	router := strings.Split(strings.Split(document, "\n  Router:\n")[1], "      MetadataOptions:")[0]
+	for index, name := range []string{"RouterPublicInterface", "RouterDataInterface"} {
+		want := fmt.Sprintf("- DeviceIndex: '%d'\n          NetworkInterfaceId: !Ref %s", index, name)
+		if !strings.Contains(router, want) {
+			t.Errorf("Router must attach %s at launch", name)
+		}
+	}
+	for _, server := range []string{"App1", "App2", "App3", "Database"} {
+		if strings.Count(document, "DependsOn: ["+server+"Subnet, Router]") != 3 {
+			t.Errorf("routes to %s must wait for the Router with both interfaces", server)
+		}
 	}
 }
