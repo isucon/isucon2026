@@ -209,7 +209,7 @@ func (b *book) report() []DayReport {
 			out = append(out, DayReport{
 				Region: region, Day: i + 1, Population: s.population, Newcomers: s.newcomers, Quick: s.quick, Missed: s.missed, Invites: s.invites,
 				Passes: len(s.passers), GateP50: percentileOf(took, 0.5), GateP90: percentileOf(took, 0.9),
-				Ops: s.ops, Failures: s.failures, FailRate: float64(s.failures) / float64(max(s.ops, 1)),
+				Ops: s.ops, Failures: s.failures, FailRate: min(1, float64(s.failures)/float64(max(s.ops, 1))),
 			})
 		}
 	}
