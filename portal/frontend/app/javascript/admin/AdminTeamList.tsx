@@ -97,6 +97,7 @@ export class AdminTeamList extends React.Component<Props, State> {
             isStudent={team.isStudent!}
             withdrawn={team.withdrawn!}
             disqualified={team.disqualified!}
+            onsiteSupportExcluded={team.onsiteSupportExcluded}
             hidden={team.hidden!}
             finalParticipation={team.finalParticipation!}
           />

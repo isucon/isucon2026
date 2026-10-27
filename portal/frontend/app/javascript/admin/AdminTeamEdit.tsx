@@ -144,6 +144,17 @@ export const AdminTeamEdit: React.FC<Props> = (props: Props) => {
                 </label>
               </div>
             </div>
+            <div className="field mt-4">
+              <div className="control">
+                <label className="checkbox">
+                  <input type="checkbox" {...register("team.onsiteSupportExcluded")} />
+                  当日サポート外
+                </label>
+                <p className="help">
+                  環境チェック期限に間に合わなかったチームなどを当日のサポート対象外にする。参加資格や順位には影響しない。
+                </p>
+              </div>
+            </div>
           </div>
         </div>
 
