@@ -35,8 +35,6 @@ docker compose --project-name isureal-router-e2e -f router/compose.e2e.yaml \
   down --volumes --remove-orphans
 ```
 
-より詳細な検証順序は [quickstart](../specs/003-router/quickstart.md) にある。
-
 ## Source layout
 
 ```text

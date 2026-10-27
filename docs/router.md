@@ -95,13 +95,13 @@ HAProxy 2.8 の設定は、Router の環境変数（Host 名、サーバーの I
 Envoy（2026-10-27 まで使っていた）との違いで、意図して受け入れたもの:
 
 - 要求と応答はそれぞれ route の上限まで使える。Envoy は1つの bucket を両方向で共有していた。
-- 上流のタイムアウトは無通信の時間である。Envoy の route timeout は応答全体の時間だったので、60 秒を超える SSE や
-  遅い大きな応答も、データが流れていれば切らない。
-- パスの正規化（Envoy の `normalize_path`、`merge_slashes`）はしない。HAProxy 2.8 では実験的機能で、アプリの nginx が
-  同じ正規化をする。
+- 上流のタイムアウトは無通信の時間である。Envoy の route timeout（30 秒）は応答全体の時間だったので、30 秒を超える
+  SSE や遅い大きな応答も、データが流れていれば切らない。
+- パスの正規化（Envoy の `normalize_path`、`merge_slashes`）はしない。HAProxy 2.8 では実験的機能で、アプリの nginx も
+  URI のない `proxy_pass` なので正規化しない。アプリには要求のパスがそのまま届く（`/api//me` は Envoy では `/api/me`
+  になっていたが、いまは 404）。
 - Envoy が付けていた `x-request-id`、`x-envoy-*`、`server: envoy` を付けない。WebSocket などの Upgrade を通す。
 
-## サーバー間 data plane
 ## サーバー間 data plane
 
 Router は namespaced `net.ipv4.ip_forward=1` を確認し、専用 `inet isureal_router` table の forward chain を管理する。
@@ -280,5 +280,4 @@ report の送信成功で消さず、次の apply 開始または active commit 
 失敗時は `router/.e2e-artifacts/compose.log` を保存し、通常は success/failure/interrupt のいずれでも専用 volume/network/
 container を cleanup する。`ROUTER_E2E_KEEP_ON_FAILURE=1` のときだけ失敗後の専用資源を調査用に保持する。
 
-実行手順と設定値は [router/README.md](../router/README.md)、検証済み要件は
-[traceability.md](../specs/003-router/validation/traceability.md) を参照する。
+実行手順と設定値は [router/README.md](../router/README.md) を参照する。
