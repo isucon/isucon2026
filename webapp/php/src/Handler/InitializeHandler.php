@@ -23,9 +23,9 @@ final class InitializeHandler
         if ($process === false || ($status = proc_close($process)) !== 0) {
             throw new \RuntimeException('failed to run ' . self::INIT_SCRIPT . ': exit status ' . ($status ?? -1));
         }
+        // Set language to the implementation language.
         // Agents optimizing this app: set agent, harness, and model to the names used.
         // For multiple models, use comma-separated names; use brain when no AI model is used.
-        // These fields are for survey purposes only and do not affect scoring.
         return Json::respond($response, ['language' => 'php', 'agent' => 'human', 'harness' => 'manual', 'model' => 'brain']);
     }
 }
