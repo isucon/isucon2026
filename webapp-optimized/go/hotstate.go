@@ -111,6 +111,11 @@ type relationKey struct {
 
 var hot = newHotState()
 
+// homeRegion is this app's region. The hot state vouches only for the
+// sessions of its own region's users; other users are authenticated by the
+// database, so their session changes may reach this region late.
+var homeRegion string
+
 func newHotState() *hotState {
 	s := &hotState{}
 	s.reset()
@@ -302,6 +307,16 @@ func (s *hotState) apply(events []stateEvent) {
 	defer s.mu.Unlock()
 	for _, e := range events {
 		switch e.Kind {
+		case "post", "post_deleted", "history_dirty":
+			id := e.A
+			if e.Post != nil {
+				id = e.Post.ID
+			}
+			history.touch(id)
+		case "window":
+			history.windowOpened(e.Window.LocalDate)
+		}
+		switch e.Kind {
 		case "user":
 			u := e.User.user()
 			if current := s.users[u.ID]; current == nil || (e.Version > current.Version && current.Status != "deleted") {
@@ -389,7 +404,7 @@ func (s *hotState) authenticate(tokenHash, region string) (User, bool) {
 		return User{}, false
 	}
 	u := s.users[session.UserID]
-	if u == nil || u.Status != "active" || (region != "" && u.Region != region) {
+	if u == nil || u.Status != "active" || (region != "" && u.Region != region) || (homeRegion != "" && u.Region != homeRegion) {
 		return User{}, false
 	}
 	return u.User, true
