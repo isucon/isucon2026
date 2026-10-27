@@ -153,6 +153,8 @@ type Runner struct {
 	peekRate float64
 	// moveRate は Config.MoveRate。
 	moveRate float64
+	// signOffRate は正なら、好みにかかわらず、日を過ごし終えるたびにこの確率でアプリを閉じる（テスト用）。
+	signOffRate float64
 	// historyImages は履歴を 1 か月読むたびに中身を取得する画像の数。
 	historyImages int
 	// verifyRate は負荷走行で重い検証を行う操作の割合（Config.VerifyRate）。

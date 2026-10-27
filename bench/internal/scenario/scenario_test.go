@@ -663,3 +663,17 @@ func TestUsersMoveBetweenRegions(t *testing.T) {
 		}
 	}
 }
+
+// TestUsersSignOffOvernight は、日の終わりにログアウトして次の日にログインし直すユーザーが、
+// 通知を待たずに投稿してエラーにならないことを確かめる。
+func TestUsersSignOffOvernight(t *testing.T) {
+	runner, _ := newTestRunner(t, 3, metrics.SLO{FailRate: 1000, MinOps: 1})
+	runner.setDuration(2 * time.Second)
+	runner.signOffRate = 1
+	if reason := runner.load(t.Context()); reason != "" || runner.board.ErrorCount() != 0 || runner.board.CriticalCount() != 0 {
+		t.Fatalf("reason=%q errors=%v critical=%v", reason, runner.board.Errors(), runner.board.Critical())
+	}
+	if runner.board.Count(score.TagGatePass) == 0 {
+		t.Fatal("no gate passes")
+	}
+}

@@ -108,3 +108,60 @@ func (r *Runner) usersByRegion() map[string][]*user {
 	}
 	return out
 }
+
+// アプリを閉じるユーザー
+//
+// 一部のユーザーは日を過ごし終えたあとでログアウトし、通知を受けない。次の日が始まって
+// しばらくしてから（いつもの投稿の待ちのあと）アプリを開き直してログインし、開いている
+// 投稿期間に通知を待たずに投稿する。通知を受けないので、通過までの時間は開き直してから
+// 数える。
+
+// signsOff は u が day 日目を過ごし終えたあとでアプリを閉じるか。グランプリの日は閉じない。
+func (r *Runner) signsOff(u *user, day int) bool {
+	if u.returning || u.certified.Load() || u.leaveOn > 0 || u.stopped.Load() || day == 0 || day >= r.tt.days() {
+		return false
+	}
+	rate := u.persona.signOff
+	if r.signOffRate > 0 {
+		rate = r.signOffRate
+	}
+	return unit(r.seed, "signoff", u.Username, itoa(day)) < rate
+}
+
+// closeApp は u をログアウトさせ、次の日が始まっていつもの待ちが過ぎるまで休ませてから、
+// ログインし直して通知の購読を始め直す。新しい購読を止める関数を返す。ログインし直せ
+// なければ、トークンを空にしたまま（次の日は通過できない人として数える）購読を止める。
+//
+// u.Token は u のゴルーチンだけが書き換え、ほかのゴルーチンは r.mu の中で読む。
+func (r *Runner) closeApp(ctx context.Context, u *user, day int, stop func(), notifications chan notice) func() {
+	stop()
+	select {
+	case <-notifications:
+	default:
+	}
+	if err := u.API.Logout(ctx, u.Token); err != nil {
+		r.requestError(ctx, u, "%s: ログアウトできません: %v", u.Username, err)
+	}
+	r.mu.Lock()
+	u.Token = ""
+	r.mu.Unlock()
+	b := r.books.Load()
+	if b == nil {
+		return func() {}
+	}
+	wake := b.start.Add(r.tt.start(u.Region, day+1) + r.postDelayOf(u, day+1))
+	if sleepUntil(ctx, wake) != nil {
+		return func() {}
+	}
+	fresh := *u.Agent
+	if err := fresh.Login(ctx); err != nil {
+		if !r.bannedErr(u, err) {
+			r.requestError(ctx, u, "%s: ログインし直せません: %v", u.Username, err)
+		}
+		return func() {}
+	}
+	r.mu.Lock()
+	u.Token = fresh.Token
+	r.mu.Unlock()
+	return r.startListening(ctx, u, notifications, nil)
+}
