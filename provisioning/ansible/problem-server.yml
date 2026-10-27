@@ -9,6 +9,9 @@
     - golang
     - ruby
     - rust
+    - python
+    - php
+    - perl
     - nodejs
     - postgresql
     - nginx
@@ -21,4 +24,4 @@
         name: "{{ item }}"
         state: stopped
         enabled: false
-      loop: [isureal-go, isureal-ruby, isureal-rust, isureal-nodejs, isureal-guard, nginx, postgresql]
+      loop: [isureal-go, isureal-ruby, isureal-rust, isureal-python, isureal-php, isureal-perl, isureal-nodejs, isureal-guard, nginx, postgresql]
