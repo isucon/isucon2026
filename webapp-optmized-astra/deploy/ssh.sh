@@ -12,7 +12,7 @@ mkdir -p "$control"
 chmod 700 "$control"
 options=(-i "$key" -o 'ProxyCommand=aws ec2-instance-connect open-tunnel --instance-id %h'
     -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20
-    -o ControlMaster=auto -o ControlPersist=60 -o "ControlPath=$control/%C")
+    -o ControlMaster=auto -o ControlPersist=600 -o "ControlPath=$control/%C")
 # Reuse an already authenticated control connection. Only a new connection
 # needs another ephemeral key authorization through the existing EICE endpoint.
 if ! ssh "${options[@]}" -O check "isucon@$instance" >/dev/null 2>&1; then
