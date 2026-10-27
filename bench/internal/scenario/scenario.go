@@ -70,6 +70,9 @@ type Config struct {
 	// MoveRate は正なら、好みにかかわらず、移れるユーザーが日を過ごし終えるたびにこの確率で
 	// リージョンを移る（開発で移動を確かめる用）。0 なら好み（persona）に従う。
 	MoveRate float64
+	// SignOffRate は正なら、好みにかかわらず、日を過ごし終えるたびにこの確率でアプリを閉じる
+	// （開発でログインし直しを確かめる用）。0 なら好みに従う。
+	SignOffRate float64
 	// Growth はユーザーの増え方。ゼロ値なら DefaultGrowth。
 	Growth GrowthConfig
 	// Dataset は対象の DB に入っている初期データ。nil なら dataset.Small() から作る。
@@ -153,7 +156,7 @@ type Runner struct {
 	peekRate float64
 	// moveRate は Config.MoveRate。
 	moveRate float64
-	// signOffRate は正なら、好みにかかわらず、日を過ごし終えるたびにこの確率でアプリを閉じる（テスト用）。
+	// signOffRate は Config.SignOffRate。
 	signOffRate float64
 	// historyImages は履歴を 1 か月読むたびに中身を取得する画像の数。
 	historyImages int
@@ -252,6 +255,7 @@ func NewRunner(cfg Config) (*Runner, error) {
 		historyImages:     4,
 		verifyRate:        cfg.VerifyRate,
 		moveRate:          cfg.MoveRate,
+		signOffRate:       cfg.SignOffRate,
 		returningRatio:    returningRatio,
 		users:             map[string][]*user{},
 		byID:              map[string]*user{},
