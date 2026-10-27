@@ -275,31 +275,68 @@ func (s *Set) derive() error {
 		sources = s.photos
 	}
 	step := max(1, len(sources)/derivedCount)
-	for i := 0; i < len(sources) && len(s.reactions) < derivedCount; i += step {
-		img, err := jpegDecode(sources[i].data)
-		if err != nil {
-			return fmt.Errorf("%s を縮小できません: %w", sources[i].Name, err)
+	var picked []*Photo
+	for i := 0; i < len(sources) && len(picked) < derivedCount; i += step {
+		picked = append(picked, sources[i])
+	}
+	// 元の写真のデコードが重いので、写真ごとに並行して縮小する。順序は元の並びのまま保つ。
+	type derived struct {
+		reaction, profile jpeg
+		err               error
+	}
+	results := make([]derived, len(picked))
+	limit := make(chan struct{}, runtime.GOMAXPROCS(0))
+	var wg sync.WaitGroup
+	for i, src := range picked {
+		limit <- struct{}{}
+		wg.Go(func() {
+			defer func() { <-limit }()
+			results[i] = deriveOne(src)
+		})
+	}
+	wg.Wait()
+	for _, r := range results {
+		if r.err != nil {
+			return r.err
 		}
-		for _, target := range []struct {
-			side int
-			out  *[]jpeg
-		}{{reactionSide, &s.reactions}, {profileSide, &s.profiles}} {
-			data, err := encode(square(img, target.side))
-			if err != nil {
-				return err
-			}
-			insert, err := insertPoint(data)
-			if err != nil {
-				return err
-			}
-			f, err := findFlips(data)
-			if err != nil {
-				return err
-			}
-			*target.out = append(*target.out, jpeg{data: data, insert: insert, flips: f})
-		}
+		s.reactions = append(s.reactions, r.reaction)
+		s.profiles = append(s.profiles, r.profile)
 	}
 	return nil
+}
+
+// deriveOne は 1 枚の写真から RealMoji 用とプロフィール用の縮小版を作る。
+func deriveOne(src *Photo) (out struct {
+	reaction, profile jpeg
+	err               error
+}) {
+	img, err := jpegDecode(src.data)
+	if err != nil {
+		out.err = fmt.Errorf("%s を縮小できません: %w", src.Name, err)
+		return out
+	}
+	for _, target := range []struct {
+		side int
+		out  *jpeg
+	}{{reactionSide, &out.reaction}, {profileSide, &out.profile}} {
+		data, err := encode(square(img, target.side))
+		if err != nil {
+			out.err = err
+			return out
+		}
+		insert, err := insertPoint(data)
+		if err != nil {
+			out.err = err
+			return out
+		}
+		f, err := findFlips(data)
+		if err != nil {
+			out.err = err
+			return out
+		}
+		*target.out = jpeg{data: data, insert: insert, flips: f}
+	}
+	return out
 }
 
 func jpegDecode(data []byte) (image.Image, error) {
