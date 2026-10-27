@@ -119,6 +119,7 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 - 未最適化Rust版の基準測定。
 - 投稿のロック、署名計算、通知、SQL往復の最適化。
 - JPEGは成功した検証結果を最大4096件保持し、初回は圧縮データ全体を検査しながら画素展開量を減らす。
+- 画像のDB保存は`STORAGE EXTERNAL`を使い、TOASTの圧縮試行を省く。計測で`pglz_compress`がプライマリCPUの26.55%を占め、抽出した画像300件はいずれも圧縮されていなかった。画像は引き続きPostgreSQLへ保存し、取得するバイト列も維持する。この設定は今後の書き込みに適用され、既存行は書き直さない。[PostgreSQL 16の保存方式](https://www.postgresql.org/docs/16/sql-altertable.html#SQL-ALTERTABLE-DESC-SET-STORAGE)に従い、既存の圧縮済み行と新規行の読み取りをローカルDBで確認した。
 - 画像配信は現在の閲覧権限と署名鍵を毎回確認する。画像データは最大128MiB・4096件まで保持し、DB行の`xmin`と作成時刻が変われば取得し直す。キャッシュがある場合は既知の作成時刻で検索先の月別テーブルを絞り、見つからなければ全体を再検索する。移動・削除・同じIDでの再作成や所有者の鍵変更も検証する。
 - SSE通知は地域内DBごとに100ミリ秒間隔で最大512接続ずつ一括確認する。接続ごとの通知時刻とユーザー状態は毎回確認する。
 - 通知の検索は開いている投稿期間を列挙し、期間・ユーザーの一意索引から該当通知を探す。各期間の最初の通知から全体の最初の1件を選ぶため、履歴を毎回走査せずに従来の順序を保つ。ユーザー削除時の外部キー確認用には、ユーザーIDだけの小さな索引を残す。
@@ -159,3 +160,4 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261027T165020Z-team10 | retest native response barriers after notification and permission optimizations; preserve standby caches | PASS | 50,018 |
 | 20261027T165726Z-team10 | cache exact Unicode search normalization with ASCII fast path | FAIL | 0 |
 | 20261027T170518Z-team10 | raise nginx worker connection capacity after observed EOF and 502 saturation | PASS | 43,902 |
+| 20261027T171057Z-team10 | skip ineffective TOAST compression of image bytes while preserving PostgreSQL storage | PASS | 38,237 |
