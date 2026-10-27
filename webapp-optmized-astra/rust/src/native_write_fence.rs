@@ -25,6 +25,7 @@ struct Inner {
     in_flight: Semaphore,
     mutations: Semaphore,
     small_mutations: Semaphore,
+    control_mutations: Semaphore,
 }
 
 #[derive(Clone)]
@@ -39,17 +40,26 @@ impl NativeWriteFence {
             in_flight: Semaphore::new(4),
             mutations: Semaphore::new(WRITE_SLOTS as usize),
             small_mutations: Semaphore::new(SMALL_WRITE_SLOTS),
+            control_mutations: Semaphore::new(4),
         }))
     }
 
     /// Keep admission until the response barrier has applied on both replicas.
     /// Local commits release SQL locks immediately, but cannot build an
     /// unbounded queue of large image writes ahead of regional replay.
-    pub async fn admit(&self, body_bytes: Option<u64>) -> SemaphorePermit<'_> {
+    pub async fn admit(&self, body_bytes: Option<u64>, control: bool) -> SemaphorePermit<'_> {
         // Small account/admin mutations must not queue behind image uploads.
         // They retain their own bounded budget until the same replay barrier,
         // so bypassing the image queue never bypasses visibility guarantees.
         if body_bytes.is_some_and(|bytes| bytes <= SMALL_BODY_BYTES) {
+            if control {
+                return self
+                    .0
+                    .control_mutations
+                    .acquire()
+                    .await
+                    .expect("control write admission stays open");
+            }
             return self
                 .0
                 .small_mutations
