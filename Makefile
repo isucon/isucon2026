@@ -119,10 +119,18 @@ router-build:
 router-compose-check:
 	docker compose -f router/compose.e2e.yaml config --quiet
 
-# 既定の環境変数で生成した HAProxy の設定を、コンテナと同じ版の HAProxy で検証する
+# 生成した HAProxy の設定を、コンテナと同じ版の HAProxy で検証する。既定の環境変数（HTTP だけ）と、
+# AWS と同じ HTTPS あり（使い捨ての自己署名の PEM、上流は 80）の 2 通り
 router-haproxy-check:
 	dir="$$(mktemp -d)"; trap 'rm -rf "$$dir"' EXIT; chmod 755 "$$dir"; \
 	ROUTER_HAPROXY_DIR="$$dir" go -C router run ./cmd/router haproxy-config && \
+	docker run --rm -v "$$dir:$$dir:ro" haproxy:2.8.16-alpine haproxy -c -f "$$dir/haproxy.cfg"
+	dir="$$(mktemp -d)"; trap 'rm -rf "$$dir"' EXIT; chmod 755 "$$dir"; \
+	openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -days 1 -subj /CN=router.test \
+		-keyout "$$dir/key.pem" -out "$$dir/cert.pem" 2>/dev/null && \
+	cat "$$dir/cert.pem" "$$dir/key.pem" >"$$dir/server.pem" && chmod 644 "$$dir/server.pem" && \
+	ROUTER_HAPROXY_DIR="$$dir" ROUTER_HTTPS_LISTEN_ADDRESS=0.0.0.0:443 ROUTER_TLS_CERTIFICATE="$$dir/server.pem" \
+		ROUTER_UPSTREAM_PORT=80 go -C router run ./cmd/router haproxy-config && \
 	docker run --rm -v "$$dir:$$dir:ro" haproxy:2.8.16-alpine haproxy -c -f "$$dir/haproxy.cfg"
 
 router-e2e:

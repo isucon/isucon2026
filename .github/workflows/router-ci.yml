@@ -67,7 +67,7 @@ jobs:
           go build -trimpath -o /tmp/router-e2e ./tests/e2e
       - name: Validate Compose model
         run: docker compose -f router/compose.e2e.yaml config --quiet
-      - name: Validate rendered HAProxy configuration
+      - name: Validate rendered HAProxy configuration (HTTP and HTTPS)
         run: make router-haproxy-check
 
   compose-e2e:
