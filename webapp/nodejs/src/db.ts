@@ -25,7 +25,6 @@ export async function rows<T extends pg.QueryResultRow>(
 ): Promise<T[]> {
   return (await db.query<T>(sql, args)).rows;
 }
-// Returns the first row, or undefined when the query matched nothing.
 export async function first<T extends pg.QueryResultRow>(
   db: DB,
   sql: string,
@@ -33,7 +32,6 @@ export async function first<T extends pg.QueryResultRow>(
 ): Promise<T | undefined> {
   return (await rows<T>(db, sql, ...args))[0];
 }
-// For rows that must exist; a missing row is a server error (500).
 export function must<T>(value: T | undefined): T {
   if (value === undefined) throw new Error("sql: no rows in result set");
   return value;
@@ -52,7 +50,6 @@ export async function scalar<T>(
 ): Promise<T> {
   return Object.values(await one(db, sql, ...args))[0] as T;
 }
-// Like scalar, but returns undefined when the query matched nothing.
 export async function firstScalar<T>(
   db: DB,
   sql: string,

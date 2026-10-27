@@ -26,8 +26,6 @@ type FieldType = "string" | "number";
 type JSONBody<S extends Record<string, FieldType>> = {
   [K in keyof S]?: S[K] extends "string" ? string : number;
 };
-// Reads a JSON object body like echo's Bind: an empty body or `null` yields {},
-// and a field of the wrong type is rejected like Go's json.Unmarshal.
 export async function readJSON<S extends Record<string, FieldType>>(
   c: C,
   fields: S,
@@ -48,7 +46,6 @@ export async function readJSON<S extends Record<string, FieldType>>(
   const data = value as Record<string, unknown>,
     body: Record<string, unknown> = {};
   for (const [key, type] of Object.entries(fields)) {
-    // As in Go, a null field is the same as an absent one.
     if (data[key] == null) continue;
     if (
       typeof data[key] !== type ||

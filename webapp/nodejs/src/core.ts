@@ -3,12 +3,9 @@ import { HTTPException } from "hono/http-exception";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { caseFold } from "unicode-case-folding";
 
-// The error code becomes the `{ "error": ... }` body in server.ts's onError.
 export function fail(status: ContentfulStatusCode, code: string): never {
   throw new HTTPException(status, { message: code });
 }
-// Looks up a fixed table without falling back to Object.prototype members
-// such as "toString", which a URL parameter could otherwise name.
 export function lookup<T extends object>(table: T, key: string) {
   return Object.hasOwn(table, key) ? table[key as keyof T] : undefined;
 }
@@ -69,7 +66,6 @@ export function signedImageURL(user: User, id: string) {
   const exp = Math.floor(Date.now() / 1000) + 86400;
   return `/api/images/${encodeURIComponent(id)}?exp=${exp}&sig=${imageSignature(user.imageKey!, id, exp).toString("base64url")}`;
 }
-// pg's default Date parser drops microseconds, which breaks tuple pagination.
 export function timestamp(value: string) {
   const normalized = value.replace(" ", "T").replace(/([+-]\d\d)$/, "$1:00");
   const fraction = normalized.match(/\.(\d+)/)?.[1] ?? "";
@@ -77,7 +73,6 @@ export function timestamp(value: string) {
   const trimmed = fraction.replace(/0+$/, "");
   return seconds + (trimmed ? "." + trimmed : "") + "Z";
 }
-// Microseconds since the epoch; exact as a number until the year 2255.
 export function micros(value: string) {
   const fraction = value.match(/\.(\d+)/)?.[1] ?? "";
   return (
@@ -108,8 +103,6 @@ export function validDate(value: string, month = false) {
     parsed.toISOString().slice(0, 10) === date
   );
 }
-// Validates an RFC 3339 timestamp like Go's time.Time: the regex checks the
-// layout, and Temporal rejects out-of-range fields such as Feb 30 or 24:00.
 export function validTimestamp(value: string) {
   const m =
     /^(\d{4})-(\d\d)-(\d\d)T(\d\d):(\d\d):(\d\d)(?:\.\d+)?(?:Z|[+-](\d\d):(\d\d))$/.exec(

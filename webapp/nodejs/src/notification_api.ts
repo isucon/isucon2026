@@ -20,7 +20,6 @@ export const notificationsHandler = (db: pg.Pool) => async (c: C) => {
       stopped = true;
       wake?.();
     });
-    // Like Go's ticker, the interval starts before the first database read.
     const ticker = setInterval(() => wake?.(), 500);
     try {
       while (!stopped) {
