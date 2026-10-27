@@ -4,8 +4,11 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
+	"os"
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v5"
@@ -101,7 +104,9 @@ func loginHandler(h *HandlerContext) echo.HandlerFunc {
 			return err
 		}
 		if !usernamePattern.MatchString(input.Username) {
-			return NewAPIError(http.StatusUnauthorized, "invalid_credentials")
+			err := NewAPIError(http.StatusUnauthorized, "invalid_credentials")
+			logLoginFailure(c, err)
+			return err
 		}
 		token := uuid.NewString()
 		hash := sha256.Sum256([]byte(input.SecretKey))
@@ -110,6 +115,7 @@ func loginHandler(h *HandlerContext) echo.HandlerFunc {
 			map[string]any{"id": uuid.NewString(), "username": input.Username, "hash": hex.EncodeToString(hash[:]),
 				"tokenHash": hex.EncodeToString(tokenHash[:])}, nil)
 		if err != nil {
+			logLoginFailure(c, err)
 			return err
 		}
 		user := result.User
@@ -175,4 +181,17 @@ func updateMeHandler(h *HandlerContext) echo.HandlerFunc {
 		user := result.User
 		return c.JSON(http.StatusOK, updateMeResponse(newGetMeResponse(user)))
 	}
+}
+
+// logLoginFailure writes the action log line isureal-guard reads from the
+// journal ({"action":"login","status":401,"ip":...}), so repeated failures
+// from one address get the address banned. Only failed logins are logged;
+// the original app logs every write.
+func logLoginFailure(c *echo.Context, err error) {
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) || apiErr.Status != http.StatusUnauthorized {
+		return
+	}
+	line, _ := json.Marshal(map[string]any{"level": "info", "action": "login", "status": http.StatusUnauthorized, "ip": c.RealIP()})
+	fmt.Fprintln(os.Stdout, string(line))
 }
