@@ -1,6 +1,6 @@
-// Package score はゲート通過と通過後の活動を数える（P-115）。減点はない。
-// 可用性は metrics の SLO で判定し、正しさの違反は Critical として走行を
-// 失格にする。
+// Package score は利用者の行動（ゲート通過、閲覧、交流、関係、アカウントの手入れ、
+// 思い出）を数え、重み付きの和をスコアにする。減点はない。可用性は metrics の SLO で
+// 判定し、正しさの違反は Critical として走行を失格にする。
 package score
 
 import (
@@ -12,37 +12,87 @@ import (
 type Tag string
 
 const (
-	// TagGatePass は、1 つのウィンドウで投稿が受理され、そのあと解錠された
-	// フィードを読めたユーザーを数える（P-115 §3.1）。
-	TagGatePass Tag = "gate_pass"
+	// TagGatePass は、1 つの投稿期間で投稿が受理され、そのあと友達のフィードを読めた
+	// ユーザーを数える。TagGrandPrix は最終日（全リージョン同時のグランプリ）の分。
+	TagGatePass  Tag = "gate_pass"
+	TagGrandPrix Tag = "grand_prix"
 
-	// 通過後の活動（P-115 §4.2）。
-	TagFeed          Tag = "feed"
-	TagImage         Tag = "image"
-	TagRealMoji      Tag = "realmoji"
-	TagComment       Tag = "comment"
-	TagNotification  Tag = "notification"
-	TagMemory        Tag = "memory"
+	// 閲覧。
+	TagFeed         Tag = "feed"
+	TagImage        Tag = "image"
+	TagPostDetail   Tag = "post_detail"
+	TagReactionList Tag = "reaction_list"
+	TagProfileView  Tag = "profile_view"
+	TagNotification Tag = "notification"
+	TagMemory       Tag = "memory"
+
+	// 交流。
+	TagRealMoji       Tag = "realmoji"
+	TagComment        Tag = "comment"
+	TagDeleteReaction Tag = "delete_reaction"
+
+	// 友達、フォロー、ブロック。
+	TagSearch        Tag = "search"
 	TagFriendRequest Tag = "friend_request"
 	TagFriendAccept  Tag = "friend_accept"
+	TagFriendDecline Tag = "friend_decline"
+	TagUnfriend      Tag = "unfriend"
+	TagRelationships Tag = "relationships"
 	TagFollow        Tag = "follow"
+	TagUnfollow      Tag = "unfollow"
+	TagBlock         Tag = "block"
+	TagUnblock       Tag = "unblock"
+
+	// アカウントの手入れ。
+	TagProfileUpdate Tag = "profile_update"
+	TagProfileImage  Tag = "profile_image"
+	TagCaption       Tag = "caption"
+	TagDeleteAccount Tag = "delete_account"
+
+	// 思い出を見返す。
+	TagHistoryMonth Tag = "history_month"
+	TagHistoryDate  Tag = "history_date"
+	TagExport       Tag = "export"
+	TagSpotCheck    Tag = "spot_check"
 )
 
 type Weights map[Tag]int64
 
-// DefaultWeights は較正までの暫定値（P-115 §9）。
+// DefaultWeights は較正までの暫定値。重みはアプリ側の処理の重さにおおよそ比例させる。
+// ゲート通過は翌日の新しいユーザー（成長）にも効くので、直接の重みは大きくしない。
+// グランプリの日の通過は 2 倍にする。
 func DefaultWeights() Weights {
 	return Weights{
-		TagGatePass:      100,
-		TagFeed:          1,
-		TagImage:         1,
-		TagRealMoji:      5,
-		TagComment:       3,
-		TagNotification:  1,
-		TagMemory:        1,
-		TagFriendRequest: 2,
-		TagFriendAccept:  2,
-		TagFollow:        1,
+		TagGatePass:       10,
+		TagGrandPrix:      20,
+		TagFeed:           1,
+		TagImage:          2,
+		TagPostDetail:     1,
+		TagReactionList:   1,
+		TagProfileView:    1,
+		TagNotification:   1,
+		TagMemory:         1,
+		TagRealMoji:       5,
+		TagComment:        3,
+		TagDeleteReaction: 1,
+		TagSearch:         2,
+		TagFriendRequest:  2,
+		TagFriendAccept:   2,
+		TagFriendDecline:  1,
+		TagUnfriend:       1,
+		TagRelationships:  1,
+		TagFollow:         1,
+		TagUnfollow:       1,
+		TagBlock:          1,
+		TagUnblock:        1,
+		TagProfileUpdate:  1,
+		TagProfileImage:   3,
+		TagCaption:        1,
+		TagDeleteAccount:  5,
+		TagHistoryMonth:   3,
+		TagHistoryDate:    2,
+		TagExport:         20,
+		TagSpotCheck:      2,
 	}
 }
 

@@ -41,6 +41,14 @@ func (m *Model) blockedTri(a, b string, r Read) Tri {
 	return result
 }
 
+// activeTri はユーザーが有効か（退会していないか）。知らないユーザーは無効とする。
+func (m *Model) activeTri(userID string, r Read) Tri {
+	if u := m.users[userID]; u != nil {
+		return boolTri(u.active, r)
+	}
+	return False
+}
+
 func (m *Model) followTri(follower, followee string, r Read) Tri {
 	if tl := m.follows[[2]string{follower, followee}]; tl != nil {
 		return boolTri(tl, r)
@@ -147,13 +155,17 @@ func (v *view) windowOpenTri(p *Post) Tri {
 func (v *view) canViewTri(p *Post) Tri {
 	m, viewer, r := v.m, v.viewer, v.r
 	author := m.users[p.AuthorID]
-	if viewer == nil || author == nil || !viewer.Active || !author.Active {
+	if viewer == nil || author == nil {
+		return False
+	}
+	active := min(boolTri(viewer.active, r), boolTri(author.active, r))
+	if active == False {
 		return False
 	}
 	if viewer.ID == author.ID {
-		return m.liveTri(p, r)
+		return min(active, m.liveTri(p, r))
 	}
-	result := v.postedTodayTri()
+	result := min(active, v.postedTodayTri())
 	if result == False {
 		return False
 	}
@@ -220,6 +232,17 @@ func (m *Model) PostLive(postID string, r Read) Tri {
 		return Unknown
 	}
 	return m.liveTri(p, r)
+}
+
+// ImageServable は投稿の画像を返してよいか（投稿が残っていて、投稿者が退会していない）。
+func (m *Model) ImageServable(postID string, r Read) Tri {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	p := m.posts[postID]
+	if p == nil {
+		return Unknown
+	}
+	return min(m.liveTri(p, r), m.activeTri(p.AuthorID, r))
 }
 
 // WindowOpen は投稿の投稿期間がまだ開いているか（投稿を編集できるか）。

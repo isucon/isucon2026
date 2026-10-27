@@ -10,6 +10,9 @@ import (
 	"github.com/isucon/isucon2026/bench/internal/imageurl"
 )
 
+// FeedPageSize はフィードの 1 ページの件数（アプリの仕様）。
+const FeedPageSize = 50
+
 // ReadBetween は sent に送り received に応答を受けた読み取りを表す。
 func (m *Model) ReadBetween(sent, received time.Time) Read {
 	return Read{Sent: sent, Received: received, Staleness: m.Staleness}
@@ -82,8 +85,10 @@ func (m *Model) checkFeedLocked(viewerID, feed string, before *client.FeedPost, 
 		result.error("フィード %s: 閲覧者 %s を bench が知りません", feed, viewerID)
 		return result, nil
 	}
-	if page.HasMore && len(page.Items) == 0 {
-		result.error("フィード %s: 続きがあるのに投稿が 0 件です", feed)
+	// 1 ページは FeedPageSize 件。続きがあるのに足りないページを返すと、それより古い投稿の
+	// 欠落を確かめられなくなる（最新の 1 件だけ返して軽くすることもできてしまう）。
+	if page.HasMore && len(page.Items) < m.PageSize {
+		result.error("フィード %s: 続きがあるのに投稿が %d 件です（1 ページ %d 件）", feed, len(page.Items), m.PageSize)
 		return result, nil
 	}
 
@@ -214,7 +219,7 @@ func (m *Model) checkPostContent(result *FeedResult, feed string, got client.Fee
 	switch {
 	case got.Author.ID != want.AuthorID || got.Author.Username != author.Username:
 		result.error("フィード %s: 投稿 %s の投稿者が違います", feed, want.ID)
-	case got.Caption != want.Caption:
+	case !want.caption.mayBe(r, got.Caption):
 		result.error("フィード %s: 投稿 %s のキャプションが違います", feed, want.ID)
 	case !got.PostedAt.Equal(want.PostedAt):
 		result.error("フィード %s: 投稿 %s の投稿時刻が違います", feed, want.ID)
