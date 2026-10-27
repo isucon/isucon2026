@@ -60,7 +60,10 @@ type fakeRequest struct {
 type fakeApp struct {
 	// flakyMoves は、所属リージョンの変更を反映したうえで 500 を返す回数（応答の届かない変更を再現する）。
 	flakyMoves int
-	t          *testing.T
+	// moveReplies は、所属リージョンの変更に順に返す応答。500 は反映したうえで 500、409 は
+	// 反映せずに 409 を返す。空になったら flakyMoves に従う。
+	moveReplies []int
+	t           *testing.T
 
 	mu        sync.Mutex
 	users     map[string]*fakeUser
@@ -362,6 +365,17 @@ func (a *fakeApp) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			viewer.displayName = name
 		}
 		if region, ok := input["region"]; ok {
+			if len(a.moveReplies) > 0 {
+				reply := a.moveReplies[0]
+				a.moveReplies = a.moveReplies[1:]
+				if reply == http.StatusConflict {
+					fail(http.StatusConflict, "rejected")
+					return
+				}
+				viewer.region = region
+				fail(reply, "flaky")
+				return
+			}
 			viewer.region = region
 			if a.flakyMoves > 0 {
 				a.flakyMoves--

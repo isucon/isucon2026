@@ -534,7 +534,7 @@ func (r *Runner) population(region string) int {
 	for _, u := range r.users[region] {
 		// BAN されたユーザーは通過できないので、使えなかった人として数え続ける。正常な
 		// ユーザーを BAN して、成長の判定から外すことはできない。
-		if !u.stopped.Load() || u.banned.Load() {
+		if !u.stopped.Load() || u.banned.Load() || u.stranded.Load() {
 			n++
 		}
 	}

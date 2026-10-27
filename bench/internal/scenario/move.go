@@ -62,9 +62,12 @@ func (r *Runner) move(ctx context.Context, u *user, stop func(), notifications c
 	// 変える間は通知を購読しない（変わった瞬間から、前のリージョンでの購読は拒否される）。
 	stop()
 	// 応答が届かなければ、変わったかどうかわからない。変わっていれば前のリージョンからの要求は
-	// すべて 403 になるので、同じ変更を送り直して確かめる（何度送っても結果は同じ）。
+	// すべて 403 になるので、同じ変更を送り直して確かめる（何度送っても結果は同じ）。成功の
+	// 応答だけが移った先を確かめる。拒否は、それより前に結果のわからない変更を送っていなければ
+	// 変わっていないことを確かめる（送っていれば、その変更が反映されたかもしれない）。
 	var profile client.Profile
 	var err error
+	uncertain := false
 	for range moveAttempts {
 		w := r.model.BeginMoveUser(u.ID, to)
 		profile, err = u.API.UpdateMe(ctx, u.Token, nil, nil, &to)
@@ -72,22 +75,26 @@ func (r *Runner) move(ctx context.Context, u *user, stop func(), notifications c
 		if err == nil || isRejection(err) || ctx.Err() != nil {
 			break
 		}
+		uncertain = true
 		r.requestError(ctx, u, "%s: 所属リージョンを %s に変えられません: %v", u.Username, to, err)
 	}
 	switch {
-	case err != nil && isRejection(err):
+	case err != nil && isRejection(err) && !uncertain:
 		// 確実に変わっていないので、前のリージョンのまま続ける。
 		r.requestError(ctx, u, "%s: 所属リージョンを %s に変えられません: %v", u.Username, to, err)
 		return r.startListening(ctx, u, notifications, nil)
 	case err != nil:
-		// 送り直しても確かめられなかった（走行が終わった場合を含む）。どちらのリージョンに
-		// いるかわからないので、退会の結果がわからない人と同じく、以後は使わず、走行後の
-		// 整合性チェックでも確かめない。
-		u.stopped.Store(true)
+		// 確かめられなかった（あとの拒否、走行の終わりを含む）。
+		if isRejection(err) {
+			r.requestError(ctx, u, "%s: 所属リージョンを %s に変えられません: %v", u.Username, to, err)
+		}
+		r.strand(u)
 		return func() {}
 	case profile.ID != u.ID || profile.Region != to:
+		// 成功の応答が移った先を示さないので、どちらにいるかわからない。
 		r.invalid(ctx, u, "%s: 所属リージョンを変えた応答が違います（%s）", u.Username, profile.Region)
-		return r.startListening(ctx, u, notifications, nil)
+		r.strand(u)
+		return func() {}
 	}
 	// 移る前のリージョンの通知が残っていれば捨てる。
 	select {
@@ -96,6 +103,14 @@ func (r *Runner) move(ctx context.Context, u *user, stop func(), notifications c
 	}
 	r.relocate(u, from, to)
 	return r.startListening(ctx, u, notifications, nil)
+}
+
+// strand は、所属リージョンを確かめられなくなった u を止める。どちらのリージョンにいるか
+// わからないので、退会の結果がわからない人と同じく以後は使わず、走行後の整合性チェックでも
+// 確かめない。成長の判定では、前のリージョンの使えなかった人として数え続ける。
+func (r *Runner) strand(u *user) {
+	u.stranded.Store(true)
+	u.stopped.Store(true)
 }
 
 // relocate は u を from のユーザーから to のユーザーに移し、接続する国を変える。成長の
