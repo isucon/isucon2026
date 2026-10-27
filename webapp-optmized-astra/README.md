@@ -174,3 +174,4 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261027T211543Z-team10 | expand bounded image byte cache from 128 to 512 MiB | PASS | 59,774 |
 | 20261027T212850Z-team10 | independent image store capable build with replicated post image writes as control | PASS | 61,313 |
 | 20261027T213422Z-team10 | store new post image bytes in independent Asia application PostgreSQL | PASS | 74,309 |
+| 20261027T214135Z-team10 | reserve bounded posting window control admission with independent image storage | PASS | 76,087 |
