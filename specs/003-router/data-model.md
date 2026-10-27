@@ -4,7 +4,8 @@
 
 **Date**: 2026-08-04
 
-永続 DB は持たない。ここでの entity は Portal snapshot、Router の reconcile state、network/xDS candidate を表す。
+永続 DB は持たない。ここでの entity は Portal snapshot、Router の reconcile state、network candidate と HAProxy の既定の国を表す。
+（2026-10-27 に Envoy と RDS を HAProxy に置き換えた。research.md の Decision 8）
 
 ## Region
 
@@ -104,24 +105,29 @@ State: `rendered → validated → applied` または `failed → rollback`。
 
 同じ candidate の再適用は最終 kernel state を変えない。
 
-## RDSCandidate
+## HAProxy configuration
+
+HAProxy の設定は Router の環境変数だけから作り、snapshot では変えない。
+
+- 4 hosts（app、app1、app2、app3）と、それ以外の Host への 404。
+- 10 country と header-absent の route。route の key は Host と国の組（header がなければ Host と `default`）。
+- Host と client region の組ごとの target server、delay（Lua）、bandwidth filter（`bwlim-in`/`bwlim-out`）。
+
+## DefaultCountry
 
 Fields:
 
-- `version`: snapshot ID と generation から作る一意な non-secret string。
-- `routeConfigurationName`: bootstrap と一致する固定値。
-- 4 virtual hosts（app、server1、server2、server3）と invalid-host catch-all。
-- 各 host に10 country route、header-absent default route、invalid-country route。
-- route ごとの target cluster、header mutation、fault、bandwidth profile。
+- HAProxy の runtime API で書き換える map（`$ROUTER_HAPROXY_DIR/default-country.map`）の `default` の値。
 
-State: `built → published → ACKed`、または `published → NACKed/timed-out → rollback`。
+State: `empty（HAProxy の起動直後。要求は 503）→ set → verified（読み戻して一致）`。HAProxy が再起動すると empty に
+戻り、apply worker が active snapshot の値を書き戻す。
 
 ## ApplyAttempt
 
 Fields:
 
 - snapshot ID / generation
-- phase: `validate`, `network`, `xds-publish`, `xds-ack`, `commit`, `report`
+- phase: `validate`, `network`, `proxy`, `commit`, `report`
 - started/completed timestamps
 - outcome: `success`, `retryable-failure`, `superseded`
 - non-secret reason
@@ -133,8 +139,7 @@ Transitions:
 received
   -> validated
   -> network-applied
-  -> rds-published
-  -> rds-acked
+  -> default-country-verified
   -> active-committed
   -> reported
 
@@ -150,13 +155,12 @@ Fields:
 - `DesiredSnapshot` correlation
 - actual `RouterConfig`
 - committed network candidate identity
-- ACKed RDS version
 - committed timestamp
 
 Invariants:
 
 - nil until first complete apply.
-- readiness is true iff ActiveSnapshot exists and the current Envoy stream has ACKed an RDS snapshot; disconnect/reconnect では再 ACK まで false。
+- readiness is true iff ActiveSnapshot exists and HAProxy uses its default country when `/readyz` is requested。
 - failure of a later attempt does not mutate ActiveSnapshot。
 
 ## ControllerState
@@ -169,11 +173,11 @@ Fields:
 - latest desired snapshot metadata
 - active snapshot metadata
 - last attempt phase/outcome/reason/retry
-- Envoy stream connected flag and last ACK/NACK
+- HAProxy check result（`/readyz` の要求ごと）
 
 Concurrency:
 
-- one apply worker owns kernel and xDS mutation.
+- one apply worker owns kernel and HAProxy mutation, including restoring the default country after a HAProxy restart.
 - stream reader only replaces the pending latest snapshot.
 - status reads immutable copies under synchronization.
 - generation is checked before active commit; stale generation cannot replace a newer committed generation.

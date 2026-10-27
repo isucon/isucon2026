@@ -55,16 +55,18 @@ Controller serves an internal HTTP endpoint on the configured status address.
 
 - `200`: process and reconcile worker are alive.
 - response is JSON with `status: "healthy"`.
-- independent of Portal/Envoy connectivity.
+- independent of Portal/HAProxy connectivity.
 
 ### `GET /readyz`
 
-- `200`: at least one Portal snapshot is fully committed and the current Envoy stream has ACKed RDS.
-- `503`: initial unsynced、Envoy disconnected、または再接続後の RDS 再 ACK 前。
-- response is bounded JSON containing snapshot ID, phase, Portal/Envoy connectivity, and non-secret last error.
+- `200`: at least one Portal snapshot is fully committed and, checked at request time through the HAProxy runtime API,
+  HAProxy uses its default country.
+- `503`: initial unsynced、HAProxy stopped、または HAProxy の再起動後に既定の国を書き戻す前。
+- response is bounded JSON containing snapshot ID, phase, Portal connectivity, the HAProxy check
+  (`proxy_serving`, `proxy_error`), and non-secret last error.
 
-後続 snapshot の apply/rollback 中または失敗時は、current-stream ACK 済みの last-known-good が利用可能なら `200` を
-維持し、phase/error で新しい試行の状態を示す。
+後続 snapshot の apply/rollback 中または失敗時は、HAProxy が last-known-good を使っていれば `200` を維持し、
+phase/error で新しい試行の状態を示す。
 
 The E2E topology exposes these endpoints only to its private networks.
 
@@ -83,5 +85,7 @@ Target validation and size bounds prevent the fixture from becoming an unbounded
 ## 5. Compatibility
 
 - Portal wire compatibility follows `portal.v1`; breaking changes require a new versioned endpoint/package.
-- Envoy xDS is internal to Router deployment and pinned by `router/go.mod`, Docker image, and bootstrap validation.
+- The HAProxy configuration and runtime API are internal to Router deployment. HAProxy is pinned to 2.8 by the Docker
+  image (`haproxy:2.8.16-alpine`) and the Ubuntu 24.04 package, and `make router-haproxy-check` validates the rendered
+  configuration (2026-10-27 から。それまでは Envoy xDS).
 - HTTP Host/country behavior and country table are public invariants to be pinned by a later competition specification.

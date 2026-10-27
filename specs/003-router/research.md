@@ -118,6 +118,28 @@ elapsed/throughput、経路は `ip route get`、隔離は Router namespace 停�
 - production 値だけを時間測定: host 性能が上限になり flake する。
 - 設定 text の snapshot test だけ: 実 kernel/Envoy の動作を証明しない。
 
+## Decision 8: HTTP data plane を HAProxy に置き換える（2026-10-27）
+
+**Decision**: Decision 4 と 5 の Envoy と xDS をやめ、HAProxy 2.8 を使う。HAProxy の設定は Router の環境変数だけから
+`isureal-router haproxy-config` が作り、HAProxy の service が起動のたびに実行する。snapshot で変わる
+`defaultCountry` は HAProxy の runtime API で map の値を書き換えて反映し、読み戻して一致を確かめたら applied とする
+（Decision 5 の ACK に当たる）。delay は Lua の `core.msleep`、rate は `bwlim-in`/`bwlim-out` を Host と国の組ごとの
+stick-table で共有して作る。readiness は `/readyz` の要求ごとに HAProxy へ問い合わせ、HAProxy が再起動して既定の国を
+失ったときは apply worker が書き戻す。
+
+**Rationale**: Router は 2 vCPU のまま、最上位帯の負荷で CPU が詰まりかけていた。同じ意味の設定で比べると、
+HAProxy は Router の 1 GB あたりの CPU 時間を約 3 割、user 時間を約 7 割減らし、最上位帯の p95 を 62〜63% から
+42〜43% に下げた（docs/router.md の「性能」）。server の配置が固定になり snapshot で変わるのが既定の国だけになったので、
+route 表を動的に配る xDS は要らない。
+
+**Alternatives considered**:
+
+- Envoy のまま、フィルタを減らす: 同じ地域の route の帯域制限を外しても、差はばらつき（約 5%）の範囲だった。
+- snapshot ごとに HAProxy の設定を作り直して reload する: 古い worker に残った keep-alive の接続が古い既定の国の
+  まま次の要求を処理しうる。runtime API の map なら、次の要求から全接続に効く。
+- 既定の国を `set var` で proc 変数に入れる: HAProxy 2.8 では CLI の `set var` が実験的機能である。
+- nginx: route ごとに接続をまたいで共有する帯域の上限と、1 要求に固定の遅延を足す仕組みがない。
+
 ## Resolved Unknowns
 
 - Envoy bandwidth filter の `limit_kbps` は API 文書上 KiB/s であり、domain の bit/s から切上げ変換する。
