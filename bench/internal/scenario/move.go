@@ -4,6 +4,7 @@ import (
 	"context"
 	"slices"
 
+	"github.com/isucon/isucon2026/bench/internal/client"
 	"github.com/isucon/isucon2026/bench/internal/geo"
 )
 
@@ -17,6 +18,9 @@ import (
 // 移るのは bench が登録した一般のユーザーだけ。初期データのユーザーは initialize で
 // 戻せるとは限らず、認定公開アカウントはリージョンの顔なので移らない。グランプリの日と
 // その前の日は移らない（グランプリの人数を地域ごとに揃える）。
+
+// moveAttempts は、所属リージョンの変更の応答が届かなかったときに同じ変更を送る回数（最初を含む）。
+const moveAttempts = 3
 
 // wandersOff は u が day 日目を過ごし終えたあとで別のリージョンへ移るか。
 func (r *Runner) wandersOff(u *user, day int) bool {
@@ -48,25 +52,43 @@ func (r *Runner) startListening(ctx context.Context, u *user, out chan notice, s
 	}
 }
 
-// move は u の所属リージョンを別のリージョンに変える。変えられたら通知の購読を止めて、
-// 移った先で購読し直す。新しい購読を止める関数を返す（変えられなければ stop のまま）。
+// move は u の所属リージョンを別のリージョンに変える。変える間は通知の購読を止め、変えられたら
+// 移った先で、変えられなかったら前のリージョンで購読し直して、その購読を止める関数を返す。
 func (r *Runner) move(ctx context.Context, u *user, stop func(), notifications chan notice) func() {
 	from := u.Region
 	others := slices.DeleteFunc(slices.Clone(geo.Regions), func(region string) bool { return region == from })
 	to := others[int(unit(r.seed, "destination", u.Username, from)*float64(len(others)))%len(others)]
 
-	w := r.model.BeginMoveUser(u.ID, to)
-	profile, err := u.API.UpdateMe(ctx, u.Token, nil, nil, &to)
-	settle(w, err)
-	switch {
-	case err != nil:
+	// 変える間は通知を購読しない（変わった瞬間から、前のリージョンでの購読は拒否される）。
+	stop()
+	// 応答が届かなければ、変わったかどうかわからない。変わっていれば前のリージョンからの要求は
+	// すべて 403 になるので、同じ変更を送り直して確かめる（何度送っても結果は同じ）。
+	var profile client.Profile
+	var err error
+	for range moveAttempts {
+		w := r.model.BeginMoveUser(u.ID, to)
+		profile, err = u.API.UpdateMe(ctx, u.Token, nil, nil, &to)
+		settle(w, err)
+		if err == nil || isRejection(err) || ctx.Err() != nil {
+			break
+		}
 		r.requestError(ctx, u, "%s: 所属リージョンを %s に変えられません: %v", u.Username, to, err)
-		return stop
+	}
+	switch {
+	case err != nil && isRejection(err):
+		// 確実に変わっていないので、前のリージョンのまま続ける。
+		r.requestError(ctx, u, "%s: 所属リージョンを %s に変えられません: %v", u.Username, to, err)
+		return r.startListening(ctx, u, notifications, nil)
+	case err != nil:
+		// 送り直しても確かめられなかった（走行が終わった場合を含む）。どちらのリージョンに
+		// いるかわからないので、退会の結果がわからない人と同じく、以後は使わず、走行後の
+		// 整合性チェックでも確かめない。
+		u.stopped.Store(true)
+		return func() {}
 	case profile.ID != u.ID || profile.Region != to:
 		r.invalid(ctx, u, "%s: 所属リージョンを変えた応答が違います（%s）", u.Username, profile.Region)
-		return stop
+		return r.startListening(ctx, u, notifications, nil)
 	}
-	stop()
 	// 移る前のリージョンの通知が残っていれば捨てる。
 	select {
 	case <-notifications:

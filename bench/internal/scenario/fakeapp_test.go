@@ -58,7 +58,9 @@ type fakeRequest struct {
 // fakeApp はアプリの閲覧可否とフィードの規則を、bench のモデルとは別に実装した偽のアプリ。
 // トークンはユーザー ID。フィールドで障害や不具合を注入する。
 type fakeApp struct {
-	t *testing.T
+	// flakyMoves は、所属リージョンの変更を反映したうえで 500 を返す回数（応答の届かない変更を再現する）。
+	flakyMoves int
+	t          *testing.T
 
 	mu        sync.Mutex
 	users     map[string]*fakeUser
@@ -296,7 +298,8 @@ func (a *fakeApp) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			fail(http.StatusUnauthorized, "invalid_session")
 			return
 		}
-		if viewer.region != region {
+		// 所属リージョンの変更（PATCH /api/me）は、アプリと同じくどのリージョンからでも受け付ける。
+		if viewer.region != region && !(path[0] == "me" && len(path) == 1 && r.Method == http.MethodPatch) {
 			// アプリは地域外のサーバーからのアクセスを 403 で拒否する。bench は事前検証でだけ
 			// わざと送るので、負荷走行のテストでは来ないはず。
 			if !a.lax && path[0] == "me" && len(path) == 1 {
@@ -304,7 +307,7 @@ func (a *fakeApp) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			if !a.lax {
-				a.t.Errorf("user %s sent a country of %s, want %s", token, region, viewer.region)
+				a.t.Errorf("user %s sent a country of %s, want %s (%s %s)", token, region, viewer.region, r.Method, r.URL.Path)
 			}
 		}
 	}
@@ -360,6 +363,11 @@ func (a *fakeApp) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		if region, ok := input["region"]; ok {
 			viewer.region = region
+			if a.flakyMoves > 0 {
+				a.flakyMoves--
+				fail(http.StatusInternalServerError, "flaky")
+				return
+			}
 		}
 		respond(http.StatusOK, a.profile(viewer))
 	case path[0] == "me" && path[1] == "profile-image" && method == http.MethodPut:

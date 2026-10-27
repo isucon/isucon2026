@@ -677,3 +677,34 @@ func TestUsersSignOffOvernight(t *testing.T) {
 		t.Fatal("no gate passes")
 	}
 }
+
+// TestUncertainMoveIsReconciled は、所属リージョンの変更が反映されたのに応答がエラーだった
+// とき、同じ変更を送り直して移った先のリージョンから使い続ける（前のリージョンから送り続けない）
+// ことを確かめる。偽のアプリは、所属と違う国からの要求でテストを失敗させる。
+func TestUncertainMoveIsReconciled(t *testing.T) {
+	runner, app := newTestRunner(t, 3, metrics.SLO{FailRate: 1000, MinOps: 1})
+	runner.setDuration(2 * time.Second)
+	runner.moveRate = 1
+	app.mu.Lock()
+	app.flakyMoves = 4
+	app.mu.Unlock()
+	runner.load(t.Context())
+	for _, e := range runner.board.Errors() {
+		if !strings.Contains(e, "所属リージョンを") {
+			t.Errorf("unexpected error: %s", e)
+		}
+	}
+	if runner.board.CriticalCount() != 0 {
+		t.Fatalf("critical=%v", runner.board.Critical())
+	}
+	app.mu.Lock()
+	defer app.mu.Unlock()
+	if app.flakyMoves != 0 {
+		t.Fatalf("flaky moves left: %d", app.flakyMoves)
+	}
+	for _, u := range runner.usersSnapshot() {
+		if fake := app.users[u.Token]; fake != nil && !u.cohort && !u.stopped.Load() && fake.region != u.Region {
+			t.Errorf("%s: bench thinks %s, app has %s", u.Username, u.Region, fake.region)
+		}
+	}
+}
