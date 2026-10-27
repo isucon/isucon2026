@@ -3,7 +3,6 @@ package scenario
 import (
 	"context"
 	"errors"
-	"math/rand/v2"
 	"net/http"
 	"sync"
 	"time"
@@ -17,17 +16,26 @@ import (
 
 // 思い出を見返すユーザー
 //
-// 負荷ユーザーとは別に、しばらくぶりに戻ってきて過去の Memories を見返すユーザーがいる。
-// 初期データの履歴のユーザー（負荷走行で書き込まない人）から無作為に 1 人選んでログインし、
-// 履歴のある月を 1 か月分読んで、画像を何枚か取得し、初期データと比べる。これを待ち時間なしで
-// 繰り返す。人も月も履歴全体から一様に選ぶので、最近のデータだけをメモリに置く実装では、
-// 古いデータの読み取りが遅くなる。
+// 負荷ユーザーとは別に、しばらくぶりに戻ってきて過去を見返すユーザーがいる。初期データの
+// 履歴のユーザー（負荷走行で書き込まない人）から無作為に 1 人選んでログインし、次のどれかを
+// して、初期データと比べる。これを待ち時間なしで繰り返す。
 //
-// このリクエストも負荷ユーザーと同じくリージョンの観測窓に数えるので、履歴の読み取りが
-// 遅ければエラー率や p99 を通してラチェットの昇格を止める。
+//   - 履歴のある月を 1 か月分読む（Memories）。
+//   - 履歴のある日を 1 日分読む。
+//   - 全投稿をエクスポートする。
+//   - 古い投稿の画像を直接開く（共有された古いリンクを開く）。
+//
+// 人も月も履歴全体から一様に選ぶので、最近のデータだけをメモリに置く実装では、古いデータの
+// 読み取りが遅くなる。画像を消すか差し替える実装は、エクスポートと古いリンクで見つかる。
+//
+// このリクエストも打ち切りの判定（エラー率）には数えるが、成長の判定には数えない。
+// エクスポートは大きく遅いので、どちらにも数えない（失敗すれば加点しないだけ）。
+
+// returningRatio は、思い出を見返すユーザーを負荷ユーザー何人につき 1 人置くか。
+const returningRatio = 8
 
 // ensureReturning は region の思い出を見返すユーザーを、負荷ユーザー returningRatio 人に
-// つき 1 人（切り上げ）になるまで増やす。returningRatio が 0 なら置かない。
+// つき 1 人（切り上げ）になるまで増やす。
 func (r *Runner) ensureReturning(ctx context.Context, wg *sync.WaitGroup, region string, users int) {
 	if r.returningRatio <= 0 {
 		return
@@ -46,21 +54,27 @@ func (r *Runner) ensureReturning(ctx context.Context, wg *sync.WaitGroup, region
 // runReturning は思い出を見返すユーザーのクローズドループ。1 つの端末（接続）を、入れ替わる
 // ユーザーが順に使う。
 func (r *Runner) runReturning(ctx context.Context, region string, index int) {
-	api := r.api.WithCountry(geo.Country(region, index)).WithOwnConnections().WithObserver(r.recorder)
+	api := r.api.WithCountry(geo.Country(region, index)).WithOwnConnections().WithClientIP(r.ips.Next())
 	defer api.CloseIdleConnections()
+	slo := api.WithObserver(&accounting{r: r, slo: true})
+	free := api.WithObserver(nil)
 	candidates := r.initial.HistoryUsers(region)
-	months := r.initial.HistoryMonths()
 	for ctx.Err() == nil {
-		user := r.claimHistoryUser(candidates)
-		if user == nil {
+		du := r.claimHistoryUser(candidates)
+		if du == nil {
 			// 候補がすべて使われている。人数に対して候補は十分多いので、ふつうは起きない。
 			if sleepUntil(ctx, time.Now().Add(time.Second)) != nil {
 				return
 			}
 			continue
 		}
-		r.revisit(ctx, &agent.Agent{Region: region, API: api, ID: user.ID, Username: user.Username, SecretKey: user.SecretKey}, months[rand.IntN(len(months))])
-		r.releaseHistoryUser(user)
+		a := &agent.Agent{Region: region, API: slo, ID: du.ID, Username: du.Username, SecretKey: du.SecretKey}
+		u := &user{Agent: a, returning: true}
+		r.revisit(ctx, u, free)
+		r.releaseHistoryUser(du)
+		if u.stopped.Load() {
+			return
+		}
 	}
 }
 
@@ -70,49 +84,104 @@ func (r *Runner) claimHistoryUser(candidates []*dataset.User) *dataset.User {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for range 20 {
-		user := candidates[rand.IntN(len(candidates))]
-		if !r.revisiting[user.ID] {
-			r.revisiting[user.ID] = true
-			return user
+		du := candidates[r.historyRand.IntN(len(candidates))]
+		if !r.revisiting[du.ID] {
+			r.revisiting[du.ID] = true
+			return du
 		}
 	}
 	return nil
 }
 
-func (r *Runner) releaseHistoryUser(user *dataset.User) {
+func (r *Runner) releaseHistoryUser(du *dataset.User) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	delete(r.revisiting, user.ID)
+	delete(r.revisiting, du.ID)
 }
 
-// revisit は user としてログインし、month の Memories を初期データと比べる。
-func (r *Runner) revisit(ctx context.Context, user *agent.Agent, month time.Time) {
-	if err := user.Login(ctx); err != nil {
+// revisit は u としてログインし、過去の投稿を 1 つの方法で見返して初期データと比べる。
+// free はエクスポートに使う、集計に数えないクライアント。
+func (r *Runner) revisit(ctx context.Context, u *user, free *client.Client) {
+	if err := u.Login(ctx); err != nil {
 		switch {
 		case ctx.Err() != nil:
+		case r.bannedErr(u, err):
 		case isStatus(err, http.StatusUnauthorized):
-			r.board.Criticalf("初期データのユーザー %s としてログインできません: %v", user.Username, err)
+			r.board.Criticalf("初期データのユーザー %s としてログインできません: %v", u.Username, err)
 		default:
-			r.requestError(ctx, "%s: ログインできません: %v", user.Username, err)
+			r.requestError(ctx, u, "%s: ログインできません: %v", u.Username, err)
 		}
 		return
 	}
-	err := r.initial.CheckMemories(ctx, user, month, func(client.Post) bool { return false }, r.historyImages, r.sample() > 0)
-	r.recordHistory(ctx, user, err)
+	r.mu.Lock()
+	x := r.historyRand.Float64()
+	months := r.initial.HistoryMonths()
+	month := months[r.historyRand.IntN(len(months))]
+	day := r.historyRand.IntN(r.dataset.Config.Days)
+	r.mu.Unlock()
+	thorough := r.sample() > 0
+	switch {
+	case x < 0.65:
+		err := r.initial.CheckMemories(ctx, u.Agent, month, func(client.Post) bool { return false }, r.historyImages, thorough)
+		r.recordHistory(ctx, u, err, score.TagHistoryMonth)
+	case x < 0.85:
+		err := r.initial.CheckMemoriesDate(ctx, u.Agent, day, r.historyImages, thorough)
+		r.recordHistory(ctx, u, err, score.TagHistoryDate)
+	case x < 0.93:
+		exporter := *u.Agent
+		exporter.API = free
+		images := 0
+		if thorough {
+			images = r.historyImages
+		}
+		err := r.initial.CheckExport(ctx, &exporter, images, func(string) bool { return false })
+		var apiErr *client.APIError
+		var requestErr *client.RequestError
+		if errors.As(err, &apiErr) || errors.As(err, &requestErr) {
+			// エクスポートの失敗は加点しないだけにする（重い処理をあとに回す判断は自由）。
+			return
+		}
+		r.recordHistory(ctx, u, err, score.TagExport)
+	default:
+		err := r.initial.SpotCheck(ctx, u.Agent, r.historyImages)
+		r.recordHistory(ctx, u, err, score.TagSpotCheck)
+	}
+	if r.historyRandFloat() < 0.2 {
+		if err := u.API.Logout(ctx, u.Token); err != nil {
+			r.requestError(ctx, u, "%s: ログアウトできません: %v", u.Username, err)
+		}
+	}
+}
+
+func (r *Runner) historyRandFloat() float64 {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.historyRand.Float64()
+}
+
+// readHistory は cohort のユーザーが、履歴のある月の Memories を読んで初期データと比べる。
+// 負荷走行で開いた投稿期間の投稿は比べない（作成の結果がわからず、bench が ID を知らない
+// 投稿も含む）。
+func (r *Runner) readHistory(ctx context.Context, u *user) {
+	months := r.initial.HistoryMonths()
+	month := months[u.rng.IntN(len(months))]
+	err := r.initial.CheckMemories(ctx, u.Agent, month, func(p client.Post) bool { return r.model.HasWindow(p.PostingWindowID) }, r.historyImages, r.sample() > 0)
+	r.recordHistory(ctx, u, err, score.TagHistoryMonth)
 }
 
 // recordHistory は履歴の読み取りの結果を記録する。履歴は変わらないので、中身が違えば
 // 正しさの違反とする。
-func (r *Runner) recordHistory(ctx context.Context, user *agent.Agent, err error) {
+func (r *Runner) recordHistory(ctx context.Context, u *user, err error, tag score.Tag) {
 	var apiErr *client.APIError
 	var requestErr *client.RequestError
 	switch {
 	case err == nil:
-		r.board.Add(score.TagMemory)
+		r.board.Add(tag)
 	case ctx.Err() != nil:
+	case r.bannedErr(u, err):
 	case errors.As(err, &apiErr) || errors.As(err, &requestErr):
-		r.requestError(ctx, "%s: 履歴を読めません: %v", user.Username, err)
+		r.requestError(ctx, u, "%s: 履歴を読めません: %v", u.Username, err)
 	default:
-		r.board.Criticalf("%s: 履歴が初期データと違います: %v", user.Username, err)
+		r.board.Criticalf("%s: 履歴が初期データと違います: %v", u.Username, err)
 	}
 }

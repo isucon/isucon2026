@@ -56,15 +56,38 @@ func (m *Model) CheckFriends(userID string, got []string, r Read) []string {
 	defer m.mu.RUnlock()
 	var violations []string
 	for _, id := range got {
-		if friend := m.users[id]; friend == nil || !friend.Active || m.friendTri(userID, id, r) == False {
+		if friend := m.users[id]; friend == nil || m.activeTri(id, r) == False || m.friendTri(userID, id, r) == False {
 			violations = append(violations, fmt.Sprintf("友達でないユーザー %s が友達の一覧にいます", id))
 		}
 	}
 	for id := range m.friendCandidates[userID] {
 		friend := m.users[id]
-		if friend != nil && friend.Active && !slices.Contains(got, id) && m.friendTri(userID, id, r) == True {
+		if friend != nil && m.activeTri(id, r) == True && !slices.Contains(got, id) && m.friendTri(userID, id, r) == True {
 			violations = append(violations, fmt.Sprintf("友達 %s が友達の一覧にいません", id))
 		}
 	}
 	return violations
+}
+
+// CheckFollowing は userID のフォローの一覧として返ったユーザー got を、フォローの書き込みと
+// 突き合わせる。確実にフォローしている有効なユーザーが無い、確実にフォローしていない人が
+// いる場合を返す。
+func (m *Model) CheckFollowing(userID string, got []string, r Read) []string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	var problems []string
+	for _, id := range got {
+		if m.users[id] == nil {
+			continue
+		}
+		if m.activeTri(id, r) == False || m.followTri(userID, id, r) == False {
+			problems = append(problems, fmt.Sprintf("フォローしていないユーザー %s がフォローの一覧にいます", id))
+		}
+	}
+	for id := range m.followCandidates[userID] {
+		if m.activeTri(id, r) == True && !slices.Contains(got, id) && m.followTri(userID, id, r) == True {
+			problems = append(problems, fmt.Sprintf("フォローしているユーザー %s がフォローの一覧にいません", id))
+		}
+	}
+	return problems
 }

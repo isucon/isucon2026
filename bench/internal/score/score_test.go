@@ -9,13 +9,14 @@ import (
 
 func TestBoardTotal(t *testing.T) {
 	board := score.NewBoard(nil)
-	board.Add(score.TagGatePass) // +100
-	board.Add(score.TagRealMoji) // +5
-	board.Add(score.TagComment)  // +3
-	board.Add(score.TagFeed)     // +1
+	board.Add(score.TagGatePass)  // +10
+	board.Add(score.TagGrandPrix) // +20
+	board.Add(score.TagRealMoji)  // +5
+	board.Add(score.TagComment)   // +3
+	board.Add(score.TagFeed)      // +1
 
-	if got := board.Total(); got != 109 {
-		t.Fatalf("Total() = %d, want 109", got)
+	if got := board.Total(); got != 39 {
+		t.Fatalf("Total() = %d, want 39", got)
 	}
 }
 
@@ -36,8 +37,8 @@ func TestErrorsDoNotDeduct(t *testing.T) {
 	board.Errorf("GET /x: expected 200, got 500 (internal_error)")
 	board.Criticalf("feed returned a hidden post")
 
-	if got := board.Total(); got != 100 {
-		t.Fatalf("Total() = %d, want 100", got)
+	if got := board.Total(); got != 10 {
+		t.Fatalf("Total() = %d, want 10", got)
 	}
 	if board.ErrorCount() != 1 || board.CriticalCount() != 1 || len(board.Critical()) != 1 {
 		t.Fatalf("errors=%d critical=%d", board.ErrorCount(), board.CriticalCount())

@@ -1,9 +1,20 @@
+// Package scenario は ISUReal の負荷走行のシナリオ。
+//
+// サービスはアジアで流行っている写真共有アプリで、各リージョンでは 1 日に 1 回、全員に
+// 「今日の写真を投稿しよう」という通知が届く。ユーザーは通知を受けて写真を投稿し、投稿した
+// 人だけがその日の友達の投稿を見られる（ゲート）。投稿してフィードを開けたユーザーが翌日に
+// 友達を連れてくるので、サービスが快適ならユーザーは日ごとに増える。最終日は全リージョンで
+// 同時に投稿期間が始まるグランプリになる。
 package scenario
 
 import (
+	"bytes"
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
+	"image"
+	"image/jpeg"
 	"log/slog"
 	"maps"
 	"math"
@@ -11,15 +22,17 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/isucon/isucon2026/bench/internal/agent"
 	"github.com/isucon/isucon2026/bench/internal/client"
 	"github.com/isucon/isucon2026/bench/internal/geo"
-	"github.com/isucon/isucon2026/bench/internal/imagegen"
+	"github.com/isucon/isucon2026/bench/internal/imageurl"
 	"github.com/isucon/isucon2026/bench/internal/initialdata"
 	"github.com/isucon/isucon2026/bench/internal/metrics"
 	"github.com/isucon/isucon2026/bench/internal/model"
+	"github.com/isucon/isucon2026/bench/internal/photo"
 	"github.com/isucon/isucon2026/bench/internal/score"
 	"github.com/isucon/isucon2026/dataset"
 )
@@ -28,27 +41,21 @@ import (
 const DefaultVerifyRate = 0.1
 
 const (
-	initializeTimeout = 30 * time.Second
-	loadDuration      = 60 * time.Second
-	sloCheckInterval  = time.Second
-	maxMessages       = 20
+	initializeTimeout = 60 * time.Second
+	// preloadTimeout は事前検証、初期データの検証、負荷ユーザーの準備にかける時間の上限。
+	preloadTimeout = 45 * time.Second
+	// subscribeTimeout は負荷走行の前に、負荷ユーザーが通知を購読し終えるのを待つ上限。
+	subscribeTimeout = 5 * time.Second
+	loadDuration     = 60 * time.Second
+	sloCheckInterval = time.Second
+	maxMessages      = 30
 )
-
-// schedule は投稿期間の時間割。負荷走行の開始から warmup 後（ユーザーが通知を購読し
-// 終えるのを待つ）に始め、リージョンごとに period ごとに開き、リージョンどうしは offset
-// ずつずらす（P-102 の 20 秒周期、7 秒ずらし）。
-type schedule struct {
-	warmup time.Duration
-	period time.Duration
-	offset time.Duration
-}
-
-var defaultSchedule = schedule{warmup: time.Second, period: 10 * time.Second, offset: 3 * time.Second}
 
 type Config struct {
 	Target string
 	Host   string
-	// Users はリージョンあたりの負荷ユーザー数。
+	// Users はリージョンあたりの最初の負荷ユーザー数（登録するユーザーの数。初期データの
+	// cohort のユーザーも同じ数までログインして加える）。
 	Users int
 	// Duration は負荷走行の長さ。0 なら 60 秒。
 	Duration time.Duration
@@ -58,14 +65,19 @@ type Config struct {
 	// Staleness は書き込みが読み取りに反映されるまでに許す遅れ。
 	Staleness time.Duration
 	// VerifyRate は負荷走行で重い検証（フィードの欠落、画像 URL の署名、履歴の画像）を行う
-	// 操作の割合（0 より大きく 1 以下）。0 なら DefaultVerifyRate。初期データの検証と走行後の
-	// 確認は常にすべて検証する。
+	// 操作の割合（0 より大きく 1 以下）。0 なら DefaultVerifyRate。
 	VerifyRate float64
-	// Ratchet はレベルの昇格の設定。ゼロ値なら DefaultRatchet。
-	Ratchet RatchetConfig
+	// Growth はユーザーの増え方。ゼロ値なら DefaultGrowth。
+	Growth GrowthConfig
 	// Dataset は対象の DB に入っている初期データ。nil なら dataset.Small() から作る。
 	Dataset *dataset.World
-	Logger  *slog.Logger
+	// Photos は投稿に使う写真。nil なら生成した小さな画像を使う。
+	Photos *photo.Set
+	// Seed は走行の種。0 なら無作為に決める。
+	Seed uint64
+	// Evil は不正な利用者を動かす。nil なら動かさない。
+	Evil   EvilFunc
+	Logger *slog.Logger
 	// OnProgress は途中経過（暫定のスコアと内訳）を受け取る。フェーズの境目と、負荷走行の
 	// 観測窓が閉じるたびに呼ぶ。スーパーバイザーへの報告に使う。
 	OnProgress func(Result)
@@ -76,8 +88,10 @@ type Result struct {
 	Score    int64  `json:"score"`
 	Language string `json:"language"`
 	Reason   string `json:"reason,omitempty"`
-	// Messages は参加者に見せる。失格の理由のあとに、正しさの違反とエラーを並べる。
+	// Messages は参加者に見せる。失格の理由、走行の様子、正しさの違反、エラーの順。
 	Messages []string `json:"messages"`
+	// Story は走行の様子（日ごとの人数、ゲートを通過した人数、新しく来た人数）。参加者に見せる。
+	Story []string `json:"story"`
 
 	// 以下は運営向け（D-005）。
 	// Agent、Harness、Model は調査用の自己申告値。得点や合否には使用しない。
@@ -85,16 +99,19 @@ type Result struct {
 	Harness   string           `json:"harness"`
 	Model     string           `json:"model"`
 	Breakdown map[string]int64 `json:"breakdown"`
-	// OpenedWindows はリージョンごとに開いた投稿期間の数。
+	// OpenedWindows はリージョンごとに開いた投稿期間の数、Users は最後の負荷ユーザーの数。
 	OpenedWindows map[string]int `json:"openedWindows"`
-	// Levels はリージョンごとに到達したレベル、Users は最後の負荷ユーザーの数、Buzzes は
-	// リージョンが話題になった回数。
-	Levels   map[string]int  `json:"levels"`
-	Users    map[string]int  `json:"users"`
-	Buzzes   map[string]int  `json:"buzzes"`
-	Critical []string        `json:"critical"`
-	Errors   []string        `json:"errors"`
-	Windows  []metrics.Stats `json:"windows"`
+	Users         map[string]int `json:"users"`
+	// GrandPrix はグランプリ（最終日）にゲートを通過した人数。
+	GrandPrix  map[string]int  `json:"grandPrix"`
+	Days       []DayReport     `json:"days"`
+	Reputation int             `json:"reputation"`
+	Seed       uint64          `json:"seed"`
+	Critical   []string        `json:"critical"`
+	Errors     []string        `json:"errors"`
+	Windows    []metrics.Stats `json:"windows"`
+	// Routes はリージョンとルートごとの所要時間。
+	Routes []metrics.RouteStats `json:"routes"`
 }
 
 type Runner struct {
@@ -102,16 +119,18 @@ type Runner struct {
 	api      *client.Client
 	admin    *client.Client
 	board    *score.Board
-	recorder *metrics.Recorder
+	recorder atomic.Pointer[metrics.Recorder]
+	books    atomic.Pointer[book]
 	initial  *initialdata.Checker
 	dataset  *dataset.World
 	// model は bench が知っているアプリの状態。フィードの検証に使う。
-	model *model.Model
+	model  *model.Model
+	photos *photo.Set
+	tt     timetable
+	seed   uint64
+	ips    *ipPool
 
 	adminToken    string
-	agents        map[string][]*agent.Agent
-	postImage     []byte
-	mojiImage     []byte
 	language      string
 	surveyAgent   string
 	surveyHarness string
@@ -120,34 +139,44 @@ type Runner struct {
 	// deleteRate と changeRate は、投稿後に投稿を削除する確率と公開範囲を変える確率。
 	deleteRate float64
 	changeRate float64
-	// visibility は投稿の公開範囲を選ぶ。
+	// visibility は公開範囲を決める（テスト用。nil ならユーザーの種類で決める）。
 	visibility func() string
-	schedule   schedule
-	// acceptRate は閲覧の合間に届いた友達申請を確認する確率。
-	acceptRate    float64
-	ratchetConfig RatchetConfig
-	ratchet       *ratchet
-
-	mu          sync.Mutex
-	opened      map[string]int
-	friendCount map[string]int
-	newcomers   int
-	// cohort は負荷ユーザーのうち初期データのユーザー。準備のあとは読み取り専用。
-	cohort map[string]bool
-	// historyRate は cohort のユーザーが閲覧の合間に履歴を読む確率。
-	historyRate float64
-	// historyImages は履歴を 1 か月読むたびに中身を取得して比べる画像の数。
+	// peekRate は、通知を受けて投稿する前にフィードを覗くユーザーの割合。
+	peekRate float64
+	// historyImages は履歴を 1 か月読むたびに中身を取得する画像の数。
 	historyImages int
 	// verifyRate は負荷走行で重い検証を行う操作の割合（Config.VerifyRate）。
 	verifyRate float64
 	// returningRatio は、思い出を見返すユーザーを負荷ユーザー何人につき 1 人置くか。
 	returningRatio int
+	// wg は負荷走行のゴルーチン。
+	wg *sync.WaitGroup
+
+	// stepName は事前検証で今していること。時間切れの理由に使う。
+	stepName atomic.Value
+
+	mu                sync.Mutex
+	users             map[string][]*user
+	byID              map[string]*user
+	certified         []string
+	usernames         map[string]bool
+	registrations     int
+	nameRand          *rand.Rand
+	historyRand       *rand.Rand
+	opened            map[string]int
+	windowDay         map[string]int
+	lastWindow        map[string]string
+	friendCount       map[string]int
+	reactionsByWindow map[string]map[string]int
+	// arriving はリージョンごとの、登録中の新しいユーザーの数。
+	arriving       map[string]int
 	returningCount map[string]int
-	// revisiting は思い出を見返すユーザーが今ログインしている初期データのユーザー。
-	revisiting map[string]bool
-	// loadStart は負荷走行の開始時刻、join は流入したユーザーを登録させる（負荷走行の間だけ）。
-	loadStart time.Time
-	join      func(region string, level, users int, buzz bool)
+	revisiting     map[string]bool
+	evilUsers      map[string]bool
+	// openedAt は投稿期間ごとに、開く要求を送った時刻。
+	openedAt        map[string]time.Time
+	story           []string
+	reputationCount int
 }
 
 func NewRunner(cfg Config) (*Runner, error) {
@@ -172,58 +201,68 @@ func NewRunner(cfg Config) (*Runner, error) {
 	if cfg.Retry == (client.RetryPolicy{}) {
 		cfg.Retry = client.DefaultRetryPolicy
 	}
-	if cfg.Ratchet == (RatchetConfig{}) {
-		cfg.Ratchet = DefaultRatchet
-	}
-	postImage, err := imagegen.JPEG(64, 64, 1)
-	if err != nil {
-		return nil, err
-	}
-	mojiImage, err := imagegen.JPEG(32, 32, 2)
-	if err != nil {
-		return nil, err
+	if cfg.Growth == (GrowthConfig{}) {
+		cfg.Growth = DefaultGrowth
 	}
 	if cfg.Dataset == nil {
 		cfg.Dataset = dataset.Generate(dataset.Small())
+	}
+	if cfg.Photos == nil {
+		cfg.Photos = photo.Generated()
+	}
+	if cfg.Seed == 0 {
+		cfg.Seed = rand.Uint64()
 	}
 	m := model.New()
 	m.Staleness = cfg.Staleness
 	m.LoadDataset(cfg.Dataset)
 	api := client.NewClient(client.Config{Base: cfg.Target, Host: cfg.Host, Retry: cfg.Retry})
-	return &Runner{
-		cfg:            cfg,
-		api:            api,
-		admin:          api.WithCountry(geo.Country(geo.Asia, 0)),
-		board:          score.NewBoard(cfg.Weights),
-		initial:        initialdata.New(cfg.Dataset),
-		dataset:        cfg.Dataset,
-		model:          m,
-		agents:         make(map[string][]*agent.Agent),
-		postImage:      postImage,
-		mojiImage:      mojiImage,
-		deleteRate:     0.05,
-		changeRate:     0.1,
-		visibility:     func() string { return visibilities[rand.IntN(len(visibilities))] },
-		schedule:       defaultSchedule,
-		acceptRate:     0.1,
-		ratchetConfig:  cfg.Ratchet,
-		ratchet:        newRatchet(),
-		opened:         make(map[string]int),
-		friendCount:    make(map[string]int),
-		cohort:         make(map[string]bool),
-		historyRate:    0.02,
-		historyImages:  4,
-		verifyRate:     cfg.VerifyRate,
-		returningRatio: 8,
-		returningCount: make(map[string]int),
-		revisiting:     make(map[string]bool),
-	}, nil
+	usernames := map[string]bool{}
+	for _, u := range cfg.Dataset.Users {
+		usernames[u.Username] = true
+	}
+	r := &Runner{
+		cfg:               cfg,
+		api:               api,
+		board:             score.NewBoard(cfg.Weights),
+		initial:           initialdata.New(cfg.Dataset),
+		dataset:           cfg.Dataset,
+		model:             m,
+		photos:            cfg.Photos,
+		tt:                newTimetable(cfg.Duration),
+		seed:              cfg.Seed,
+		ips:               newIPPool(cfg.Seed),
+		deleteRate:        0.05,
+		peekRate:          0.1,
+		changeRate:        0.1,
+		historyImages:     4,
+		verifyRate:        cfg.VerifyRate,
+		returningRatio:    returningRatio,
+		users:             map[string][]*user{},
+		byID:              map[string]*user{},
+		usernames:         usernames,
+		nameRand:          rand.New(rand.NewPCG(cfg.Seed, 0x6e616d65)),
+		historyRand:       rand.New(rand.NewPCG(cfg.Seed, 0x68697374)),
+		opened:            map[string]int{},
+		windowDay:         map[string]int{},
+		lastWindow:        map[string]string{},
+		friendCount:       map[string]int{},
+		reactionsByWindow: map[string]map[string]int{},
+		arriving:          map[string]int{},
+		returningCount:    map[string]int{},
+		revisiting:        map[string]bool{},
+		evilUsers:         map[string]bool{},
+		openedAt:          map[string]time.Time{},
+	}
+	// 管理者は JP から送る。IP は負荷ユーザーと同じく走行ごとに決める。
+	r.admin = api.WithCountry(geo.Country(geo.Asia, 0)).WithClientIP(r.ips.Next())
+	return r, nil
 }
 
 func (r *Runner) Run(ctx context.Context) Result {
 	defer r.closeConnections()
 	reason := ""
-	for _, phase := range []func(context.Context) string{r.initialize, r.pretest, r.checkInitialData, r.prepareUsers, r.load} {
+	for _, phase := range []func(context.Context) string{r.initialize, r.preload, r.load} {
 		r.progress()
 		if reason = phase(ctx); reason != "" {
 			break
@@ -246,19 +285,25 @@ func (r *Runner) Run(ctx context.Context) Result {
 		Harness:       r.surveyHarness,
 		Model:         r.surveyModel,
 		Reason:        reason,
+		Story:         r.storyLines(),
 		Breakdown:     r.board.Breakdown(),
 		OpenedWindows: r.openedCounts(),
-		Levels:        r.ratchet.levels(),
-		Users:         r.ratchet.population(),
-		Buzzes:        r.ratchet.buzzCounts(),
+		Users:         r.populations(),
+		Reputation:    r.reputations(),
+		Seed:          r.seed,
 		Critical:      r.board.Critical(),
 		Errors:        r.board.Errors(),
 	}
-	result.Messages = messages(reason, result.Critical, result.Errors)
-	if r.recorder != nil {
-		for _, window := range r.recorder.Windows() {
-			result.Windows = append(result.Windows, r.recorder.Regions(window)...)
+	if b := r.books.Load(); b != nil {
+		result.Days = b.report()
+		_, result.GrandPrix = b.passes()
+	}
+	result.Messages = messages(reason, result.Story, result.Critical, result.Errors)
+	if rec := r.recorder.Load(); rec != nil {
+		for _, window := range rec.Windows() {
+			result.Windows = append(result.Windows, rec.Regions(window)...)
 		}
+		result.Routes = rec.Routes()
 	}
 	if result.Pass {
 		result.Score = r.board.Total()
@@ -274,10 +319,8 @@ func (r *Runner) progress() {
 }
 
 func (r *Runner) closeConnections() {
-	for _, agents := range r.agents {
-		for _, user := range agents {
-			user.API.CloseIdleConnections()
-		}
+	for _, u := range r.usersSnapshot() {
+		u.API.CloseIdleConnections()
 	}
 }
 
@@ -308,8 +351,14 @@ collect:
 func (r *Runner) openedCounts() map[string]int {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	out := make(map[string]int, len(r.opened))
-	maps.Copy(out, r.opened)
+	return maps.Clone(r.opened)
+}
+
+func (r *Runner) populations() map[string]int {
+	out := map[string]int{}
+	for _, region := range geo.Regions {
+		out[region] = r.population(region)
+	}
 	return out
 }
 
@@ -317,9 +366,15 @@ func (r *Runner) initialize(ctx context.Context) string {
 	r.cfg.Logger.Info("phase: initialize")
 	ctx, cancel := context.WithTimeout(ctx, initializeTimeout)
 	defer cancel()
+	started := time.Now()
 	result, err := r.admin.Initialize(ctx)
 	if err != nil {
-		return fmt.Sprintf("初期化に失敗しました: %v", err)
+		return fmt.Sprintf("初期化に失敗しました: %v（上限 %s）", err, initializeTimeout)
+	}
+	// 初期化は前回の走行で増えたデータを消すので、強い実装ほど重くなる。上限に近づく前に
+	// 気づけるよう、時間がかかったら物語に残す。
+	if took := time.Since(started); took >= slowInitialize {
+		r.record(fmt.Sprintf("初期化に %.1f 秒かかりました（上限 %s）", took.Seconds(), initializeTimeout))
 	}
 	if result.Language == "" {
 		return "初期化の応答の language が空です"
@@ -338,16 +393,55 @@ func (r *Runner) initialize(ctx context.Context) string {
 	return ""
 }
 
+// step は事前検証で今していることを記録する。時間切れのときに理由として出す。
+func (r *Runner) step(name string) {
+	r.stepName.Store(name)
+}
+
+// preload は事前検証、初期データの検証、負荷ユーザーの準備を preloadTimeout 以内に行う。
+func (r *Runner) preload(ctx context.Context) string {
+	ctx, cancel := context.WithTimeout(ctx, preloadTimeout)
+	defer cancel()
+	timedOut := func() string {
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			step, _ := r.stepName.Load().(string)
+			return fmt.Sprintf("負荷走行の前の確認が %s 以内に終わりませんでした（%s）", preloadTimeout, step)
+		}
+		return ""
+	}
+	if reason := r.pretest(ctx); reason != "" {
+		return cmp.Or(timedOut(), reason)
+	}
+	// 初期データの検証と負荷ユーザーの準備は互いに関係しないので並行に行う。
+	var reasons [2]string
+	parallel(2, func(i int) {
+		if i == 0 {
+			reasons[i] = r.checkInitialData(ctx)
+		} else {
+			reasons[i] = r.prepareUsers(ctx)
+		}
+	})
+	if reason := timedOut(); reason != "" {
+		return reason
+	}
+	return cmp.Or(reasons[0], reasons[1])
+}
+
 // checkInitialData は初期データのユーザーとしてログインし、アプリが初期データどおりの
 // 内容を返すことを確かめる。
 func (r *Runner) checkInitialData(ctx context.Context) string {
+	r.step("初期データの検証")
 	r.cfg.Logger.Info("phase: initial data")
 	targets := r.initial.Targets()
 	failures := make([]error, len(targets))
+	api := r.api.WithClientIP(r.ips.Next())
 	parallel(len(targets), func(i int) {
 		start := time.Now()
-		failures[i] = r.initial.Check(ctx, r.api, targets[i])
+		failures[i] = r.initial.Check(ctx, api, targets[i])
 		r.cfg.Logger.Info("initial user checked", "username", targets[i].Username, "region", targets[i].Region, "elapsed", time.Since(start).Round(time.Millisecond))
+		if failures[i] != nil {
+			r.step(fmt.Sprintf("初期データのユーザー %s の検証", targets[i].Username))
+		}
 	})
 	if err := errors.Join(failures...); err != nil {
 		return "初期データの検証に失敗しました: " + err.Error()
@@ -356,115 +450,142 @@ func (r *Runner) checkInitialData(ctx context.Context) string {
 }
 
 func (r *Runner) pretest(ctx context.Context) string {
+	r.step("事前検証")
 	r.cfg.Logger.Info("phase: pretest")
 	token, err := r.admin.AdminLogin(ctx, "admin", "password1234")
 	if err != nil || token == "" {
 		return fmt.Sprintf("管理者としてログインできません: %v", err)
 	}
 	r.adminToken = token
-	user := agent.New(r.api, geo.Asia, 0)
-	if err := user.Register(ctx, "bench_pretest_user", "bench_pretest_user"); err != nil {
+	a := agent.New(r.api, geo.Asia, 0)
+	a.API = a.API.WithClientIP(r.ips.Next())
+	username, _ := r.newName()
+	if err := a.Register(ctx, username, username); err != nil {
 		return fmt.Sprintf("ユーザーの登録またはログインに失敗しました: %v", err)
 	}
-	if _, err := user.API.Register(ctx, user.Username, "duplicate", user.Region); !isStatus(err, http.StatusConflict) {
+	if _, err := a.API.Register(ctx, a.Username, "duplicate", a.Region); !isStatus(err, http.StatusConflict) {
 		return fmt.Sprintf("登録済みのユーザー名での登録が 409 になりません: %v", err)
 	}
-	if _, err := user.API.Login(ctx, user.Username, "wrong-secret"); !isStatus(err, http.StatusUnauthorized) {
+	if _, err := a.API.Login(ctx, a.Username, "wrong-secret"); !isStatus(err, http.StatusUnauthorized) {
 		return fmt.Sprintf("誤ったシークレットキーでのログインが 401 になりません: %v", err)
 	}
-	profile, err := user.API.Me(ctx, user.Token)
+	profile, err := a.API.Me(ctx, a.Token)
 	if err != nil {
 		return fmt.Sprintf("プロフィールを取得できません: %v", err)
 	}
-	if profile.ID != user.ID || profile.Username != user.Username || profile.Region != user.Region {
+	if profile.ID != a.ID || profile.Username != a.Username || profile.Region != a.Region {
 		return fmt.Sprintf("プロフィールの内容が登録した内容と違います: %+v", profile)
 	}
-	feed, err := user.API.Feed(ctx, user.Token, "public", nil)
+	feed, err := a.API.Feed(ctx, a.Token, "public", nil)
 	if err != nil || len(feed.Items) != 0 || feed.HasMore {
 		return fmt.Sprintf("投稿前のフィードが空ではありません: 投稿 %d 件, %v", len(feed.Items), err)
 	}
-	previous := user.Token
-	if err := user.Login(ctx); err != nil {
+	if _, err := a.API.MyCurrentPost(ctx, a.Token); !isStatus(err, http.StatusNotFound) {
+		return fmt.Sprintf("投稿前の今日の投稿が 404 になりません: %v", err)
+	}
+	if reason := r.pretestRules(ctx, a); reason != "" {
+		return reason
+	}
+	if err := r.admin.DeleteCertification(ctx, r.adminToken, a.ID); !isStatus(err, http.StatusConflict) {
+		return fmt.Sprintf("認定の取り消しが 409 になりません: %v", err)
+	}
+	previous := a.Token
+	if err := a.Login(ctx); err != nil {
 		return fmt.Sprintf("2 回目のログインに失敗しました: %v", err)
 	}
-	if _, err := user.API.Me(ctx, previous); !isStatus(err, http.StatusUnauthorized) {
+	if _, err := a.API.Me(ctx, previous); !isStatus(err, http.StatusUnauthorized) {
 		return fmt.Sprintf("再ログイン前のセッションが無効になっていません: %v", err)
 	}
-	if err := user.API.Logout(ctx, user.Token); err != nil {
+	if err := a.API.Logout(ctx, a.Token); err != nil {
 		return fmt.Sprintf("ログアウトに失敗しました: %v", err)
 	}
-	if _, err := user.API.Me(ctx, user.Token); !isStatus(err, http.StatusUnauthorized) {
+	if _, err := a.API.Me(ctx, a.Token); !isStatus(err, http.StatusUnauthorized) {
 		return fmt.Sprintf("ログアウトしたセッションが無効になっていません: %v", err)
 	}
 	return ""
 }
 
+// load は負荷走行。負荷ユーザーが通知を購読し終えたら時計を進め始め、時間割どおりに
+// 投稿期間を開く。
 func (r *Runner) load(ctx context.Context) string {
-	r.cfg.Logger.Info("phase: load", "usersPerRegion", r.cfg.Users, "duration", r.cfg.Duration)
-	start := time.Now()
-	// ラチェットは観測窓ごとの集計で昇格を判定するので、観測窓の長さをそろえる。
-	r.recorder = metrics.New(start, r.ratchetConfig.Window)
-	for _, agents := range r.agents {
-		for _, user := range agents {
-			user.API = user.API.WithObserver(r.recorder)
-		}
-	}
-	ctx, cancel := context.WithTimeout(ctx, r.cfg.Duration)
-	defer cancel()
+	r.cfg.Logger.Info("phase: load", "usersPerRegion", r.cfg.Users, "duration", r.cfg.Duration, "seed", r.seed, "photos", r.photos.Count())
 	ctx, abort := context.WithCancelCause(ctx)
 	defer abort(nil)
+	var wg sync.WaitGroup
+	r.wg = &wg
+	users := r.usersSnapshot()
+	subscribed := make(chan struct{}, len(users))
+	r.chooseLeavers()
+	for _, u := range users {
+		u.API = u.API.WithObserver(&accounting{r: r, slo: true, growth: true})
+		wg.Go(func() { r.runUser(ctx, u, false, subscribed) })
+	}
+	deadline := time.NewTimer(subscribeTimeout)
+wait:
+	for range users {
+		select {
+		case <-subscribed:
+		case <-deadline.C:
+			break wait
+		}
+	}
+	deadline.Stop()
+
+	start := time.Now()
+	r.recorder.Store(metrics.New(start, metrics.DefaultWidth))
+	r.books.Store(newBook(r.tt, start))
+	stop := time.AfterFunc(r.cfg.Duration, func() { abort(context.DeadlineExceeded) })
+	defer stop.Stop()
 
 	monitorDone := make(chan struct{})
 	go func() {
 		defer close(monitorDone)
 		r.monitor(ctx, abort)
 	}()
-
-	var wg sync.WaitGroup
-	r.loadStart = start
-	r.join = func(region string, level, users int, buzz bool) {
-		r.ensureReturning(ctx, &wg, region, r.ratchet.population()[region])
-		// 実際のユーザーは同時には来ないので、次の観測窓のあいだに均等に散らして登録する。
-		// まとめて登録すると、その瞬間だけ接続やロックが集中する。
-		now := time.Now()
-		for i := range users {
-			at := now.Add(r.ratchetConfig.Window * time.Duration(i) / time.Duration(users))
-			wg.Go(func() {
-				if sleepUntil(ctx, at) == nil {
-					r.runNewcomer(ctx, region, level, buzz)
-				}
-			})
-		}
-	}
-	r.ratchet.mu.Lock()
-	for _, user := range r.agentsSnapshot() {
-		r.ratchet.users[user.Region]++
-	}
-	r.ratchet.mu.Unlock()
-	for index, region := range geo.Regions {
+	for _, region := range geo.Regions {
 		wg.Go(func() {
-			if reason := r.runSchedule(ctx, start.Add(r.schedule.warmup), region, index); reason != "" {
-				abort(errors.New(reason))
+			for day := 1; day <= r.tt.days(); day++ {
+				if sleepUntil(ctx, start.Add(r.tt.start(region, day))) != nil {
+					return
+				}
+				if _, err := r.openDay(ctx, region, day); err != nil {
+					abort(err)
+					return
+				}
+				r.ensureReturning(ctx, &wg, region, r.population(region))
 			}
 		})
-		for _, user := range r.agentsSnapshot() {
-			if user.Region == region {
-				wg.Go(func() { r.runUser(ctx, user, false) })
+		r.ensureReturning(ctx, &wg, region, r.population(region))
+	}
+	if r.cfg.Evil != nil {
+		wg.Go(func() { r.cfg.Evil(ctx, r.evilEnv(start)) })
+	}
+	wg.Go(func() {
+		// 観測窓が閉じるたびに途中経過を報告する。
+		ticker := time.NewTicker(metrics.DefaultWidth)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				r.progress()
 			}
 		}
-	}
-	for region, users := range r.ratchet.population() {
-		r.ensureReturning(ctx, &wg, region, users)
-	}
-	wg.Go(func() { r.runRatchet(ctx, start, r.join) })
+	})
+	<-ctx.Done()
 	wg.Wait()
-	abort(nil)
 	<-monitorDone
+	r.tellGrandPrix()
+	if err := r.admin.AdminLogout(context.WithoutCancel(ctx), r.adminToken); err != nil {
+		r.board.Errorf("管理者としてログアウトできません: %v", err)
+	}
 
 	if cause := context.Cause(ctx); cause != nil && !errors.Is(cause, context.Canceled) && !errors.Is(cause, context.DeadlineExceeded) {
 		return cause.Error()
 	}
-	if reason := r.recorder.Violation(r.cfg.SLO, r.recorder.WindowAt(time.Now())+1); reason != "" {
+	rec := r.recorder.Load()
+	if reason := rec.Violation(r.cfg.SLO, rec.WindowAt(time.Now())+1); reason != "" {
 		return "負荷走行を打ち切りました: " + reason
 	}
 	return ""
@@ -475,12 +596,13 @@ func (r *Runner) load(ctx context.Context) string {
 func (r *Runner) monitor(ctx context.Context, abort context.CancelCauseFunc) {
 	ticker := time.NewTicker(sloCheckInterval)
 	defer ticker.Stop()
+	rec := r.recorder.Load()
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case now := <-ticker.C:
-			if reason := r.recorder.Violation(r.cfg.SLO, r.recorder.WindowAt(now)); reason != "" {
+			if reason := rec.Violation(r.cfg.SLO, rec.WindowAt(now)); reason != "" {
 				abort(errors.New("負荷走行を打ち切りました: " + reason))
 				return
 			}
@@ -492,6 +614,47 @@ func (r *Runner) monitor(ctx context.Context, abort context.CancelCauseFunc) {
 	}
 }
 
+// chooseLeavers は退会するユーザーを決める。各リージョンで bench が登録したユーザー
+// （認定公開アカウントを除く）が 2 人以上いれば 1 人が、最後の staggered 日に投稿したあとで
+// 退会する。初期データのユーザーは退会させない（過去の RealMoji やコメントが消え、ほかの
+// 人の履歴が変わる）。
+func (r *Runner) chooseLeavers() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, region := range geo.Regions {
+		var candidates []*user
+		for _, u := range r.users[region] {
+			if u.registered && !u.certified.Load() {
+				candidates = append(candidates, u)
+			}
+		}
+		if len(candidates) >= 2 {
+			candidates[hashOf(r.seed, "leave", region)%uint64(len(candidates))].leaveOn = r.tt.staggered
+		}
+	}
+}
+
+// deleteAccount は u を退会させ、古いセッションが使えなくなったことを確かめる。
+func (r *Runner) deleteAccount(ctx context.Context, u *user) {
+	w := r.model.BeginDeleteAccount(u.ID)
+	err := u.API.DeleteAccount(ctx, u.Token)
+	settle(w, err)
+	if err != nil {
+		r.requestError(ctx, u, "%s: 退会できません: %v", u.Username, err)
+		// 応答が届かなくても退会は済んでいることがある。結果のわからないユーザーはもう
+		// 使わず、走行後の整合性チェックでも確かめない。
+		if !isRejection(err) {
+			u.stopped.Store(true)
+		}
+		return
+	}
+	u.stopped.Store(true)
+	r.board.Add(score.TagDeleteAccount)
+	if _, err := u.API.Me(client.MayFailWith(ctx, http.StatusUnauthorized), u.Token); !isStatus(err, http.StatusUnauthorized) {
+		r.invalid(ctx, u, "%s: 退会したユーザーのセッションが無効になっていません: %v", u.Username, err)
+	}
+}
+
 func parallel(count int, fn func(int)) {
 	var wg sync.WaitGroup
 	for index := range count {
@@ -500,25 +663,56 @@ func parallel(count int, fn func(int)) {
 	wg.Wait()
 }
 
-// requestError は失敗したリクエストを記録する。失敗としての集計は metrics の
-// Observer が済ませている。
-func (r *Runner) requestError(ctx context.Context, format string, args ...any) {
+func sleepUntil(ctx context.Context, at time.Time) error {
+	timer := time.NewTimer(time.Until(at))
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+// requestError は失敗したリクエストを記録する。失敗としての集計は Observer が済ませて
+// いる。BAN による拒否は悪評として別に記録する。
+func (r *Runner) requestError(ctx context.Context, u *user, format string, args ...any) {
+	if ctx.Err() != nil || u.stopped.Load() {
+		return
+	}
+	for _, arg := range args {
+		if err, ok := arg.(error); ok && r.bannedErr(u, err) {
+			return
+		}
+	}
+	r.board.Errorf(format, args...)
+}
+
+// adminError は管理者の操作の失敗を記録する。
+func (r *Runner) adminError(ctx context.Context, format string, args ...any) {
 	if ctx.Err() == nil {
 		r.board.Errorf(format, args...)
 	}
 }
 
-// invalid は、届いたが検証に失敗したレスポンスを記録し、リージョンの
-// エラー率に数える。
-func (r *Runner) invalid(ctx context.Context, region, format string, args ...any) {
-	r.invalidN(ctx, region, 1, format, args...)
+// invalid は、届いたが検証に失敗したレスポンスを記録し、エラー率と前日の失敗率に数える。
+func (r *Runner) invalid(ctx context.Context, u *user, format string, args ...any) {
+	r.invalidN(ctx, u, 1, format, args...)
 }
 
-// invalidN は invalid と同じく記録し、エラー率には n 件として数える。
-func (r *Runner) invalidN(ctx context.Context, region string, n int64, format string, args ...any) {
-	if ctx.Err() == nil {
-		r.board.Errorf(format, args...)
-		r.recorder.AddFailure(region, time.Now(), n)
+// invalidN は invalid と同じく記録し、打ち切りのエラー率には n 件として数える（間引いた
+// 検証で見つけた失敗）。前日の失敗率には 1 件として数える。
+func (r *Runner) invalidN(ctx context.Context, u *user, n int64, format string, args ...any) {
+	if ctx.Err() != nil {
+		return
+	}
+	r.board.Errorf(format, args...)
+	now := time.Now()
+	if rec := r.recorder.Load(); rec != nil {
+		rec.AddFailure(u.Region, now, n)
+	}
+	if b := r.books.Load(); b != nil && !u.returning {
+		b.fail(u.Region, now, n)
 	}
 }
 
@@ -550,4 +744,65 @@ func settle(w *model.Write, err error) {
 func isStatus(err error, status int) bool {
 	var apiErr *client.APIError
 	return errors.As(err, &apiErr) && apiErr.Status == status
+}
+
+// windowOpenedAt は投稿期間 windowID を開く要求を送った時刻。知らなければ fallback。
+func (r *Runner) windowOpenedAt(windowID string, fallback time.Time) time.Time {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if at, ok := r.openedAt[windowID]; ok {
+		return at
+	}
+	return fallback
+}
+
+// pretestRules は、負荷走行では起きにくい拒否の規則を確かめる。地域外のサーバーからの
+// アクセス、JPEG でない画像や寸法の大きすぎる画像、署名の違う画像 URL や期限切れの画像 URL。
+// どれも拒否を省けば速くなるので、省いていないことを確かめる。
+func (r *Runner) pretestRules(ctx context.Context, a *agent.Agent) string {
+	other := a.API.WithCountry(geo.Country(geo.Europe, 0))
+	if _, err := other.Me(client.MayFailWith(ctx, http.StatusForbidden), a.Token); !isStatus(err, http.StatusForbidden) {
+		return fmt.Sprintf("地域外のサーバーからのアクセスが 403 になりません: %v", err)
+	}
+	if err := a.API.PutProfileImage(client.MayFailWith(ctx, http.StatusBadRequest), a.Token, []byte("ISUReal: this is not a JPEG")); !isStatus(err, http.StatusBadRequest) {
+		return fmt.Sprintf("JPEG でないプロフィール画像が 400 になりません: %v", err)
+	}
+	if err := a.API.PutProfileImage(client.MayFailWith(ctx, http.StatusBadRequest), a.Token, grayJPEG(513, 513)); !isStatus(err, http.StatusBadRequest) {
+		return fmt.Sprintf("513x513 のプロフィール画像が 400 になりません: %v", err)
+	}
+	image := r.photos.Profile(hashOf(r.seed, "pretest", a.Username))
+	if err := a.API.PutProfileImage(ctx, a.Token, image); err != nil {
+		return fmt.Sprintf("プロフィール画像を設定できません: %v", err)
+	}
+	profile, err := a.API.Me(ctx, a.Token)
+	if err != nil || profile.ProfileImageURL == nil {
+		return fmt.Sprintf("プロフィール画像の URL を取得できません: %v", err)
+	}
+	url := *profile.ProfileImageURL
+	if data, err := a.API.Image(ctx, url); err != nil || !bytes.Equal(data, image) {
+		return fmt.Sprintf("プロフィール画像を取得できません: %v", err)
+	}
+	imageID := imageurl.ImageID(url)
+	exp := time.Now().Add(time.Hour).Unix()
+	forged := fmt.Sprintf("/api/images/%s?exp=%d&sig=%s", imageID, exp, imageurl.Sign("wrong-"+a.SecretKey, imageID, exp))
+	if _, err := a.API.Image(client.MayFailWith(ctx, http.StatusForbidden, http.StatusNotFound), forged); !isStatus(err, http.StatusForbidden) && !isStatus(err, http.StatusNotFound) {
+		return fmt.Sprintf("署名の違う画像 URL が拒否されません: %v", err)
+	}
+	past := time.Now().Add(-time.Minute).Unix()
+	expired := fmt.Sprintf("/api/images/%s?exp=%d&sig=%s", imageID, past, imageurl.Sign(a.SecretKey, imageID, past))
+	if _, err := a.API.Image(client.MayFailWith(ctx, http.StatusForbidden, http.StatusNotFound), expired); !isStatus(err, http.StatusForbidden) && !isStatus(err, http.StatusNotFound) {
+		return fmt.Sprintf("期限切れの画像 URL が拒否されません: %v", err)
+	}
+	return ""
+}
+
+// grayJPEG は w x h の灰色の JPEG を返す。
+func grayJPEG(w, h int) []byte {
+	var buf bytes.Buffer
+	img := image.NewGray(image.Rect(0, 0, w, h))
+	for i := range img.Pix {
+		img.Pix[i] = 128
+	}
+	_ = jpeg.Encode(&buf, img, &jpeg.Options{Quality: 80})
+	return buf.Bytes()
 }

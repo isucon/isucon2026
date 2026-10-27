@@ -20,7 +20,9 @@ type User struct {
 	Username  string
 	SecretKey string
 	Region    string
-	Active    bool
+
+	// active はユーザーが有効か（退会していないか）。
+	active *timeline[bool]
 }
 
 // Window は投稿期間。LocalDate が同じ日の投稿で、他人の投稿のゲートが開く。
@@ -31,14 +33,17 @@ type Window struct {
 }
 
 type Post struct {
-	ID        string
-	AuthorID  string
-	WindowID  string
-	ImageID   string
+	ID       string
+	AuthorID string
+	WindowID string
+	ImageID  string
+	// ImageHash は投稿した画像の SHA-256。
+	ImageHash [32]byte
 	Caption   string
 	PostedAt  time.Time
 	LocalDate time.Time
 
+	caption    *timeline[string]
 	visibility *timeline[string]
 	deleted    *timeline[bool]
 }
@@ -59,6 +64,8 @@ func pairOf(a, b string) pair {
 type Model struct {
 	// Staleness は書き込みが読み取りに反映されるまでに許す遅れ。
 	Staleness time.Duration
+	// PageSize はフィードの 1 ページの件数（既定 FeedPageSize）。テストで小さくする。
+	PageSize int
 
 	// now は時刻の取得。テストで差し替える。
 	now func() time.Time
@@ -86,10 +93,20 @@ type Model struct {
 	follows map[[2]string]*timeline[bool]
 	// followCandidates はフォローしたことがあるかもしれない相手。following フィードの判定に使う。
 	followCandidates map[string]map[string]bool
+
+	// comments は投稿ごとの bench が書いたコメント、pendingComments は ID のわからない作成。
+	comments        map[string][]*Comment
+	commentByID     map[string]*Comment
+	pendingComments map[string][]*timeline[bool]
+	// reactions は投稿とリアクションした人の組ごとの、有効な RealMoji の ID（なければ ""、
+	// 置き換えの応答を待つ間は "?"）。
+	reactions    map[[2]string]*timeline[string]
+	reactionsFor map[string][]string
 }
 
 func New() *Model {
 	return &Model{
+		PageSize:         FeedPageSize,
 		now:              time.Now,
 		users:            map[string]*User{},
 		windows:          map[string]*Window{},
@@ -104,6 +121,11 @@ func New() *Model {
 		blocks:           map[[2]string]*timeline[bool]{},
 		follows:          map[[2]string]*timeline[bool]{},
 		followCandidates: map[string]map[string]bool{},
+		comments:         map[string][]*Comment{},
+		commentByID:      map[string]*Comment{},
+		pendingComments:  map[string][]*timeline[bool]{},
+		reactions:        map[[2]string]*timeline[string]{},
+		reactionsFor:     map[string][]string{},
 	}
 }
 
@@ -113,7 +135,7 @@ func (m *Model) LoadDataset(world *dataset.World) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for _, u := range world.Users {
-		m.users[u.ID] = &User{ID: u.ID, Username: u.Username, SecretKey: u.SecretKey, Region: u.Region, Active: u.Status == "active"}
+		m.users[u.ID] = &User{ID: u.ID, Username: u.Username, SecretKey: u.SecretKey, Region: u.Region, active: newTimeline(u.Status == "active")}
 	}
 	for _, f := range world.Friendships {
 		m.friendship(f.UserLowID, f.UserHighID).initial = true
@@ -130,7 +152,7 @@ func (m *Model) LoadDataset(world *dataset.World) {
 func (m *Model) AddUser(u User) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	u.Active = true
+	u.active = newTimeline(true)
 	m.users[u.ID] = &u
 }
 
@@ -231,19 +253,29 @@ func (m *Model) HasWindow(id string) bool {
 // ErrUnknownWindow は、bench が開いていない投稿期間であることを表す。
 var ErrUnknownWindow = errors.New("unknown posting window")
 
+// ErrMaybeWindow は、bench が開こうとして結果のわからなかった（タイムアウトなど）投稿期間
+// かもしれないことを表す。bench はその ID を知らないので、その投稿期間では何もしない。
+var ErrMaybeWindow = errors.New("posting window whose opening timed out")
+
 // WaitForWindow は region の投稿期間 id が記録されるまで待つ。通知は、投稿期間を開いた
 // 管理者への応答より先に届くことがあるので、その投稿期間に投稿する前に呼ぶ。id を知らず、
-// region で開いている最中の投稿期間もなければ ErrUnknownWindow を返す。
+// region で開いている最中の投稿期間もなければ ErrUnknownWindow を返す。region で最後に
+// 開こうとした投稿期間の結果がわからなければ ErrMaybeWindow を返す。
 func (m *Model) WaitForWindow(ctx context.Context, region, id string) (*Window, error) {
 	ticker := time.NewTicker(10 * time.Millisecond)
 	defer ticker.Stop()
 	for {
 		m.mu.RLock()
 		window := m.windows[id]
-		opening := slices.ContainsFunc(m.currentWindowOf(region).changes, func(c *change[string]) bool { return c.outcome == inFlight })
+		changes := m.currentWindowOf(region).changes
+		opening := slices.ContainsFunc(changes, func(c *change[string]) bool { return c.outcome == inFlight })
+		maybe := len(changes) > 0 && changes[len(changes)-1].outcome == unknown
 		m.mu.RUnlock()
 		if window != nil {
 			return window, nil
+		}
+		if !opening && maybe {
+			return nil, ErrMaybeWindow
 		}
 		if !opening {
 			return nil, ErrUnknownWindow
@@ -265,6 +297,16 @@ func (m *Model) BeginFriendship(a, b string, friends bool) *Write {
 	return w
 }
 
+// BeginDeleteAccount は userID の退会を記録する。退会したユーザーの投稿、関係、交流は
+// ほかの人から見えなくなる。
+func (m *Model) BeginDeleteAccount(userID string) *Write {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	w := m.newWrite()
+	begin(w, m.users[userID].active, false)
+	return w
+}
+
 // BeginBlock は blocker が blocked をブロックする書き込みを記録する。ブロックは 2 人の
 // 友達関係とフォローも消す。
 func (m *Model) BeginBlock(blocker, blocked string) *Write {
@@ -278,11 +320,22 @@ func (m *Model) BeginBlock(blocker, blocked string) *Write {
 	return w
 }
 
-func (m *Model) BeginFollow(follower, followee string) *Write {
+// BeginUnblock は blocker が blocked のブロックを解除する書き込みを記録する。解除しても
+// 友達関係やフォローは戻らない。
+func (m *Model) BeginUnblock(blocker, blocked string) *Write {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	w := m.newWrite()
-	begin(w, m.follow(follower, followee), true)
+	begin(w, m.block(blocker, blocked), false)
+	return w
+}
+
+// BeginFollow は follower が followee をフォローする（true）か解除する（false）書き込みを記録する。
+func (m *Model) BeginFollow(follower, followee string, follow bool) *Write {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	w := m.newWrite()
+	begin(w, m.follow(follower, followee), follow)
 	return w
 }
 
@@ -329,6 +382,7 @@ func (m *Model) Created(creation *PostCreation, post Post, visibility string) {
 	if window != nil {
 		post.LocalDate = window.LocalDate
 	}
+	post.caption = newTimeline(post.Caption)
 	post.visibility = newTimeline(visibility)
 	post.deleted = newTimeline(false)
 	m.posts[post.ID] = &post
@@ -351,6 +405,14 @@ func (m *Model) BeginUpdateVisibility(postID, visibility string) *Write {
 	defer m.mu.Unlock()
 	w := m.newWrite()
 	begin(w, m.posts[postID].visibility, visibility)
+	return w
+}
+
+func (m *Model) BeginUpdateCaption(postID, caption string) *Write {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	w := m.newWrite()
+	begin(w, m.posts[postID].caption, caption)
 	return w
 }
 
