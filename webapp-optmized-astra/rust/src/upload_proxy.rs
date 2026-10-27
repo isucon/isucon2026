@@ -1,4 +1,4 @@
-//! Preserve uploaded post bytes at the regional ingress without sending a
+//! Preserve uploaded post and reaction bytes at the regional ingress without sending a
 //! second image copy back from the writer. The writer remains authoritative.
 use std::{convert::Infallible, net::SocketAddr, sync::Arc, time::Duration};
 
@@ -85,7 +85,7 @@ impl UploadProxy {
                 .map(|p| p.as_str())
                 .unwrap_or("/api/posts")
         ));
-        // Copy only headers the post API consumes. The regional identity is
+        // Copy only headers the upload APIs consume. The regional identity is
         // derived by the writer from this connection's real peer address.
         for name in ["authorization", "content-type", "x-client-ip", "host"] {
             if let Some(value) = parts.headers.get(name) {
@@ -142,7 +142,7 @@ pub async fn upload_proxy_middleware(
     request: Request,
     next: Next,
 ) -> Response {
-    if request.method() != Method::POST || request.uri().path() != "/api/posts" {
+    if request.method() != Method::POST || !is_upload_path(request.uri().path()) {
         return next.run(request).await;
     }
     // Finish forwarding and warming even if the original client disconnects.
@@ -160,12 +160,21 @@ pub async fn upload_proxy_middleware(
     }
 }
 
+fn is_upload_path(path: &str) -> bool {
+    path == "/api/posts"
+        || path
+            .strip_prefix("/api/posts/")
+            .and_then(|path| path.strip_suffix("/realmojis"))
+            .is_some_and(|id| !id.is_empty() && !id.contains('/'))
+}
+
 async fn warm(content_type: &str, body: Bytes, response: &[u8]) -> Result<(), anyhow::Error> {
     #[derive(Deserialize)]
     #[serde(rename_all = "camelCase")]
     struct CreatedPost {
         image_url: String,
-        posted_at: String,
+        posted_at: Option<String>,
+        created_at: Option<String>,
     }
     let created: CreatedPost = serde_json::from_slice(response)?;
     let image_id = created
@@ -185,7 +194,14 @@ async fn warm(content_type: &str, body: Bytes, response: &[u8]) -> Result<(), an
             let bytes = field.bytes().await?;
             crate::image_api::remember_stored_image(
                 image_id.to_owned(),
-                DateTime::parse_from_rfc3339(&created.posted_at)?.with_timezone(&Utc),
+                DateTime::parse_from_rfc3339(
+                    created
+                        .posted_at
+                        .as_deref()
+                        .or(created.created_at.as_deref())
+                        .ok_or_else(|| anyhow::anyhow!("missing image timestamp"))?,
+                )?
+                .with_timezone(&Utc),
                 bytes,
             );
             break;
@@ -201,6 +217,22 @@ mod tests {
     use http_body_util::BodyExt;
     use std::sync::Mutex;
     use tower::ServiceExt;
+
+    #[test]
+    fn only_exact_upload_routes_are_intercepted() {
+        for path in ["/api/posts", "/api/posts/a/realmojis"] {
+            assert!(is_upload_path(path));
+        }
+        for path in [
+            "/api/posts/",
+            "/api/posts//realmojis",
+            "/api/posts/a/b/realmojis",
+            "/api/posts/a/realmojis/",
+            "/api/me/profile-image",
+        ] {
+            assert!(!is_upload_path(path));
+        }
+    }
 
     #[tokio::test]
     async fn forwards_exact_body_credentials_and_status_without_retries() {

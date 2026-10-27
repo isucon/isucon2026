@@ -74,6 +74,7 @@ if enabled == 'true':
     print('  ~^(GET|HEAD): astra_local;')
     if upload_cache == 'true':
         print('  "POST:/api/posts" astra_local;')
+        print('  ~^POST:/api/posts/[^/]+/realmojis$ astra_local;')
     print('  default astra_writer;\n}')
 upstream = '$astra_upstream' if enabled == 'true' else 'astra_local'
 print('''server {

@@ -942,7 +942,7 @@ async fn independent_bytes_publish_atomically_and_preserve_visibility_export_and
             proxy,
             isureal::upload_proxy::upload_proxy_middleware,
         ));
-    let (status, response) = request(ingress, upload(original)).await;
+    let (status, response) = request(ingress.clone(), upload(original)).await;
     assert_eq!(
         status,
         StatusCode::CREATED,
@@ -966,6 +966,49 @@ async fn independent_bytes_publish_atomically_and_preserve_visibility_export_and
         )
         .await,
         (StatusCode::OK, original.to_vec())
+    );
+    sqlx::query("UPDATE posts SET posting_window_id='window-2' WHERE id='other'")
+        .execute(&db)
+        .await
+        .unwrap();
+    let mut reaction_upload = upload(original);
+    *reaction_upload.uri_mut() = "/api/posts/other/realmojis".parse().unwrap();
+    let (status, reaction) = request(ingress, reaction_upload).await;
+    assert_eq!(
+        status,
+        StatusCode::CREATED,
+        "{}",
+        String::from_utf8_lossy(&reaction)
+    );
+    let reaction: Value = serde_json::from_slice(&reaction).unwrap();
+    let reaction_url = reaction["imageUrl"].as_str().unwrap();
+    // Force a different metadata timestamp to exercise the immutable-key
+    // fallback independently of clock precision in the upload response.
+    sqlx::query("UPDATE image_objects SET created_at=created_at-interval '1 second' WHERE id=(SELECT image_id FROM realmojis WHERE id=$1)")
+        .bind(reaction["id"].as_str().unwrap()).execute(&db).await.unwrap();
+    for _ in 0..2 {
+        assert_eq!(
+            request(
+                regional_reader.clone(),
+                Request::get(reaction_url).body(Body::empty()).unwrap()
+            )
+            .await,
+            (StatusCode::OK, original.to_vec())
+        );
+    }
+    sqlx::query("UPDATE realmojis SET deleted_at=now() WHERE id=$1")
+        .bind(reaction["id"].as_str().unwrap())
+        .execute(&db)
+        .await
+        .unwrap();
+    assert_eq!(
+        request(
+            regional_reader.clone(),
+            Request::get(reaction_url).body(Body::empty()).unwrap()
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
     );
     sqlx::query("UPDATE posts SET deleted_at=now() WHERE id=$1")
         .bind(response["id"].as_str().unwrap())
