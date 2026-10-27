@@ -49,11 +49,16 @@ impl NativeWriteFence {
     /// Keep admission until the response barrier has applied on both replicas.
     /// Local commits release SQL locks immediately, but cannot build an
     /// unbounded queue of large image writes ahead of regional replay.
-    pub async fn admit(&self, body_bytes: Option<u64>, control: bool) -> SemaphorePermit<'_> {
+    pub async fn admit(
+        &self,
+        body_bytes: Option<u64>,
+        control: bool,
+        image_upload: bool,
+    ) -> SemaphorePermit<'_> {
         // Small account/admin mutations must not queue behind image uploads.
         // They retain their own bounded budget until the same replay barrier,
         // so bypassing the image queue never bypasses visibility guarantees.
-        if body_bytes.is_some_and(|bytes| bytes <= SMALL_BODY_BYTES) {
+        if !image_upload && body_bytes.is_some_and(|bytes| bytes <= SMALL_BODY_BYTES) {
             if control {
                 return self
                     .0
@@ -149,5 +154,51 @@ impl NativeWriteFence {
         // This WAL commit record follows every covered application commit.
         // Replicas replay in order, so its acknowledgement covers those writes.
         tx.commit().await
+    }
+}
+
+#[cfg(test)]
+mod admission_tests {
+    use super::*;
+    use sqlx::postgres::PgPoolOptions;
+
+    #[tokio::test]
+    async fn tiny_images_cannot_consume_account_or_control_admission() {
+        let db = PgPoolOptions::new()
+            .connect_lazy("postgres://localhost/unused")
+            .unwrap();
+        let fence = NativeWriteFence::new(db, Duration::from_secs(1));
+        let mut images = Vec::new();
+        for _ in 0..WRITE_SLOTS {
+            images.push(fence.admit(Some(16), false, true).await);
+        }
+        assert!(
+            tokio::time::timeout(
+                Duration::from_millis(20),
+                fence.admit(Some(16), false, true)
+            )
+            .await
+            .is_err()
+        );
+        let account = tokio::time::timeout(
+            Duration::from_millis(100),
+            fence.admit(Some(16), false, false),
+        )
+        .await
+        .unwrap();
+        let control = tokio::time::timeout(
+            Duration::from_millis(100),
+            fence.admit(Some(16), true, false),
+        )
+        .await
+        .unwrap();
+        images.pop();
+        let image = tokio::time::timeout(
+            Duration::from_millis(100),
+            fence.admit(Some(16), false, true),
+        )
+        .await
+        .unwrap();
+        drop((images, account, control, image));
     }
 }

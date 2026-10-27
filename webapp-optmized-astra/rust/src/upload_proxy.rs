@@ -160,7 +160,7 @@ pub async fn upload_proxy_middleware(
     }
 }
 
-fn is_upload_path(path: &str) -> bool {
+pub(crate) fn is_upload_path(path: &str) -> bool {
     path == "/api/posts"
         || path
             .strip_prefix("/api/posts/")
