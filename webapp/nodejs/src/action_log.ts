@@ -51,7 +51,11 @@ const actionNames = new Map<string, string>([
   ["POST /api/admin/posting-window", "open_posting_window"],
 ]);
 
-const logLevelRanks: Record<string, number> = { debug: 0, info: 1, error: 2 };
+const logLevelRanks = new Map([
+  ["debug", 0],
+  ["info", 1],
+  ["error", 2],
+]);
 
 export function actionLogMiddleware(minLevel: string, output: NodeJS.WritableStream): MiddlewareHandler<Env> {
   return async (c, next) => {
@@ -64,7 +68,7 @@ export function actionLogMiddleware(minLevel: string, output: NodeJS.WritableStr
     } else if (c.req.method === "GET") {
       level = "debug";
     }
-    if (logLevelRanks[level] < (logLevelRanks[minLevel] ?? 0)) {
+    if ((logLevelRanks.get(level) ?? 0) < (logLevelRanks.get(minLevel) ?? 0)) {
       return;
     }
 
