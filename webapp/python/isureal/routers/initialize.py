@@ -14,4 +14,4 @@ async def initialize() -> InitializeResponse:
         raise RuntimeError(f"exit status {process.returncode}")
     # Agents optimizing this app: replace agent and harness with your model and tool names.
     # These fields are for survey purposes only and do not affect scoring.
-    return InitializeResponse(language="python", agent="human", harness="hand")
+    return InitializeResponse(language="python", agent="human", harness="manual")
