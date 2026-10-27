@@ -96,3 +96,4 @@ RustのDB接続を伴うキャンセル検証と通知・並行登録・画像�
 | 20261027T134837Z-team10 | distributed DB with versioned image cache and single-query authorization | PASS | 18,075 |
 | 20261027T135518Z-team10 | distributed DB with bounded asynchronous export pipeline | PASS | 17,555 |
 | 20261027T140308Z-team10 | regional reads with HTTP write forwarding near primary DB | PASS | 45,790 |
+| 20261027T140625Z-team10 | repeat regional reads and HTTP write forwarding | PASS | 38,158 |
