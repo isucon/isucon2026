@@ -66,6 +66,7 @@ RustのDB接続を伴うキャンセル検証と通知・並行登録・画像�
 - 画像配信は1回の問い合わせで現在の閲覧権限と署名鍵を確認する。画像データは最大128MiB・4096件まで保持し、DB行の`xmin`と作成時刻が変われば取得し直す。署名・期限・削除状態を毎回検証する。
 - SSE通知は地域内DBごとに100ミリ秒間隔で最大512接続ずつ一括確認する。接続ごとの通知時刻とユーザー状態は毎回確認する。
 - 新規登録はユーザー名の一意制約と単一INSERTで処理する。同名の並行登録は1件だけ成功し、別名の登録は互いをブロックしない。
+- エクスポートのZIP生成は最大2本のブロッキングワーカーで処理する。DBの行を4件までのチャネルで渡し、画像全件と完成ZIPを同時に保持する負荷を抑える。
 - europe/app2、america/app3へのPostgreSQL配置。同期レプリカと地域内読み取りを検証し、性能と整合性を比較する。
 
 計測結果は`results/`へ保存する。詳細なリソース統計の原本は`var/aws-bench/`と既存の結果用S3バケットに残る。
@@ -81,3 +82,4 @@ RustのDB接続を伴うキャンセル検証と通知・並行登録・画像�
 | 20261027T133643Z-team10 | distributed DB with shared batched SSE notification polling | PASS | 21,027 |
 | 20261027T134205Z-team10 | distributed DB with concurrent single-statement registration | PASS | 16,665 |
 | 20261027T134837Z-team10 | distributed DB with versioned image cache and single-query authorization | PASS | 18,075 |
+| 20261027T135518Z-team10 | distributed DB with bounded asynchronous export pipeline | PASS | 17,555 |
