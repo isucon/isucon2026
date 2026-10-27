@@ -543,3 +543,25 @@ func TestClientIPAndCode(t *testing.T) {
 		t.Fatalf("records=%+v", records)
 	}
 }
+
+// TestTruncatedBodyIsRequestError は、応答の本体を最後まで読めなかったときに、応答を
+// 受け取れなかったのと同じ RequestError になることを確かめる（整合性の違反にしない）。
+func TestTruncatedBodyIsRequestError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Length", "100")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("partial"))
+		if hijacker, ok := w.(http.Hijacker); ok {
+			if conn, _, err := hijacker.Hijack(); err == nil {
+				conn.Close()
+			}
+		}
+	}))
+	t.Cleanup(server.Close)
+	c := client.NewClient(client.Config{Base: server.URL, Retry: client.RetryPolicy{}})
+	_, err := c.Export(context.Background(), "token")
+	var requestErr *client.RequestError
+	if !errors.As(err, &requestErr) {
+		t.Fatalf("err=%v (%T), want RequestError", err, err)
+	}
+}
