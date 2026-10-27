@@ -176,6 +176,7 @@ async fn independent_bytes_publish_atomically_and_preserve_visibility_export_and
     let store = ImageStore {
         db: assets.clone(),
         writes_enabled: true,
+        cache_peers: None,
     };
     let routed = app(db.clone(), Some(store.clone()));
 
@@ -226,6 +227,106 @@ async fn independent_bytes_publish_atomically_and_preserve_visibility_export_and
             .await
             .unwrap();
     assert_eq!(metadata, (0, Some(external_id.clone())));
+    // A trusted cache delivery can satisfy the first GET without opening an
+    // asset DB connection, while an unpublished or poisoned entry cannot leak.
+    let created: chrono::DateTime<Utc> =
+        sqlx::query_scalar("SELECT created_at FROM image_objects WHERE id=$1")
+            .bind(&external_id)
+            .fetch_one(&db)
+            .await
+            .unwrap();
+    let receiver = isureal::image_cache_push::receiver_router("192.168.145.10".parse().unwrap());
+    let cache_path = format!(
+        "/internal/astra/image-cache/{external_id}?createdAtMicros={}",
+        created.timestamp_micros()
+    );
+    let mut delivery = Request::post(&cache_path)
+        .body(Body::from(original.to_vec()))
+        .unwrap();
+    delivery.extensions_mut().insert(axum::extract::ConnectInfo(
+        "192.168.145.10:1234"
+            .parse::<std::net::SocketAddr>()
+            .unwrap(),
+    ));
+    assert_eq!(
+        request(receiver.clone(), delivery).await.0,
+        StatusCode::NO_CONTENT
+    );
+    let mut poison = Request::post(&cache_path)
+        .header("X-Forwarded-For", "192.168.145.10")
+        .body(Body::from(second.to_vec()))
+        .unwrap();
+    poison.extensions_mut().insert(axum::extract::ConnectInfo(
+        "192.168.146.10:1234"
+            .parse::<std::net::SocketAddr>()
+            .unwrap(),
+    ));
+    assert_eq!(request(receiver, poison).await.0, StatusCode::FORBIDDEN);
+    let unreachable = PgPoolOptions::new()
+        .acquire_timeout(Duration::from_millis(100))
+        .connect_lazy("postgres://postgres@127.0.0.1:1/unreachable")
+        .unwrap();
+    let cached_reader = app(
+        db.clone(),
+        Some(ImageStore {
+            db: unreachable,
+            writes_enabled: false,
+            cache_peers: None,
+        }),
+    );
+    assert_eq!(
+        request(
+            cached_reader.clone(),
+            Request::get(&external_url).body(Body::empty()).unwrap()
+        )
+        .await,
+        (StatusCode::OK, original.to_vec())
+    );
+    let unpublished = uuid::Uuid::new_v4().to_string();
+    isureal::image_api::remember_stored_image(
+        unpublished.clone(),
+        created,
+        bytes::Bytes::copy_from_slice(original),
+    );
+    assert_eq!(
+        request(
+            cached_reader.clone(),
+            Request::get(image_url(&unpublished, &key))
+                .body(Body::empty())
+                .unwrap()
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    // The immutable cache token must stop matching if metadata switches back
+    // to inline bytes, even though the externally visible image ID is unchanged.
+    sqlx::query("UPDATE image_objects SET asset_key=NULL,data=$2 WHERE id=$1")
+        .bind(&external_id)
+        .bind(second)
+        .execute(&db)
+        .await
+        .unwrap();
+    assert_eq!(
+        request(
+            cached_reader.clone(),
+            Request::get(&external_url).body(Body::empty()).unwrap()
+        )
+        .await,
+        (StatusCode::OK, second.to_vec())
+    );
+    sqlx::query("UPDATE image_objects SET asset_key=id,data=''::bytea WHERE id=$1")
+        .bind(&external_id)
+        .execute(&db)
+        .await
+        .unwrap();
+    isureal::image_api::remember_stored_image(
+        external_id.clone(),
+        created,
+        bytes::Bytes::copy_from_slice(original),
+    );
+    drop(cached_reader);
+
     assert_eq!(
         request(
             routed.clone(),

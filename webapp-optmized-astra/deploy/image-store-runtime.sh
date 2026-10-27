@@ -5,7 +5,8 @@ case "$service" in webapp-optmized-astra|webapp-optmized-astra-writer) ;; *) exi
 mkdir -p "/etc/systemd/system/$service.service.d"
 python3 - "$(dirname "$0")/runtime.json" > "/etc/systemd/system/$service.service.d/image-store.conf" <<'PY_CONFIG'
 import json,sys
-s=json.load(open(sys.argv[1])).get('imageStore',{})
+runtime=json.load(open(sys.argv[1]))
+s=runtime.get('imageStore',{})
 enabled=s.get('enabled',False)
 assert not s.get('writesEnabled',False) or enabled
 host=s['host'] if enabled else ''
@@ -16,4 +17,10 @@ print('[Service]')
 print(f'Environment=ISUREAL_IMAGE_STORE_HOST={host}')
 print(f'Environment=ISUREAL_IMAGE_STORE_PORT={port}')
 print(f'Environment=ISUREAL_IMAGE_STORE_WRITES={writes}')
+cache_enabled=enabled and runtime.get('imageCachePushEnabled',False)
+peers={app['region']: app['host']+':8080' for app in runtime['applications'] if app['region']!='asia'} if cache_enabled else None
+peer_json=json.dumps(peers,separators=(',',':')) if peers is not None else ''
+source=next(app['host'] for app in runtime['applications'] if app['region']=='asia') if cache_enabled else ''
+print(f"Environment='ISUREAL_IMAGE_CACHE_PEERS_JSON={peer_json}'")
+print(f'Environment=ISUREAL_IMAGE_CACHE_SOURCE_HOST={source}')
 PY_CONFIG
