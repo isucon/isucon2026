@@ -26,7 +26,7 @@ type SurveyResponse struct {
 	Language string                 `protobuf:"bytes,1,opt,name=language,proto3" json:"language,omitempty"`
 	Agent    string                 `protobuf:"bytes,2,opt,name=agent,proto3" json:"agent,omitempty"`
 	Harness  string                 `protobuf:"bytes,3,opt,name=harness,proto3" json:"harness,omitempty"`
-	// Comma-separated model names; empty for manual work or an unreported value.
+	// Comma-separated model names; brain means no AI model, empty means unreported.
 	Model         string `protobuf:"bytes,4,opt,name=model,proto3" json:"model,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

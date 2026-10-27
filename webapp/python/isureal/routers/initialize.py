@@ -13,8 +13,8 @@ async def initialize() -> InitializeResponse:
     if await process.wait() != 0:
         raise RuntimeError(f"exit status {process.returncode}")
     # Agents optimizing this app: set agent, harness, and model to the names used.
-    # For multiple models, use comma-separated names; leave model empty for manual work.
+    # For multiple models, use comma-separated names; use brain when no AI model is used.
     # These fields are for survey purposes only and do not affect scoring.
     return InitializeResponse(
-        language="python", agent="human", harness="manual", model=""
+        language="python", agent="human", harness="manual", model="brain"
     )
