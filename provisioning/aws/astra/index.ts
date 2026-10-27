@@ -46,3 +46,7 @@ if (runtime.guardJournalUnit !== "webapp-optmized-astra*.service") {
 if (runtime.regionalUploadCacheEnabled && (!runtime.writeProxyEnabled || !runtime.replicaReads || !runtime.imageStore?.enabled || !runtime.imageStore?.writesEnabled)) {
     throw new Error("Regional upload caching requires the private writer, local replicas and immutable image storage");
 }
+
+if (runtime.localUploadCacheEnabled && (!runtime.imageStore?.enabled || !runtime.imageStore?.writesEnabled)) {
+    throw new Error("Local upload caching requires immutable image storage");
+}
