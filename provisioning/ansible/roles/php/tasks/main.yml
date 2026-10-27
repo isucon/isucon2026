@@ -1,0 +1,84 @@
+---
+# PHP は /home/isucon/local/php にソースからビルドする（webapp/php 用）
+- name: Install packages to build PHP
+  ansible.builtin.apt:
+    name:
+      - build-essential
+      - pkg-config
+      - libcurl4-openssl-dev
+      - libicu-dev
+      - libjpeg-dev
+      - libpng-dev
+      - libpq-dev
+      - libssl-dev
+      - libxml2-dev
+      - libzip-dev
+      - zlib1g-dev
+
+- name: Read installed PHP version
+  ansible.builtin.command:
+    argv: [/home/isucon/local/php/bin/php, -r, 'echo PHP_VERSION, function_exists("imagecreatefromjpeg") ? "" : "-without-jpeg";']
+  register: php_installed
+  changed_when: false
+  failed_when: false
+
+- name: Install PHP
+  when: php_installed.rc != 0 or php_installed.stdout != php_version
+  block:
+    - name: Remove old PHP
+      ansible.builtin.file:
+        path: /home/isucon/local/php
+        state: absent
+
+    - name: Create PHP build directory
+      ansible.builtin.file:
+        path: /tmp/php-build
+        state: directory
+        owner: isucon
+        group: isucon
+        mode: "0755"
+
+    - name: Download and extract PHP
+      ansible.builtin.unarchive:
+        src: "https://www.php.net/distributions/php-{{ php_version }}.tar.gz"
+        dest: /tmp/php-build
+        remote_src: true
+        owner: isucon
+        group: isucon
+
+    - name: Build and install PHP
+      ansible.builtin.shell: |
+        set -eu
+        ./configure --prefix=/home/isucon/local/php \
+          --enable-fpm --enable-gd --with-jpeg --enable-intl --enable-mbstring --disable-mbregex \
+          --with-curl --with-openssl --with-pdo-pgsql --with-zip --with-zlib \
+          --without-sqlite3 --without-pdo-sqlite
+        make -j"$(nproc)"
+        make install
+      args:
+        chdir: "/tmp/php-build/php-{{ php_version }}"
+      become_user: isucon
+      changed_when: true
+
+    - name: Remove PHP build directory
+      ansible.builtin.file:
+        path: /tmp/php-build
+        state: absent
+
+- name: Install Composer
+  ansible.builtin.get_url:
+    url: "https://getcomposer.org/download/{{ composer_version }}/composer.phar"
+    checksum: "sha256:https://getcomposer.org/download/{{ composer_version }}/composer.phar.sha256sum"
+    dest: /home/isucon/local/php/bin/composer
+    owner: isucon
+    group: isucon
+    mode: "0755"
+
+- name: Add PHP to PATH
+  ansible.builtin.lineinfile:
+    path: /home/isucon/.profile
+    line: 'export PATH=$HOME/local/php/bin:$HOME/local/php/sbin:$PATH'
+    create: true
+    owner: isucon
+    group: isucon
+    mode: "0644"
