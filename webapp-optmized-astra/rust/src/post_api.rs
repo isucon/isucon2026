@@ -123,9 +123,11 @@ pub async fn create_post_handler(
         .collect::<Vec<_>>()
         .join(", ");
     let store = h.image_store.as_ref().filter(|store| store.writes_enabled);
-    if let Some(store) = store {
-        store.put(&image_id, &image_data).await?;
-    }
+    let asset_key = if let Some(store) = store {
+        Some(store.put(&image_id, &image_data).await?)
+    } else {
+        None
+    };
     let mut image_tx = if store.is_some() {
         Some(h.db.begin().await?)
     } else {
@@ -170,9 +172,10 @@ pub async fn create_post_handler(
     })?;
     if let Some(mut tx) = image_tx {
         let updated =
-            sqlx::query("UPDATE image_objects SET asset_key=id WHERE id=$1 AND created_at=$2")
+            sqlx::query("UPDATE image_objects SET asset_key=$3 WHERE id=$1 AND created_at=$2")
                 .bind(&image_id)
                 .bind(result.post.posted_at)
+                .bind(&asset_key)
                 .execute(&mut *tx)
                 .await?;
         if updated.rows_affected() != 1 {
@@ -180,7 +183,11 @@ pub async fn create_post_handler(
         }
         tx.commit().await?;
     }
-    if let Some(peers) = store.and_then(|store| store.cache_peers.as_ref()) {
+    // The optional push protocol uses the public image UUID as the asset key.
+    // Shared assets use the independent store's cache instead.
+    if asset_key.as_deref() == Some(image_id.as_str())
+        && let Some(peers) = store.and_then(|store| store.cache_peers.as_ref())
+    {
         peers.publish(
             &result.author.region,
             &h.config.region,

@@ -1,6 +1,11 @@
 //! Durable immutable image bytes in a separate PostgreSQL cluster.
 //! Metadata publication is the only authority for public image visibility.
+use std::collections::{HashMap, VecDeque};
+use std::sync::{Arc, Mutex};
+
 use crate::config::Config;
+use bytes::Bytes;
+use sha2::{Digest, Sha256};
 use sqlx::PgPool;
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 
@@ -9,9 +14,23 @@ pub struct ImageStore {
     pub db: PgPool,
     pub writes_enabled: bool,
     pub cache_peers: Option<crate::image_cache_push::CachePeers>,
+    cache: Arc<Mutex<AssetCache>>,
 }
 
 impl ImageStore {
+    pub fn new(
+        db: PgPool,
+        writes_enabled: bool,
+        cache_peers: Option<crate::image_cache_push::CachePeers>,
+    ) -> Self {
+        Self {
+            db,
+            writes_enabled,
+            cache_peers,
+            cache: Arc::new(Mutex::new(AssetCache::default())),
+        }
+    }
+
     pub async fn from_env(config: &Config) -> Option<Self> {
         let host = std::env::var("ISUREAL_IMAGE_STORE_HOST").unwrap_or_default();
         let writes = std::env::var("ISUREAL_IMAGE_STORE_WRITES").unwrap_or_else(|_| "0".into());
@@ -69,26 +88,130 @@ impl ImageStore {
             exists,
             "install image store schema before deploying readers"
         );
-        Some(Self {
+        Some(Self::new(
             db,
-            writes_enabled: writes == "1",
-            cache_peers: crate::image_cache_push::CachePeers::from_env(),
-        })
+            writes == "1",
+            crate::image_cache_push::CachePeers::from_env(),
+        ))
     }
 
-    pub async fn put(&self, id: &str, data: &[u8]) -> Result<(), sqlx::Error> {
+    pub async fn put(&self, id: &str, data: &Bytes) -> Result<String, sqlx::Error> {
+        let hash: [u8; 32] = Sha256::digest(data).into();
+        if let Some(key) = self.cache.lock().unwrap().matching_key(&hash, data) {
+            return Ok(key);
+        }
         sqlx::query("INSERT INTO astra_image_data (id,data) VALUES ($1,$2)")
             .bind(id)
-            .bind(data)
+            .bind(&data[..])
             .execute(&self.db)
             .await?;
-        Ok(())
+        // Cache only after the durable INSERT completes. Concurrent misses may
+        // store identical bytes twice, which is safe and needs no global lock.
+        self.cache
+            .lock()
+            .unwrap()
+            .insert(id.to_owned(), hash, data.clone());
+        Ok(id.to_owned())
     }
 
     pub async fn get(&self, id: &str) -> Result<Vec<u8>, sqlx::Error> {
-        sqlx::query_scalar("SELECT data FROM astra_image_data WHERE id=$1")
+        let cached = self.cache.lock().unwrap().by_key.get(id).cloned();
+        if let Some(data) = cached {
+            return Ok(data.to_vec());
+        }
+        let data: Vec<u8> = sqlx::query_scalar("SELECT data FROM astra_image_data WHERE id=$1")
             .bind(id)
             .fetch_one(&self.db)
-            .await
+            .await?;
+        let data = Bytes::from(data);
+        let hash = Sha256::digest(&data).into();
+        self.cache
+            .lock()
+            .unwrap()
+            .insert(id.to_owned(), hash, data.clone());
+        Ok(data.to_vec())
+    }
+}
+
+// Asset rows are immutable (the app role has SELECT/INSERT only), and they are
+// retained across initialize. A UUID remains an opaque storage reference; every
+// public read still checks the current image metadata and owner credentials.
+// The cache belongs to one database pool and is bounded independently from the
+// public image cache. Offline orphan collection must restart all app processes.
+struct AssetCache {
+    by_key: HashMap<String, Bytes>,
+    by_hash: HashMap<[u8; 32], String>,
+    order: VecDeque<(String, [u8; 32])>,
+    bytes: usize,
+    max_bytes: usize,
+    max_entries: usize,
+}
+
+impl Default for AssetCache {
+    fn default() -> Self {
+        Self {
+            by_key: HashMap::new(),
+            by_hash: HashMap::new(),
+            order: VecDeque::new(),
+            bytes: 0,
+            max_bytes: 128 * 1024 * 1024,
+            max_entries: 4096,
+        }
+    }
+}
+
+impl AssetCache {
+    fn matching_key(&self, hash: &[u8; 32], data: &[u8]) -> Option<String> {
+        let key = self.by_hash.get(hash)?;
+        // Hashes are only an index: compare the full bytes before reusing data.
+        (self.by_key.get(key)?.as_ref() == data).then(|| key.clone())
+    }
+
+    fn insert(&mut self, key: String, hash: [u8; 32], data: Bytes) {
+        if data.len() > self.max_bytes || self.by_key.contains_key(&key) {
+            return;
+        }
+        while self.bytes + data.len() > self.max_bytes || self.by_key.len() >= self.max_entries {
+            let Some((old_key, old_hash)) = self.order.pop_front() else {
+                break;
+            };
+            if let Some(old) = self.by_key.remove(&old_key) {
+                self.bytes -= old.len();
+            }
+            if self.by_hash.get(&old_hash) == Some(&old_key) {
+                self.by_hash.remove(&old_hash);
+            }
+        }
+        self.bytes += data.len();
+        self.order.push_back((key.clone(), hash));
+        self.by_hash.insert(hash, key.clone());
+        self.by_key.insert(key, data);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn asset_cache_checks_bytes_and_bounds_memory_and_entries() {
+        let mut cache = AssetCache {
+            max_bytes: 5,
+            max_entries: 2,
+            ..Default::default()
+        };
+        cache.insert("a".into(), [1; 32], Bytes::from_static(b"aa"));
+        assert_eq!(cache.matching_key(&[1; 32], b"aa"), Some("a".into()));
+        assert_eq!(cache.matching_key(&[1; 32], b"bb"), None);
+        cache.insert("b".into(), [1; 32], Bytes::from_static(b"bb"));
+        cache.insert("c".into(), [2; 32], Bytes::from_static(b"cc"));
+        assert!(!cache.by_key.contains_key("a"));
+        assert_eq!(cache.matching_key(&[1; 32], b"bb"), Some("b".into()));
+        cache.insert("d".into(), [3; 32], Bytes::from_static(b"dddd"));
+        assert_eq!(cache.bytes, 4);
+        assert_eq!(cache.by_key.len(), 1);
+        cache.insert("huge".into(), [4; 32], Bytes::from_static(b"123456"));
+        assert_eq!(cache.bytes, 4);
+        assert!(!cache.by_key.contains_key("huge"));
     }
 }
