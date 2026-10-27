@@ -5,8 +5,9 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 use axum::Router;
+use axum::extract::Request;
 use axum::http::StatusCode;
-use axum::middleware::from_fn_with_state;
+use axum::middleware::{Next, from_fn, from_fn_with_state};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, patch, post, put};
 use axum::serve::ListenerExt;
@@ -143,6 +144,7 @@ pub async fn new_server(config: Config) -> Router {
         .method_not_allowed_fallback(method_not_allowed_handler)
         .layer(
             ServiceBuilder::new()
+                .layer(from_fn(run_to_completion))
                 .layer(from_fn_with_state(action_log, action_log_middleware))
                 .layer(CatchPanicLayer::custom(recover))
                 .layer(from_fn_with_state(handler_context.clone(), ip_ban_middleware)),
@@ -161,6 +163,16 @@ pub async fn start(server: Router, address: &str) -> io::Result<()> {
         server.into_make_service_with_connect_info::<SocketAddr>(),
     )
     .await
+}
+
+pub async fn run_to_completion(req: Request, next: Next) -> Response {
+    match tokio::spawn(next.run(req)).await {
+        Ok(response) => response,
+        Err(err) => match err.try_into_panic() {
+            Ok(panic) => std::panic::resume_unwind(panic),
+            Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+        },
+    }
 }
 
 async fn not_found_handler() -> Error {
