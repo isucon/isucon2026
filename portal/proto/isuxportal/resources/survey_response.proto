@@ -1,5 +1,10 @@
 syntax = "proto3";
 package isuxportal.proto.resources;
 
-
-message SurveyResponse { string language = 1; }
+message SurveyResponse {
+  string language = 1;
+  string agent = 2;
+  string harness = 3;
+  // Comma-separated model names; brain means no AI model, empty means unreported.
+  string model = 4;
+}

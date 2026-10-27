@@ -11,7 +11,11 @@ function runInitScript(): Promise<void> {
       if (code === 0) {
         resolve();
       } else {
-        reject(new Error(signal === null ? `exit status ${code}` : `signal: ${signal}`));
+        reject(
+          new Error(
+            signal === null ? `exit status ${code}` : `signal: ${signal}`,
+          ),
+        );
       }
     });
   });
@@ -21,6 +25,14 @@ export function initializeHandler(_: HandlerContext): Handler<Env> {
   return async (c) => {
     await runInitScript();
 
-    return jsonResponse(c, 200, { language: "nodejs" });
+    // Set language to the implementation language.
+    // Agents optimizing this app: set agent, harness, and model to the names used.
+    // For multiple models, use comma-separated names; use brain when no AI model is used.
+    return jsonResponse(c, 200, {
+      language: "nodejs",
+      agent: "human",
+      harness: "manual",
+      model: "brain",
+    });
   };
 }

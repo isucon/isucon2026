@@ -108,6 +108,7 @@ func TestBenchCycle(t *testing.T) {
 			Result: &pbresources.BenchmarkResult{
 				Score:          -1,
 				ScoreBreakdown: &pbresources.BenchmarkResult_ScoreBreakdown{Raw: 100, Deduction: 10},
+				SurveyResponse: &pbresources.SurveyResponse{Language: "go", Agent: "human", Harness: "manual", Model: "model-a,model-b"},
 				MarkedAt:       timestamppb.New(now),
 			},
 		}, timing)
@@ -132,6 +133,7 @@ func TestBenchCycle(t *testing.T) {
 				Passed:         true,
 				Score:          -1,
 				ScoreBreakdown: &pbresources.BenchmarkResult_ScoreBreakdown{Raw: 500, Deduction: 50},
+				SurveyResponse: &pbresources.SurveyResponse{Language: "go", Agent: "human", Harness: "manual", Model: "model-a,model-b"},
 				MarkedAt:       timestamppb.New(now.Add(time.Minute)),
 				Execution:      &pbresources.BenchmarkResult_Execution{ExitStatus: 0, Stdout: "ok"},
 			},
@@ -140,6 +142,15 @@ func TestBenchCycle(t *testing.T) {
 		t.Fatalf("completion status = %d", res.StatusCode)
 	}
 
+	for _, table := range []string{"survey_responses", "survey_response_history"} {
+		var count int
+		if err := p.DB.QueryRow(`SELECT count(*) FROM `+table+` WHERE team_id=$1 AND benchmark_job_id=$2 AND language='go' AND agent='human' AND harness='manual' AND model='model-a,model-b'`, teamID, enqueued.Job.Id).Scan(&count); err != nil {
+			t.Fatal(err)
+		}
+		if count != 1 {
+			t.Fatalf("%s survey count=%d", table, count)
+		}
+	}
 	var status int32
 	var bestID *int64
 	if err := p.DB.QueryRow(`SELECT status FROM benchmark_jobs WHERE id = $1`, enqueued.Job.Id).Scan(&status); err != nil {
