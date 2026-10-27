@@ -56,6 +56,13 @@ export declare type Team = Message<"isuxportal.proto.resources.Team"> & {
   disqualified: boolean;
 
   /**
+   * Support eligibility only; does not affect participation or ranking.
+   *
+   * @generated from field: bool onsite_support_excluded = 11;
+   */
+  onsiteSupportExcluded: boolean;
+
+  /**
    * @generated from field: isuxportal.proto.resources.Team.StudentStatus student = 10;
    */
   student?: Team_StudentStatus;

@@ -56,18 +56,19 @@ type scoreRow struct {
 }
 
 type teamRow struct {
-	id                 int64
-	name               string
-	leaderID           sql.NullInt64
-	finalParticipation bool
-	hidden             bool
-	withdrawn          bool
-	disqualified       bool
-	student            bool
-	bestID             sql.NullInt64
-	bestScore          sql.NullInt64
-	bestCreatedAt      sql.NullTime
-	bestMarkedAt       sql.NullTime
+	id                    int64
+	name                  string
+	leaderID              sql.NullInt64
+	finalParticipation    bool
+	hidden                bool
+	withdrawn             bool
+	disqualified          bool
+	onsiteSupportExcluded bool
+	student               bool
+	bestID                sql.NullInt64
+	bestScore             sql.NullInt64
+	bestCreatedAt         sql.NullTime
+	bestMarkedAt          sql.NullTime
 }
 
 // condBuilder は $n プレースホルダを採番しながら WHERE 句を組み立てる。
@@ -288,7 +289,7 @@ func fetchTeams(ctx context.Context, db *sql.DB, vis Visibility, p LeaderboardPa
 		args = append(args, p.TeamID)
 	}
 
-	query := `SELECT t.id, t.name, t.leader_id, t.final_participation, t.is_hidden, t.withdrawn, t.disqualified, t.student,
+	query := `SELECT t.id, t.name, t.leader_id, t.final_participation, t.is_hidden, t.withdrawn, t.disqualified, t.onsite_support_excluded, t.student,
 		b.id, b.score, b.created_at, b.marked_at
 		FROM teams t LEFT JOIN benchmark_results b ON b.id = ` + bestCol
 	if p.Solo {
@@ -307,7 +308,7 @@ func fetchTeams(ctx context.Context, db *sql.DB, vis Visibility, p LeaderboardPa
 	var out []teamRow
 	for rows.Next() {
 		var tr teamRow
-		if err := rows.Scan(&tr.id, &tr.name, &tr.leaderID, &tr.finalParticipation, &tr.hidden, &tr.withdrawn, &tr.disqualified, &tr.student,
+		if err := rows.Scan(&tr.id, &tr.name, &tr.leaderID, &tr.finalParticipation, &tr.hidden, &tr.withdrawn, &tr.disqualified, &tr.onsiteSupportExcluded, &tr.student,
 			&tr.bestID, &tr.bestScore, &tr.bestCreatedAt, &tr.bestMarkedAt); err != nil {
 			return nil, err
 		}
@@ -319,15 +320,16 @@ func fetchTeams(ctx context.Context, db *sql.DB, vis Visibility, p LeaderboardPa
 // teamPB は Team#to_pb(detail: false, members: false) 相当。
 func teamPB(tr *teamRow) *pbresources.Team {
 	return &pbresources.Team{
-		Id:                 tr.id,
-		Name:               tr.name,
-		LeaderId:           tr.leaderID.Int64,
-		MemberIds:          []int64{},
-		FinalParticipation: tr.finalParticipation,
-		Hidden:             tr.hidden,
-		Withdrawn:          tr.withdrawn,
-		Disqualified:       tr.disqualified,
-		Student:            &pbresources.Team_StudentStatus{Status: tr.student},
+		Id:                    tr.id,
+		Name:                  tr.name,
+		LeaderId:              tr.leaderID.Int64,
+		MemberIds:             []int64{},
+		FinalParticipation:    tr.finalParticipation,
+		Hidden:                tr.hidden,
+		Withdrawn:             tr.withdrawn,
+		Disqualified:          tr.disqualified,
+		OnsiteSupportExcluded: tr.onsiteSupportExcluded,
+		Student:               &pbresources.Team_StudentStatus{Status: tr.student},
 	}
 }
 
