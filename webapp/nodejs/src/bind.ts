@@ -1,13 +1,13 @@
 import type { Context } from "hono";
 import { HTTPError } from "./api_error.ts";
-import { parseRFC3339, type Timestamp } from "./time.ts";
+import { parseRFC3339 } from "./time.ts";
 
 type FieldTypes = {
   string: string;
   stringPointer: string | null;
   int: number | null;
   float: number | null;
-  time: Timestamp | null;
+  time: Temporal.Instant | null;
   file: File | null;
 };
 

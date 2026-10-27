@@ -1,5 +1,4 @@
 import { must, type Queryer, type Row } from "./db.ts";
-import type { Timestamp } from "./time.ts";
 import { getUser, setImageKey, userColumnsAs, userFromRow, validUserText, type User } from "./user.ts";
 
 export type PostLocation = {
@@ -38,9 +37,9 @@ export type Post = {
   caption: string;
   visibility: string;
   location: PostLocation;
-  postedAt: Timestamp;
-  onTimeDeadline: Timestamp;
-  windowEndedAt: Timestamp | null;
+  postedAt: Temporal.Instant;
+  onTimeDeadline: Temporal.Instant;
+  windowEndedAt: Temporal.Instant | null;
 };
 
 export const postColumns = `p.id, p.author_id, p.posting_window_id, p.image_id, p.caption, p.visibility,

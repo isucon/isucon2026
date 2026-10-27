@@ -39,7 +39,7 @@ function statement(sql: string, args: unknown[]): pg.QueryConfig {
     name = `isureal_${statementNames.size + 1}`;
     statementNames.set(sql, name);
   }
-  return { name, text: sql, values: args };
+  return { name, text: sql, values: args.map((arg) => (arg instanceof Temporal.Instant ? arg.toString() : arg)) };
 }
 
 export class DB implements Queryer {

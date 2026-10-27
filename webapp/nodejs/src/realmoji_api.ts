@@ -12,7 +12,6 @@ import type { RelationshipUserResponse } from "./relationship_list_api.ts";
 import { jsonResponse, noContent } from "./response.ts";
 import type { Env, HandlerContext } from "./server.ts";
 import { getSession } from "./session.ts";
-import type { Timestamp } from "./time.ts";
 import { getUser, type User } from "./user.ts";
 import { newRelationshipUserResponse } from "./user_read_api.ts";
 
@@ -27,7 +26,7 @@ export type RealMojiResponse = {
   reactor: RelationshipUserResponse;
   reactionType: string;
   imageUrl: string;
-  createdAt: Timestamp;
+  createdAt: Temporal.Instant;
 };
 
 export function newRealMojiResponse(reaction: RealMoji, user: User): RealMojiResponse {
