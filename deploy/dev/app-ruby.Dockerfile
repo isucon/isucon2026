@@ -16,7 +16,7 @@ RUN npm run build
 
 FROM ruby:4.0.9-slim-trixie@sha256:88f0d8f1f2f7829c8c85c5cfee774f7ac936a7ba460e904e8c873b6a7f96c311
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends ca-certificates curl iproute2 iputils-ping nginx postgresql-client tzdata \
+  && apt-get install -y --no-install-recommends ca-certificates curl iproute2 iputils-ping libturbojpeg0 nginx postgresql-client tzdata \
   && rm -rf /var/lib/apt/lists/* /etc/nginx/sites-enabled/default
 ENV BUNDLE_WITHOUT=test
 WORKDIR /app/ruby
