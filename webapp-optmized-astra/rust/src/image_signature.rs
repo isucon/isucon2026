@@ -51,7 +51,7 @@ pub fn image_signature(key: &[u8], image_id: &str, exp: i64) -> Vec<u8> {
     // Only the pure cryptographic calculation is memoized. Database visibility,
     // current signing keys, and expiration are still checked by the handler.
     const SHARDS: usize = 16;
-    const CAPACITY_PER_SHARD: usize = 512;
+    const CAPACITY_PER_SHARD: usize = 4096;
     static CACHE: OnceLock<[Mutex<SignatureCache>; SHARDS]> = OnceLock::new();
     let caches = CACHE.get_or_init(|| std::array::from_fn(|_| Mutex::default()));
     let lookup = SignatureKey {
