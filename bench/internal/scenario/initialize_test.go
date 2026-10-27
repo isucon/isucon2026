@@ -13,11 +13,12 @@ import (
 )
 
 func TestInitializeSurvey(t *testing.T) {
-	for _, tc := range []struct{ name, body, agent, harness string }{
-		{"manual", `{"language":"go","agent":"human","harness":"manual"}`, "human", "manual"},
-		{"custom", `{"language":"go","agent":"custom-model","harness":"custom-tool"}`, "custom-model", "custom-tool"},
-		{"legacy", `{"language":"go"}`, "", ""},
-		{"empty", `{"language":"go","agent":"","harness":""}`, "", ""},
+	for _, tc := range []struct{ name, body, agent, harness, model string }{
+		{"manual", `{"language":"go","agent":"human","harness":"manual","model":""}`, "human", "manual", ""},
+		{"custom", `{"language":"go","agent":"custom-agent","harness":"custom-tool","model":"model-a,model-b"}`, "custom-agent", "custom-tool", "model-a,model-b"},
+		{"single", `{"language":"go","agent":"custom-agent","harness":"custom-tool","model":"model-a"}`, "custom-agent", "custom-tool", "model-a"},
+		{"legacy", `{"language":"go"}`, "", "", ""},
+		{"empty", `{"language":"go","agent":"","harness":"","model":""}`, "", "", ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
@@ -41,7 +42,7 @@ func TestInitializeSurvey(t *testing.T) {
 			if err := json.Unmarshal(data, &body); err != nil {
 				t.Fatal(err)
 			}
-			if body["language"] != "go" || body["agent"] != tc.agent || body["harness"] != tc.harness {
+			if body["language"] != "go" || body["agent"] != tc.agent || body["harness"] != tc.harness || body["model"] != tc.model {
 				t.Fatalf("survey was not preserved: %s", data)
 			}
 		})
@@ -52,7 +53,7 @@ func TestInitializeSurvey(t *testing.T) {
 func TestFinalResultRetainsInitializeSurvey(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		if req.URL.Path == "/api/initialize" {
-			io.WriteString(w, `{"language":"go","agent":"custom-model","harness":"custom-tool"}`)
+			io.WriteString(w, `{"language":"go","agent":"custom-agent","harness":"custom-tool","model":"model-a,model-b"}`)
 			return
 		}
 		http.Error(w, "unavailable", http.StatusServiceUnavailable)
@@ -63,7 +64,7 @@ func TestFinalResultRetainsInitializeSurvey(t *testing.T) {
 		t.Fatal(err)
 	}
 	result := r.Run(t.Context())
-	if result.Pass || result.Score != 0 || result.Agent != "custom-model" || result.Harness != "custom-tool" {
+	if result.Pass || result.Score != 0 || result.Agent != "custom-agent" || result.Harness != "custom-tool" || result.Model != "model-a,model-b" {
 		t.Fatalf("unexpected final result: %+v", result)
 	}
 }

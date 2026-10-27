@@ -12,6 +12,7 @@ struct InitializeResponse {
     language: &'static str,
     agent: &'static str,
     harness: &'static str,
+    model: &'static str,
 }
 
 pub async fn initialize_handler() -> Result<Response, Error> {
@@ -20,7 +21,8 @@ pub async fn initialize_handler() -> Result<Response, Error> {
         return Err(anyhow!("{status}").into());
     }
 
-    // Agents optimizing this app: replace agent and harness with your model and tool names.
+    // Agents optimizing this app: set agent, harness, and model to the names used.
+    // For multiple models, use comma-separated names; leave model empty for manual work.
     // These fields are for survey purposes only and do not affect scoring.
     json(
         StatusCode::OK,
@@ -28,6 +30,7 @@ pub async fn initialize_handler() -> Result<Response, Error> {
             language: "rust",
             agent: "human",
             harness: "manual",
+            model: "",
         },
     )
 }

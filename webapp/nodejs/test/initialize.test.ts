@@ -25,6 +25,7 @@ test("initialize returns survey fields only after successful initialization", as
       language: "nodejs",
       agent: "human",
       harness: "manual",
+      model: "",
     });
     await writeFile(script, "#!/bin/sh\nexit 1\n");
     const failure = await app.request("/api/initialize", { method: "POST" });

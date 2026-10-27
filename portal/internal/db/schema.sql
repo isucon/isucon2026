@@ -197,6 +197,7 @@ CREATE TABLE IF NOT EXISTS survey_responses (
   language varchar(255),
   agent text NOT NULL DEFAULT '',
   harness text NOT NULL DEFAULT '',
+  model text NOT NULL DEFAULT '',
   created_at timestamptz NOT NULL,
   updated_at timestamptz NOT NULL
 );
