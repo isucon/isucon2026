@@ -132,6 +132,14 @@ func fromMicros(v int64) time.Time {
 
 func (s *historyStore) load(ctx context.Context, db *sqlx.DB, region string) error {
 	started := time.Now()
+	var snapshot bool
+	if err := db.GetContext(ctx, &snapshot, `SELECT to_regclass('initial_data_boundary') IS NOT NULL`); err != nil {
+		return err
+	}
+	if !snapshot {
+		// No initial data; Memories are read from the database.
+		return nil
+	}
 	tx, err := db.BeginTxx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
 	if err != nil {
 		return err
