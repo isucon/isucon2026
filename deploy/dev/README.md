@@ -54,7 +54,17 @@ ISUREAL_WEBAPP_LANGUAGE=rust make dev-up
 ISUREAL_WEBAPP_LANGUAGE=python make dev-up
 ```
 
-アプリのイメージは `deploy/dev/app-<言語>.Dockerfile`（`app-go.Dockerfile`、`app-ruby.Dockerfile`、`app-rust.Dockerfile`、`app-python.Dockerfile`）でビルドします。実装を追加するときは同じ名前で Dockerfile を置き、`ISUREAL_WEBAPP_LANGUAGE` にその言語名を指定します。
+## PHP 実装で起動
+
+`ISUREAL_WEBAPP_LANGUAGE=php` を付けて起動すると、アプリコンテナが PHP 実装（`webapp/php`）になります。Go に戻すときは付けずに起動し直します。
+
+```bash
+ISUREAL_WEBAPP_LANGUAGE=php make dev-up
+```
+
+PHP 実装のコンテナでは、nginx が `127.0.0.1:8080` でも待ち受け、FastCGI で php-fpm に渡します（`deploy/dev/nginx-php.conf`）。
+
+アプリのイメージは `deploy/dev/app-<言語>.Dockerfile`（`app-go.Dockerfile`、`app-ruby.Dockerfile`、`app-rust.Dockerfile`、`app-python.Dockerfile`、`app-php.Dockerfile`）でビルドします。実装を追加するときは同じ名前で Dockerfile を置き、`ISUREAL_WEBAPP_LANGUAGE` にその言語名を指定します。
 
 ## 変更反映と初期化
 
