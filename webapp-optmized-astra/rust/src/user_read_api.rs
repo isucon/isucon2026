@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::api_error::{Error, new_api_error};
 use crate::bind::{Bind, Bindable, Binder};
-use crate::post::{get_blocked_user_ids, get_friend_ids};
+use crate::post::get_friend_ids;
 use crate::relationship::is_blocked;
 use crate::relationship_list_api::RelationshipUserResponse;
 use crate::response::json;
@@ -59,24 +59,51 @@ pub async fn search_users_handler(
         return Err(new_api_error(StatusCode::BAD_REQUEST, "invalid_pagination"));
     }
     let viewer = &session.user_id;
-    let users: Vec<User> = sqlx::query_as(&format!("SELECT {} FROM users WHERE status='active' AND id<>$1 AND ($2='' OR (username,id)>($2,$3)) ORDER BY username, id", USER_COLUMNS.join(", ")))
-        .bind(viewer)
-        .bind(&input.before_username)
-        .bind(&input.before_id)
-        .fetch_all(&h.db)
-        .await?;
-    let blocked = get_blocked_user_ids(&h.db, viewer).await?;
+    // Keep candidate matching and returned account fields in one snapshot.
+    // Most candidates do not match; their bio, key, and other large fields
+    // need not be transferred from PostgreSQL or decoded by SQLx.
+    let mut tx =
+        h.db.begin_with("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY")
+            .await?;
+    #[derive(sqlx::FromRow)]
+    struct Candidate {
+        id: String,
+        username: String,
+        display_name: String,
+    }
+    let candidates: Vec<Candidate> = sqlx::query_as(
+        "SELECT u.id, u.username, u.display_name FROM users u \
+         WHERE u.status='active' AND u.id<>$1 \
+         AND ($2='' OR (u.username,u.id)>($2,$3)) \
+         AND NOT EXISTS(SELECT 1 FROM block_relations b WHERE b.blocker_id=$1 AND b.blocked_id=u.id) \
+         AND NOT EXISTS(SELECT 1 FROM block_relations b WHERE b.blocked_id=$1 AND b.blocker_id=u.id) \
+         ORDER BY u.username,u.id")
+        .bind(viewer).bind(&input.before_username).bind(&input.before_id)
+        .fetch_all(&mut *tx).await?;
     let query = search_text::normalize(&input.q);
+    let ids: Vec<String> = candidates
+        .into_iter()
+        .filter(|user| {
+            search_text::matches(&user.username, &query)
+                || search_text::matches(&user.display_name, &query)
+        })
+        .take(51)
+        .map(|user| user.id)
+        .collect();
+    let users: Vec<User> = if ids.is_empty() {
+        Vec::new()
+    } else {
+        sqlx::query_as(&format!(
+            "SELECT {} FROM users WHERE id=ANY($1) ORDER BY username,id",
+            USER_COLUMNS.join(", ")
+        ))
+        .bind(&ids)
+        .fetch_all(&mut *tx)
+        .await?
+    };
+    tx.commit().await?;
     let mut items = Vec::new();
     for mut user in users {
-        if !search_text::matches(&user.username, &query)
-            && !search_text::matches(&user.display_name, &query)
-        {
-            continue;
-        }
-        if blocked.contains(&user.id) {
-            continue;
-        }
         user.set_image_key()?;
         if user.account_type != "certified_public" {
             user.bio = String::new();
