@@ -72,7 +72,15 @@ PHP 実装のコンテナでは、nginx が `127.0.0.1:8080` でも待ち受け�
 ISUREAL_WEBAPP_LANGUAGE=perl make dev-up
 ```
 
-アプリのイメージは `deploy/dev/app-<言語>.Dockerfile`（`app-go.Dockerfile`、`app-ruby.Dockerfile`、`app-rust.Dockerfile`、`app-python.Dockerfile`、`app-php.Dockerfile`、`app-perl.Dockerfile`）でビルドします。実装を追加するときは同じ名前で Dockerfile を置き、`ISUREAL_WEBAPP_LANGUAGE` にその言語名を指定します。
+## Node.js 実装で起動
+
+`ISUREAL_WEBAPP_LANGUAGE=nodejs` を付けて起動すると、アプリコンテナが Node.js 実装（`webapp/nodejs`）になります。Go に戻すときは付けずに起動し直します。
+
+```bash
+ISUREAL_WEBAPP_LANGUAGE=nodejs make dev-up
+```
+
+アプリのイメージは `deploy/dev/app-<言語>.Dockerfile`（`app-go.Dockerfile`、`app-ruby.Dockerfile`、`app-rust.Dockerfile`、`app-python.Dockerfile`、`app-php.Dockerfile`、`app-perl.Dockerfile`、`app-nodejs.Dockerfile`）でビルドします。実装を追加するときは同じ名前で Dockerfile を置き、`ISUREAL_WEBAPP_LANGUAGE` にその言語名を指定します。
 
 ## 変更反映と初期化
 
