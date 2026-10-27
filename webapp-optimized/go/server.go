@@ -14,21 +14,9 @@ import (
 )
 
 type HandlerContext struct {
-	DB *sqlx.DB
-	// AdminDB is a small separate pool for the administrator's operations.
-	// Opening a posting window must not queue behind hundreds of user writes
-	// waiting for DB (the bench gives the opening 8 s of a 9 s day); nil
-	// means DB.
-	AdminDB *sqlx.DB
-	Config  *Config
-	IPBans  *IPBanList
-}
-
-func (h *HandlerContext) adminDB() *sqlx.DB {
-	if h.AdminDB != nil {
-		return h.AdminDB
-	}
-	return h.DB
+	DB     *sqlx.DB
+	Config *Config
+	IPBans *IPBanList
 }
 
 func NewServer(config *Config) *echo.Echo {
@@ -63,18 +51,10 @@ func NewServer(config *Config) *echo.Echo {
 		panic("failed to ping database: " + err.Error())
 	}
 
-	adminDB, err := sqlx.Open("pgx-auth", config.DatabaseDSN())
-	if err != nil {
-		panic("failed to open database: " + err.Error())
-	}
-	adminDB.SetMaxOpenConns(4)
-	adminDB.SetMaxIdleConns(4)
-
 	handlerContext := &HandlerContext{
-		DB:      db,
-		AdminDB: adminDB,
-		Config:  config,
-		IPBans:  &IPBanList{},
+		DB:     db,
+		Config: config,
+		IPBans: &IPBanList{},
 	}
 	// Load once before serving so bans apply from the first request.
 	_ = handlerContext.IPBans.reload(context.Background(), db)

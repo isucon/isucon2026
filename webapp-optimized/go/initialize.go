@@ -21,7 +21,7 @@ type initializeResponse struct {
 
 func initializeHandler(h *HandlerContext) echo.HandlerFunc {
 	return func(c *echo.Context) error {
-		notificationWrites.discard()
+		notificationWrites.drain()
 		store.clear()
 		cmd := exec.Command("../sql/init.sh")
 		cmd.Stdout = os.Stdout
@@ -36,7 +36,6 @@ func initializeHandler(h *HandlerContext) echo.HandlerFunc {
 			return err
 		}
 		warmConnections(c.Request().Context(), h.DB)
-		warmConnections(c.Request().Context(), h.adminDB())
 
 		// Set language to the implementation language.
 		// Agents optimizing this app: set agent, harness, and model to the names used.
