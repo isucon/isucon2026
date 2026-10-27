@@ -103,6 +103,37 @@ func TestControllerRestoresRestartedProxy(t *testing.T) {
 	}
 }
 
+func TestControllerConfirmsProxyBeforeReportingDuplicate(t *testing.T) {
+	t.Parallel()
+	network := newFakeNetwork()
+	proxy := newFakeProxy()
+	portal := newFakePortal()
+	controller := newTestController(portal, network, proxy)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go controller.Run(ctx)
+
+	if err := controller.Submit(testProtoSnapshot("base", "GB")); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, time.Second, func() bool { return portal.successCount() == 1 })
+	// HAProxy is restarting: its map is empty and the runtime API refuses.
+	proxy.failFor("GB")
+	proxy.restart()
+	if err := controller.Submit(testProtoSnapshot("base", "GB")); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, time.Second, func() bool { return portal.failureCount() > 0 })
+	if portal.successCount() != 1 {
+		t.Fatal("duplicate was reported applied while the proxy did not serve it")
+	}
+	proxy.failFor("")
+	waitFor(t, time.Second, func() bool { return portal.successCount() == 2 && proxy.servingCountry() == "GB" })
+	if network.applyCount() != 1 || network.restoreCount() != 0 {
+		t.Fatalf("duplicate touched the network: applies=%d restores=%d", network.applyCount(), network.restoreCount())
+	}
+}
+
 func TestControllerRetriesReportWithoutReapplying(t *testing.T) {
 	t.Parallel()
 	network := newFakeNetwork()

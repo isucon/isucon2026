@@ -114,10 +114,12 @@ func (c *Controller) Run(ctx context.Context) error {
 	}
 }
 
-func (c *Controller) restoreProxy(ctx context.Context) {
+// restoreProxy returns nil once the proxy serves the active snapshot, writing
+// the default country back when a restarted proxy has lost it.
+func (c *Controller) restoreProxy(ctx context.Context) error {
 	active := c.activeCopy()
 	if active == nil {
-		return
+		return nil
 	}
 	err := c.proxy.Serving(ctx, active.snapshot.Config)
 	if err != nil {
@@ -132,6 +134,7 @@ func (c *Controller) restoreProxy(ctx context.Context) {
 			slog.Warn("Proxy does not serve the active snapshot", "snapshot_id", active.snapshot.ID, "error", err)
 		}
 	}
+	return err
 }
 
 func (c *Controller) reconcileUntilSuccessOrSuperseded(ctx context.Context, desired domain.DesiredSnapshot) {
@@ -140,21 +143,30 @@ func (c *Controller) reconcileUntilSuccessOrSuperseded(ctx context.Context, desi
 		if ctx.Err() != nil {
 			return
 		}
-		if c.isDuplicateActive(desired) {
-			c.enqueueReport(ApplyReport{SnapshotID: desired.ID, Config: desired.Config, Success: true})
-			return
-		}
-		c.status.StartApply(desired.ID, "validate", retry)
-		err := c.apply(ctx, desired)
-		if err == nil {
-			return
+		var err error
+		duplicate := c.isDuplicateActive(desired)
+		if duplicate {
+			// The proxy may have restarted since the snapshot was applied, so
+			// the repeat is reported applied only once the proxy serves it.
+			if err = c.restoreProxy(ctx); err == nil {
+				c.enqueueReport(ApplyReport{SnapshotID: desired.ID, Config: desired.Config, Success: true})
+				return
+			}
+			err = fmt.Errorf("proxy does not serve the active snapshot: %w", err)
+		} else {
+			c.status.StartApply(desired.ID, "validate", retry)
+			if err = c.apply(ctx, desired); err == nil {
+				return
+			}
 		}
 		retry++
 		c.status.RecordFailure(desired.ID, "apply-failed", err.Error(), retry)
 		c.enqueueReport(ApplyReport{SnapshotID: desired.ID, Reason: err.Error()})
-		// The last-known-good snapshot stays active while this one fails, so a
-		// proxy that restarts in the meantime still gets its default country.
-		c.restoreProxy(ctx)
+		if !duplicate {
+			// The last-known-good snapshot stays active while this one fails, so
+			// a proxy that restarts in the meantime still gets its default country.
+			c.restoreProxy(ctx)
+		}
 		timer := time.NewTimer(c.config.ReportRetryInterval)
 		select {
 		case <-ctx.Done():
