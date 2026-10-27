@@ -181,3 +181,4 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261027T221656Z-team10 | reuse durable identical images and cache immutable assets by storage key | PASS | 80,221 |
 | 20261027T222341Z-team10 | widen upload admission to 16MiB and restore login guard journal matching | PASS | 85,575 |
 | 20261027T222843Z-team10 | disable ineffective asset content cache while keeping 16MiB upload admission | PASS | 82,055 |
+| 20261027T223517Z-team10 | store new profile and realmoji images independently from metadata replicas | PASS | 82,378 |
