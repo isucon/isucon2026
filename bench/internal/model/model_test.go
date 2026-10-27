@@ -335,3 +335,23 @@ func TestWaitForWindowAfterTimeout(t *testing.T) {
 		t.Fatalf("after a later known window: err=%v", err)
 	}
 }
+
+// TestWaitForWindowAcrossTimedOutOpen は、開いている最中に通知を受けて待つ間に、その要求が
+// 結果のわからないまま終わり、次の投稿期間が開いても、エラーにしないことを確かめる。
+func TestWaitForWindowAcrossTimedOutOpen(t *testing.T) {
+	m, _ := newTestModel()
+	day := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
+	slow := m.BeginOpenWindow("asia")
+	result := make(chan error, 1)
+	go func() {
+		_, err := m.WaitForWindow(t.Context(), "asia", "w-slow")
+		result <- err
+	}()
+	time.Sleep(30 * time.Millisecond)
+	next := m.BeginOpenWindow("asia")
+	slow.Unknown()
+	m.OpenedWindow(next, Window{ID: "w-next", Region: "asia", LocalDate: day.AddDate(0, 0, 1)})
+	if err := <-result; !errors.Is(err, ErrMaybeWindow) {
+		t.Fatalf("err=%v, want ErrMaybeWindow", err)
+	}
+}
