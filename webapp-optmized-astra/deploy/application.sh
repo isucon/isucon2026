@@ -42,3 +42,4 @@ systemctl enable webapp-optmized-astra
 systemctl restart webapp-optmized-astra
 sleep 2
 systemctl is-active webapp-optmized-astra
+bash "$(dirname "$0")/nginx-runtime.sh"

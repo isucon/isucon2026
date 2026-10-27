@@ -26,6 +26,9 @@ DB認証設定は既存VMの`/home/isucon/env.sh`を参照する。レプリケ�
 Secrets Managerは使用しない。秘密情報をコミットしない。初期に作成したAWS配備リソース16個は削除操作を完了し、Pulumiの状態には設定用スタックだけが残る。
 Secretの物理削除はAWSの非同期処理に従う。アプリやDBの実行・再起動はそのSecretに依存しない。
 公開された成功レスポンスの後は全地域から更新結果が見える仕様を維持する。
+nginxの接続上限は`runtime.json`の`nginxWorkerConnections`と`nginxWorkerRlimitNofile`で管理する。
+検索改善版の負荷試験で従来の768接続を使い切り、AsiaでEOF・502が増えてFAILしたため、
+各ワーカー8,192接続・65,536ファイル記述子へ変更する。反映前に`nginx -t`で検証する。
 
 ## 検証
 
@@ -155,3 +158,4 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261027T163124Z-team10 | single-query post and interaction permissions; CPU and lock profiling | PASS | 44,935 |
 | 20261027T165020Z-team10 | retest native response barriers after notification and permission optimizations; preserve standby caches | PASS | 50,018 |
 | 20261027T165726Z-team10 | cache exact Unicode search normalization with ASCII fast path | FAIL | 0 |
+| 20261027T170518Z-team10 | raise nginx worker connection capacity after observed EOF and 502 saturation | PASS | 43,902 |

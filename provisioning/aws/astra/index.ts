@@ -8,6 +8,10 @@ const config = new pulumi.Config();
 export const runtime = JSON.parse(
 	readFileSync(config.require("runtimeConfigPath"), "utf8"),
 );
+if (!Number.isInteger(runtime.nginxWorkerConnections) || runtime.nginxWorkerConnections < 768 || runtime.nginxWorkerConnections > 65536
+	|| !Number.isInteger(runtime.nginxWorkerRlimitNofile) || runtime.nginxWorkerRlimitNofile < runtime.nginxWorkerConnections || runtime.nginxWorkerRlimitNofile > 524288) {
+	throw new Error("Invalid nginx connection or file descriptor limit");
+}
 if (!["poll", "native"].includes(runtime.writeFenceMode ?? "poll")) {
 	throw new Error("Unknown write fence mode");
 }
