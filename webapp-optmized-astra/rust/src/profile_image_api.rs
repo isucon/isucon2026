@@ -32,7 +32,7 @@ pub async fn put_profile_image_handler(
     let data = axum::body::to_bytes(req.into_body(), usize::MAX)
         .await
         .context("failed to read request body")?;
-    let img = match jpeg::decode(data.clone()).await {
+    let img = match jpeg::decode(data.clone(), 512).await {
         Ok(img) => img,
         Err(_) => {
             return Err(new_api_error(

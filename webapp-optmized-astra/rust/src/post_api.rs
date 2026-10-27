@@ -106,7 +106,7 @@ pub async fn create_post_handler(
     }
     let image_data = image.open();
     // [作問] 画像のバリデーションを全データを読んでから行なっている(改善するべき)
-    let img = match jpeg::decode(image_data.clone()).await {
+    let img = match jpeg::decode(image_data.clone(), 4096).await {
         Ok(img) => img,
         Err(_) => return Err(new_api_error(StatusCode::BAD_REQUEST, "invalid_post")),
     };
