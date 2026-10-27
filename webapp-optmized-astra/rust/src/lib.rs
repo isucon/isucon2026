@@ -39,6 +39,7 @@ pub mod timefmt;
 pub mod user;
 pub mod user_api;
 pub mod user_read_api;
+mod write_ingress;
 
 pub use api_error::{Error, new_api_error};
 pub use config::{Config, config_from_env};
