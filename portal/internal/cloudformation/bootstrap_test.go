@@ -33,25 +33,7 @@ func TestRegistrationBootstrap(t *testing.T) {
 	}
 }
 
-func TestContestTemplateRequiresRouterAMIParameter(t *testing.T) {
-	cfg := &config.Config{PublicURLHost: "portal.example", ContestAMIID: "ami-service", CheckerSecret: []byte("test")}
-	document, err := ContestTemplate(cfg, 1, "apne1-az1", time.Now())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(document, "Default: ami-") {
-		t.Fatal("unconfigured Router AMI must be an explicit parameter")
-	}
-	// The service image is not a Router image and must never be reused as its default.
-	if !strings.Contains(document, "RouterAMIID:\n    Type: AWS::EC2::Image::Id") {
-		t.Fatal("missing Router image parameter")
-	}
-	if len(document) > 51200 {
-		t.Fatalf("template exceeds CloudFormation upload limit: %d", len(document))
-	}
-}
-
-func TestContestTemplateConfiguredRouterAMIDefault(t *testing.T) {
+func TestContestTemplateEmbedsConfiguredRouterAMI(t *testing.T) {
 	t.Setenv("ISUXPORTAL_ROUTER_AMI_ID", "ami-069a13171cf378369")
 	cfg, err := config.Load()
 	if err != nil {
@@ -63,12 +45,16 @@ func TestContestTemplateConfiguredRouterAMIDefault(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(document, "RouterAMIID:\n    Type: AWS::EC2::Image::Id\n    Default: ami-069a13171cf378369") {
-		t.Fatal("downloaded template must prefill the configured Router AMI")
+	if strings.Contains(document, "RouterAMIID:") || strings.Contains(document, "!Ref RouterAMIID") {
+		t.Fatal("Router AMI must not be a stack parameter")
 	}
-	if !strings.Contains(document, "ImageId: !Ref RouterAMIID") {
-		t.Fatal("Router must use the prefilled parameter")
+	if !strings.Contains(document, "ImageId: ami-069a13171cf378369") {
+		t.Fatal("Router must use its configured image directly")
 	}
+	if !strings.Contains(document, "ImageId: ami-service") {
+		t.Fatal("app and database must keep their separate service image")
+	}
+
 }
 
 func TestContestTemplateUploadSizeForPortalDevTeam(t *testing.T) {

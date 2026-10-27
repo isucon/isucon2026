@@ -1,13 +1,6 @@
 AWSTemplateFormatVersion: 2010-09-09
 Description: >-
   AWS CloudFormation for ISUCON2026 Contest
-Parameters:
-  RouterAMIID:
-    Type: AWS::EC2::Image::Id
-{{- if .RouterAMIID}}
-    Default: {{.RouterAMIID}}
-{{- end}}
-    Description: ISUCON2026 Router AMI shared by the organizers
 Resources:
   GetAvailabilityZoneFunctionExecutionRole:
     Type: AWS::IAM::Role
@@ -317,7 +310,7 @@ Resources:
     Type: AWS::EC2::Instance
     DependsOn: [PublicDefaultRoute, RouterPublicRoutes]
     Properties:
-      ImageId: !Ref RouterAMIID
+      ImageId: {{$.RouterAMIID}}
       InstanceType: c6in.large
       NetworkInterfaces:
         - DeviceIndex: '0'
