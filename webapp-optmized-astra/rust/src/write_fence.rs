@@ -400,12 +400,12 @@ mod tests {
                 }).await.unwrap();
                 let large = tokio::spawn(app.clone().oneshot(
                     HttpRequest::builder().method("POST").uri("/write")
-                        .body(Body::from(vec![0u8; 8 * 1024 * 1024])).unwrap(),
+                        .body(Body::from(vec![0u8; 16 * 1024 * 1024])).unwrap(),
                 ));
                 wait_value(&primary, &table, 5).await;
                 let mut queued = tokio::spawn(app.clone().oneshot(
                     HttpRequest::builder().method("POST").uri("/write")
-                        .body(Body::from(vec![0u8; 8 * 1024 * 1024])).unwrap(),
+                        .body(Body::from(vec![0u8; 16 * 1024 * 1024])).unwrap(),
                 ));
                 assert!(timeout(Duration::from_millis(100), &mut queued).await.is_err());
                 assert_eq!(value(&primary, &table).await, 5, "queued mutation bypassed admission");
