@@ -95,6 +95,7 @@ func openPostingWindowHandler(h *HandlerContext) echo.HandlerFunc {
 			seconds = *input.OnTimeSeconds
 		}
 		ctx := c.Request().Context()
+		began := time.Now()
 		tx, err := h.DB.BeginTxx(ctx, nil)
 		if err != nil {
 			return err
@@ -147,10 +148,13 @@ func openPostingWindowHandler(h *HandlerContext) echo.HandlerFunc {
 		if err := tx.Commit(); err != nil {
 			return err
 		}
+		committed := time.Now()
 		notificationWrites.write(h.DB, windowID, startsAt, notified)
 		broadcast(ctx, stateEvent{Version: version, Kind: "window", Window: &hotWindow{
 			ID: window.ID, Region: window.Region, LocalDate: window.LocalDate, StartsAt: window.StartsAt,
 			OnTimeDeadline: window.OnTimeDeadline, Notified: notified}})
+		slog.Info("posting window opened", "region", region, "notified", len(notified),
+			"db_ms", committed.Sub(began).Milliseconds(), "broadcast_ms", time.Since(committed).Milliseconds())
 		return c.JSON(http.StatusCreated, openPostingWindowResponse{
 			ID: window.ID, Region: window.Region, LocalDate: window.LocalDate.Format(time.DateOnly),
 			StartsAt: window.StartsAt, OnTimeDeadline: window.OnTimeDeadline,

@@ -12,7 +12,7 @@ func putProfileImageHandler(h *HandlerContext) echo.HandlerFunc {
 		if c.Request().Header.Get("Content-Type") != "image/jpeg" {
 			return NewAPIError(http.StatusUnsupportedMediaType, "unsupported_media_type")
 		}
-		data, ok, err := readJPEG(c.Request().Body, 512)
+		data, ok, err := readJPEG(c.Request().Body, 512, c.Request().ContentLength)
 		if err != nil {
 			return err
 		}
