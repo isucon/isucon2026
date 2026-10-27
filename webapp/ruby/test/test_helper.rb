@@ -3,9 +3,9 @@
 require 'json'
 require 'minitest/autorun'
 require 'pg'
-require 'pure_jpeg'
 require 'rack/test'
 require 'stringio'
+require 'vips'
 
 require_relative '../lib/isureal'
 
@@ -29,8 +29,8 @@ module TestHelper
   end
 
   def jpeg(width, height)
-    source = PureJPEG::Source::RawSource.new(width, height) { |x, y| [(x * 7) % 256, (y * 3) % 256, (x ^ y) % 256] }
-    PureJPEG.encode(source).to_bytes
+    xy = Vips::Image.xyz(width, height)
+    ((xy * [7, 3]).bandjoin(xy[0] ^ xy[1]) % 256).cast(:uchar).jpegsave_buffer
   end
 end
 
