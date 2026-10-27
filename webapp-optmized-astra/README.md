@@ -183,3 +183,4 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261027T222843Z-team10 | disable ineffective asset content cache while keeping 16MiB upload admission | PASS | 82,055 |
 | 20261027T223517Z-team10 | store new profile and realmoji images independently from metadata replicas | PASS | 82,378 |
 | 20261027T224052Z-team10 | increase permission-checked image byte cache from 512MiB to 1GiB | PASS | 83,654 |
+| 20261027T224746Z-team10 | retain recently accessed image bytes with bounded CLOCK eviction | PASS | 85,570 |
