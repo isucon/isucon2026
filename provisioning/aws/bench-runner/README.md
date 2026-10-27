@@ -44,7 +44,7 @@ make aws-bench-show RUN=20261026T040000Z-team5
 | `exit-code` | bench の終了コード |
 | `meta.json` | チーム、接続先、イメージ、コミット（未コミットの変更があれば `+dirty`）、bench の引数 |
 | `stats.tsv` | ベンチのタスクの CPU、メモリ、ネットワーク（下の「使用率」を参照） |
-| `hosts/<役割>/` | Router、app1〜3、db1 の `stats.tsv` と EBS の上限（`ebs.json`）。Router には `tc -s qdisc` と Envoy の統計の前後の値も入る |
+| `hosts/<役割>/` | Router、app1〜3、db1 の `stats.tsv` と EBS の上限（`ebs.json`）。Router には `tc -s qdisc` と HAProxy の統計（`show stat`）の前後の値も入る |
 | `report.txt`、`timeline.csv` | 使用率の要約と、1 秒ごとの値（CPU、メモリ、帯域、ディスク、PSI） |
 
 `BENCH_ARGS` で `/results` の下に書いたファイル（`-cpuprofile`、`-memprofile`）も一緒に取得します。
@@ -76,12 +76,12 @@ make aws-bench-show RUN=20261026T040000Z-team5
 |---|---|
 | ホストごとの表 | CPU（平均、p95、最大、user/sys/softirq/steal/iowait の内訳）、メモリ、送受信の帯域、TCP の接続数 |
 | 5 秒ごとの CPU | 投稿期間が開いた直後など、平均では見えない詰まり |
-| プロセスごとの使用コア数 | `isureal-bench`、`envoy`、`isureal`、`nginx`、`postgres` など。終了したプロセスの時間は親に入る |
+| プロセスごとの使用コア数 | `isureal-bench`、`haproxy`、`isureal`、`nginx`、`postgres` など。終了したプロセスの時間は親に入る |
 | ディスク | デバイスごとの読み書きの IOPS と MB/s、util、await、キュー長、書き戻し待ちのメモリ（Dirty + Writeback）と、EBS の上限 |
 | 5 秒ごとのディスク | 動いているデバイスの util と await |
 | PSI | CPU、I/O、メモリで待たされた時間の割合。some は少なくとも 1 つ、full はすべてのタスクが待った時間 |
 | インターフェースごとの帯域 | Router は公開側の `ens5` と、地域間の遅延と帯域を再現する `data0` |
-| Router | qdisc ごとの送信量、破棄、overlimits の増分と、Envoy のエラー系カウンターの増分 |
+| Router | qdisc ごとの送信量、破棄、overlimits の増分と、HAProxy のエラー系カウンター（`ereq`、`econ`、`eresp`、中断、5xx など）の増分 |
 
 ベンチのタスクの CPU は、タスクの microVM 全体（4 vCPU）に対する割合です。メモリは microVM 全体の値で、タスクの上限（8 GiB）とは別です。
 NVMe は並列に処理するので、util が 100% でも飽和しているとは限りません。ディスクの詰まりは await、キュー長、PSI の io と、EBS の上限との比で判断してください。
