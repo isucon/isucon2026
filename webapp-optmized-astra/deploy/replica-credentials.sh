@@ -32,8 +32,17 @@ Requires=astra-replica-credentials.service
 After=astra-replica-credentials.service
 UNIT
 systemctl daemon-reload
+refreshed=false
 for attempt in $(seq 1 30); do
-    if systemctl restart astra-replica-credentials; then break; fi
+    # Restarting this required unit also stops PostgreSQL. Refresh the passfile
+    # directly when the boot-time oneshot is already active.
+    if systemctl is-active --quiet astra-replica-credentials; then
+        if /usr/local/lib/astra/replica-credentials; then refreshed=true; break; fi
+    elif systemctl start astra-replica-credentials; then
+        refreshed=true
+        break
+    fi
     sleep 2
 done
+[ "$refreshed" = true ] || { echo 'Replication credentials could not be refreshed' >&2; exit 1; }
 systemctl is-active astra-replica-credentials

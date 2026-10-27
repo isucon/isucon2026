@@ -64,6 +64,8 @@ RustのDB接続を伴うキャンセル検証と通知・並行登録・画像�
 次に`replicasSynchronous=true`へ変更して同じコマンドで`remote_apply`を有効にする。
 最後に`replicaReads=true`として`deploy/apply.sh application`で読み取りを地域内のDBへ切り替える。
 アプリは起動時に同期設定とレプリカのリカバリー状態を検証する。
+レプリカの設定ファイルが変わらずDBも稼働している場合は、設定の再適用で再起動しない。
+同期方式の比較時にレプリカの共有バッファを保持する。初回配置・設定変更・停止中の場合は起動し直す。
 
 同期反映待ちを読み取り側へ移す場合は、先に`readFenceEnabled=true`として
 `deploy/apply.sh application`で地域内アプリにWAL確認を有効化する。
@@ -150,3 +152,4 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261027T160125Z-team10 | generate ordered UUIDv7 notification batches while preserving recipient transactions | PASS | 45,956 |
 | 20261027T161141Z-team10 | probe open windows for notifications and replace historical polling index with compact user index | PASS | 45,394 |
 | 20261027T163124Z-team10 | single-query post and interaction permissions; CPU and lock profiling | PASS | 44,935 |
+| 20261027T165020Z-team10 | retest native response barriers after notification and permission optimizations; preserve standby caches | PASS | 50,018 |
