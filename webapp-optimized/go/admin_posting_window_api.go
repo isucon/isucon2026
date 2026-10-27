@@ -74,13 +74,12 @@ func (w *notificationWriter) write(db *sqlx.DB, windowID string, startsAt time.T
 			chunk := sorted[start:min(start+notificationWriteChunk, len(sorted))]
 			ids := make([]string, len(chunk))
 			for i, userID := range chunk {
-				ids[i] = notificationID(windowID, userID)
+				ids[i] = notificationID(windowID, startsAt, userID)
 			}
-			// Rows in user order enter the (user_id, posting_window_id) index
-			// mostly sequentially instead of at thousands of random leaf pages.
+			// One write per window and time-ordered IDs: every index of the
+			// table is appended to, not probed at random (see the schema).
 			if _, err := db.ExecContext(ctx, `INSERT INTO notifications (id, user_id, posting_window_id, created_at)
-          SELECT n.id, n.user_id, $3, $4 FROM unnest($1::text[], $2::text[]) AS n(id, user_id)
-          ON CONFLICT DO NOTHING`, ids, chunk, windowID, startsAt); err != nil {
+          SELECT n.id, n.user_id, $3, $4 FROM unnest($1::text[], $2::text[]) AS n(id, user_id)`, ids, chunk, windowID, startsAt); err != nil {
 				if ctx.Err() == nil {
 					slog.Error("notification rows", "window", windowID, "error", err)
 				}
