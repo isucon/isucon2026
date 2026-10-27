@@ -175,3 +175,4 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261027T212850Z-team10 | independent image store capable build with replicated post image writes as control | PASS | 61,313 |
 | 20261027T213422Z-team10 | store new post image bytes in independent Asia application PostgreSQL | PASS | 74,309 |
 | 20261027T214135Z-team10 | reserve bounded posting window control admission with independent image storage | PASS | 76,087 |
+| 20261027T215923Z-team10 | warm immutable post image bytes in the owning region cache | PASS | 72,343 |
