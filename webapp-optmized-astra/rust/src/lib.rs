@@ -14,6 +14,7 @@ pub mod export_api;
 pub mod feed_api;
 pub mod friend_request_api;
 pub mod image_api;
+pub mod image_cache_push;
 pub mod image_signature;
 pub mod image_store;
 pub mod initialize;
