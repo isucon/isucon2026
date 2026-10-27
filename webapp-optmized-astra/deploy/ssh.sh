@@ -13,8 +13,11 @@ chmod 700 "$control"
 options=(-i "$key" -o 'ProxyCommand=aws ec2-instance-connect open-tunnel --instance-id %h'
     -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20
     -o ControlMaster=auto -o ControlPersist=60 -o "ControlPath=$control/%C")
-# Use the existing EICE endpoint and an ephemeral SSH key authorization.
-aws ec2-instance-connect send-ssh-public-key --instance-id "$instance" --instance-os-user isucon --ssh-public-key "file://$key.pub" >/dev/null
+# Reuse an already authenticated control connection. Only a new connection
+# needs another ephemeral key authorization through the existing EICE endpoint.
+if ! ssh "${options[@]}" -O check "isucon@$instance" >/dev/null 2>&1; then
+    aws ec2-instance-connect send-ssh-public-key --instance-id "$instance" --instance-os-user isucon --ssh-public-key "file://$key.pub" >/dev/null
+fi
 if [ "${1:-}" = --copy ]; then
     shift
     source=${1:?source required}
