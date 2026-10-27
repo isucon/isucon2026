@@ -114,8 +114,10 @@ func Render(cfg config.Config) (map[string]string, error) {
 		line("    lua-load %s", filepath.Join(cfg.HAProxyDir, LuaFile))
 	}
 	line("")
-	// An upstream may stay silent for 60 seconds, the benchmark's budget for
-	// /api/initialize. A refused connection fails at once instead of retrying.
+	// An upstream may stay silent for 60 seconds: twice the benchmark's 30 s
+	// budget for /api/initialize (other requests get 15 s), which leaves room
+	// for a slower benchmark. A refused connection fails at once instead of
+	// retrying.
 	line("defaults")
 	line("    mode http")
 	line("    maxconn 100000")
