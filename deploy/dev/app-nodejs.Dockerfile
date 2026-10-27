@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.10
-FROM node:24.14.1-alpine AS nodejs-build
+FROM node:26.12.1-alpine AS nodejs-build
 WORKDIR /app/nodejs
 COPY webapp/nodejs/package.json webapp/nodejs/package-lock.json ./
 RUN npm ci --omit=dev
@@ -12,7 +12,7 @@ COPY frontend/ ./
 ENV VITE_API_PREFIX=/api
 RUN npm run build
 
-FROM node:24.14.1-alpine
+FROM node:26.12.1-alpine
 RUN apk add --no-cache bash ca-certificates curl iproute2 nginx postgresql-client tzdata
 WORKDIR /app/nodejs
 COPY --from=nodejs-build /app/nodejs/node_modules ./node_modules
