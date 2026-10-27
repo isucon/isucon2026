@@ -2,7 +2,7 @@
 set -euo pipefail
 root=$(cd "$(dirname "$0")/../.." && pwd)
 app="$root/webapp-optmized-astra"
-(cd "$app/rust" && cargo build --release)
+(cd "$app/rust" && cargo build --release --locked)
 mkdir -p "$root/var/astra/package/rust" "$root/var/astra/package/sql"
 install -m755 "$app/rust/target/release/isureal" "$root/var/astra/package/rust/isureal"
 cp "$app"/sql/* "$root/var/astra/package/sql/"
