@@ -158,6 +158,7 @@ pub async fn create_post_handler(
 }
 
 pub fn new_post_response(post: &Post, user: &User) -> CreatePostResponse {
+    crate::image_api::remember_image_timestamp(&post.image_id, post.posted_at);
     let mut response = CreatePostResponse {
         id: post.id.clone(),
         author: PostAuthorResponse {
