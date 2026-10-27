@@ -68,7 +68,9 @@ async fn cached_image_checks_current_content_visibility_and_credentials() {
         .unwrap();
     sqlx::raw_sql(r#"
         CREATE TABLE users (id text PRIMARY KEY, secret_key_hash text NOT NULL, status text NOT NULL DEFAULT 'active', profile_image_id text);
-        CREATE TABLE image_objects (id text PRIMARY KEY, owner_user_id text, data bytea NOT NULL, media_type text NOT NULL DEFAULT 'image/jpeg', created_at timestamptz NOT NULL DEFAULT now());
+        CREATE TABLE image_objects (id text, owner_user_id text, data bytea NOT NULL, media_type text NOT NULL DEFAULT 'image/jpeg', created_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY(id,created_at)) PARTITION BY RANGE(created_at);
+        CREATE TABLE image_objects_old PARTITION OF image_objects FOR VALUES FROM ('2020-01-01') TO ('2021-01-01');
+        CREATE TABLE image_objects_other PARTITION OF image_objects DEFAULT;
         CREATE TABLE posts (id text PRIMARY KEY, image_id text, author_id text, deleted_at timestamptz);
         CREATE TABLE realmojis (id text PRIMARY KEY, image_id text, reactor_id text, post_id text, replaced_at timestamptz, deleted_at timestamptz);
     "#).execute(&db).await.unwrap();
@@ -116,10 +118,60 @@ async fn cached_image_checks_current_content_visibility_and_credentials() {
         .await
         .unwrap();
     assert_eq!(image(app.clone(), &id, &key, exp).await.1, changed);
+    // A cached row can move to another partition or be recreated by initialize.
+    // The old timestamp must not hide the new row or serve its old bytes.
+    sqlx::query("UPDATE image_objects SET created_at='2020-06-01',data=$2 WHERE id=$1")
+        .bind(&id)
+        .bind(original)
+        .execute(&db)
+        .await
+        .unwrap();
+    let (status, body) = image(app.clone(), &id, &key, exp).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body, original);
+    sqlx::query("DELETE FROM image_objects WHERE id=$1")
+        .bind(&id)
+        .execute(&db)
+        .await
+        .unwrap();
+    assert_eq!(
+        image(app.clone(), &id, &key, exp).await.0,
+        StatusCode::FORBIDDEN
+    );
+    sqlx::query("INSERT INTO image_objects (id,owner_user_id,data) VALUES ($1,'owner',$2)")
+        .bind(&id)
+        .bind(changed)
+        .execute(&db)
+        .await
+        .unwrap();
+    let (status, body) = image(app.clone(), &id, &key, exp).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body, changed);
+
     assert_eq!(
         image(app.clone(), &id, &[0xcdu8; 32], exp).await.0,
         StatusCode::FORBIDDEN
     );
+    // Changing only the owner's key leaves the cached image version intact.
+    // Authorization must still use the new key on the very next request.
+    sqlx::query("UPDATE users SET secret_key_hash=$1 WHERE id='owner'")
+        .bind(hex::encode([0xcdu8; 32]))
+        .execute(&db)
+        .await
+        .unwrap();
+    assert_eq!(
+        image(app.clone(), &id, &key, exp).await.0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        image(app.clone(), &id, &[0xcdu8; 32], exp).await.0,
+        StatusCode::OK
+    );
+    sqlx::query("UPDATE users SET secret_key_hash=$1 WHERE id='owner'")
+        .bind(hex::encode(key))
+        .execute(&db)
+        .await
+        .unwrap();
     assert_eq!(
         image(app.clone(), &id, &key, Utc::now().timestamp() - 1)
             .await
