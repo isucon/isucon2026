@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[2]
 DEPLOY = ROOT / "webapp-optmized-astra/deploy"
 runtime = json.loads((DEPLOY / "runtime.json").read_text())
 mode = sys.argv[1] if len(sys.argv) > 1 else "all"
-assert mode in ("all", "application", "database", "replication", "image-store")
+assert mode in ("all", "application", "database", "replication", "image-store", "image-gc")
 read_fence = runtime.get("readFenceEnabled", False)
 write_fence = runtime.get("writeFenceEnabled", False)
 write_fence_mode = runtime.get("writeFenceMode", "poll")
@@ -170,5 +170,8 @@ if mode in ("all", "application"):
     remote(write_host, "sudo bash /home/isucon/astra-deploy/write-routing.sh backend")
     if write_proxy:
         parallel(write_frontend, remote_apps)
+
+if mode == "image-gc":
+    subprocess.run([sys.executable, str(DEPLOY / "asset-gc.py")], check=True)
 
 print(f"Applied {mode} configuration to existing Team 10 VMs", flush=True)
