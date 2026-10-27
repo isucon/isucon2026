@@ -86,6 +86,9 @@ export const Clarification: React.FC<Props> = (props: Props) => {
                       <Link to={`/admin/teams/${encodeURIComponent(clar.team!.id.toString())}`}>
                         {clar.team.name} (#{clar.team.id.toString()})
                       </Link>
+                      {clar.team.onsiteSupportExcluded ? (
+                        <span className="tag is-warning ml-2">当日サポート外</span>
+                      ) : null}
                       <Link to={`/admin/clarifications?team_id=${encodeURIComponent(clar.team!.id.toString())}`}>
                         <i className="material-icons-outlined">question_answer</i>
                       </Link>

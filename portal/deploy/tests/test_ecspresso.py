@@ -127,6 +127,19 @@ class EcspressoTest(unittest.TestCase):
         )
         self.assertNotIn("loadBalancers", self.render("migrate", "servicedef"))
 
+    def test_develop_announcement_channel_is_loaded_from_secrets_manager(self):
+        key = "ISUXPORTAL_DISCORD_CHANNEL_ID"
+        example = (ROOT / "pulumi/Pulumi.develop.yaml.example").read_text()
+        self.assertIn("    - " + key, example)
+        self.infra["secretKeys"].append(key)
+        (self.path / "infra.json").write_text(json.dumps(self.infra))
+        container = self.render("worker", "taskdef")["containerDefinitions"][0]
+        self.assertIn(
+            {"name": key, "valueFrom": "arn:application:" + key + "::"},
+            container["secrets"],
+        )
+        self.assertNotIn(key, {v["name"] for v in container["environment"]})
+
     def test_discord_invitation_is_loaded_from_secrets_manager(self):
         key = "ISUXPORTAL_DISCORD_INVITE_URL"
         self.infra["secretKeys"].append(key)
