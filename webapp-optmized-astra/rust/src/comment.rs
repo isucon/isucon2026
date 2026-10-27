@@ -3,7 +3,6 @@ use sqlx::postgres::{PgArguments, PgRow};
 use sqlx::{Executor, FromRow, PgConnection, Postgres};
 
 use crate::api_error::Error;
-use crate::post::{get_post_with_author, load_viewer_context};
 use crate::user::{User, user_columns_as};
 
 #[derive(Debug, Clone, sqlx::FromRow)]
@@ -72,22 +71,5 @@ pub async fn can_comment(
     viewer_id: &str,
     post_id: &str,
 ) -> Result<bool, Error> {
-    let post = match get_post_with_author(&mut *db, post_id).await {
-        Err(err) if err.is_no_rows() => return Ok(false),
-        result => result?,
-    };
-    let viewer = match load_viewer_context(db, viewer_id).await {
-        Err(err) if err.is_no_rows() => return Ok(false),
-        result => result?,
-    };
-    if !viewer.can_view(&post.post) || post.post.window_ended_at.is_some() {
-        return Ok(false);
-    }
-    if viewer.user.id == post.post.author_id {
-        return Ok(viewer.has_posted_today);
-    }
-    if post.post.visibility == "public" {
-        return Ok(true);
-    }
-    Ok(viewer.friends.contains(&post.post.author_id))
+    crate::post_access::can_comment(db, viewer_id, post_id).await
 }

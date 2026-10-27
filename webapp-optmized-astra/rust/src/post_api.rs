@@ -13,7 +13,8 @@ use crate::bind::{Bind, Bindable, Binder, FileHeader};
 use crate::db::f64_to_numeric;
 use crate::image_signature::signed_image_url;
 use crate::jpeg;
-use crate::post::{Post, PostLocation, get_post, get_post_with_author, load_viewer_context};
+use crate::post::{Post, PostLocation, get_post};
+use crate::post_access::visible_post;
 use crate::posting_window::get_posting_window;
 use crate::response::{json, no_content};
 use crate::server::HandlerContext;
@@ -236,19 +237,12 @@ pub async fn get_post_handler(
     Extension(session): Extension<Session>,
     Bind(input): Bind<GetPostRequest>,
 ) -> Result<Response, Error> {
-    let post = match get_post_with_author(&h.db, &input.post_id).await {
+    let post = match visible_post(&h.db, &session.user_id, &input.post_id).await {
         Err(err) if err.is_no_rows() => {
             return Err(new_api_error(StatusCode::NOT_FOUND, "post_not_found"));
         }
         result => result?,
     };
-    let viewer = match load_viewer_context(&mut *h.db.acquire().await?, &session.user_id).await {
-        Err(err) if err.is_no_rows() => None,
-        result => Some(result?),
-    };
-    if !viewer.is_some_and(|viewer| viewer.can_view(&post.post)) {
-        return Err(new_api_error(StatusCode::NOT_FOUND, "post_not_found"));
-    }
     let response: GetPostResponse = new_post_response(&post.post, &post.author);
     json(StatusCode::OK, response)
 }

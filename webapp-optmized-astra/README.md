@@ -120,6 +120,7 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 - 通知のユーザー・投稿期間ペアの一意制約は、索引の先頭を投稿期間に変更する。同じ期間の通知をまとめて書き込み、一意性と全通知の保存を維持しながら履歴索引へのランダムアクセスを減らす。
 - 通知IDは標準のUUIDv7で生成し、対象ユーザー順に一括登録する。対象者の判定、通知時刻、ロック、トランザクションは維持し、主キーの書き込みも時系列でまとまるようにする。
 - フィードは閲覧条件・友人関係・ブロック・投稿済み条件を1回の問い合わせで評価し、現在の投稿期間ごとに最大51件へ絞り、全地域の上位51件だけを取得する。従来のRustの判定との比較テストでページ送りと状態変更を検証する。
+- 投稿詳細とコメント・リアクションの権限判定は、対象投稿に必要な友人・2段階の関係・ブロック・投稿済み条件を1回で確認する。友人グラフ全体をアプリへ転送せず、従来のRust判定との比較で地域変更、投稿期間終了、退会、削除、本人の投稿を含む条件を検証する。
 - 新規登録はユーザー名の一意制約と単一INSERTで処理する。同名の並行登録は1件だけ成功し、別名の登録は互いをブロックしない。
 - エクスポートのZIP生成は最大2本のブロッキングワーカーで処理する。DBの行を4件までのチャネルで渡し、画像全件と完成ZIPを同時に保持する負荷を抑える。
 - europe/app2、america/app3へのPostgreSQL配置。同期レプリカと地域内読み取りを検証し、性能と整合性を比較する。
@@ -148,3 +149,4 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261027T155128Z-team10 | cluster notification uniqueness checks by posting window | PASS | 45,932 |
 | 20261027T160125Z-team10 | generate ordered UUIDv7 notification batches while preserving recipient transactions | PASS | 45,956 |
 | 20261027T161141Z-team10 | probe open windows for notifications and replace historical polling index with compact user index | PASS | 45,394 |
+| 20261027T163124Z-team10 | single-query post and interaction permissions; CPU and lock profiling | PASS | 44,935 |
