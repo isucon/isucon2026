@@ -36,6 +36,16 @@ private の `deployments` には退役したチーム別 service 7 件（`desire
 `desiredCount: 0` のまま管理しているので、二重管理を避けるためにここには入れていません。
 `isucon2026-practice-supervisor-30001` も private の `ops/practice-supervisor` の管理のままで、ここでは扱いません。
 
+## CloudFormation instance registration
+
+New ISUCON2026 contest stacks register their Router with the portal. Jobs from
+these environments contain the Router IP and a portal-generated `--host` as the
+first extra argument. The Supervisor uses that target directly, so recreation
+does not require updating `pool.json`. The static `routes` table remains a
+fallback for older environments. Deploy the updated Supervisor before the
+portal starts issuing these jobs. See the [contest template and registration
+workflow](../../../../portal/internal/cloudformation/README.md).
+
 ## 更新の手順
 
 リポジトリルートで実行します。AWS の認証は `provisioning/aws-sdk.config` を通します

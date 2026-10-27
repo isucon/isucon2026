@@ -15,12 +15,13 @@ import (
 	"github.com/isucon/isucon2026/portal/internal/token"
 )
 
-//go:embed templates/*.yaml.tmpl
+//go:embed templates/*.yaml.tmpl files/*.py
 var templatesFS embed.FS
 
 var templates = template.Must(template.ParseFS(templatesFS, "templates/*.yaml.tmpl"))
 
 type params struct {
+	TeamID            int64
 	ZoneID            string
 	Token             string
 	PortalCredentials string
@@ -79,6 +80,7 @@ func render(cfg *config.Config, name string, teamID int64, zoneID, amiID string,
 	}
 	var sb strings.Builder
 	err = templates.ExecuteTemplate(&sb, name, params{
+		TeamID:            teamID,
 		ZoneID:            zoneID,
 		Token:             tok,
 		PortalCredentials: base64.StdEncoding.EncodeToString(credsJSON),
