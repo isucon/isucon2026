@@ -146,7 +146,7 @@ docker inspect --format '{{(index .NetworkSettings.Networks "isureal_default").I
 | `TOKEN` | ポータルの `ISUXPORTAL_BENCH_TOKEN` | 必須 |
 | `INSTANCE_NAME` | チームの `availability_zone` と一致する値 | 必須 |
 | `TEAM_ID` | 試験対象のチーム ID。省略時はチーム制限なし | 未設定 |
-| `HARD_TIMEOUT` | 子プロセスの時間上限、秒 | 150 |
+| `HARD_TIMEOUT` | 子プロセスの時間上限、秒 | 210 |
 | `LOG_DIRECTORY` | 書き込み可能なログ保存先 | `/tmp` |
 | `INTERVAL_AFTER_EMPTY_RECEIVE` | 空キューの再確認間隔、秒 | 5 |
 
