@@ -273,16 +273,28 @@ var ErrMaybeWindow = errors.New("posting window whose opening timed out")
 // WaitForWindow は region の投稿期間 id が記録されるまで待つ。通知は、投稿期間を開いた
 // 管理者への応答より先に届くことがあるので、その投稿期間に投稿する前に呼ぶ。id を知らず、
 // region で開いている最中の投稿期間もなければ ErrUnknownWindow を返す。region で最後に
-// 開こうとした投稿期間の結果がわからなければ ErrMaybeWindow を返す。
+// 開こうとした投稿期間か、待ち始めたときに開いている最中だった投稿期間の結果がわからなければ
+// ErrMaybeWindow を返す。
 func (m *Model) WaitForWindow(ctx context.Context, region, id string) (*Window, error) {
 	ticker := time.NewTicker(10 * time.Millisecond)
 	defer ticker.Stop()
-	for {
+	// 待ち始めたときに開いている最中だった要求。待つ間に次の投稿期間が開いても、これらの
+	// どれかの結果がわからなければ、通知はその投稿期間のものだったかもしれない。
+	var waitedFor []*change[string]
+	for first := true; ; first = false {
 		m.mu.RLock()
 		window := m.windows[id]
 		changes := m.currentWindowOf(region).changes
+		if first {
+			for _, c := range changes {
+				if c.outcome == inFlight {
+					waitedFor = append(waitedFor, c)
+				}
+			}
+		}
 		opening := slices.ContainsFunc(changes, func(c *change[string]) bool { return c.outcome == inFlight })
-		maybe := len(changes) > 0 && changes[len(changes)-1].outcome == unknown
+		maybe := len(changes) > 0 && changes[len(changes)-1].outcome == unknown ||
+			slices.ContainsFunc(waitedFor, func(c *change[string]) bool { return c.outcome == unknown })
 		m.mu.RUnlock()
 		if window != nil {
 			return window, nil
