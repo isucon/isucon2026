@@ -2,6 +2,9 @@
 # Run serially; each completed score, including failures, is committed and pushed.
 set -euo pipefail
 root=$(cd "$(dirname "$0")/../.." && pwd)
+mkdir -p "$root/var/astra"
+exec 9>"$root/var/astra/operation.lock"
+flock -n 9 || { echo 'Another Astra deployment, maintenance operation, or benchmark is active' >&2; exit 1; }
 cd "$root"
 label=${1:?experiment label required}
 image=${IMAGE:-124502390568.dkr.ecr.ap-northeast-1.amazonaws.com/isucon2026-bench-runner-dev@sha256:32b75899cbb6cf373a95889606b225b57dbf5e05d102fcf949bfaec657d83454}
