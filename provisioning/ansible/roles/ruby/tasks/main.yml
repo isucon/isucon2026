@@ -10,6 +10,11 @@
       - rustc
       - zlib1g-dev
 
+# webapp/ruby は JPEG の検証に libjpeg-turbo の TurboJPEG API を ffi で呼ぶ
+- name: Install libturbojpeg for webapp/ruby
+  ansible.builtin.apt:
+    name: libturbojpeg
+
 - name: Read installed Ruby version
   ansible.builtin.command:
     argv: [/home/isucon/local/ruby/bin/ruby, -e, 'print RUBY_VERSION']
