@@ -49,6 +49,13 @@ pub async fn put_profile_image_handler(
     }
 
     let user_id = &session.user_id;
+    let image_id = Uuid::new_v4().to_string();
+    let asset_key = if let Some(store) = h.image_store.as_ref().filter(|store| store.writes_enabled)
+    {
+        Some(store.put(&image_id, &data).await?)
+    } else {
+        None
+    };
     let mut tx = h.db.begin().await?;
     let old_id: Option<Option<String>> =
         sqlx::query_scalar("SELECT profile_image_id FROM users WHERE id=$1 FOR NO KEY UPDATE")
@@ -58,11 +65,11 @@ pub async fn put_profile_image_handler(
     let Some(old_id) = old_id else {
         return Err(new_api_error(StatusCode::NOT_FOUND, "account_not_found"));
     };
-    let image_id = Uuid::new_v4().to_string();
-    sqlx::query("INSERT INTO image_objects(id,owner_user_id,data,media_type) VALUES ($1,$2,$3,'image/jpeg')")
+    sqlx::query("INSERT INTO image_objects(id,owner_user_id,data,media_type,asset_key) VALUES ($1,$2,$3,'image/jpeg',$4)")
         .bind(&image_id)
         .bind(user_id)
-        .bind(&data[..])
+        .bind(if asset_key.is_some() { &[][..] } else { &data[..] })
+        .bind(&asset_key)
         .execute(&mut *tx)
         .await?;
     sqlx::query("UPDATE users SET profile_image_id=$2,updated_at=clock_timestamp() WHERE id=$1")
