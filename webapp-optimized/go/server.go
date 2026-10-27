@@ -157,6 +157,10 @@ func NewServer(config *Config) *echo.Echo {
 	e.PUT("/api/admin/users/:userId/certification", certifyUserHandler(handlerContext), AdminSessionMiddleware(handlerContext, true))
 	e.DELETE("/api/admin/users/:userId/certification", deleteUserCertificationHandler(handlerContext), AdminSessionMiddleware(handlerContext, true))
 	e.POST("/api/admin/posting-window", openPostingWindowHandler(handlerContext), AdminSessionMiddleware(handlerContext, true))
+	// Without nginx in front (ISUREAL_PUBLIC_LISTEN), the app serves the front end.
+	if dir := os.Getenv("ISUREAL_PUBLIC_DIR"); dir != "" {
+		e.GET("/*", staticHandler(dir))
+	}
 
 	return e
 }
