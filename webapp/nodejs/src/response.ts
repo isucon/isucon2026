@@ -22,8 +22,8 @@ export function jsonResponse(c: Context, status: ContentfulStatusCode, value: un
   return c.body(encodeJSON(value), status, { "Content-Type": "application/json" });
 }
 
-export function blobResponse(c: Context, status: ContentfulStatusCode, contentType: string, data: Uint8Array): Response {
-  return c.body(data as Uint8Array<ArrayBuffer>, status, { "Content-Type": contentType });
+export function blobResponse(c: Context, status: ContentfulStatusCode, contentType: string, data: Uint8Array<ArrayBuffer>): Response {
+  return c.body(data, status, { "Content-Type": contentType });
 }
 
 export function noContent(c: Context): Response {

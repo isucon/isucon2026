@@ -57,7 +57,7 @@ export function getImageHandler(h: HandlerContext): Handler<Env> {
     }
 
     // 削除状態を毎回確認する。即時反映も5秒以内の許容範囲に含まれる。
-    const object = await h.db.get<{ data: Buffer; media_type: string }>(
+    const object = await h.db.get<{ data: Uint8Array<ArrayBuffer>; media_type: string }>(
       `
    SELECT i.data, i.media_type
    FROM image_objects i JOIN users u ON u.id = i.owner_user_id AND u.status = 'active'

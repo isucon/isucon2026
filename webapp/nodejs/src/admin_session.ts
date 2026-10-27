@@ -70,7 +70,9 @@ export async function createAdminSession(db: DB, administratorID: string): Promi
 }
 
 async function getAdminSessionByID(db: Queryer, sessionID: string): Promise<AdminSession> {
-  const row = must(await db.get(`SELECT administrator_id, token_hash, created_at FROM administrator_sessions WHERE id = $1`, sessionID));
+  const row = must(
+    await db.get<{ administrator_id: string; token_hash: string; created_at: Temporal.Instant }>(`SELECT administrator_id, token_hash, created_at FROM administrator_sessions WHERE id = $1`, sessionID),
+  );
   return { token: "", administratorID: row.administrator_id, tokenHash: row.token_hash, createdAt: row.created_at };
 }
 
