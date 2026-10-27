@@ -11,48 +11,35 @@ import (
 	"github.com/isucon/isucon2026/dataset"
 )
 
-// feedWeights はフィードを選ぶ重み。
+// feedWeights はフィードを選ぶ重みの全体の平均。人ごとの重みは persona で揺らす。
 var feedWeights = []struct {
 	feed   string
 	weight float64
 }{{"friends", 0.35}, {"friends-of-friends", 0.25}, {"public", 0.25}, {"following", 0.15}}
 
-// nextPageRate は、フィードに続きがあるときに次のページも読む確率。
-const nextPageRate = 0.5
-
 // deletedImageGrace は、投稿を削除してからその画像を返さなくなるまでに許す時間。
 const deletedImageGrace = 5 * time.Second
-
-func (u *user) pickFeed() string {
-	x := u.rng.Float64()
-	for _, f := range feedWeights {
-		if x < f.weight {
-			return f.feed
-		}
-		x -= f.weight
-	}
-	return feedWeights[0].feed
-}
 
 // browse は 1 回分の閲覧。ときどき友達申請を見たり、関係やプロフィールを整えたりする。
 // フィードを 1 つ選んで読み、見えた投稿を 1 つ開いて、過ごし方に合わせて画像、詳細、
 // 投稿者のプロフィール、RealMoji やコメントを見たり送ったりする。
 func (r *Runner) browse(ctx context.Context, u *user, s *session) {
+	social, groom := 0.03*u.persona.sociability, 0.02*u.persona.grooming
 	switch x := u.rng.Float64(); {
 	case x < 0.08:
 		r.acceptRequests(ctx, u)
-	case x < 0.11:
+	case x < 0.08+social:
 		r.social(ctx, u, s)
-	case x < 0.13:
+	case x < 0.08+social+groom:
 		r.groom(ctx, u, s)
-	case x < 0.15 && u.cohort:
+	case x < 0.10+social+groom && u.cohort:
 		// 初期データのユーザーは、ときどき自分の過去の投稿を見返す。
 		r.readHistory(ctx, u)
 	}
 	feed := u.pickFeed()
 	page, ok := r.readFeed(ctx, u, feed, nil, r.sample())
 	// 続きがあれば、ときどき次のページも読む（スクロール）。
-	for ok && page.HasMore && len(page.Items) > 0 && u.rng.Float64() < nextPageRate {
+	for ok && page.HasMore && len(page.Items) > 0 && u.rng.Float64() < u.persona.scroll {
 		last := page.Items[len(page.Items)-1]
 		page, ok = r.readFeed(ctx, u, feed, &last, r.sample())
 	}
@@ -72,15 +59,15 @@ func (r *Runner) browse(ctx context.Context, u *user, s *session) {
 	if len(candidates) == 0 {
 		return
 	}
-	post := candidates[u.rng.IntN(len(candidates))]
-	if u.rng.Float64() < 0.3 {
+	post := r.pickPost(u, candidates)
+	if u.rng.Float64() < u.persona.detail {
 		r.openPost(ctx, u, s, post)
 	}
-	if s.images < scoredImagesPerDay && u.rng.Float64() < 0.5 && r.checkImage(ctx, u, post) {
+	if s.images < scoredImagesPerDay && u.rng.Float64() < u.persona.image && r.checkImage(ctx, u, post) {
 		s.images++
 		r.award(u, s.day, score.TagImage)
 	}
-	if u.rng.Float64() < 0.15 {
+	if u.rng.Float64() < u.persona.profile {
 		r.viewProfile(ctx, u, s, post.Author.ID)
 	}
 	switch u.activity {
@@ -175,7 +162,7 @@ func (r *Runner) react(ctx context.Context, u *user, s *session, post client.Fee
 		return false
 	}
 	w := r.model.BeginReplaceRealMoji(post.ID, u.ID)
-	reaction, err := u.API.ReplaceRealMoji(client.MayFailWith(ctx, http.StatusForbidden, http.StatusNotFound), u.Token, post.ID, dataset.ReactionType(u.rng), r.photos.RealMoji(hashOf(r.seed, "realmoji", u.Username, itoa(s.day), itoa(s.realMojis))))
+	reaction, err := u.API.ReplaceRealMoji(client.MayFailWith(ctx, http.StatusForbidden, http.StatusNotFound), u.Token, post.ID, u.reactionType(), r.photos.RealMoji(hashOf(r.seed, "realmoji", u.Username, itoa(s.day), itoa(s.realMojis))))
 	allowed := r.model.CanView(u.ID, post.ID, r.model.ReadBetween(sent, time.Now()))
 	switch {
 	case isStatus(err, http.StatusNotFound) && allowed != model.True:

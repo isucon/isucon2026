@@ -158,6 +158,7 @@ func (r *Runner) loginCohort(ctx context.Context) string {
 			a.ID, a.Username, a.SecretKey = du.ID, du.Username, du.SecretKey
 			u := r.newUser(a, cohortActivity(r.seed, du.Username, du.Activity))
 			u.cohort = true
+			u.persona = cohortPersona(r.seed, du.Username, du.Activity)
 			cohort = append(cohort, u)
 		}
 	}

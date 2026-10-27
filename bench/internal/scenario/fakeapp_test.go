@@ -7,8 +7,10 @@ import (
 	"fmt"
 	"image/jpeg"
 	"io"
+	"maps"
 	"net/http"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -21,6 +23,7 @@ import (
 
 type fakeUser struct {
 	id, username, secret, region, bio string
+	displayName                       string
 	certified, deleted                bool
 	profileImage                      string
 }
@@ -142,8 +145,8 @@ func (a *fakeApp) canView(viewer *fakeUser, p *fakePost) bool {
 	if viewer.id == author.id {
 		return true
 	}
-	current, ok := a.windows[author.region]
-	if !ok || current.id != p.PostingWindowID {
+	// 投稿の投稿期間が終わっていなければ今の投稿（投稿者がリージョンを移っても変わらない）。
+	if !a.windowOpen(p) {
 		return false
 	}
 	own, ok := a.windows[viewer.region]
@@ -160,9 +163,9 @@ func (a *fakeApp) canView(viewer *fakeUser, p *fakePost) bool {
 	}
 }
 
+// windowOpen は投稿の投稿期間がまだ開いているか（投稿者が今いるリージョンとは関係ない）。
 func (a *fakeApp) windowOpen(p *fakePost) bool {
-	current, ok := a.windows[a.users[p.Author.ID].region]
-	return ok && current.id == p.PostingWindowID
+	return slices.ContainsFunc(slices.Collect(maps.Values(a.windows)), func(w fakeWindow) bool { return w.id == p.PostingWindowID })
 }
 
 func (a *fakeApp) canComment(viewer *fakeUser, p *fakePost) bool {
@@ -352,6 +355,12 @@ func (a *fakeApp) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if bio, ok := input["bio"]; ok {
 			viewer.bio = bio
 		}
+		if name, ok := input["displayName"]; ok {
+			viewer.displayName = name
+		}
+		if region, ok := input["region"]; ok {
+			viewer.region = region
+		}
 		respond(http.StatusOK, a.profile(viewer))
 	case path[0] == "me" && path[1] == "profile-image" && method == http.MethodPut:
 		if cfg, err := jpeg.DecodeConfig(bytes.NewReader(image)); !a.lax && (err != nil || cfg.Width > 512 || cfg.Height > 512) {
@@ -447,6 +456,21 @@ func (a *fakeApp) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case path[0] == "posting-window":
 		respond(http.StatusOK, map[string]any{"window": map[string]string{"id": a.windows[region].id, "region": region, "localDate": a.windows[region].date}, "canPost": true, "hasPosted": a.postedOn(viewer, a.windows[region].date)})
 	case path[0] == "posts" && len(path) == 1:
+		// アプリと同じく、同じ日付に有効な投稿があるか、2 回削除していれば受け付けない。
+		date, active, deleted := a.windows[region].date, 0, 0
+		for _, p := range a.posts {
+			if p.Author.ID == viewer.id && p.date == date {
+				if p.deleted {
+					deleted++
+				} else {
+					active++
+				}
+			}
+		}
+		if active > 0 || deleted >= 2 {
+			fail(http.StatusConflict, "post_slot_unavailable")
+			return
+		}
 		id := a.id()
 		imageID := "img-" + id
 		a.images[imageID] = image
@@ -455,6 +479,7 @@ func (a *fakeApp) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		p.Post = client.Post{
 			ID: id, Author: client.UserSummary{ID: viewer.id, Username: viewer.username}, PostingWindowID: a.windows[region].id,
 			ImageURL: a.signed(viewer, imageID), Caption: r.FormValue("caption"), Visibility: r.FormValue("visibility"), PostedAt: time.Now().Truncate(time.Microsecond),
+			Location: fakeLocation(r),
 		}
 		a.posts = append(a.posts, p)
 		respond(http.StatusCreated, p.Post)
@@ -618,7 +643,7 @@ func (a *fakeApp) post(id string) *fakePost {
 
 func (a *fakeApp) profile(u *fakeUser) map[string]any {
 	s := a.summary(u)
-	return map[string]any{"id": u.id, "username": u.username, "region": u.region, "bio": u.bio, "profileImageUrl": s.ProfileImageURL}
+	return map[string]any{"id": u.id, "username": u.username, "displayName": u.displayName, "region": u.region, "bio": u.bio, "profileImageUrl": s.ProfileImageURL}
 }
 
 // serveNotifications は購読した時点より後に開いた投稿期間を 1 件だけ通知する。
@@ -747,4 +772,19 @@ func (a *fakeApp) serveInteraction(respond func(int, any), fail func(int, string
 		}
 		respond(http.StatusOK, map[string]any{"items": items, "hasMore": false})
 	}
+}
+
+// fakeLocation は投稿の位置情報のフォームを、アプリと同じ形の応答に直す。
+func fakeLocation(r *http.Request) client.Location {
+	location := client.Location{Kind: r.FormValue("location_kind")}
+	if v, err := strconv.ParseFloat(r.FormValue("latitude"), 64); err == nil {
+		location.Latitude = &v
+	}
+	if v, err := strconv.ParseFloat(r.FormValue("longitude"), 64); err == nil {
+		location.Longitude = &v
+	}
+	if v := r.FormValue("locality"); v != "" {
+		location.Locality = &v
+	}
+	return location
 }

@@ -638,3 +638,28 @@ func TestAwaitPhotosAfterInitialize(t *testing.T) {
 		t.Fatalf("requests other than initialize before the photos were ready = %d", n)
 	}
 }
+
+// TestUsersMoveBetweenRegions は、ユーザーが日を過ごし終えたあとで所属リージョンを変えても、
+// 移った先の国から使い続け、モデルが偽のアプリと食い違わないことを確かめる。
+func TestUsersMoveBetweenRegions(t *testing.T) {
+	runner, app := newTestRunner(t, 3, metrics.SLO{FailRate: 1000, MinOps: 1})
+	runner.setDuration(2 * time.Second)
+	runner.moveRate = 1
+	if reason := runner.load(t.Context()); reason != "" || runner.board.ErrorCount() != 0 || runner.board.CriticalCount() != 0 {
+		t.Fatalf("reason=%q errors=%v critical=%v", reason, runner.board.Errors(), runner.board.Critical())
+	}
+	moves := 0
+	for _, n := range runner.moves {
+		moves += n
+	}
+	if moves == 0 {
+		t.Fatal("no user moved")
+	}
+	app.mu.Lock()
+	defer app.mu.Unlock()
+	for _, u := range runner.usersSnapshot() {
+		if fake := app.users[u.Token]; fake != nil && !u.cohort && fake.region != u.Region {
+			t.Errorf("%s: bench thinks %s, app has %s", u.Username, u.Region, fake.region)
+		}
+	}
+}
