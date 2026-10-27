@@ -40,6 +40,7 @@ pub mod timefmt;
 pub mod user;
 pub mod user_api;
 pub mod user_read_api;
+pub mod write_fence;
 mod write_ingress;
 
 pub use api_error::{Error, new_api_error};
