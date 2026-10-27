@@ -4,8 +4,10 @@
 package score
 
 import (
+	"cmp"
 	"fmt"
 	"maps"
+	"slices"
 	"sync"
 )
 
@@ -99,11 +101,28 @@ func DefaultWeights() Weights {
 // MaxMessages は保持するメッセージ数の上限。件数は上限を超えても数え続ける。
 const MaxMessages = 20
 
+// Cell はリージョンと日と要素ごとの件数と得点（運営向け）。Day はリージョンの日
+// （1 始まり）で、日が始まる前の操作は 0。
+type Cell struct {
+	Region string `json:"region"`
+	Day    int    `json:"day"`
+	Tag    Tag    `json:"tag"`
+	Count  int64  `json:"count"`
+	Points int64  `json:"points"`
+}
+
+type cellKey struct {
+	region string
+	day    int
+	tag    Tag
+}
+
 type Board struct {
 	weights Weights
 
 	mu            sync.Mutex
 	counts        map[Tag]int64
+	cells         map[cellKey]int64
 	errors        []string
 	errorCount    int64
 	critical      []string
@@ -115,13 +134,15 @@ func NewBoard(weights Weights) *Board {
 	if weights == nil {
 		weights = DefaultWeights()
 	}
-	return &Board{weights: maps.Clone(weights), counts: make(map[Tag]int64)}
+	return &Board{weights: maps.Clone(weights), counts: make(map[Tag]int64), cells: make(map[cellKey]int64)}
 }
 
-func (b *Board) Add(tag Tag) {
+// Add は region の day 日目の操作 tag を 1 件数える。
+func (b *Board) Add(tag Tag, region string, day int) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.counts[tag]++
+	b.cells[cellKey{region: region, day: day, tag: tag}]++
 }
 
 // Errorf はエラーを記録する。スコアは変えず、失敗した操作を運営と参加者に
@@ -182,6 +203,34 @@ func (b *Board) Total() int64 {
 	var total int64
 	for tag, count := range b.counts {
 		total += b.weights[tag] * count
+	}
+	return total
+}
+
+// Cells はリージョンと日と要素ごとの件数と得点を、日、リージョン、要素の順に並べて返す
+// （運営向け）。
+func (b *Board) Cells() []Cell {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	out := make([]Cell, 0, len(b.cells))
+	for key, count := range b.cells {
+		out = append(out, Cell{Region: key.region, Day: key.day, Tag: key.tag, Count: count, Points: b.weights[key.tag] * count})
+	}
+	slices.SortFunc(out, func(a, c Cell) int {
+		return cmp.Or(cmp.Compare(a.Day, c.Day), cmp.Compare(a.Region, c.Region), cmp.Compare(a.Tag, c.Tag))
+	})
+	return out
+}
+
+// DayPoints は region の day 日目の得点。
+func (b *Board) DayPoints(region string, day int) int64 {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	var total int64
+	for key, count := range b.cells {
+		if key.region == region && key.day == day {
+			total += b.weights[key.tag] * count
+		}
 	}
 	return total
 }
