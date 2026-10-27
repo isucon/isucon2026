@@ -1,6 +1,5 @@
 import type { Queryer, Row } from "./db.ts";
 import { getPostWithAuthor, loadViewerContext, canView } from "./post.ts";
-import type { Timestamp } from "./time.ts";
 import { setImageKey, userColumnsAs, userFromRow, type User } from "./user.ts";
 
 export type Comment = {
@@ -8,8 +7,8 @@ export type Comment = {
   postID: string;
   authorID: string;
   body: string;
-  createdAt: Timestamp;
-  deletedAt: Timestamp | null;
+  createdAt: Temporal.Instant;
+  deletedAt: Temporal.Instant | null;
 };
 
 function commentFromRow(row: Row): Comment {

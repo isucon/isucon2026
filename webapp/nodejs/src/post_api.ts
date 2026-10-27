@@ -10,7 +10,7 @@ import { getPostingWindow } from "./posting_window.ts";
 import { jsonResponse, noContent } from "./response.ts";
 import type { Env, HandlerContext } from "./server.ts";
 import { getSession } from "./session.ts";
-import { Timestamp } from "./time.ts";
+import { now } from "./time.ts";
 import { getUser, validUserText, type User } from "./user.ts";
 import { newGetMeResponse } from "./user_api.ts";
 
@@ -48,7 +48,7 @@ export type PostResponse = {
   caption: string;
   visibility: string;
   location: PostLocationResponse;
-  postedAt: Timestamp;
+  postedAt: Temporal.Instant;
   onTime: boolean;
   lateSeconds: number;
 };
@@ -90,7 +90,7 @@ export function createPostHandler(h: HandlerContext): Handler<Env> {
     await using tx = await h.db.begin();
     must(await tx.get(`SELECT id FROM users WHERE id = $1 FOR NO KEY UPDATE`, userID));
     const user = must(await getUser(tx, userID));
-    type WindowRow = { id: string; local_date: string; starts_at: Timestamp };
+    type WindowRow = { id: string; local_date: string; starts_at: Temporal.Instant };
     let window = await tx.get<WindowRow>(
       `SELECT id, local_date, starts_at FROM posting_windows WHERE region = $1 AND ended_at IS NULL FOR UPDATE`,
       user.region,
@@ -116,8 +116,8 @@ export function createPostHandler(h: HandlerContext): Handler<Env> {
         window.local_date,
       ),
     );
-    const postedAt = Timestamp.now();
-    if (counts.active !== 0 || counts.deleted >= 2 || postedAt.before(window.starts_at)) {
+    const postedAt = now();
+    if (counts.active !== 0 || counts.deleted >= 2 || Temporal.Instant.compare(postedAt, window.starts_at) < 0) {
       throw new APIError(409, "post_slot_unavailable");
     }
     const imageID = randomUUID();
@@ -175,11 +175,11 @@ export function newPostResponse(post: Post, user: User): PostResponse {
       locality: post.location.locality ?? undefined,
     },
     postedAt: post.postedAt,
-    onTime: !post.postedAt.after(post.onTimeDeadline),
+    onTime: Temporal.Instant.compare(post.postedAt, post.onTimeDeadline) <= 0,
     lateSeconds: 0,
   };
   if (!response.onTime) {
-    response.lateSeconds = Math.trunc((post.postedAt.micros - post.onTimeDeadline.micros) / 1_000_000);
+    response.lateSeconds = post.postedAt.since(post.onTimeDeadline).seconds;
   }
   return response;
 }

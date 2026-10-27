@@ -4,7 +4,6 @@ import { bind } from "./bind.ts";
 import { jsonResponse } from "./response.ts";
 import type { Env, HandlerContext } from "./server.ts";
 import { getSession } from "./session.ts";
-import type { Timestamp } from "./time.ts";
 import { setImageKey, userColumnsAs, userFromRow } from "./user.ts";
 import { newRelationshipUserResponse } from "./user_read_api.ts";
 
@@ -27,7 +26,7 @@ type RelationshipResponse = {
   relationId: string;
   user: RelationshipUserResponse;
   status: string;
-  updatedAt: Timestamp;
+  updatedAt: Temporal.Instant;
 };
 
 type GetRelationshipsResponse = {

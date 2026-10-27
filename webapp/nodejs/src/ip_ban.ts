@@ -2,13 +2,12 @@ import type { Context, MiddlewareHandler } from "hono";
 import { APIError } from "./api_error.ts";
 import type { DB } from "./db.ts";
 import type { Env, HandlerContext } from "./server.ts";
-import { Timestamp } from "./time.ts";
 
 const ipBanReloadInterval = 200;
 
 type IPBanSnapshot = {
   loadedAt: number;
-  bans: Map<string, Timestamp>;
+  bans: Map<string, Temporal.Instant>;
 };
 
 export class IPBanList {
@@ -30,15 +29,15 @@ export class IPBanList {
       return false;
     }
     const until = snapshot.bans.get(ip);
-    return until !== undefined && Timestamp.now().before(until);
+    return until !== undefined && Temporal.Instant.compare(Temporal.Now.instant(), until) < 0;
   }
 }
 
 async function loadIPBans(db: DB): Promise<IPBanSnapshot> {
-  const rows = await db.select<{ ip: string; banned_until: Timestamp }>(
+  const rows = await db.select<{ ip: string; banned_until: Temporal.Instant }>(
     `SELECT ip, banned_until FROM ip_bans WHERE banned_until > clock_timestamp()`,
   );
-  const bans = new Map<string, Timestamp>();
+  const bans = new Map<string, Temporal.Instant>();
   for (const row of rows) {
     bans.set(row.ip, row.banned_until);
   }

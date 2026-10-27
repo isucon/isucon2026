@@ -8,7 +8,6 @@ import { beginRelationshipTx, getFriendRequest, insertFriendship, isBlocked } fr
 import { jsonResponse } from "./response.ts";
 import type { Env, HandlerContext } from "./server.ts";
 import { getSession } from "./session.ts";
-import type { Timestamp } from "./time.ts";
 
 const createFriendRequestRequest = {
   recipientId: { json: "recipientId" },
@@ -17,7 +16,7 @@ const createFriendRequestRequest = {
 type FriendRequestResponse = {
   relationId: string;
   status: string;
-  updatedAt: Timestamp;
+  updatedAt: Temporal.Instant;
 };
 
 export function createFriendRequestHandler(h: HandlerContext): Handler<Env> {

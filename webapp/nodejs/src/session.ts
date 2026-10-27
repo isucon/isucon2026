@@ -4,14 +4,13 @@ import { APIError } from "./api_error.ts";
 import { must, type DB, type Queryer, type Tx } from "./db.ts";
 import { logWarn } from "./response.ts";
 import type { Env, HandlerContext } from "./server.ts";
-import type { Timestamp } from "./time.ts";
 
 export type Session = {
   region: string;
   token: string;
   userID: string;
   tokenHash: string;
-  createdAt: Timestamp;
+  createdAt: Temporal.Instant;
 };
 
 export function getSession(c: Context<Env>): Session | null {

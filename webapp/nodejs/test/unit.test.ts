@@ -6,7 +6,7 @@ import { parseQuery } from "../src/bind.ts";
 import { imageSignature, imageSigningKey, signedImageURL } from "../src/image_signature.ts";
 import { decodeJPEG } from "../src/jpeg.ts";
 import { encodeJSON } from "../src/response.ts";
-import { formatDate, parsePostgresTimestamp, parseRFC3339, Timestamp, validDate } from "../src/time.ts";
+import { parsePostgresTimestamp, parseRFC3339, validDate } from "../src/time.ts";
 import { validUserText, type User } from "../src/user.ts";
 
 describe("parseQuery", () => {
@@ -35,15 +35,14 @@ describe("time", () => {
     assert.equal(parsePostgresTimestamp("2026-10-26 01:02:03.120000+00").toString(), "2026-10-26T01:02:03.12Z");
     assert.equal(parsePostgresTimestamp("2026-10-26 10:02:03.000001+09").toString(), "2026-10-26T01:02:03.000001Z");
     assert.equal(parsePostgresTimestamp("2026-10-26 01:02:03-05:30").toString(), "2026-10-26T06:32:03Z");
-    assert.equal(JSON.stringify({ t: new Timestamp(1_790_553_600_000_001) }), '{"t":"2026-09-28T00:00:00.000001Z"}');
+    assert.equal(JSON.stringify({ t: parsePostgresTimestamp("2026-09-28 00:00:00.000001+00") }), '{"t":"2026-09-28T00:00:00.000001Z"}');
   });
 
-  it("日付を検証し、繰り上がりを正規化する", () => {
+  it("日付を検証する", () => {
     assert.ok(validDate(2024, 2, 29));
     assert.ok(!validDate(2026, 2, 29));
     assert.ok(!validDate(2026, 13, 1));
-    assert.equal(formatDate(2026, 13, 1), "2027-01-01");
-    assert.equal(formatDate(2026, 12, 32), "2027-01-01");
+    assert.ok(!validDate(2026, 12, 32));
   });
 });
 
