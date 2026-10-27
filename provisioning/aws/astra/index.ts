@@ -42,3 +42,7 @@ if (runtime.imageCachePushEnabled && !runtime.imageStore?.enabled) {
 if (runtime.guardJournalUnit !== "webapp-optmized-astra*.service") {
     throw new Error("The existing login guard must monitor both application and private writer units");
 }
+
+if (runtime.regionalUploadCacheEnabled && (!runtime.writeProxyEnabled || !runtime.replicaReads || !runtime.imageStore?.enabled || !runtime.imageStore?.writesEnabled)) {
+    throw new Error("Regional upload caching requires the private writer, local replicas and immutable image storage");
+}

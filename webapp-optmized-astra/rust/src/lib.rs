@@ -51,3 +51,5 @@ mod write_ingress;
 pub use api_error::{Error, new_api_error};
 pub use config::{Config, config_from_env};
 pub use server::{HandlerContext, new_server, start};
+
+pub mod upload_proxy;
