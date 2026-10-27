@@ -244,7 +244,8 @@ report transport failure after commit
   -> report だけを再送
 ```
 
-同じ snapshot ID と config の再受信は再適用せず成功報告だけを再送する。Portal 切断時も active data plane は維持し、
+同じ snapshot ID と config の再受信は network を再適用せず、HAProxy が既定の国を使っていることを確かめて（再起動で
+消えていれば書き戻して）から成功報告を再送する。Portal 切断時も active data plane は維持し、
 指数 backoff で再接続する。初回 snapshot が network と HAProxy の両方へ反映されるまでは ready にならない。
 
 ## 診断
