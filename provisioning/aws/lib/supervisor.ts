@@ -138,7 +138,7 @@ esac`;
         ? []
         : [{ name: "ISUXPORTAL_SUPERVISOR_TEAM_ID", value: c.teamId }]),
       { name: "ISUXPORTAL_SUPERVISOR_INSTANCE_NAME", value: c.instanceName },
-      { name: "ISUXPORTAL_SUPERVISOR_HARD_TIMEOUT", value: "150" },
+      { name: "ISUXPORTAL_SUPERVISOR_HARD_TIMEOUT", value: "210" },
       {
         name: "ISUXPORTAL_SUPERVISOR_LOG_DIRECTORY",
         value: "/var/log/isuxportal-supervisor",

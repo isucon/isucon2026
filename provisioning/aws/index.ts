@@ -434,6 +434,26 @@ function createTeam(t: Team) {
 		);
 	});
 
+	// 止めたインスタンスは vCPU の上限に数えられない。このリソースを消しても電源の状態は変わらないので、
+	// stoppedTeams から外したときに起動できるよう、すべてのインスタンスで状態を持つ
+	const powerState = config.stoppedTeams.includes(t.number)
+		? "stopped"
+		: "running";
+	const instances = [
+		{ name: `${prefix}-router`, instance: router },
+		...t.servers.map((network, index) => ({
+			name: `${prefix}-${network.id}`,
+			instance: servers[index],
+		})),
+	];
+	for (const { name, instance } of instances) {
+		if (instance)
+			new aws.ec2transitgateway.InstanceState(`${name}-power`, {
+				instanceId: instance.id,
+				state: powerState,
+			});
+	}
+
 	return {
 		number: t.number,
 		appHostname: `app.${t.domain}`,

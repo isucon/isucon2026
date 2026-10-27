@@ -78,7 +78,7 @@ func TestWriteRoundtripCounts(t *testing.T) {
 	}
 	token := login.Token
 	request("PATCH", "/me", token, `{"displayName":"changed","bio":"bio"}`, "application/json", 200, 1)
-	request("PUT", "/profile", token, "photo", "image/jpeg", 204, 1)
+	request("PUT", "/profile", token, string(testJPEG(t)), "image/jpeg", 204, 1)
 	request("DELETE", "/profile", token, "", "", 204, 1)
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
@@ -91,7 +91,7 @@ func TestWriteRoundtripCounts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := part.Write([]byte("photo")); err != nil {
+	if _, err := part.Write(testJPEG(t)); err != nil {
 		t.Fatal(err)
 	}
 	if err := writer.Close(); err != nil {

@@ -29,6 +29,10 @@ export const config = {
 	guardTeams: z
 		.array(z.number().int().min(1).max(maxTeams))
 		.parse(c.getObject<number[]>("guardTeams") ?? []),
+	// 使っていないチームのインスタンスを、ディスクごと残したまま止める
+	stoppedTeams: z
+		.array(z.number().int().min(1).max(maxTeams))
+		.parse(c.getObject<number[]>("stoppedTeams") ?? []),
 	protectedDatabaseTeams: z
 		.array(z.number().int().min(1).max(maxTeams))
 		.parse(c.getObject("protectedDatabaseTeams") ?? []),

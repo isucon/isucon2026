@@ -2,7 +2,8 @@
 # ベンチを Fargate で 1 回走らせる。ビルド → ECR へ push → ecspresso run → S3 から結果を取得 → 要約を表示。
 #
 #   run.sh run           TEAM（必須。8,9,10 のように並べると各チームへ同時に流す）、BENCH_ARGS、
-#                        IMAGE（指定するとビルドと push を省く）、HOST_STATS=0（チームのサーバーの統計を取らない）
+#                        IMAGE（指定するとビルドと push を省く）、HOST_STATS=0（チームのサーバーの統計を取らない）、
+#                        PHOTOS（投稿に使う写真のアーカイブの S3 キー。既定 assets/merged.zip。none なら生成画像）
 #   run.sh image         ビルドと push だけ行い、イメージ（repository@digest）を表示する
 #   run.sh show [RUN_ID] 取得済みの結果の要約を表示する（省略すると最新）
 #
@@ -204,8 +205,10 @@ show() {
 	jq -r '
 		"pass:    \(.pass)", "score:   \(.score)",
 		(if .reason then "reason:  \(.reason)" else empty end),
-		"levels:  \(.levels | tojson)", "users:   \(.users | tojson)", "buzzes:  \(.buzzes | tojson)",
+		"seed:    \(.seed)", "users:   \(.users | tojson)", "grandPrix: \(.grandPrix | tojson)", "reputation: \(.reputation)",
 		"breakdown: \(.breakdown | tojson)",
+		"days (region day: users at the start + newcomers -> gate passes (gate p50/p90), failure rate; from the previous day: quick passes, missed):",
+		((.days // [])[] | "  \(.region) \(.day): \(.population) + \(.newcomers) -> \(.passes) (\((.gateP50 // 0) / 1e6 | round)/\((.gateP90 // 0) / 1e6 | round) ms), \(.failRate * 10000 | round / 100)% of \(.ops); quick \(.quick // 0), missed \(.missed // 0)"),
 		(.critical[]? | "critical: \(.)"),
 		((.messages // [])[:20][] | "message: \(.)")
 	' "$result"
@@ -224,8 +227,9 @@ team_outputs() {
 	fi
 }
 
-# 複数チームへ同時に流す。ビルド、push、Pulumi の読み出しは 1 回だけ行い、チームごとの run を並行して起動する。
-# 各チームの出力には [teamN] を付け、最後に全チームの結果をまとめて表示する。
+# 複数チームへ同時に流す。ビルド、push、Pulumi の読み出し、タスク定義の登録は 1 回だけ行い、チームごとの run を
+# 並行して起動する。タスク定義はチームによらず同じで、同じ family へ同時に登録すると ECS が拒否するので、
+# 子の run は親が登録したリビジョンを使う。各チームの出力には [teamN] を付け、最後に全チームの結果をまとめて表示する。
 run_many() {
 	local t
 	for t in "$@"; do
@@ -239,8 +243,14 @@ run_many() {
 	local parent pids=() status=0 pid
 	parent="$(mktemp -d)"
 	BENCH_RUN_TEAM_OUTPUTS="$(team_outputs)"
-	export IMAGE BENCH_RUN_INFRA="$INFRA" BENCH_RUN_TEAM_OUTPUTS BENCH_RUN_PARENT="$parent"
-	log "running teams $* in parallel with $IMAGE"
+	BENCH_RUN_REVISION="$(cd "$RUNNER_DIR/ecspresso" && BENCH_RUNNER_INFRA="$INFRA" BENCH_IMAGE="$IMAGE" \
+		ecspresso register --no-color --config ecspresso.jsonnet --output 2>"$parent/register.log" | jq -r .revision)"
+	if [[ ! "$BENCH_RUN_REVISION" =~ ^[0-9]+$ ]]; then
+		awk '/^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T/ { skip = /\[DEBUG\]/ } !skip' "$parent/register.log" >&2
+		die "failed to register the task definition"
+	fi
+	export IMAGE BENCH_RUN_INFRA="$INFRA" BENCH_RUN_TEAM_OUTPUTS BENCH_RUN_PARENT="$parent" BENCH_RUN_REVISION
+	log "running teams $* in parallel with $IMAGE (task definition revision $BENCH_RUN_REVISION)"
 	for t in "$@"; do
 		(TEAM="$t" "$0" run 2>&1 | sed -u "s/^/[team$t] /") &
 		pids+=("$!")
@@ -292,7 +302,7 @@ cmd_run() {
 	ensure_idle "$host"
 
 	[[ -n "${IMAGE:-}" ]] || build_and_push
-	local run_id dir extra args overrides rc started commit
+	local run_id dir extra args record_args overrides rc started commit
 	commit="$(git -C "$ROOT" rev-parse --short HEAD)"
 	# イメージに入るディレクトリに未コミットの変更があれば印を付ける
 	[[ -z "$(git -C "$ROOT" status --porcelain -- bench dataset supervisor portal)" ]] || commit+="+dirty"
@@ -301,15 +311,24 @@ cmd_run() {
 	mkdir -p "$dir"
 	[[ -z "${BENCH_RUN_PARENT:-}" ]] || echo "$run_id" >"$BENCH_RUN_PARENT/$TEAM"
 	read -r -a extra <<<"${BENCH_ARGS:-}"
+	# 写真のアーカイブは実行のたびに署名付き URL にする。一時的な認証情報で署名した URL は、
+	# 認証情報の期限で失効するため。記録には URL ではなく S3 の場所を残す。
+	local photos="${PHOTOS:-assets/merged.zip}" photo_args=() photo_record=()
+	if [[ "$photos" != none && " ${extra[*]} " != *" -images "* ]]; then
+		photo_args=(-images "$(aws s3 presign "s3://$BUCKET/$photos" --expires-in 3600)")
+		photo_record=(-images "s3://$BUCKET/$photos")
+	fi
 	args="$(jq -n '$ARGS.positional' --args -- \
-		-target "$target" -target-port 8080 -host "$host" -scale large "${extra[@]}")"
+		-target "$target" -target-port 8080 -host "$host" -scale large "${photo_args[@]}" "${extra[@]}")"
+	record_args="$(jq -n '$ARGS.positional' --args -- \
+		-target "$target" -target-port 8080 -host "$host" -scale large "${photo_record[@]}" "${extra[@]}")"
 	overrides="$(jq -n --argjson cmd "$args" --arg run "$run_id" '{containerOverrides: [
 		{name: "bench", command: $cmd},
 		{name: "uploader", environment: [{name: "RUN_ID", value: $run}]}]}')"
 	started="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 	jq -n --arg runId "$run_id" --arg team "$TEAM" --arg stack "$STACK" --arg target "$target" --arg host "$host" \
 		--arg image "$IMAGE" --arg commit "$commit" \
-		--argjson benchArgs "$args" --arg started "$started" \
+		--argjson benchArgs "$record_args" --arg started "$started" \
 		'{runId: $runId, team: ($team | tonumber), stack: $stack, target: $target, host: $host, image: $image,
 		  commit: $commit, benchArgs: $benchArgs, startedAt: $started, exitCode: null}' >"$dir/meta.json"
 
@@ -324,13 +343,15 @@ cmd_run() {
 	fi
 
 	log "run $run_id: $IMAGE -> $host via $target"
+	local task_flags=()
+	[[ -z "${BENCH_RUN_REVISION:-}" ]] || task_flags=(--skip-task-definition --revision "$BENCH_RUN_REVISION")
 	set +e
 	(
 		cd "$RUNNER_DIR/ecspresso"
 		export BENCH_RUNNER_INFRA="$INFRA" BENCH_IMAGE="$IMAGE"
 		# ecspresso は [DEBUG] のメッセージ（タスク定義の JSON を複数行で含む）も出すので、次の時刻の行まで省く
 		ecspresso run --no-color --config ecspresso.jsonnet --overrides "$overrides" --watch-container bench \
-			--tags "Project=isucon2026,BenchRun=$run_id" 2>&1 |
+			--tags "Project=isucon2026,BenchRun=$run_id" "${task_flags[@]}" 2>&1 |
 			awk '/^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T/ { skip = /\[DEBUG\]/ } !skip' >&2
 	)
 	set -e

@@ -212,7 +212,7 @@ func TestPostingWindowConcurrentReaders(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := image.Write([]byte("unchanged image bytes")); err != nil {
+	if _, err := image.Write(testJPEG(t)); err != nil {
 		t.Fatal(err)
 	}
 	if err := writer.Close(); err != nil {

@@ -21,6 +21,5 @@ PGPASSWORD="$ISUREAL_DB_PASSWORD" psql \
 	--username="$ISUREAL_DB_USER" \
 	--dbname="$ISUREAL_DB_NAME" \
 	--set=ON_ERROR_STOP=1 \
-	--file=001-schema.sql \
-	--file=002-seed.sql \
+	--file=reset.sql \
 	--command=ANALYZE

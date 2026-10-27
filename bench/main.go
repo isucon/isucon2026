@@ -25,6 +25,8 @@ import (
 	"time"
 
 	"github.com/isucon/isucon2026/bench/internal/benchrun"
+	"github.com/isucon/isucon2026/bench/internal/evil"
+	"github.com/isucon/isucon2026/bench/internal/photo"
 	"github.com/isucon/isucon2026/bench/internal/scenario"
 	"github.com/isucon/isucon2026/dataset"
 	pb "github.com/isucon/isucon2026/portal/gen/pb/isuxportal/resources"
@@ -70,10 +72,14 @@ func run(parent context.Context, args []string, stdout, stderr io.Writer) int {
 	target := flags.String("target", defaultTarget, "target URL or supervisor IP")
 	host := flags.String("host", "", "HTTP Host header override (empty uses the target host)")
 	port := flags.Int("target-port", 80, "HTTP port for targets without an explicit port")
-	users := flags.Int("users", 8, "initial load users in asia (overseas start with 1/8)")
+	users := flags.Int("users", 8, "initial load users per region (cohort users of the initial data join up to the same number)")
+	images := flags.String("images", os.Getenv("ISUXBENCH_IMAGES"), "photo archive (zip path or http(s) URL) for posts; empty uses small generated images (env ISUXBENCH_IMAGES)")
+	seed := flags.Uint64("seed", 0, "run seed (0 picks one at random)")
+	evilUsers := flags.Bool("evil", true, "run the abusive users during the load phase")
+	quickShare := flags.Float64("quick-share", scenario.DefaultGrowth.QuickShare, "share of a day at which a gate pass invites QuickInvites newcomers; the invite curve scales with it (calibration)")
 	duration := flags.Duration("duration", 60*time.Second, "length of the load phase (shorter values are for development)")
 	scale := flags.String("scale", "small", "scale of the initial data in the target DB: small or large (must match datagen -scale)")
-	timeout := flags.Duration("timeout", 140*time.Second, "overall benchmark deadline; supervisor hard timeout must be longer")
+	timeout := flags.Duration("timeout", 190*time.Second, "overall benchmark deadline; supervisor hard timeout must be longer")
 	postValidation := flags.Bool("only-post-validation", false, "reserved: report unsupported without initializing the application")
 	verifyRate := flags.Float64("verify-rate", scenario.DefaultVerifyRate, "fraction of load-phase operations that get heavy verification, in (0, 1] (env ISUXBENCH_VERIFY_RATE)")
 	cpuProfile := flags.String("cpuprofile", "", "write a CPU profile of the whole run to this file")
@@ -116,6 +122,15 @@ func run(parent context.Context, args []string, stdout, stderr io.Writer) int {
 	if flags.NArg() != 0 || *users < 1 || *duration <= 0 || *timeout <= 0 || !ok || !(*verifyRate > 0 && *verifyRate <= 1) {
 		return fail("invalid benchmark arguments", 2)
 	}
+	if !(*quickShare > 0 && *quickShare <= 1) {
+		return fail("invalid benchmark arguments", 2)
+	}
+	growth := scenario.DefaultGrowth
+	if scale := *quickShare / growth.QuickShare; scale != 1 {
+		growth.FastShare *= scale
+		growth.QuickShare *= scale
+		growth.SlowShare *= scale
+	}
 	if *postValidation {
 		return fail("post-validation is not implemented; application was not initialized", 1)
 	}
@@ -134,10 +149,45 @@ func run(parent context.Context, args []string, stdout, stderr io.Writer) int {
 	if *memProfile != "" {
 		defer writeAllocProfile(*memProfile, logger)
 	}
+	// 写真のアーカイブは初期化と並行して読み、初期化のあと、対象に写真を送る前に待つ。
+	// 読めなかったときはベンチマーカー側の失敗として扱う。
+	photos := photo.Generated()
+	var awaitPhotos func(context.Context) (*photo.Set, error)
+	var photoErr error
+	if *images != "" {
+		type loaded struct {
+			set *photo.Set
+			err error
+		}
+		done := make(chan loaded, 1)
+		go func() {
+			started := time.Now()
+			set, err := photo.Load(parent, *images)
+			if err == nil {
+				logger.Info("photo archive loaded", "photos", set.Count(), "markable", set.Markable(), "elapsed", time.Since(started).Round(time.Millisecond))
+			}
+			done <- loaded{set: set, err: err}
+		}()
+		awaitPhotos = func(ctx context.Context) (*photo.Set, error) {
+			select {
+			case l := <-done:
+				done <- l
+				photoErr = l.err
+				return l.set, l.err
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+		}
+	}
+	var evilFunc scenario.EvilFunc
+	if *evilUsers {
+		evilFunc = evil.Run
+	}
 	ctx, cancel := context.WithTimeout(parent, *timeout)
 	defer cancel()
 	var reportErr error
 	runner, err := scenario.NewRunner(scenario.Config{
+		Photos: photos, AwaitPhotos: awaitPhotos, Seed: *seed, Evil: evilFunc, Growth: growth,
 		Target: normalized, Host: *host, Users: *users, Duration: *duration, VerifyRate: *verifyRate,
 		Dataset: dataset.Generate(datasetConfig()), Logger: progressLogger,
 		OnProgress: func(result scenario.Result) {
@@ -154,6 +204,10 @@ func run(parent context.Context, args []string, stdout, stderr io.Writer) int {
 		return fail("benchmarker setup failed", 2)
 	}
 	result := runner.Run(ctx)
+	if photoErr != nil {
+		logger.Error("photo archive", "error", photoErr)
+		return fail("benchmarker setup failed: photo archive", 2)
+	}
 	if reportErr != nil {
 		logger.Error("progress report failed", "error", reportErr)
 		return 2
