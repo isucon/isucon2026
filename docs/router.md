@@ -101,12 +101,12 @@ production default は次のとおりである。各値は Router の環境変�
 | Classification | Additional end-to-end delay | Bandwidth ceiling |
 |---|---:|---:|
 | same region | 0 ms | 1 Gbps |
-| AP↔EU | 200 ms | 200 Mbps |
-| EU↔US | 200 ms | 200 Mbps |
-| AP↔US | 200 ms | 200 Mbps |
+| AP↔EU | 100 ms | 200 Mbps |
+| EU↔US | 100 ms | 200 Mbps |
+| AP↔US | 100 ms | 200 Mbps |
 
-サーバー間の200 msはRTTであり、Routerは各方向のtcへ100 msずつ設定する。クライアントからのHTTP通信では、
-Envoyがリクエスト処理へ200 msを1回注入する。
+サーバー間の100 msはRTTであり、Routerは各方向のtcへ50 msずつ設定する。クライアントからのHTTP通信では、
+Envoyがリクエスト処理へ100 msを1回注入する。
 
 E2E は分類 code path を変えず、測定しやすい 0/120 ms と 100/1 Mbps へ値だけを縮尺変更する。
 

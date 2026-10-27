@@ -110,15 +110,15 @@ Controller は region local IP から interface 名を解決するため、Compo
 |---|---:|---:|
 | `ROUTER_SAME_REGION_DELAY` | `0s` | `0s` |
 | `ROUTER_SAME_REGION_BANDWIDTH_BPS` | `1000000000` | `100000000` |
-| `ROUTER_AP_EU_DELAY` | `200ms` | `120ms` |
+| `ROUTER_AP_EU_DELAY` | `100ms` | `120ms` |
 | `ROUTER_AP_EU_BANDWIDTH_BPS` | `200000000` | `1000000` |
-| `ROUTER_EU_US_DELAY` | `200ms` | `120ms` |
+| `ROUTER_EU_US_DELAY` | `100ms` | `120ms` |
 | `ROUTER_EU_US_BANDWIDTH_BPS` | `200000000` | `1000000` |
-| `ROUTER_AP_US_DELAY` | `200ms` | `120ms` |
+| `ROUTER_AP_US_DELAY` | `100ms` | `120ms` |
 | `ROUTER_AP_US_BANDWIDTH_BPS` | `200000000` | `1000000` |
 
 delay は end-to-end の追加遅延を表す。HTTP は Envoy が設定値を1回注入し、サーバー間通信は往復で設定値に
-なるよう tc が各方向へ半分ずつ注入する（production の `200ms` は片道100 ms、RTT 200 ms）。
+なるよう tc が各方向へ半分ずつ注入する（production の `100ms` は片道50 ms、RTT 100 ms）。
 bandwidth は bit/s で、正数かつ各ペアが same 以下でなければならない。delay は0または1 ms以上を受け付ける。
 E2E override は class 判定を変えず、共有 CI host でも差を測定できるよう値だけを縮尺する。
 
