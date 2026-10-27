@@ -82,6 +82,9 @@ type user struct {
 	stopped atomic.Bool
 	// banned は BAN されて止まったか。BAN されたユーザーは使えなかった人として成長に数え続ける。
 	banned atomic.Bool
+	// stranded は所属リージョンの変更の結果を確かめられず、止まったユーザー。BAN と同じく、
+	// 使えなかった人として成長に数え続ける（変更をエラーにして人を減らすことはできない）。
+	stranded atomic.Bool
 	// returning は思い出を見返すユーザー（成長の判定に数えない）。
 	returning bool
 	// leaveOn はこの日に投稿したあとで退会する（0 なら退会しない）。
