@@ -60,8 +60,10 @@ func (w *notificationWriter) write(db *sqlx.DB, windowID string, startsAt time.T
 		}
 		ctx, cancel := context.WithTimeout(ctx, time.Minute)
 		defer cancel()
+		// Rows in user order enter the (user_id, posting_window_id) index
+		// mostly sequentially instead of at thousands of random leaf pages.
 		if _, err := db.ExecContext(ctx, `INSERT INTO notifications (id, user_id, posting_window_id, created_at)
-          SELECT n.id, n.user_id, $3, $4 FROM unnest($1::text[], $2::text[]) AS n(id, user_id)
+          SELECT n.id, n.user_id, $3, $4 FROM unnest($1::text[], $2::text[]) AS n(id, user_id) ORDER BY n.user_id
           ON CONFLICT DO NOTHING`, ids, userIDs, windowID, startsAt); err != nil && ctx.Err() == nil {
 			slog.Error("notification rows", "window", windowID, "error", err)
 		}
