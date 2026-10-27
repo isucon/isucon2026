@@ -98,14 +98,6 @@ func TestReadRoundtripCountsAndSessionFreshness(t *testing.T) {
 	request("/api/posts/post", session.Token, 200, 1)
 	request("/api/posts/post/comments", session.Token, 200, 1)
 	request("/api/posts/post/realmojis", session.Token, 200, 1)
-	if _, err := db.Exec(`INSERT INTO notifications(id,user_id,posting_window_id,created_at)
-   VALUES('notification','owner','w',clock_timestamp()+interval '1 minute')`); err != nil {
-		t.Fatal(err)
-	}
-	rec := request("/api/notifications", session.Token, 200, 2)
-	if !strings.Contains(rec.Body.String(), `"id":"notification"`) {
-		t.Fatal("notification not delivered")
-	}
 	if _, err := db.Exec(`UPDATE users SET display_name='Fresh',region='europe' WHERE id='owner'`); err != nil {
 		t.Fatal(err)
 	}

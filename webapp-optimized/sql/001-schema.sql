@@ -271,7 +271,12 @@ CREATE INDEX posting_windows_date ON posting_windows(local_date, id);
 CREATE INDEX comments_post_page ON comments(post_id, created_at, id) WHERE deleted_at IS NULL;
 CREATE INDEX realmojis_post_page ON realmojis(post_id, created_at DESC, id DESC) WHERE replaced_at IS NULL AND deleted_at IS NULL;
 CREATE INDEX realmojis_image ON realmojis(image_id, reactor_id) INCLUDE (post_id, replaced_at, deleted_at);
-CREATE INDEX notifications_user_page ON notifications(user_id, created_at DESC, id DESC);
+-- The reset deletes the rows the load wrote by created_at; without these the
+-- deletes scan the history tables (about 5 s on the large data set).
+CREATE INDEX notifications_created ON notifications(created_at);
+CREATE INDEX comments_created ON comments(created_at);
+CREATE INDEX realmojis_created ON realmojis(created_at);
+CREATE INDEX posts_created ON posts(created_at);
 
 -- Database-side transactions for high-latency application connections.
 -- All routines are SECURITY INVOKER. Each call is one implicit transaction;

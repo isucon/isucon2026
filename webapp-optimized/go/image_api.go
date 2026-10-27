@@ -25,7 +25,7 @@ type getImageRequest struct {
 // imageLivenessTTL is how long a confirmed-live image is served without asking
 // the database again. Images of deleted posts may be served for up to five
 // seconds, so this stays well below that.
-const imageLivenessTTL = 3 * time.Second
+var imageLivenessTTL = 3 * time.Second
 
 func getImageHandler(h *HandlerContext) echo.HandlerFunc {
 	cache := newImageCache(imageCacheBytes, imageCacheEntries)
@@ -64,7 +64,7 @@ func getImageHandler(h *HandlerContext) echo.HandlerFunc {
 				version = &cached.version
 			}
 			checkedAt := time.Now()
-			object, err = loadImageObject(ctx, h.ReadDB, input.ImageID, version)
+			object, err = loadImageObject(ctx, h.DB, input.ImageID, version)
 			if errors.Is(err, sql.ErrNoRows) {
 				return NewAPIError(http.StatusForbidden, "image_forbidden")
 			}

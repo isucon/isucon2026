@@ -13,10 +13,6 @@ type Config struct {
 	DBUser     string
 	DBPassword string
 	DBName     string
-	// DBReadHost and DBReadPort name a synchronous hot standby in this region.
-	// Read-only requests use it; empty means the primary serves reads too.
-	DBReadHost string
-	DBReadPort string
 }
 
 func ConfigFromEnv() *Config {
@@ -27,21 +23,11 @@ func ConfigFromEnv() *Config {
 		DBUser:     envOrDefault("ISUREAL_DB_USER", "isureal"),
 		DBPassword: envOrDefault("ISUREAL_DB_PASSWORD", "isureal"),
 		DBName:     envOrDefault("ISUREAL_DB_NAME", "isureal"),
-		DBReadHost: os.Getenv("ISUREAL_DB_READ_HOST"),
-		DBReadPort: envOrDefault("ISUREAL_DB_READ_PORT", "5432"),
 	}
 }
 
 func (c *Config) DatabaseDSN() string {
 	return c.dsn(c.DBHost, c.DBPort)
-}
-
-// ReadDatabaseDSN is the DSN for read-only requests.
-func (c *Config) ReadDatabaseDSN() string {
-	if c.DBReadHost == "" {
-		return c.DatabaseDSN()
-	}
-	return c.dsn(c.DBReadHost, c.DBReadPort)
 }
 
 func (c *Config) dsn(host, port string) string {

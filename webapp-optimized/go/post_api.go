@@ -110,8 +110,16 @@ type getMyCurrentPostResponse createPostResponse
 func getMyCurrentPostHandler(h *HandlerContext) echo.HandlerFunc {
 	return func(c *echo.Context) error {
 		ctx := c.Request().Context()
+		if user, ok := hotSessionUser(c, h); ok {
+			if post, found, ok := hot.myCurrentPost(user.ID); ok {
+				if !found {
+					return NewAPIError(http.StatusNotFound, "post_not_found")
+				}
+				return c.JSON(http.StatusOK, getMyCurrentPostResponse(newPostResponse(post.Post, post.Author)))
+			}
+		}
 		userID := GetSession(c).UserID
-		posts, err := selectPostsWithAuthor(ctx, h.ReadDB, `
+		posts, err := selectPostsWithAuthor(ctx, h.DB, `
           AND p.author_id = $1
           AND EXISTS (SELECT 1 FROM posting_windows current
             WHERE current.region = u.region AND current.ended_at IS NULL
@@ -141,7 +149,15 @@ func getPostHandler(h *HandlerContext) echo.HandlerFunc {
 			return err
 		}
 		ctx := c.Request().Context()
-		post, viewer, err := loadPostAccess(ctx, h.ReadDB, GetSession(c).UserID, input.PostID)
+		if user, ok := hotSessionUser(c, h); ok {
+			if post, visible, ok := hot.viewPost(user.ID, input.PostID); ok {
+				if !visible {
+					return NewAPIError(http.StatusNotFound, "post_not_found")
+				}
+				return c.JSON(http.StatusOK, getPostResponse(newPostResponse(post.Post, post.Author)))
+			}
+		}
+		post, viewer, err := loadPostAccess(ctx, h.DB, GetSession(c).UserID, input.PostID)
 		if errors.Is(err, sql.ErrNoRows) {
 			return NewAPIError(http.StatusNotFound, "post_not_found")
 		}
