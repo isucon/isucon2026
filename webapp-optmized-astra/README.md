@@ -188,3 +188,4 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261027T230256Z-team10 | Retain regional post and realmoji upload images; fresh immutable-key validation | PASS | 87,734 |
 | 20261027T232844Z-team10 | Increase image cache entry limit to 16384 within 1 GiB after orphan cleanup | PASS | 87,642 |
 | 20261027T233258Z-team10 | Separate small image uploads from account mutation admission slots | PASS | 89,592 |
+| 20261027T233712Z-team10 | Retain Asia post upload bytes locally without cross-region cache push | PASS | 89,306 |
