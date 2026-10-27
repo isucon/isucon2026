@@ -43,6 +43,16 @@ var targets = []struct {
 
 var regions = []domain.Region{domain.RegionAP, domain.RegionEU, domain.RegionUS}
 
+var apps = []domain.ServerID{domain.App1, domain.App2, domain.App3}
+
+// streamPath is the SSE endpoint. HAProxy sends the headers and the events of
+// an unfinished response with MSG_MORE, which holds each of them for about
+// 200 ms, so this path uses backends with "option http-no-delay". The option
+// stays out of defaults because it costs CPU on large rate-limited responses.
+const streamPath = "/api/notifications"
+
+func streamBackend(server domain.ServerID) string { return string(server) + "_stream" }
+
 // route is one target host and client region. Each country still gets its own
 // bandwidth bucket, keyed by host and country.
 type route struct {
@@ -159,19 +169,25 @@ func Render(cfg config.Config) (map[string]string, error) {
 		line("    http-request set-bandwidth-limit down_%d if { var(txn.pair) -m str %s }", bps, keys)
 	}
 	line("    http-request set-header X-Client-IP %%[src] if { req.fhdr_cnt(x-client-ip) -m int eq 0 }")
-	for _, server := range []domain.ServerID{domain.App1, domain.App2, domain.App3} {
+	for _, server := range apps {
 		var keys []string
 		for _, r := range all {
 			if r.server == server {
 				keys = append(keys, r.key)
 			}
 		}
+		line("    use_backend %s if { path %s } { var(txn.pair) -m str %s }", streamBackend(server), streamPath, strings.Join(keys, " "))
 		line("    use_backend %s if { var(txn.pair) -m str %s }", server, strings.Join(keys, " "))
 	}
-	for _, server := range []domain.ServerID{domain.App1, domain.App2, domain.App3} {
+	for _, server := range apps {
+		upstream := fmt.Sprintf("%s:%d", cfg.Servers[server].ServerIP, cfg.UpstreamPort)
 		line("")
 		line("backend %s", server)
-		line("    server %s %s:%d", server, cfg.Servers[server].ServerIP, cfg.UpstreamPort)
+		line("    server %s %s", server, upstream)
+		line("")
+		line("backend %s", streamBackend(server))
+		line("    option http-no-delay")
+		line("    server %s %s", server, upstream)
 	}
 	line("")
 	line("backend bandwidth")
