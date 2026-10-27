@@ -14,12 +14,3 @@ web application on three identical VMs to maximize its benchmark scor
 - If an emergency change is made directly in AWS, reconcile it into Pulumi and
   ecspresso configuration during the same task and verify that subsequent
   deployments preserve it.
-
-## Optimization survey
-
-When optimizing the contestant application, update the `agent` and `harness`
-strings in its `POST /api/initialize` response to identify the model/agent and
-execution tool used. Keep `agent: "human"` and `harness: "hand"` for manual work.
-These self-reported fields are only used for research and aggregation; they do
-not affect benchmark scores or pass/fail decisions. Preserve the existing
-`language` field and initialization behavior.
