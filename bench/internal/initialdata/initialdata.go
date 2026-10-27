@@ -15,7 +15,9 @@ import (
 	"io"
 	"math"
 	"math/rand/v2"
+	neturl "net/url"
 	"slices"
+	"strconv"
 	"sync"
 	"time"
 
@@ -39,6 +41,10 @@ type Checker struct {
 	// MemoryMonths は Check が Memories を読む月の数。履歴のある月から無作為に選ぶ。
 	// 0 ならすべての月を読む。
 	MemoryMonths int
+	// ImageFetches は Check が中身を取得して比べる画像の数の上限。0 ならすべて取得する。
+	// 署名はすべて確かめる。海外のサーバーは DB まで遠く、RealMoji の多いユーザーの画像を
+	// すべて取ると数分かかるので、無作為に選んだものだけを取る。
+	ImageFetches int
 
 	users             map[string]*dataset.User
 	windows           map[string]*dataset.Window
@@ -51,6 +57,7 @@ func New(world *dataset.World) *Checker {
 	c := &Checker{
 		world:             world,
 		MemoryMonths:      2,
+		ImageFetches:      16,
 		users:             map[string]*dataset.User{},
 		windows:           map[string]*dataset.Window{},
 		friendshipsByUser: map[string][]*dataset.Friendship{},
@@ -158,9 +165,87 @@ func (c *Checker) Check(ctx context.Context, api *client.Client, user *dataset.U
 		return fmt.Errorf("初期データのユーザー %s としてログインできません: %w", user.Username, err)
 	}
 	u := &userCheck{Checker: c, a: a}
-	for _, check := range []func(context.Context) error{u.checkMemories, u.checkFriends, u.checkExport, u.fetchImages} {
+	for _, check := range []func(context.Context) error{u.checkMemories, u.checkFriends, u.checkExport, func(ctx context.Context) error {
+		u.sampleImages(c.ImageFetches)
+		return u.fetchImages(ctx)
+	}} {
 		if err := check(ctx); err != nil {
 			return fmt.Errorf("初期データのユーザー %s: %w", user.Username, err)
+		}
+	}
+	return nil
+}
+
+// sampleImages は取得を予約した画像から n 枚を無作為に残す（n が 0 ならすべて残す）。
+func (u *userCheck) sampleImages(n int) {
+	if n > 0 && len(u.images) > n {
+		rand.Shuffle(len(u.images), func(i, j int) { u.images[i], u.images[j] = u.images[j], u.images[i] })
+		u.images = u.images[:n]
+	}
+}
+
+// CheckMemoriesDate は a の date の Memories を読み、初期データと比べる。画像は images 枚を
+// 無作為に選んで取得する（thorough なら中身も比べる）。
+func (c *Checker) CheckMemoriesDate(ctx context.Context, a *agent.Agent, day int, images int, thorough bool) error {
+	u := &userCheck{Checker: c, a: a, sampleSignatures: true, skipContents: !thorough}
+	want := c.posts(c.users[a.ID], []int{day})
+	date := c.world.Date(day).Format(time.DateOnly)
+	var got []client.MemoryPost
+	var before *client.Post
+	for {
+		page, err := a.API.MemoriesDate(ctx, a.Token, date, before)
+		if err != nil {
+			return err
+		}
+		got = append(got, page.Items...)
+		if !page.HasMore || len(page.Items) == 0 {
+			break
+		}
+		before = &page.Items[len(page.Items)-1].Post
+	}
+	if len(got) != len(want) {
+		return fmt.Errorf("Memories（%s）の投稿が %d 件です（期待値 %d 件）", date, len(got), len(want))
+	}
+	for i, item := range got {
+		if err := u.checkMemoryPost(item, want[i]); err != nil {
+			return fmt.Errorf("Memories（%s）: %w", date, err)
+		}
+	}
+	if thorough {
+		if err := u.verifySampled(); err != nil {
+			return err
+		}
+	}
+	u.sampleImages(images)
+	return u.fetchImages(ctx)
+}
+
+// CheckExport は a のエクスポートを取り、投稿の一覧（posts.json）を初期データと比べる。
+// 画像は images 枚を無作為に選んで中身を比べる（AllImages ならすべて、0 なら比べない）。isNew が true を返す投稿
+// （負荷走行で作られた投稿）は比べない。
+func (c *Checker) CheckExport(ctx context.Context, a *agent.Agent, images int, isNew func(id string) bool) error {
+	u := &userCheck{Checker: c, a: a}
+	return u.exportPosts(ctx, images, isNew)
+}
+
+// SpotCheck は a の履歴から無作為に n 枚の投稿の画像を選び、署名付き URL を bench が作って
+// 直接取得し、中身を初期データと比べる。古い画像を消すか差し替える実装を見つける。
+func (c *Checker) SpotCheck(ctx context.Context, a *agent.Agent, n int) error {
+	user := c.users[a.ID]
+	posts := c.posts(user, c.allDays())
+	if len(posts) == 0 {
+		return nil
+	}
+	exp := time.Now().Add(time.Hour).Unix()
+	for range n {
+		p := posts[rand.IntN(len(posts))]
+		url := "/api/images/" + p.Image.ID + "?" + neturl.Values{"exp": {strconv.FormatInt(exp, 10)}, "sig": {imageurl.Sign(user.SecretKey, p.Image.ID, exp)}}.Encode()
+		data, err := a.API.Image(ctx, url)
+		if err != nil {
+			return err
+		}
+		if !bytes.Equal(data, c.world.ImageBytes(p.Image)) {
+			return fmt.Errorf("投稿 %s の画像 %s が初期データと違います", p.ID, p.Image.ID)
 		}
 	}
 	return nil
@@ -494,9 +579,19 @@ type exportedPost struct {
 	ImagePath string `json:"imagePath"`
 }
 
+// AllImages は、エクスポートのすべての画像を比べることを表す。
+const AllImages = -1
+
 // checkExport は ZIP の posts.json が全投稿を古い順に並べ、各画像が中身どおりであることを
 // 確かめる。
 func (u *userCheck) checkExport(ctx context.Context) error {
+	return u.exportPosts(ctx, AllImages, func(string) bool { return false })
+}
+
+// exportPosts はエクスポートの posts.json を初期データと比べ、画像は images 枚（AllImages なら
+// すべて、0 なら比べない）を比べる。期待する画像は描き直して作るので重い。isNew が true を
+// 返す投稿は除いてから比べる。
+func (u *userCheck) exportPosts(ctx context.Context, images int, isNew func(id string) bool) error {
 	c, a := u.Checker, u.a
 	data, err := a.API.Export(ctx, a.Token)
 	if err != nil {
@@ -510,18 +605,39 @@ func (u *userCheck) checkExport(ctx context.Context) error {
 	for _, f := range archive.File {
 		files[f.Name] = f
 	}
-	var got []exportedPost
-	if err := decodeZipJSON(files["posts.json"], &got); err != nil {
+	var all []exportedPost
+	if err := decodeZipJSON(files["posts.json"], &all); err != nil {
 		return fmt.Errorf("エクスポートの posts.json を読めません: %w", err)
+	}
+	var got []exportedPost
+	for _, p := range all {
+		if !isNew(p.ID) {
+			got = append(got, p)
+		}
 	}
 	want := c.posts(c.users[a.ID], c.allDays())
 	slices.SortFunc(want, func(x, y *dataset.Post) int { return cmp.Or(x.PostedAt.Compare(y.PostedAt), cmp.Compare(x.ID, y.ID)) })
 	if len(got) != len(want) {
 		return fmt.Errorf("エクスポートの投稿が %d 件です（期待値 %d 件）", len(got), len(want))
 	}
+	check := make([]bool, len(got))
+	switch {
+	case images == 0:
+	case images < 0 || images >= len(got):
+		for i := range check {
+			check[i] = true
+		}
+	default:
+		for _, i := range rand.Perm(len(got))[:images] {
+			check[i] = true
+		}
+	}
 	for i, p := range got {
 		if err := u.checkPost(p.Post, want[i]); err != nil {
 			return fmt.Errorf("エクスポート: %w", err)
+		}
+		if !check[i] {
+			continue
 		}
 		if err := imageurl.Verify(p.ImageURL, want[i].Image.ID, a.SecretKey, time.Now()); err != nil {
 			return fmt.Errorf("エクスポート: %w", err)

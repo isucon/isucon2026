@@ -17,8 +17,8 @@ make aws-bench-show RUN=20261026T040000Z-team5
 対象のデータを消すので、ほかの人が使っていないチームを指定してください。
 このコマンドから同じチームへ実行中のタスクがあれば、起動せずに止まります。
 
-`TEAM` にチーム番号をカンマ区切りで並べると、各チームへ同時に流します。ビルド、push、Pulumi の出力の読み出しは
-1 回だけ行い、チームごとのタスクとサーバーの記録を並行して動かします。途中の出力には `[teamN]` を付け、
+`TEAM` にチーム番号をカンマ区切りで並べると、各チームへ同時に流します。ビルド、push、Pulumi の出力の読み出し、
+タスク定義の登録は 1 回だけ行い、チームごとのタスクとサーバーの記録を並行して動かします。途中の出力には `[teamN]` を付け、
 最後に全チームのスコアと、使用率の要約の `!` の行をまとめて表示します。チームごとの詳しい要約は
 `make aws-bench-show RUN=<RUN_ID>` で見ます。どれかのチームが失敗すると、終了コードは 1 になります。
 ポータルの Supervisor から同じチームへ流れるジョブは検出できません。
@@ -50,6 +50,11 @@ make aws-bench-show RUN=20261026T040000Z-team5
 `BENCH_ARGS` で `/results` の下に書いたファイル（`-cpuprofile`、`-memprofile`）も一緒に取得します。
 `IMAGE=<repository>@sha256:...` を指定するとビルドと push を省き、そのイメージで実行します。
 `make aws-bench-image` はビルドと push だけ行い、イメージを表示します。
+
+投稿に使う写真のアーカイブ（ISU の写真、`manifest.json` 付きの zip）は、結果のバケットの `assets/merged.zip` に置きます。
+実行のたびに `run.sh` が署名付き URL（1 時間）を作り、bench の `-images` に渡します。一時的な認証情報で署名した URL は
+認証情報の期限で失効するので、URL を作り置きしません。`meta.json` には URL ではなく S3 の場所を残します。
+`PHOTOS=<キー>` で別のアーカイブを、`PHOTOS=none` で生成画像を使います。`BENCH_ARGS` に `-images` があればそちらを使います。
 
 ## 使用率
 
@@ -110,6 +115,13 @@ Router への TCP/8080 は、Supervisor stack が共有 NAT の `/32` に許可�
 make aws-infra-install
 make aws-bench-runner-preview
 make aws-bench-runner-up
+```
+
+写真のアーカイブは stack の外のデータなので、初回に手で置きます。
+
+```sh
+BUCKET=$(cd provisioning/aws/bench-runner && pulumi stack output infra --json --stack dev | jq -r .bucket)
+aws s3 cp merged.zip "s3://$BUCKET/assets/merged.zip"
 ```
 
 stack の state は `s3://isucon2026-pulumi-state`、secret の暗号化は `awskms://alias/isucon2026-pulumi-secrets` です。

@@ -1,6 +1,7 @@
 package model
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -305,5 +306,32 @@ func TestFinalChecks(t *testing.T) {
 	}
 	if got := m.LoadMonths(); len(got) != 1 || got[0].Month() != time.October {
 		t.Fatalf("months=%v", got)
+	}
+}
+
+// TestWaitForWindowAfterTimeout は、開いた結果のわからなかった投稿期間の通知を、bench の
+// 知らない投稿期間（エラー）とは区別することを確かめる。
+func TestWaitForWindowAfterTimeout(t *testing.T) {
+	m, _ := newTestModel()
+	day := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
+	open := m.BeginOpenWindow("asia")
+	m.OpenedWindow(open, Window{ID: "w1", Region: "asia", LocalDate: day})
+	if _, err := m.WaitForWindow(t.Context(), "asia", "w1"); err != nil {
+		t.Fatalf("known window: %v", err)
+	}
+	if _, err := m.WaitForWindow(t.Context(), "asia", "w2"); !errors.Is(err, ErrUnknownWindow) {
+		t.Fatalf("unknown window: err=%v", err)
+	}
+	m.BeginOpenWindow("asia").Unknown()
+	if _, err := m.WaitForWindow(t.Context(), "asia", "w2"); !errors.Is(err, ErrMaybeWindow) {
+		t.Fatalf("window after a timed-out open: err=%v", err)
+	}
+	if _, err := m.WaitForWindow(t.Context(), "europe", "w2"); !errors.Is(err, ErrUnknownWindow) {
+		t.Fatalf("other region: err=%v", err)
+	}
+	open = m.BeginOpenWindow("asia")
+	m.OpenedWindow(open, Window{ID: "w3", Region: "asia", LocalDate: day.AddDate(0, 0, 2)})
+	if _, err := m.WaitForWindow(t.Context(), "asia", "w2"); !errors.Is(err, ErrUnknownWindow) {
+		t.Fatalf("after a later known window: err=%v", err)
 	}
 }

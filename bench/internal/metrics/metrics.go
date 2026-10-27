@@ -45,6 +45,25 @@ type Recorder struct {
 	inFlight map[uint64]inFlight
 	nextID   uint64
 	sealed   map[int]bool
+	// routes はリージョンとルートごとの所要時間（運営が較正に使う）。
+	routes map[[2]string]*routeStats
+}
+
+type routeStats struct {
+	ops, failures int64
+	durations     []time.Duration
+}
+
+// RouteStats はリージョンとルートごとの集計。
+type RouteStats struct {
+	Region   string        `json:"region"`
+	Route    string        `json:"route"`
+	Ops      int64         `json:"ops"`
+	Failures int64         `json:"failures"`
+	P50      time.Duration `json:"p50"`
+	P90      time.Duration `json:"p90"`
+	P99      time.Duration `json:"p99"`
+	Max      time.Duration `json:"max"`
 }
 
 // inFlight は処理中の操作。
@@ -58,7 +77,7 @@ func New(start time.Time, width time.Duration) *Recorder {
 	if width <= 0 {
 		width = DefaultWidth
 	}
-	return &Recorder{start: start, width: width, buckets: make(map[int]map[string]*bucket), inFlight: make(map[uint64]inFlight), sealed: make(map[int]bool)}
+	return &Recorder{start: start, width: width, buckets: make(map[int]map[string]*bucket), inFlight: make(map[uint64]inFlight), sealed: make(map[int]bool), routes: map[[2]string]*routeStats{}}
 }
 
 // Begin は操作の開始を記録し、完了したときに呼ぶ関数を返す（client.InFlightObserver）。
@@ -146,6 +165,37 @@ func (r *Recorder) Observe(record client.Record) {
 	if record.Err == nil && strings.HasPrefix(record.Route, http.MethodGet+" ") {
 		b.reads = append(b.reads, record.Duration)
 	}
+	key := [2]string{regionOf(record.Country), record.Route}
+	rs := r.routes[key]
+	if rs == nil {
+		rs = &routeStats{}
+		r.routes[key] = rs
+	}
+	rs.ops++
+	if record.Err != nil && !record.Allowed {
+		rs.failures++
+	}
+	rs.durations = append(rs.durations, record.Duration)
+}
+
+// Routes はリージョンとルートごとの集計を返す（リージョン、ルートの順）。
+func (r *Recorder) Routes() []RouteStats {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var out []RouteStats
+	for key, rs := range r.routes {
+		out = append(out, RouteStats{
+			Region: key[0], Route: key[1], Ops: rs.ops, Failures: rs.failures,
+			P50: percentile(rs.durations, 0.5), P90: percentile(rs.durations, 0.9), P99: percentile(rs.durations, 0.99), Max: percentile(rs.durations, 1),
+		})
+	}
+	slices.SortFunc(out, func(a, b RouteStats) int {
+		if a.Region != b.Region {
+			return strings.Compare(a.Region, b.Region)
+		}
+		return strings.Compare(a.Route, b.Route)
+	})
+	return out
 }
 
 // AddFailure は、HTTP としては成功したがレスポンスの検証に失敗した操作を n 件として数える。

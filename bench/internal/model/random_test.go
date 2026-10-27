@@ -56,7 +56,7 @@ func newRandomWorld(seed uint64) *randomWorld {
 			if a, b := w.user(), w.user(); a != b && rng.IntN(3) == 0 {
 				settle(m.BeginBlock(a, b))
 			} else if a != b {
-				settle(m.BeginFollow(a, b))
+				settle(m.BeginFollow(a, b, true))
 			}
 		case op == 4 && step%40 == 0:
 			region := regions[rng.IntN(len(regions))]
