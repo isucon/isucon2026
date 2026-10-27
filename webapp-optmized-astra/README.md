@@ -192,3 +192,4 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261027T234159Z-team10 | Expand pure image signature memoization from 8192 to 65536 entries | PASS | 95,017 |
 | 20261027T234548Z-team10 | Compare four Tokio workers per application with unchanged validation and write fences | PASS | 93,852 |
 | 20261027T234936Z-team10 | Compare regional post-only ingress caching with two workers and larger signature cache | PASS | 92,594 |
+| 20261027T235343Z-team10 | Final verification of selected two-worker regional image and signature caching configuration | PASS | 93,597 |
