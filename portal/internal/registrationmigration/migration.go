@@ -220,7 +220,7 @@ func (s Snapshot) Import(ctx context.Context, db *sql.DB) error {
 	}
 	defer tx.Rollback()
 	// Prevent concurrent registration or a second importer between emptiness checks and inserts.
-	tables := []string{"teams", "contestants", "registration_records", "registration_source_records", "coupons", "env_checks", "benchmark_executions", "benchmark_jobs", "benchmark_results", "clarifications", "contestant_instances", "extra_time_assignments", "notifications", "push_subscriptions", "ssh_public_keys", "survey_responses", "instance_command_execute_requests", "instance_command_execute_request_results", "jobs"}
+	tables := []string{"teams", "contestants", "registration_records", "registration_source_records", "coupons", "env_checks", "benchmark_executions", "benchmark_jobs", "benchmark_results", "clarifications", "contestant_instances", "extra_time_assignments", "notifications", "push_subscriptions", "ssh_public_keys", "survey_response_history", "survey_responses", "instance_command_execute_requests", "instance_command_execute_request_results", "jobs"}
 	if _, err := tx.ExecContext(ctx, `LOCK TABLE `+strings.Join(tables, ",")+` IN ACCESS EXCLUSIVE MODE`); err != nil {
 		return err
 	}

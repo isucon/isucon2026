@@ -18,6 +18,16 @@ export declare type SurveyResponse = Message<"isuxportal.proto.resources.SurveyR
    * @generated from field: string language = 1;
    */
   language: string;
+
+  /**
+   * @generated from field: string agent = 2;
+   */
+  agent: string;
+
+  /**
+   * @generated from field: string harness = 3;
+   */
+  harness: string;
 };
 
 /**
