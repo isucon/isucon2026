@@ -106,6 +106,7 @@ def main():
             for path in (refs, sql):
                 subprocess.run([SSH, store["instanceId"], "--copy", str(path), incoming + "/" + path.name], check=True)
             remote(store["instanceId"],
+                   "sudo install -d -o root -g root -m711 /var/lib/astra-maint && "
                    f"sudo install -d -o postgres -g postgres -m700 {remote_dir} && "
                    f"sudo install -o postgres -g postgres -m600 {incoming}/refs {remote_dir}/refs && "
                    f"sudo install -o postgres -g postgres -m600 {incoming}/cleanup.sql {remote_dir}/cleanup.sql")
