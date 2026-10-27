@@ -21,7 +21,7 @@ func TestMigrationCreatesAllTablesAndIsIdempotent(t *testing.T) {
 		"benchmark_executions", "benchmark_jobs", "benchmark_results", "clarifications",
 		"contestant_instances", "contestants", "coupons", "env_checks", "extra_time_assignments",
 		"instance_command_execute_request_results", "instance_command_execute_requests",
-		"notifications", "push_subscriptions", "ssh_public_keys", "survey_responses", "teams",
+		"notifications", "push_subscriptions", "ssh_public_keys", "survey_response_history", "survey_responses", "teams",
 		"jobs",
 	}
 	for _, table := range expected {

@@ -21,7 +21,7 @@ func TestMigrateConcurrentlyIsSafe(t *testing.T) {
 		"benchmark_executions", "benchmark_jobs", "benchmark_results", "clarifications",
 		"contestant_instances", "contestants", "coupons", "env_checks", "extra_time_assignments",
 		"instance_command_execute_request_results", "instance_command_execute_requests",
-		"notifications", "push_subscriptions", "ssh_public_keys", "survey_responses", "teams", "jobs",
+		"notifications", "push_subscriptions", "ssh_public_keys", "survey_response_history", "survey_responses", "teams", "jobs",
 	} {
 		if _, err := conn.ExecContext(ctx, `DROP TABLE IF EXISTS `+table+` CASCADE`); err != nil {
 			t.Fatal(err)

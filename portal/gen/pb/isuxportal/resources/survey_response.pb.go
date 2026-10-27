@@ -24,6 +24,8 @@ const (
 type SurveyResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Language      string                 `protobuf:"bytes,1,opt,name=language,proto3" json:"language,omitempty"`
+	Agent         string                 `protobuf:"bytes,2,opt,name=agent,proto3" json:"agent,omitempty"`
+	Harness       string                 `protobuf:"bytes,3,opt,name=harness,proto3" json:"harness,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -65,13 +67,29 @@ func (x *SurveyResponse) GetLanguage() string {
 	return ""
 }
 
+func (x *SurveyResponse) GetAgent() string {
+	if x != nil {
+		return x.Agent
+	}
+	return ""
+}
+
+func (x *SurveyResponse) GetHarness() string {
+	if x != nil {
+		return x.Harness
+	}
+	return ""
+}
+
 var File_isuxportal_resources_survey_response_proto protoreflect.FileDescriptor
 
 const file_isuxportal_resources_survey_response_proto_rawDesc = "" +
 	"\n" +
-	"*isuxportal/resources/survey_response.proto\x12\x1aisuxportal.proto.resources\",\n" +
+	"*isuxportal/resources/survey_response.proto\x12\x1aisuxportal.proto.resources\"\\\n" +
 	"\x0eSurveyResponse\x12\x1a\n" +
-	"\blanguage\x18\x01 \x01(\tR\blanguageB\x80\x02\n" +
+	"\blanguage\x18\x01 \x01(\tR\blanguage\x12\x14\n" +
+	"\x05agent\x18\x02 \x01(\tR\x05agent\x12\x18\n" +
+	"\aharness\x18\x03 \x01(\tR\aharnessB\x80\x02\n" +
 	"\x1ecom.isuxportal.proto.resourcesB\x13SurveyResponseProtoP\x01Z?github.com/isucon/isucon2026/portal/gen/pb/isuxportal/resources\xa2\x02\x03IPR\xaa\x02\x1aIsuxportal.Proto.Resources\xca\x02\x1aIsuxportal\\Proto\\Resources\xe2\x02&Isuxportal\\Proto\\Resources\\GPBMetadata\xea\x02\x1cIsuxportal::Proto::Resourcesb\x06proto3"
 
 var (

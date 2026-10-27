@@ -5,7 +5,7 @@
 require 'google/protobuf'
 
 
-descriptor_data = "\n*isuxportal/resources/survey_response.proto\x12\x1aisuxportal.proto.resources\",\n\x0eSurveyResponse\x12\x1a\n\x08language\x18\x01 \x01(\tR\x08languageb\x06proto3"
+descriptor_data = "\n*isuxportal/resources/survey_response.proto\x12\x1aisuxportal.proto.resources\"\\\n\x0eSurveyResponse\x12\x1a\n\x08language\x18\x01 \x01(\tR\x08language\x12\x14\n\x05\x61gent\x18\x02 \x01(\tR\x05\x61gent\x12\x18\n\x07harness\x18\x03 \x01(\tR\x07harnessb\x06proto3"
 
 pool = Google::Protobuf::DescriptorPool.generated_pool
 pool.add_serialized_file(descriptor_data)

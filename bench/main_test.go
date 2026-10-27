@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	pb "github.com/isucon/isucon2026/portal/gen/pb/isuxportal/resources"
+	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 	"io"
 	"net/http"
@@ -83,9 +84,14 @@ func TestSupervisorChild(t *testing.T) {
 }
 
 func TestSupervisorIntegration(t *testing.T) {
+	var initialized atomic.Bool
 	var requests atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests.Add(1)
+		if r.URL.Path == "/api/initialize" && initialized.Load() {
+			io.WriteString(w, `{"language":"go","agent":"human","harness":"manual"}`)
+			return
+		}
 		http.Error(w, "operator-only-detail", 500)
 	}))
 	defer server.Close()
@@ -93,12 +99,15 @@ func TestSupervisorIntegration(t *testing.T) {
 		name     string
 		option   string
 		wantExit int
+		survey   bool
 	}{
 		{name: "contestant failure"},
+		{name: "survey survives contestant failure", survey: true},
 		{name: "unsupported post validation", option: "--only-post-validation", wantExit: 1},
 		{name: "invalid configuration", option: "--users=0", wantExit: 2},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			initialized.Store(tc.survey)
 			before := requests.Load()
 			read, write, err := os.Pipe()
 			if err != nil {
@@ -158,6 +167,29 @@ func TestSupervisorIntegration(t *testing.T) {
 				if len(reports) < 2 || reports[0].Finished {
 					t.Fatal("missing progress")
 				}
+
+				if reports[0].SurveyResponse != nil {
+					t.Fatal("survey reported before initialization")
+				}
+				for _, report := range reports[1:] {
+					if !tc.survey {
+						if report.SurveyResponse != nil {
+							t.Fatal("survey reported after failed initialization")
+						}
+						continue
+					}
+					data, err := protojson.Marshal(report.GetSurveyResponse())
+					if err != nil {
+						t.Fatal(err)
+					}
+					var survey map[string]any
+					if err := json.Unmarshal(data, &survey); err != nil {
+						t.Fatal(err)
+					}
+					if survey["language"] != "go" || survey["agent"] != "human" || survey["harness"] != "manual" {
+						t.Fatalf("survey missing from report: %s", data)
+					}
+				}
 				var public map[string]any
 				lines := strings.Split(strings.TrimSpace(stdout.String()), "\n")
 				if len(lines) < 2 || !strings.Contains(lines[0], `msg="phase: initialize"`) {
@@ -186,8 +218,12 @@ func TestSupervisorIntegration(t *testing.T) {
 					t.Fatalf("public: %s", &stdout)
 				}
 				diagnostic := "ステータスコード 500 が返りました（期待値 200"
-				if final.Execution.Reason != "初期化に失敗しました" {
-					t.Fatalf("reason: got %q, want %q", final.Execution.Reason, "初期化に失敗しました")
+				wantReason := "初期化に失敗しました"
+				if tc.survey {
+					wantReason = "管理者としてログインできません"
+				}
+				if final.Execution.Reason != wantReason {
+					t.Fatalf("reason: got %q, want %q", final.Execution.Reason, wantReason)
 				}
 				messages, ok := public["messages"].([]any)
 				if !ok || len(messages) == 0 {

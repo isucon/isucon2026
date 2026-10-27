@@ -13,7 +13,7 @@ import (
 	"github.com/isucon/isucon2026/portal/internal/model"
 )
 
-var tables = []string{"teams", "contestants", "contestant_instances", "benchmark_jobs", "benchmark_results", "notifications", "survey_responses"}
+var tables = []string{"teams", "contestants", "contestant_instances", "benchmark_jobs", "benchmark_results", "notifications", "survey_response_history", "survey_responses"}
 
 // WriteSQL emits a psql script for a migrated database with an unused ID range. Importing it
 // neither runs workers nor contacts external services.
