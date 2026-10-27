@@ -3,10 +3,12 @@ package isureal
 import (
 	"archive/zip"
 	"bytes"
+	"compress/flate"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"sync"
@@ -92,7 +94,11 @@ func exportPostsHandler(h *HandlerContext) echo.HandlerFunc {
 			}
 			items = append(items, exportPostResponse{createPostResponse: newPostResponse(post, author), ImagePath: imagePath})
 		}
-		manifest, err := writer.CreateHeader(&zip.FileHeader{Name: "posts.json", Method: zip.Store})
+		// The manifest shrinks several times; the images are stored as they are.
+		writer.RegisterCompressor(zip.Deflate, func(out io.Writer) (io.WriteCloser, error) {
+			return flate.NewWriter(out, flate.BestSpeed)
+		})
+		manifest, err := writer.Create("posts.json")
 		if err != nil {
 			return err
 		}
