@@ -16,9 +16,11 @@ RUN npm run build
 
 FROM ruby:4.0.9-slim-trixie@sha256:88f0d8f1f2f7829c8c85c5cfee774f7ac936a7ba460e904e8c873b6a7f96c311
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends ca-certificates curl iproute2 iputils-ping nginx postgresql-client tzdata \
+  && apt-get install -y --no-install-recommends ca-certificates curl iproute2 iputils-ping libvips42t64 nginx postgresql-client tzdata \
   && rm -rf /var/lib/apt/lists/* /etc/nginx/sites-enabled/default
-ENV BUNDLE_WITHOUT=test
+# 問題サーバーの isureal-ruby.service と同じ。libvips の復号で glibc の arena ごとに空き領域が残り、
+# 既定のままだと worker の RSS が増えて app の上限 1 GiB を超える
+ENV BUNDLE_WITHOUT=test MALLOC_ARENA_MAX=2
 WORKDIR /app/ruby
 COPY --from=ruby-build /usr/local/bundle /usr/local/bundle
 COPY webapp/ruby/Gemfile webapp/ruby/Gemfile.lock webapp/ruby/config.ru ./

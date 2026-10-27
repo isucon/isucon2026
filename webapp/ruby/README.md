@@ -4,6 +4,7 @@
 
 - Ruby 4.0 / [Sinatra](https://sinatrarb.com/) / [Puma](https://puma.io/) / [pg](https://github.com/ged/ruby-pg)
 - 依存 gem は `Gemfile` と `Gemfile.lock` で固定しています
+- 画像の検証に [ruby-vips](https://github.com/libvips/ruby-vips) を使います。実行には libvips（Debian や Ubuntu では `libvips42t64`）が必要です
 
 ## 構成
 

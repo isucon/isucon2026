@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
-require 'pure_jpeg'
+require 'vips'
+
+Vips.concurrency_set(1)
 
 module Isureal
   module JPEG
@@ -9,7 +11,8 @@ module Isureal
     module_function
 
     def decode(data)
-      image = PureJPEG::Decoder.new(data).decode
+      image = Vips::Image.jpegload_buffer(data, access: :sequential, fail_on: :error)
+      image.avg
       Image.new(width: image.width, height: image.height)
     rescue StandardError
       nil
