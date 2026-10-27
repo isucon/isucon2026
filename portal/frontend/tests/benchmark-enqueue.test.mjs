@@ -57,6 +57,7 @@ test("enqueue has no selector or remembered target and submits the first registe
     { id: 99n, number: 2n },
   ]);
   assert.doesNotMatch(view.html, /<select|<option|最後に利用したサーバー|サーバーを選択/);
+  assert.match(view.html, /Enqueue を押すと計測を開始します。/);
   assert.equal(view.storageReads, 0);
   assert.equal(view.button.props.disabled, false);
   await view.form.props.onSubmit({ preventDefault() {} });

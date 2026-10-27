@@ -54,7 +54,7 @@ export const ContestantBenchmarkJobForm: React.FC<Props> = (props: Props) => {
               </button>
             </div>
           </div>
-          <p className="is-size-7">Enqueue を押すと、固定のベンチ対象に対して計測を開始します。</p>
+          <p className="is-size-7">Enqueue を押すと計測を開始します。</p>
           {error ? <ErrorMessage error={error} /> : null}
         </form>
       </div>
