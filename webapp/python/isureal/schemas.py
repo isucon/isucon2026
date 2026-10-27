@@ -255,3 +255,5 @@ class AdminLoginResponse(Schema):
 
 class InitializeResponse(Schema):
     language: str
+    agent: str
+    harness: str
