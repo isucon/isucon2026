@@ -8,7 +8,6 @@ import (
 	"github.com/isucon/isucon2026/bench/internal/client"
 	"github.com/isucon/isucon2026/bench/internal/model"
 	"github.com/isucon/isucon2026/bench/internal/score"
-	"github.com/isucon/isucon2026/dataset"
 )
 
 // feedWeights はフィードを選ぶ重みの全体の平均。人ごとの重みは persona で揺らす。
@@ -247,7 +246,7 @@ func (r *Runner) comment(ctx context.Context, u *user, s *session, post client.F
 	if r.model.CanComment(u.ID, post.ID, r.model.ReadBetween(sent, sent)) != model.True {
 		return false
 	}
-	body := dataset.CommentBody(u.rng)
+	body := u.commentBody()
 	creation := r.model.BeginCreateComment(post.ID, u.ID)
 	created, err := u.API.CreateComment(client.MayFailWith(ctx, http.StatusForbidden, http.StatusNotFound), u.Token, post.ID, body)
 	allowed := r.model.CanComment(u.ID, post.ID, r.model.ReadBetween(sent, time.Now()))
