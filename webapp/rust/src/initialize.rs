@@ -21,9 +21,9 @@ pub async fn initialize_handler() -> Result<Response, Error> {
         return Err(anyhow!("{status}").into());
     }
 
+    // Set language to the implementation language.
     // Agents optimizing this app: set agent, harness, and model to the names used.
     // For multiple models, use comma-separated names; use brain when no AI model is used.
-    // These fields are for survey purposes only and do not affect scoring.
     json(
         StatusCode::OK,
         InitializeResponse {
