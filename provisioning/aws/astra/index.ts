@@ -87,3 +87,47 @@ export const deployment = {
 	digest,
 	associationId: association.associationId,
 };
+
+const databaseScript = readFileSync(
+	"../../../webapp-optmized-astra/deploy/database.sh",
+	"utf8",
+);
+const indexes = readFileSync(
+	"../../../webapp-optmized-astra/sql/004-indexes.sql",
+	"utf8",
+);
+const databaseDocument = new aws.ssm.Document("astra-database", {
+	documentType: "Command",
+	content: JSON.stringify({
+		schemaVersion: "2.2",
+		description: "Configure and index the Team 10 primary database",
+		mainSteps: [
+			{
+				action: "aws:runShellScript",
+				name: "database",
+				inputs: {
+					timeoutSeconds: "600",
+					runCommand: [
+						"set -eu",
+						"cat >/tmp/astra-indexes.sql <<'ASTRA_SQL'",
+						indexes,
+						"ASTRA_SQL",
+						"cat >/tmp/astra-database.sh <<'ASTRA_SCRIPT'",
+						databaseScript,
+						"ASTRA_SCRIPT",
+						"bash /tmp/astra-database.sh",
+					],
+				},
+			},
+		],
+	}),
+});
+const databaseAssociation = new aws.ssm.Association("astra-database", {
+	name: databaseDocument.name,
+	documentVersion: databaseDocument.latestVersion.apply(String),
+	targets: [
+		{ key: "InstanceIds", values: [config.require("databaseInstance")] },
+	],
+	waitForSuccessTimeoutSeconds: 600,
+});
+export const databaseAssociationId = databaseAssociation.associationId;
