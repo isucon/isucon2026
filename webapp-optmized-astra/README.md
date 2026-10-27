@@ -124,6 +124,7 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 - フィードは閲覧条件・友人関係・ブロック・投稿済み条件を1回の問い合わせで評価し、現在の投稿期間ごとに最大51件へ絞り、全地域の上位51件だけを取得する。従来のRustの判定との比較テストでページ送りと状態変更を検証する。
 - 投稿詳細とコメント・リアクションの権限判定は、対象投稿に必要な友人・2段階の関係・ブロック・投稿済み条件を1回で確認する。友人グラフ全体をアプリへ転送せず、従来のRust判定との比較で地域変更、投稿期間終了、退会、削除、本人の投稿を含む条件を検証する。
 - 新規登録はユーザー名の一意制約と単一INSERTで処理する。同名の並行登録は1件だけ成功し、別名の登録は互いをブロックしない。
+- ユーザー検索はASCII文字列を簡単な小文字変換で処理し、Unicode正規化の結果を元の文字列ごとに最大16,384件保持する。名前・ブロック・退会状態はDBから毎回読み、検索条件や権限の結果はキャッシュしない。NFC・case folding・NFCの順序と部分一致の意味は維持する。
 - エクスポートのZIP生成は最大2本のブロッキングワーカーで処理する。DBの行を4件までのチャネルで渡し、画像全件と完成ZIPを同時に保持する負荷を抑える。
 - europe/app2、america/app3へのPostgreSQL配置。同期レプリカと地域内読み取りを検証し、性能と整合性を比較する。
 
@@ -153,3 +154,4 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261027T161141Z-team10 | probe open windows for notifications and replace historical polling index with compact user index | PASS | 45,394 |
 | 20261027T163124Z-team10 | single-query post and interaction permissions; CPU and lock profiling | PASS | 44,935 |
 | 20261027T165020Z-team10 | retest native response barriers after notification and permission optimizations; preserve standby caches | PASS | 50,018 |
+| 20261027T165726Z-team10 | cache exact Unicode search normalization with ASCII fast path | FAIL | 0 |
