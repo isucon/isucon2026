@@ -43,6 +43,10 @@ type persona struct {
 	retake float64
 	// wanderlust は 1 日を過ごしたあとで別のリージョンへ移る確率。
 	wanderlust float64
+	// phrases は口癖のコメント。loyalty の確率でこの中から書く。
+	phrases []string
+	// avatar と bio は、登録したときにプロフィール画像と自己紹介を設定する確率。
+	avatar, bio float64
 }
 
 // newPersona は username の好みと癖を決める。
@@ -73,7 +77,13 @@ func newPersona(seed uint64, username string) persona {
 		p.feeds[i] /= total
 	}
 	key := hashOf(seed, "persona", "reaction", username)
-	p.reaction = dataset.ReactionType(rand.New(rand.NewPCG(key, key^0x72656163)))
+	habits := rand.New(rand.NewPCG(key, key^0x72656163))
+	p.reaction = dataset.ReactionType(habits)
+	for range 3 {
+		p.phrases = append(p.phrases, dataset.CommentBody(habits))
+	}
+	p.avatar = 0.3 + 0.5*at("avatar")
+	p.bio = 0.2 + 0.5*at("bio")
 	// 位置情報は初期データの投稿（なし 7 割、市区町村 2 割、座標 1 割）に近い割合の人が付ける。
 	switch x := at("location"); {
 	case x < 0.65:
@@ -136,6 +146,14 @@ func (u *user) reactionType() string {
 		return u.persona.reaction
 	}
 	return dataset.ReactionType(u.rng)
+}
+
+// commentBody はコメントの本文を選ぶ。
+func (u *user) commentBody() string {
+	if u.rng.Float64() < u.persona.loyalty {
+		return u.persona.phrases[u.rng.IntN(len(u.persona.phrases))]
+	}
+	return dataset.CommentBody(u.rng)
 }
 
 // budgetOf は u のその日の閲覧の回数。

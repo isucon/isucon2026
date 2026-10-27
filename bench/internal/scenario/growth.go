@@ -463,6 +463,13 @@ func (r *Runner) runNewcomer(ctx context.Context, region string) {
 	r.model.AddUser(model.User{ID: u.ID, Username: u.Username, SecretKey: u.SecretKey, Region: region})
 	r.addUser(u)
 	r.arrived(region)
+	// 登録した人の一部は、まずプロフィール画像と自己紹介を設定する。
+	if unit(r.seed, "onboard-avatar", username) < u.persona.avatar {
+		r.changeProfileImage(ctx, u)
+	}
+	if unit(r.seed, "onboard-bio", username) < u.persona.bio {
+		r.updateBio(ctx, u)
+	}
 	if u.rng.Float64() < r.cfg.Growth.FriendRatio {
 		for _, target := range r.chooseFriends(u, friendRequestsPerNewcomer) {
 			r.requestFriend(ctx, u, target, u.rng.IntN(2) == 0)
