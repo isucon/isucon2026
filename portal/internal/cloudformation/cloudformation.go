@@ -27,6 +27,7 @@ type params struct {
 	PortalCredentials string
 	PortalHost        string
 	AMIID             string
+	RouterAMIID       string
 }
 
 type envCheckInstance struct {
@@ -86,6 +87,7 @@ func render(cfg *config.Config, name string, teamID int64, zoneID, amiID string,
 		PortalCredentials: base64.StdEncoding.EncodeToString(credsJSON),
 		PortalHost:        cfg.PublicURLHost,
 		AMIID:             amiID,
+		RouterAMIID:       cfg.RouterAMIID,
 	})
 	return sb.String(), err
 }
