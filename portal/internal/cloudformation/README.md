@@ -79,3 +79,8 @@ HTTP integration tests for registration/replacement and hidden Router data, and
 Supervisor proxy tests. Actual CloudFormation creation and a benchmark against a
 new stack are still required before rollout. The registration service does not
 implement the competition's full post-contest environment validation.
+
+The Router attaches both its public and data ENIs in the EC2 `NetworkInterfaces`
+property at launch. Do not add a separate `NetworkInterfaceAttachment`: attaching
+another ENI during instance stabilization makes the requested and observed
+interface lists differ. Inter-server routes depend on the Router resource.

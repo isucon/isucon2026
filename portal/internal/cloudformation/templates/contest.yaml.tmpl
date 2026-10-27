@@ -149,12 +149,6 @@ Resources:
       PrivateIpAddress: 192.168.10.10
       SourceDestCheck: false
       GroupSet: [!Ref RouterDataSecurityGroup]
-  RouterDataAttachment:
-    Type: AWS::EC2::NetworkInterfaceAttachment
-    Properties:
-      InstanceId: !Ref Router
-      NetworkInterfaceId: !Ref RouterDataInterface
-      DeviceIndex: '1'
 
 {{range .ContestServers}}
   {{.ID}}Subnet:
@@ -182,7 +176,7 @@ Resources:
 {{$server := .}}{{range $.ContestServers}}{{if ne .Number $server.Number}}
   {{$server.ID}}To{{.ID}}:
     Type: AWS::EC2::Route
-    DependsOn: [{{.ID}}Subnet, RouterDataAttachment]
+    DependsOn: [{{.ID}}Subnet, Router]
     Properties:
       RouteTableId: !Ref {{$server.ID}}Routes
       DestinationCidrBlock: 192.168.{{.Number}}.0/24
@@ -315,6 +309,8 @@ Resources:
       NetworkInterfaces:
         - DeviceIndex: '0'
           NetworkInterfaceId: !Ref RouterPublicInterface
+        - DeviceIndex: '1'
+          NetworkInterfaceId: !Ref RouterDataInterface
       MetadataOptions:
         HttpTokens: required
       BlockDeviceMappings:
