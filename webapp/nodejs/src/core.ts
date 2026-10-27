@@ -63,8 +63,10 @@ export function imageSignature(key: Buffer, id: string, exp: number) {
     value = createHmac("sha256", key).update(value).digest();
   return value;
 }
+export const unixSeconds = (instant: Temporal.Instant) =>
+  Math.floor(instant.epochMilliseconds / 1000);
 export function signedImageURL(user: User, id: string) {
-  const exp = Math.floor(Date.now() / 1000) + 86400;
+  const exp = unixSeconds(Temporal.Now.instant().add({ hours: 24 }));
   return `/api/images/${encodeURIComponent(id)}?exp=${exp}&sig=${imageSignature(user.imageKey!, id, exp).toString("base64url")}`;
 }
 export const timestamp = (value: string) =>

@@ -4,11 +4,11 @@ import type pg from "pg";
 import { fail } from "./core.js";
 import { rows } from "./db.js";
 
-const ipBanReloadInterval = 200;
+const ipBanReloadInterval = Temporal.Duration.from({ milliseconds: 200 });
 
 interface IPBanSnapshot {
-  loadedAt: number;
-  bans: Map<string, number>;
+  loadedAt: Temporal.Instant;
+  bans: Map<string, Temporal.Instant>;
 }
 
 async function loadIPBans(db: pg.Pool): Promise<IPBanSnapshot> {
@@ -17,8 +17,10 @@ async function loadIPBans(db: pg.Pool): Promise<IPBanSnapshot> {
     "SELECT ip, banned_until FROM ip_bans WHERE banned_until > clock_timestamp()",
   );
   return {
-    loadedAt: Date.now(),
-    bans: new Map(records.map((r) => [r.ip, Date.parse(r.banned_until)])),
+    loadedAt: Temporal.Now.instant(),
+    bans: new Map(
+      records.map((r) => [r.ip, Temporal.Instant.from(r.banned_until)]),
+    ),
   };
 }
 
@@ -37,7 +39,11 @@ export function ipBanMiddleware(db: pg.Pool) {
   let reloading = false;
   return createMiddleware(async (c, next) => {
     if (
-      (!snapshot || Date.now() - snapshot.loadedAt >= ipBanReloadInterval) &&
+      (!snapshot ||
+        Temporal.Duration.compare(
+          Temporal.Now.instant().since(snapshot.loadedAt),
+          ipBanReloadInterval,
+        ) >= 0) &&
       !reloading
     ) {
       reloading = true;
@@ -48,7 +54,8 @@ export function ipBanMiddleware(db: pg.Pool) {
       }
     }
     const until = snapshot?.bans.get(extractClientIP(c));
-    if (until && Date.now() < until) fail(403, "ip_banned");
+    if (until && Temporal.Instant.compare(Temporal.Now.instant(), until) < 0)
+      fail(403, "ip_banned");
     await next();
   });
 }
