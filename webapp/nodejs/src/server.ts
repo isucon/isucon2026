@@ -117,7 +117,7 @@ export async function newServer(config: Config, poolSize: number): Promise<Hono<
   return e;
 }
 
-const allowMethods = ["CONNECT", "DELETE", "GET", "HEAD", "PATCH", "POST", "PUT", "TRACE"];
+const allowMethods = ["CONNECT", "DELETE", "GET", "HEAD", "PATCH", "POST", "PUT", "TRACE"] as const;
 
 function routeNotFoundHandler(e: Hono<Env>): NotFoundHandler<Env> {
   let routes: { method: string; pattern: RegExp }[] | undefined;
