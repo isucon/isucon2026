@@ -30,7 +30,7 @@ export function initializeHandler(_: HandlerContext): Handler<Env> {
     return jsonResponse(c, 200, {
       language: "nodejs",
       agent: "human",
-      harness: "hand",
+      harness: "manual",
     });
   };
 }

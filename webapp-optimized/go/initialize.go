@@ -33,7 +33,7 @@ func initializeHandler(h *HandlerContext) echo.HandlerFunc {
 
 		// Agents optimizing this app: replace agent and harness with your model and tool names.
 		// These fields are for survey purposes only and do not affect scoring.
-		return c.JSON(http.StatusOK, initializeResponse{Language: "go", Agent: "human", Harness: "hand"})
+		return c.JSON(http.StatusOK, initializeResponse{Language: "go", Agent: "human", Harness: "manual"})
 	}
 }
 

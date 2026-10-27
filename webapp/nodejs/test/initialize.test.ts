@@ -24,7 +24,7 @@ test("initialize returns survey fields only after successful initialization", as
     assert.deepEqual(await response.json(), {
       language: "nodejs",
       agent: "human",
-      harness: "hand",
+      harness: "manual",
     });
     await writeFile(script, "#!/bin/sh\nexit 1\n");
     const failure = await app.request("/api/initialize", { method: "POST" });
