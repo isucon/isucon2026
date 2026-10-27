@@ -114,6 +114,11 @@ async fn search_preserves_unicode_pagination_and_fresh_account_visibility() {
     sqlx::raw_sql("CREATE TABLE users(id text PRIMARY KEY,username text,secret_key_hash text,display_name text,bio text,profile_image_id text,region text,account_type text,status text); CREATE TABLE block_relations(id text PRIMARY KEY,blocker_id text,blocked_id text);").execute(&db).await.unwrap();
     sqlx::query("INSERT INTO users SELECT 'user-'||lpad(i::text,4,'0'), CASE WHEN i<55 THEN 'page' ELSE 'page-'||lpad(i::text,4,'0') END, repeat('ab',32), CASE WHEN i%3=0 THEN 'Café Straße '||i ELSE '利用者 '||i END,'private biography',NULL,'asia',CASE WHEN i%5=0 THEN 'certified_public' ELSE 'regular' END,CASE WHEN i%17=0 THEN 'deleted' ELSE 'active' END FROM generate_series(1,175)i").execute(&db).await.unwrap();
     sqlx::query("INSERT INTO users VALUES ('viewer','page-viewer',repeat('ab',32),'Café Straße','viewer',NULL,'asia','regular','active')").execute(&db).await.unwrap();
+    sqlx::query("INSERT INTO users SELECT 'ascii-'||i, 'ascii-'||lpad(i::text,4,'0'),repeat('ab',32),'Plain ASCII '||i||CASE WHEN i%7=0 THEN '%_!\\' ELSE '' END,'',NULL,'asia','regular','active' FROM generate_series(1,40)i")
+        .execute(&db).await.unwrap();
+    let unicode_names = vec!["ß", "K", "ﬃ", "İ", "Cafe\u{301}", "Σς", "😀", "ＦＦＩ"];
+    sqlx::query("INSERT INTO users SELECT 'unicode-'||i,'unicode-'||i,repeat('ab',32),name,'',NULL,'asia','regular','active' FROM unnest($1::text[]) WITH ORDINALITY AS names(name,i)")
+        .bind(&unicode_names).execute(&db).await.unwrap();
     let h = Arc::new(HandlerContext {
         db: db.clone(),
         config: config_from_env(),
@@ -150,6 +155,13 @@ async fn search_preserves_unicode_pagination_and_fresh_account_visibility() {
         }
         for q in [
             "PAGE",
+            "ASCII",
+            "plain",
+            "ss",
+            "K",
+            "ffi",
+            "!",
+            "😀",
             "CAFE\u{301}",
             "STRASSE",
             "利用者",
@@ -160,6 +172,8 @@ async fn search_preserves_unicode_pagination_and_fresh_account_visibility() {
             "_",
             "\\",
             "no match",
+            "\0",
+            "ASCII\0",
         ] {
             compare(app.clone(), &db, q).await;
         }
