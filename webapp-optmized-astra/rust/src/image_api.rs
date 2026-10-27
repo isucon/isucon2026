@@ -7,7 +7,7 @@ use axum::response::{IntoResponse, Response};
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use bytes::Bytes;
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Datelike, Utc};
 use serde::Deserialize;
 use subtle::ConstantTimeEq;
 
@@ -176,15 +176,21 @@ async fn get_image(
             .get(&input.image_id)
             .copied()
     });
-    let mut object = if timestamp.is_some() {
+    let mut object = if let Some(timestamp) = timestamp {
         load_image_object(
             &h.db,
             &input.image_id,
             cached.as_ref(),
-            timestamp,
-            &CACHED_IMAGE_QUERY,
+            Some(timestamp),
+            partition_image_query(timestamp),
         )
-        .await?
+        .await
+        .or_else(|error| match &error {
+            // A deployment/import may use different partition names. The
+            // parent lookup below still enforces all current authorization.
+            sqlx::Error::Database(db) if db.code().as_deref() == Some("42P01") => Ok(None),
+            _ => Err(error),
+        })?
     } else {
         None
     };
@@ -254,10 +260,17 @@ struct ImageObject {
     asset_key: Option<String>,
 }
 
+// Keep the owner lookup correlated: a generic parent-table plan estimates
+// one image per partition and otherwise chooses a full users scan per GET.
+// OFFSET 0 preserves every matching row while preventing that join flattening.
 const IMAGE_QUERY: &str = r#"
    SELECT CASE WHEN i.created_at = $3 AND (i.xmin::text = $2 OR (i.asset_key IS NOT NULL AND 'asset:' || i.asset_key = $2)) THEN NULL ELSE i.data END AS data,
           i.media_type, u.secret_key_hash, i.xmin::text AS version, i.created_at, i.asset_key
-   FROM image_objects i JOIN users u ON u.id = i.owner_user_id AND u.status = 'active'
+   FROM image_objects i
+   JOIN LATERAL (
+     SELECT id, secret_key_hash, profile_image_id FROM users
+     WHERE id = i.owner_user_id AND status = 'active' OFFSET 0
+   ) u ON true
    WHERE i.id = $1 AND (
      u.profile_image_id = i.id
      OR EXISTS (
@@ -273,8 +286,36 @@ const IMAGE_QUERY: &str = r#"
    )
   "#;
 
-static CACHED_IMAGE_QUERY: LazyLock<String> =
-    LazyLock::new(|| format!("{IMAGE_QUERY} AND i.created_at = $3"));
+// Match the monthly partitions in 001-schema.sql. All SQL identifiers come
+// from this fixed range, never request data. A missing/moved row falls back to
+// the parent table; the timestamp is only a performance hint.
+const FIRST_IMAGE_MONTH: i32 = 2024 * 12 + 8;
+const IMAGE_MONTHS: usize = 34;
+static PARTITION_IMAGE_QUERIES: LazyLock<Vec<String>> = LazyLock::new(|| {
+    (0..=IMAGE_MONTHS)
+        .map(|offset| {
+            let table = if offset == IMAGE_MONTHS {
+                "image_objects_default".to_owned()
+            } else {
+                let month = FIRST_IMAGE_MONTH + offset as i32;
+                format!("image_objects_{:04}{:02}", month / 12, month % 12 + 1)
+            };
+            format!(
+                "{} AND i.created_at = $3",
+                IMAGE_QUERY.replace("FROM image_objects i", &format!("FROM {table} i"))
+            )
+        })
+        .collect()
+});
+
+fn partition_image_query(timestamp: DateTime<Utc>) -> &'static str {
+    let offset = timestamp.year() * 12 + timestamp.month0() as i32 - FIRST_IMAGE_MONTH;
+    let index = usize::try_from(offset)
+        .ok()
+        .filter(|offset| *offset < IMAGE_MONTHS)
+        .unwrap_or(IMAGE_MONTHS);
+    &PARTITION_IMAGE_QUERIES[index]
+}
 
 async fn load_image_object(
     db: &sqlx::PgPool,
