@@ -8,9 +8,11 @@ use http_body_util::BodyExt;
 use isureal::{
     HandlerContext,
     bind::Bind,
+    comment::can_comment,
     config_from_env,
     feed_api::{GetFeedRequest, get_feed_handler},
-    post::{PostWithAuthor, load_viewer_context, select_posts_with_author},
+    post::{PostWithAuthor, can_view_post, load_viewer_context, select_posts_with_author},
+    post_api::{GetPostRequest, get_post_handler},
     session::Session,
 };
 use serde_json::Value;
@@ -82,6 +84,7 @@ fn session() -> Session {
 }
 
 async fn compare(h: &Arc<HandlerContext>, stage: &str) {
+    compare_post_permissions(h, stage).await;
     for feed in ["public", "friends", "friends-of-friends", "following"] {
         let mut before = None;
         let mut before_id = String::new();
@@ -123,6 +126,79 @@ async fn compare(h: &Arc<HandlerContext>, stage: &str) {
             }
             before = Some(expected[49].post.posted_at);
             before_id = expected[49].post.id.clone();
+        }
+    }
+}
+
+async fn compare_post_permissions(h: &Arc<HandlerContext>, stage: &str) {
+    let viewer = match load_viewer_context(&mut h.db.acquire().await.unwrap(), "viewer").await {
+        Ok(viewer) => Some(viewer),
+        Err(err) if err.is_no_rows() => None,
+        Err(err) => panic!("reference viewer: {err}"),
+    };
+    let posts = select_posts_with_author(&h.db, "", PgArguments::default())
+        .await
+        .unwrap();
+    let mut ids: Vec<String> = sqlx::query_scalar("SELECT id FROM posts ORDER BY id")
+        .fetch_all(&h.db)
+        .await
+        .unwrap();
+    ids.push("nonexistent".into());
+    for id in ids {
+        let post = posts.iter().find(|post| post.post.id == id);
+        let expected_view = post
+            .zip(viewer.as_ref())
+            .is_some_and(|(p, v)| v.can_view(&p.post));
+        let expected_comment = post.zip(viewer.as_ref()).is_some_and(|(p, v)| {
+            v.can_view(&p.post)
+                && p.post.window_ended_at.is_none()
+                && if v.user.id == p.post.author_id {
+                    v.has_posted_today
+                } else {
+                    p.post.visibility == "public" || v.friends.contains(&p.post.author_id)
+                }
+        });
+        assert_eq!(
+            can_view_post(&mut h.db.acquire().await.unwrap(), "viewer", &id)
+                .await
+                .unwrap(),
+            expected_view,
+            "view stage={stage}, post={id}"
+        );
+        assert_eq!(
+            can_comment(&mut h.db.acquire().await.unwrap(), "viewer", &id)
+                .await
+                .unwrap(),
+            expected_comment,
+            "comment stage={stage}, post={id}"
+        );
+        let response = get_post_handler(
+            State(h.clone()),
+            Extension(session()),
+            Bind(GetPostRequest {
+                post_id: id.clone(),
+            }),
+        )
+        .await
+        .into_response();
+        assert_eq!(
+            response.status(),
+            if expected_view {
+                StatusCode::OK
+            } else {
+                StatusCode::NOT_FOUND
+            },
+            "detail stage={stage}, post={id}"
+        );
+        if expected_view {
+            let body: Value =
+                serde_json::from_slice(&response.into_body().collect().await.unwrap().to_bytes())
+                    .unwrap();
+            let expected = post.unwrap();
+            assert_eq!(body["id"], expected.post.id);
+            assert_eq!(body["caption"], expected.post.caption);
+            assert_eq!(body["visibility"], expected.post.visibility);
+            assert_eq!(body["author"]["id"], expected.author.id);
         }
     }
 }

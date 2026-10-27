@@ -258,15 +258,7 @@ pub async fn can_view_post(
     viewer_id: &str,
     post_id: &str,
 ) -> Result<bool, Error> {
-    let post = match get_post_with_author(&mut *db, post_id).await {
-        Err(err) if err.is_no_rows() => return Ok(false),
-        result => result?,
-    };
-    let viewer = match load_viewer_context(db, viewer_id).await {
-        Err(err) if err.is_no_rows() => return Ok(false),
-        result => result?,
-    };
-    Ok(viewer.can_view(&post.post))
+    crate::post_access::can_view(db, viewer_id, post_id).await
 }
 
 pub async fn get_friend_ids<'c>(
