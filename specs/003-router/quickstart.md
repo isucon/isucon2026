@@ -108,7 +108,7 @@ E2E override を外した Router defaults:
 | Class | Additional delay | Bandwidth ceiling |
 |---|---:|---:|
 | same region | 0 ms | 1 Gbps |
-| cross region | 200 ms end-to-end（server間はRTT） | 200 Mbps |
+| cross region | 100 ms end-to-end（server間はRTT） | 200 Mbps |
 
 値を変更しても country/server region classification、Portal applied contract、Host routing は変化しない。
 

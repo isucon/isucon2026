@@ -82,7 +82,7 @@ Invariants:
 Fields:
 
 - `sameRegion`（default delay 0 ms、bandwidth 1,000,000,000 bit/s）
-- `apEu` / `euUs` / `apUs`（各 region pair。default delay 200 ms end-to-end、サーバー間tcでは片道100 msずつ。
+- `apEu` / `euUs` / `apUs`（各 region pair。default delay 100 ms end-to-end、サーバー間tcでは片道50 msずつ。
   default bandwidth 200,000,000 bit/s。双方向で共通）
 
 Validation:

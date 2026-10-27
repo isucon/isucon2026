@@ -139,7 +139,7 @@ HTTP 経路、国別制約、サーバー間経路、動的設定変更、再接
 - **FR-002**: System MUST place the three server identities in mutually isolated connection segments and MUST route every supported server-to-server path through the Router.
 - **FR-003**: System MUST prevent an application server from bypassing the Router to reach another application server's segment.
 - **FR-004**: System MUST apply no Router-added latency and a 1 Gbps ceiling to same-region server traffic.
-- **FR-005**: System MUST apply 200 ms additional round-trip latency and a 200 Mbps per-region ceiling to cross-region server traffic, splitting the delay evenly as 100 ms in each direction.
+- **FR-005**: System MUST apply 100 ms additional round-trip latency and a 200 Mbps per-region ceiling to cross-region server traffic, splitting the delay evenly as 50 ms in each direction. (Changed from 200 ms on 2026-10-26 after benchmark measurements.)
 - **FR-006**: System MUST route the team application hostname to the configured main server and each server-specific hostname only to its named server.
 - **FR-007**: System MUST determine the effective client country from one valid `X-Country-Code` value, or use the configured default country when the header is absent.
 - **FR-008**: System MUST support the same initial country set and country-to-region mapping as the Portal contract: US/CA/MX→US, JP/KR/CN/AU→AP, GB/DE/FR→EU.

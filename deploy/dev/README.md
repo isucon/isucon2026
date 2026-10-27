@@ -97,4 +97,4 @@ curl -X POST -H 'Host: app.127.0.0.1.nip.io' http://127.0.0.1:18090/api/initiali
 ## 補足事項
 
 - **フロントエンド**: Go API に対応。旧実装からの変更点は [frontend/README.md](../../frontend/README.md) を参照してください。
-- **リソース・遅延設定**: CPU・メモリ上限やリージョン間遅延（既定 200ms）等の調整は `compose.yaml` を参照してください。
+- **リソース・遅延設定**: CPU・メモリ上限やリージョン間遅延（既定 100ms）等の調整は `compose.yaml` を参照してください。
