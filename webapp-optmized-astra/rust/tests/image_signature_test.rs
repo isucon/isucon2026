@@ -37,6 +37,32 @@ fn image_signature_vector() {
 }
 
 #[test]
+fn cached_signature_preserves_reference_and_isolates_inputs() {
+    use hmac::{Hmac, Mac};
+    let reference = |key: &[u8], image: &str, exp: i64| {
+        let mut value = format!("{exp}:{image}").into_bytes();
+        for _ in 0..1000 {
+            let mut mac = Hmac::<Sha256>::new_from_slice(key).unwrap();
+            mac.update(&value);
+            value = mac.finalize().into_bytes().to_vec();
+        }
+        value
+    };
+    for length in [0, 1, 32, 64, 65, 128] {
+        let key = vec![7; length];
+        for image in ["id", "id2", "日本語/画像"] {
+            for exp in [-1, 0, i64::MAX] {
+                let expected = reference(&key, image, exp);
+                let mut first = image_signature(&key, image, exp);
+                assert_eq!(first, expected);
+                first[0] ^= 1;
+                assert_eq!(image_signature(&key, image, exp), expected);
+            }
+        }
+    }
+}
+
+#[test]
 fn signed_image_url_lifetime() {
     let key = Sha256::digest(b"test-secret");
     let user = User {
