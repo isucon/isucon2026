@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/isucon/isucon2026/bench/internal/benchrun"
+	"github.com/isucon/isucon2026/bench/internal/evil"
 	"github.com/isucon/isucon2026/bench/internal/photo"
 	"github.com/isucon/isucon2026/bench/internal/scenario"
 	"github.com/isucon/isucon2026/dataset"
@@ -74,6 +75,7 @@ func run(parent context.Context, args []string, stdout, stderr io.Writer) int {
 	users := flags.Int("users", 8, "initial load users per region (cohort users of the initial data join up to the same number)")
 	images := flags.String("images", os.Getenv("ISUXBENCH_IMAGES"), "photo archive (zip path or http(s) URL) for posts; empty uses small generated images (env ISUXBENCH_IMAGES)")
 	seed := flags.Uint64("seed", 0, "run seed (0 picks one at random)")
+	evilUsers := flags.Bool("evil", true, "run the abusive users during the load phase")
 	quickShare := flags.Float64("quick-share", scenario.DefaultGrowth.QuickShare, "share of a day at which a gate pass invites QuickInvites newcomers; the invite curve scales with it (calibration)")
 	duration := flags.Duration("duration", 60*time.Second, "length of the load phase (shorter values are for development)")
 	scale := flags.String("scale", "small", "scale of the initial data in the target DB: small or large (must match datagen -scale)")
@@ -159,11 +161,15 @@ func run(parent context.Context, args []string, stdout, stderr io.Writer) int {
 		logger.Info("photo archive loaded", "photos", loaded.Count(), "markable", loaded.Markable(), "elapsed", time.Since(started).Round(time.Millisecond))
 		photos = loaded
 	}
+	var evilFunc scenario.EvilFunc
+	if *evilUsers {
+		evilFunc = evil.Run
+	}
 	ctx, cancel := context.WithTimeout(parent, *timeout)
 	defer cancel()
 	var reportErr error
 	runner, err := scenario.NewRunner(scenario.Config{
-		Photos: photos, Seed: *seed, Growth: growth,
+		Photos: photos, Seed: *seed, Evil: evilFunc, Growth: growth,
 		Target: normalized, Host: *host, Users: *users, Duration: *duration, VerifyRate: *verifyRate,
 		Dataset: dataset.Generate(datasetConfig()), Logger: progressLogger,
 		OnProgress: func(result scenario.Result) {
