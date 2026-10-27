@@ -16,7 +16,7 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.TeamNumber != 1 || cfg.PortalEndpoint != "http://portal:8080" {
 		t.Fatalf("unexpected portal defaults: %+v", cfg)
 	}
-	crossRegion := domain.TrafficClass{Delay: 200 * time.Millisecond, BandwidthBPS: 200_000_000}
+	crossRegion := domain.TrafficClass{Delay: 100 * time.Millisecond, BandwidthBPS: 200_000_000}
 	wantTraffic := domain.TrafficProfile{
 		SameRegion: domain.TrafficClass{BandwidthBPS: 1_000_000_000},
 		APEU:       crossRegion, EUUS: crossRegion, APUS: crossRegion,
@@ -29,6 +29,10 @@ func TestLoadDefaults(t *testing.T) {
 	}
 	if cfg.Hosts.App != "app.team1-abc123.isucon2026.westens.tokyo" {
 		t.Fatalf("unexpected app host: %s", cfg.Hosts.App)
+	}
+	if cfg.HTTPListenAddress != "0.0.0.0:8080" || cfg.HTTPSListenAddress != "" || cfg.UpstreamPort != 8080 ||
+		cfg.HAProxyDir != "/run/isureal-haproxy" || cfg.HAProxyRuntimeAddress != "127.0.0.1:18001" {
+		t.Fatalf("unexpected proxy defaults: %+v", cfg)
 	}
 }
 
@@ -51,7 +55,10 @@ func TestLoadOverrides(t *testing.T) {
 		"ROUTER_APP1_HOST":                    "one.example.test",
 		"ROUTER_APP2_HOST":                    "two.example.test",
 		"ROUTER_APP3_HOST":                    "three.example.test",
-		"ROUTER_XDS_ACK_TIMEOUT":              "7s",
+		"ROUTER_COMMAND_TIMEOUT":              "7s",
+		"ROUTER_HTTPS_LISTEN_ADDRESS":         "0.0.0.0:443",
+		"ROUTER_TLS_CERTIFICATE":              "/etc/isucon/haproxy/tls/server.pem",
+		"ROUTER_UPSTREAM_PORT":                "80",
 		"ROUTER_PORTAL_RECONNECT_MIN_BACKOFF": "20ms",
 		"ROUTER_PORTAL_RECONNECT_MAX_BACKOFF": "2s",
 	}
@@ -59,7 +66,8 @@ func TestLoadOverrides(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.TeamNumber != 9 || cfg.XDSAckTimeout != 7*time.Second {
+	if cfg.TeamNumber != 9 || cfg.CommandTimeout != 7*time.Second || cfg.UpstreamPort != 80 ||
+		cfg.HTTPSListenAddress != "0.0.0.0:443" || cfg.TLSCertificate != "/etc/isucon/haproxy/tls/server.pem" {
 		t.Fatalf("overrides not loaded: %+v", cfg)
 	}
 	wantTraffic := domain.TrafficProfile{
@@ -105,6 +113,11 @@ func TestLoadRejectsInvalidConfiguration(t *testing.T) {
 		"duplicate address": {"ROUTER_APP2_REGION_LOCAL_IP": "172.31.2.10"},
 		"bad hostname":      {"ROUTER_APP_HOST": "http://example.test"},
 		"bad backoff":       {"ROUTER_PORTAL_RECONNECT_MIN_BACKOFF": "3s", "ROUTER_PORTAL_RECONNECT_MAX_BACKOFF": "1s"},
+		"https without key": {"ROUTER_HTTPS_LISTEN_ADDRESS": "0.0.0.0:443"},
+		"zero port":         {"ROUTER_UPSTREAM_PORT": "0"},
+		"large port":        {"ROUTER_UPSTREAM_PORT": "65536"},
+		"relative dir":      {"ROUTER_HAPROXY_DIR": "haproxy"},
+		"bad runtime":       {"ROUTER_HAPROXY_RUNTIME_ADDRESS": "localhost"},
 	}
 	for name, values := range tests {
 		t.Run(name, func(t *testing.T) {

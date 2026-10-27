@@ -99,6 +99,20 @@ func (c Config) RegionFor(server ServerID) Region {
 	}
 }
 
+// ServerRegion returns the fixed region of server.
+func ServerRegion(server ServerID) Region {
+	switch server {
+	case App1, DB1:
+		return RegionAP
+	case App2:
+		return RegionEU
+	case App3:
+		return RegionUS
+	default:
+		return ""
+	}
+}
+
 // ServerForRegion returns the server in the client's region.
 func ServerForRegion(region Region) ServerID {
 	switch region {
@@ -189,7 +203,6 @@ func SnapshotFromProto(value *portalv1.ConfigSnapshot, generation uint64) (Desir
 
 type ActiveSnapshot struct {
 	DesiredSnapshot
-	RDSVersion  string
 	CommittedAt time.Time
 }
 

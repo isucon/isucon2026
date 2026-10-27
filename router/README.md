@@ -2,7 +2,7 @@
 
 構成は app1=AP、app2=EU、app3=US、db1=AP の4台で固定です。db1 は共有 PostgreSQL 専用で HTTP routing の対象外です。
 
-Portal の desired config に追従し、Envoy の HTTP routing/shaping と Linux の server 間 routing/shaping を一体で管理する
+Portal の desired config に追従し、HAProxy の HTTP routing/shaping と Linux の server 間 routing/shaping を一体で管理する
 擬似地理分散 Router である。実装の構成と rollback 境界は [設計文書](../docs/router.md) を参照する。
 
 ## すぐに検証する
@@ -15,8 +15,9 @@ make router-check
 make router-e2e
 ```
 
-`router-check` は go vet/test/build、Compose model、Envoy bootstrap を検証する。`router-e2e` は Portal Mock、Router、
-Envoy、3つの server segment、runner を project `isureal-router-e2e` に構築し、routing、実測 shaping、動的変更、
+`router-check` は go vet/test/build、Compose model、既定の環境変数で生成した HAProxy の設定を検証する。
+`router-e2e` は Portal Mock、Router、HAProxy、3つの server segment、runner を project `isureal-router-e2e` に構築し、
+routing、実測 shaping、動的変更、
 再起動回復、Router 停止中の隔離を自動判定して cleanup する。既存の root/Portal Mock Compose project は停止しない。
 
 失敗後に container と network を残して調査する場合だけ次を使う。
@@ -24,7 +25,7 @@ Envoy、3つの server segment、runner を project `isureal-router-e2e` に構�
 ```bash
 ROUTER_E2E_KEEP_ON_FAILURE=1 router/tests/e2e/run.sh
 docker compose --project-name isureal-router-e2e -f router/compose.e2e.yaml ps --all
-docker compose --project-name isureal-router-e2e -f router/compose.e2e.yaml logs --no-color router envoy portal
+docker compose --project-name isureal-router-e2e -f router/compose.e2e.yaml logs --no-color router haproxy portal
 ```
 
 失敗ログは `router/.e2e-artifacts/compose.log` にも保存される。調査後の cleanup は次で行う。
@@ -34,8 +35,6 @@ docker compose --project-name isureal-router-e2e -f router/compose.e2e.yaml \
   down --volumes --remove-orphans
 ```
 
-より詳細な検証順序は [quickstart](../specs/003-router/quickstart.md) にある。
-
 ## Source layout
 
 ```text
@@ -43,10 +42,9 @@ cmd/router/             process wiring
 internal/config/        strict environment/topology configuration
 internal/domain/        fixed region/server/country/snapshot invariants
 internal/netcontrol/    interface discovery, nftables, HTB/netem, rollback
-internal/xds/           RDS builder, xDS server, ACK/NACK correlation
+internal/haproxy/       HAProxy config rendering, runtime API (default country)
 internal/reconcile/     Portal stream, latest-wins apply, report retry
 internal/status/        /healthz and /readyz
-envoy/bootstrap.yaml    static listener/xDS/backend clusters
 test-fixtures/server/   bounded E2E-only backend and peer probe
 tests/e2e/              compiled assertions and Compose orchestration
 compose.e2e.yaml        isolated five-network topology
@@ -65,17 +63,28 @@ production binary には fixture endpoint や Docker API client を含めない�
 |---|---|---|
 | `ROUTER_PORTAL_ENDPOINT` | `http://portal:8080` | Portal Connect base URL |
 | `ROUTER_TEAM_NUMBER` | `1` | 正の TeamKey number |
-| `ROUTER_XDS_LISTEN_ADDRESS` | `0.0.0.0:18000` | Envoy ADS/RDS gRPC listener |
 | `ROUTER_STATUS_LISTEN_ADDRESS` | `0.0.0.0:18081` | health/readiness listener |
-| `ROUTER_ENVOY_NODE_ID` | `isureal-router-envoy` | bootstrap と一致する xDS node ID |
-| `ROUTER_ROUTE_CONFIG_NAME` | `isureal_routes` | bootstrap と一致する RDS resource name |
-| `ROUTER_XDS_ACK_TIMEOUT` | `5s` | RDS version ACK の上限待ち時間 |
-| `ROUTER_COMMAND_TIMEOUT` | `5s` | 個々の nft/tc/sysctl command timeout |
-| `ROUTER_REPORT_RETRY_INTERVAL` | `500ms` | apply/report retry interval |
+| `ROUTER_COMMAND_TIMEOUT` | `5s` | 個々の nft/tc/sysctl command と HAProxy runtime API の timeout |
+| `ROUTER_REPORT_RETRY_INTERVAL` | `500ms` | apply/report retry interval。HAProxy の既定の国を確かめる間隔も兼ねる |
 | `ROUTER_PORTAL_RECONNECT_MIN_BACKOFF` | `100ms` | stream reconnect 初期 backoff |
 | `ROUTER_PORTAL_RECONNECT_MAX_BACKOFF` | `5s` | stream reconnect 最大 backoff |
 
 duration は Go duration 形式で指定する。
+
+### HAProxy
+
+HAProxy の service は起動のたびに `isureal-router haproxy-config` を実行し、Router と同じ環境変数から
+`ROUTER_HAPROXY_DIR` に `haproxy.cfg`、遅延用の Lua、空の既定の国の map を書く。Controller は既定の国だけを
+runtime API で書き換える。
+
+| Environment variable | Default | Meaning |
+|---|---|---|
+| `ROUTER_HTTP_LISTEN_ADDRESS` | `0.0.0.0:8080` | HTTP の待ち受け |
+| `ROUTER_HTTPS_LISTEN_ADDRESS` | 空（無効） | HTTPS の待ち受け |
+| `ROUTER_TLS_CERTIFICATE` | 空 | 証明書のチェーンと鍵を続けて入れた PEM の絶対パス。HTTPS を使うときは必須 |
+| `ROUTER_UPSTREAM_PORT` | `8080` | app1〜3 の HTTP port |
+| `ROUTER_HAPROXY_DIR` | `/run/isureal-haproxy` | HAProxy が読むファイルの置き場所 |
+| `ROUTER_HAPROXY_RUNTIME_ADDRESS` | `127.0.0.1:18001` | HAProxy runtime API（TCP） |
 
 ### Public hostnames
 
@@ -86,7 +95,7 @@ duration は Go duration 形式で指定する。
 | `ROUTER_APP2_HOST` | `app2.team1-abc123.isucon2026.westens.tokyo` |
 | `ROUTER_APP3_HOST` | `app3.team1-abc123.isucon2026.westens.tokyo` |
 
-4値は妥当な小文字 hostname かつ相互に異なる必要がある。Envoy はvirtual-host照合時にHostのportを無視するため、同じhostnameを任意の公開port経由で利用できる。
+4値は妥当な小文字 hostname かつ相互に異なる必要がある。HAProxy は Host の port と大文字小文字を無視して照合するため、同じhostnameを任意の公開port経由で利用できる。
 
 ### Server topology
 
@@ -110,22 +119,22 @@ Controller は region local IP から interface 名を解決するため、Compo
 |---|---:|---:|
 | `ROUTER_SAME_REGION_DELAY` | `0s` | `0s` |
 | `ROUTER_SAME_REGION_BANDWIDTH_BPS` | `1000000000` | `100000000` |
-| `ROUTER_AP_EU_DELAY` | `200ms` | `120ms` |
+| `ROUTER_AP_EU_DELAY` | `100ms` | `120ms` |
 | `ROUTER_AP_EU_BANDWIDTH_BPS` | `200000000` | `1000000` |
-| `ROUTER_EU_US_DELAY` | `200ms` | `120ms` |
+| `ROUTER_EU_US_DELAY` | `100ms` | `120ms` |
 | `ROUTER_EU_US_BANDWIDTH_BPS` | `200000000` | `1000000` |
-| `ROUTER_AP_US_DELAY` | `200ms` | `120ms` |
+| `ROUTER_AP_US_DELAY` | `100ms` | `120ms` |
 | `ROUTER_AP_US_BANDWIDTH_BPS` | `200000000` | `1000000` |
 
-delay は end-to-end の追加遅延を表す。HTTP は Envoy が設定値を1回注入し、サーバー間通信は往復で設定値に
-なるよう tc が各方向へ半分ずつ注入する（production の `200ms` は片道100 ms、RTT 200 ms）。
+delay は end-to-end の追加遅延を表す。HTTP は HAProxy が設定値を1回注入し（ミリ秒単位に切り上げる）、サーバー間通信は往復で設定値に
+なるよう tc が各方向へ半分ずつ注入する（production の `100ms` は片道50 ms、RTT 100 ms）。
 bandwidth は bit/s で、正数かつ各ペアが same 以下でなければならない。delay は0または1 ms以上を受け付ける。
 E2E override は class 判定を変えず、共有 CI host でも差を測定できるよう値だけを縮尺する。
 
 ## Health and diagnostics
 
 - `GET /healthz`: process が稼働中なら `200`。
-- `GET /readyz`: Portal snapshot が network と ACK 済み RDS の双方へ反映され、Envoy が接続中なら `200`。
+- `GET /readyz`: Portal snapshot が network へ反映され、要求の時点で HAProxy がその既定の国を使っていれば `200`。
 - 後続 apply が失敗しても last-known-good が利用可能なら ready は維持し、body の `phase` / `last_error` に失敗を残す。
 
 E2E を保持した状態で確認する例:
@@ -138,17 +147,21 @@ docker compose --project-name isureal-router-e2e -f router/compose.e2e.yaml \
 docker compose --project-name isureal-router-e2e -f router/compose.e2e.yaml \
   exec -T router tc -s qdisc show
 docker compose --project-name isureal-router-e2e -f router/compose.e2e.yaml \
-  exec -T router wget -q -O - http://127.0.0.1:9901/config_dump
+  exec -T haproxy sh -c 'echo "show map /run/isureal-haproxy/default-country.map" | nc 127.0.0.1 18001'
+docker compose --project-name isureal-router-e2e -f router/compose.e2e.yaml \
+  exec -T haproxy cat /run/isureal-haproxy/haproxy.cfg
 ```
 
-Router と Envoy は namespace を共有するため、Envoy admin は Router container の loopback から確認できる。
+Router と HAProxy は namespace を共有するため、runtime API は Router container の loopback から確認できる。
 
 ## Deployment requirements and limitations
 
 - Router namespace へ namespaced `net.ipv4.ip_forward=1` を起動時に設定し、Router に `NET_ADMIN` を付与する。
-- Envoy は同じ namespace で起動し、`envoy/bootstrap.yaml` と node/resource 名を一致させる。
+- HAProxy は同じ namespace で、Router と同じ環境変数を使って起動する（`router/Dockerfile` の `haproxy` target、
+  AWS では `isureal-haproxy.service`）。
 - 各 server は専用 segment だけに接続し、peer subnet の next hop を対応 Router local IP にする。
 - Controller state は memory のみである。再起動後は Portal から snapshot を受けて再構築するまで ready にならない。
-- HTTP は平文である。TLS/WAF/外部認証/HA/長期 metrics は deployment 側の責務である。
-- Envoy bandwidth limit は route 単位である。本 feature は1要求・1経路の分類と上限を保証し、複数要求を束ねた
+- HTTPS は `ROUTER_HTTPS_LISTEN_ADDRESS` と証明書を渡したときだけ有効になる。WAF/外部認証/HA/長期 metrics は
+  deployment 側の責務である。
+- HAProxy の bandwidth limit は route（Host と国の組）単位で、要求と応答のそれぞれにかかる。本 feature は1要求・1経路の分類と上限を保証し、複数要求を束ねた
   region-wide aggregate rate の厳密性は後続の競技 deployment で決定する。

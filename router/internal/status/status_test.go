@@ -1,66 +1,59 @@
 package status
 
 import (
+	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 )
 
-func TestReadinessTransitions(t *testing.T) {
+func TestStoreKeepsLastKnownGood(t *testing.T) {
 	t.Parallel()
 	store := New()
-	if store.Snapshot().Ready {
-		t.Fatal("initial state unexpectedly ready")
-	}
-	store.SetEnvoyConnected(true)
 	store.StartApply("one", "network", 0)
-	if store.Snapshot().Ready {
-		t.Fatal("initial apply unexpectedly ready")
-	}
-	store.RecordActive("one", "v-one")
-	if store.Snapshot().Ready {
-		t.Fatal("state became ready before Envoy ACKed on its current stream")
-	}
-	store.SetEnvoySynced(true)
-	if !store.Snapshot().Ready {
-		t.Fatal("active ACKed state is not ready")
-	}
+	store.RecordActive("one")
 	store.StartApply("two", "network", 0)
-	if !store.Snapshot().Ready {
-		t.Fatal("last-known-good became unready during new apply")
-	}
-	store.RecordFailure("two", "xds-ack", "nack", 1)
-	if !store.Snapshot().Ready || store.Snapshot().ActiveSnapshot != "one" {
-		t.Fatalf("last-known-good not preserved: %+v", store.Snapshot())
+	store.RecordFailure("two", "apply-failed", "proxy unavailable", 1)
+	if state := store.Snapshot(); state.ActiveSnapshot != "one" || state.DesiredSnapshot != "two" {
+		t.Fatalf("last-known-good not preserved: %+v", state)
 	}
 	store.ClearReportError()
-	if store.Snapshot().LastError != "nack" || store.Snapshot().Retry != 1 {
-		t.Fatalf("successful failure report erased apply diagnostics: %+v", store.Snapshot())
-	}
-	store.SetEnvoyConnected(false)
-	if store.Snapshot().Ready {
-		t.Fatal("disconnected Envoy unexpectedly ready")
+	if state := store.Snapshot(); state.LastError != "proxy unavailable" || state.Retry != 1 {
+		t.Fatalf("successful failure report erased apply diagnostics: %+v", state)
 	}
 }
 
-func TestHTTPHealthAndReadiness(t *testing.T) {
+func TestReadinessRequiresActiveSnapshotServedByProxy(t *testing.T) {
 	t.Parallel()
 	store := New()
-	handler := Handler(store)
-	for path, want := range map[string]int{"/healthz": http.StatusOK, "/readyz": http.StatusServiceUnavailable} {
+	var probeErr error
+	probes := 0
+	handler := Handler(store, func(context.Context) error { probes++; return probeErr })
+	readyz := func() (int, string) {
 		recorder := httptest.NewRecorder()
-		handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, path, nil))
-		if recorder.Code != want || !strings.Contains(recorder.Header().Get("Content-Type"), "application/json") {
-			t.Errorf("%s status=%d content-type=%q", path, recorder.Code, recorder.Header().Get("Content-Type"))
+		handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/readyz", nil))
+		if !strings.Contains(recorder.Header().Get("Content-Type"), "application/json") {
+			t.Fatalf("content-type=%q", recorder.Header().Get("Content-Type"))
 		}
+		return recorder.Code, recorder.Body.String()
 	}
-	store.SetEnvoyConnected(true)
-	store.SetEnvoySynced(true)
-	store.RecordActive("snapshot", "version")
+
 	recorder := httptest.NewRecorder()
-	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/readyz", nil))
-	if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), `"active_snapshot_id":"snapshot"`) {
-		t.Fatalf("ready response status=%d body=%s", recorder.Code, recorder.Body.String())
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("healthz status=%d", recorder.Code)
+	}
+	if code, _ := readyz(); code != http.StatusServiceUnavailable || probes != 0 {
+		t.Fatalf("ready without a snapshot: status=%d probes=%d", code, probes)
+	}
+	store.RecordActive("snapshot")
+	if code, body := readyz(); code != http.StatusOK || !strings.Contains(body, `"active_snapshot_id":"snapshot"`) || !strings.Contains(body, `"proxy_serving":true`) {
+		t.Fatalf("ready response status=%d body=%s", code, body)
+	}
+	probeErr = errors.New("connection refused")
+	if code, body := readyz(); code != http.StatusServiceUnavailable || !strings.Contains(body, `"proxy_error":"connection refused"`) {
+		t.Fatalf("stopped proxy still ready: status=%d body=%s", code, body)
 	}
 }

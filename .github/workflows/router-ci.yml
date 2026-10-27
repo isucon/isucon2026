@@ -13,7 +13,6 @@ on:
       - "portal-mock/server/**"
       - "proto/portal/**"
       - "router/**"
-      - "specs/003-router/**"
   pull_request:
     paths:
       - ".github/workflows/router-ci.yml"
@@ -24,7 +23,6 @@ on:
       - "portal-mock/server/**"
       - "proto/portal/**"
       - "router/**"
-      - "specs/003-router/**"
   workflow_dispatch:
 
 permissions:
@@ -39,7 +37,7 @@ env:
 
 jobs:
   static:
-    name: Go / Compose / Envoy validation
+    name: Go / Compose / HAProxy validation
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -67,11 +65,11 @@ jobs:
           go build -trimpath -o /tmp/router-e2e ./tests/e2e
       - name: Validate Compose model
         run: docker compose -f router/compose.e2e.yaml config --quiet
-      - name: Validate pinned Envoy bootstrap
-        run: make router-envoy-check
+      - name: Validate rendered HAProxy configuration (HTTP and HTTPS)
+        run: make router-haproxy-check
 
   compose-e2e:
-    name: Real Envoy / Linux network E2E
+    name: Real HAProxy / Linux network E2E
     runs-on: ubuntu-24.04
     timeout-minutes: 7
     steps:

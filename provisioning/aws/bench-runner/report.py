@@ -459,12 +459,13 @@ def main():
             print(f"  {dev:<8} sent {sent / 1e6:9.1f} MB  dropped {dropped:8d}  overlimits {over:8d}")
             if dropped:
                 flags.append(f"router: {dropped} packets dropped by qdisc on {dev}")
-    envoy = counters_delta(router / "envoy-start.txt", router / "envoy-end.txt",
-                           re.compile(r"overflow|timeout|_fail|reset|5xx|retry|rejected|no_healthy"))
-    if envoy:
+    # HAProxy の要求・接続・応答のエラー、中断、5xx
+    haproxy = counters_delta(router / "haproxy-start.txt", router / "haproxy-end.txt",
+                             re.compile(r"\.(ereq|econ|eresp|eint|wretr|wredis|dreq|dresp|cli_abrt|srv_abrt|hrsp_5xx)$"))
+    if haproxy:
         print()
-        print("router envoy counters (whole run, non-zero):")
-        for counter, delta in envoy[:15]:
+        print("router haproxy counters (whole run, non-zero):")
+        for counter, delta in haproxy[:15]:
             print(f"  {counter}: +{delta}")
 
     print()
