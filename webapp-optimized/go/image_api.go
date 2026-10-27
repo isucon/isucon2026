@@ -69,12 +69,15 @@ func getImageHandler(h *HandlerContext) echo.HandlerFunc {
 			object = imageObject{SecretKeyHash: cached.secretKeyHash, Version: cached.version, MediaType: cached.mediaType, Live: true, Data: cached.data}
 		} else if entry, ok := pack.lookup(input.ImageID); ok {
 			checkedAt := time.Now()
-			object, err = loadPackImageObject(ctx, h.DB, input.ImageID, entry)
-			if errors.Is(err, sql.ErrNoRows) {
-				return NewAPIError(http.StatusForbidden, "image_forbidden")
-			}
-			if err != nil {
-				return err
+			var known bool
+			if object, known = historyImageObject(input.ImageID); !known {
+				object, err = loadPackImageObject(ctx, h.DB, input.ImageID, entry)
+				if errors.Is(err, sql.ErrNoRows) {
+					return NewAPIError(http.StatusForbidden, "image_forbidden")
+				}
+				if err != nil {
+					return err
+				}
 			}
 			if object.Live {
 				if hit {

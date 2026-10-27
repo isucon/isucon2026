@@ -429,6 +429,56 @@ func (s *historyStore) imageSignature(imageID string, exp int64) ([32]byte, bool
 	}
 }
 
+// imageOwners returns, for a post's or a RealMoji's image of the store whose
+// post no write has touched, the users its liveness depends on: the image's
+// owner and, for a RealMoji, the post's author. The post and the RealMoji are
+// then as live as at the load; known is false otherwise.
+func (s *historyStore) imageOwners(imageID string) (owner, author string, known bool) {
+	id, ok := parseImageID(imageID)
+	if !ok {
+		return "", "", false
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	i, found := s.byImage[id]
+	if !found || !s.loaded {
+		return "", "", false
+	}
+	if i&reactionImage != 0 {
+		r := &s.reactions[i&^reactionImage]
+		p := &s.posts[r.post]
+		if s.dirty[uuid.UUID(p.id).String()] {
+			return "", "", false
+		}
+		return uuid.UUID(r.reactor).String(), uuid.UUID(p.author).String(), true
+	}
+	p := &s.posts[i]
+	if s.dirty[uuid.UUID(p.id).String()] {
+		return "", "", false
+	}
+	author = uuid.UUID(p.author).String()
+	return author, author, true
+}
+
+// historyImageObject decides like loadPackImageObject whether an image of
+// the history store is live, from memory: the owner (and a RealMoji's post
+// author) must be active.
+func historyImageObject(imageID string) (imageObject, bool) {
+	owner, author, known := history.imageOwners(imageID)
+	if !known {
+		return imageObject{}, false
+	}
+	o, ok := hot.userState(owner)
+	if !ok {
+		return imageObject{}, false
+	}
+	a, ok := hot.userState(author)
+	if !ok {
+		return imageObject{}, false
+	}
+	return imageObject{SecretKeyHash: o.SecretKeyHash, MediaType: "image/jpeg", Live: o.Status == "active" && a.Status == "active"}, true
+}
+
 // postImageURL returns the image URL of a post of the store when its
 // signature for the current expiry is computed.
 func (s *historyStore) postImageURL(postID, imageID string) (string, bool) {
