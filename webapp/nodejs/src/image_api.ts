@@ -8,12 +8,11 @@ export function imageHandlers(db: pg.Pool) {
   return {
     get: async (c: C) => {
       c.header("Cache-Control", "no-store");
-      const rawQuery = c.req.url.split("?")[1] ?? "",
-        query = new URL(c.req.url).searchParams,
+      const { search, searchParams: query } = new URL(c.req.url),
         id = c.req.param("imageId")!;
       if (
-        /%(?![0-9a-fA-F]{2})/.test(rawQuery) ||
-        rawQuery.includes(";") ||
+        /%(?![0-9a-fA-F]{2})/.test(search) ||
+        search.includes(";") ||
         query.getAll("exp").length !== 1 ||
         query.getAll("sig").length !== 1
       )
@@ -94,8 +93,7 @@ export function imageHandlers(db: pg.Pool) {
           "SELECT profile_image_id FROM users WHERE id=$1 FOR NO KEY UPDATE",
           id,
         );
-        if (imageID === undefined) fail(404, "account_not_found");
-        if (imageID == null) fail(404, "account_not_found");
+        if (!imageID) fail(404, "account_not_found");
         await exec(
           tx,
           "UPDATE users SET profile_image_id=NULL,updated_at=clock_timestamp() WHERE id=$1",

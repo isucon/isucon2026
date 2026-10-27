@@ -37,8 +37,7 @@ export function ipBanMiddleware(db: pg.Pool) {
   let reloading = false;
   return createMiddleware(async (c, next) => {
     if (
-      (snapshot === undefined ||
-        Date.now() - snapshot.loadedAt >= ipBanReloadInterval) &&
+      (!snapshot || Date.now() - snapshot.loadedAt >= ipBanReloadInterval) &&
       !reloading
     ) {
       reloading = true;
@@ -49,7 +48,7 @@ export function ipBanMiddleware(db: pg.Pool) {
       }
     }
     const until = snapshot?.bans.get(extractClientIP(c));
-    if (until !== undefined && Date.now() < until) fail(403, "ip_banned");
+    if (until && Date.now() < until) fail(403, "ip_banned");
     await next();
   });
 }

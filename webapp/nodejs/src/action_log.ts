@@ -75,9 +75,7 @@ export const actionLogMiddleware = (minLevel: string, output: LogOutput) =>
     if (action === "login" || action === "register") {
       const username = c.var.username;
       entry.username =
-        username !== undefined && usernamePattern.test(username)
-          ? username
-          : null;
+        username && usernamePattern.test(username) ? username : null;
     }
     output.write(JSON.stringify(entry) + "\n");
   });
