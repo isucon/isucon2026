@@ -96,7 +96,7 @@ func openPostingWindowHandler(h *HandlerContext) echo.HandlerFunc {
 		}
 		ctx := c.Request().Context()
 		began := time.Now()
-		tx, err := h.DB.BeginTxx(ctx, nil)
+		tx, err := h.adminDB().BeginTxx(ctx, nil)
 		if err != nil {
 			return err
 		}
