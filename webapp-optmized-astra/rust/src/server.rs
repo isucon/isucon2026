@@ -33,7 +33,7 @@ use crate::image_api::get_image_handler;
 use crate::initialize::initialize_handler;
 use crate::ip_ban::{IpBanList, ip_ban_middleware};
 use crate::memory_api::{get_memories_by_date_handler, get_memories_handler};
-use crate::notification_api::get_notifications_handler;
+use crate::notification_api::{NotificationHub, get_notifications_handler};
 use crate::post_api::{
     create_post_handler, delete_post_handler, get_my_current_post_handler, get_post_handler,
     update_post_handler,
@@ -59,6 +59,7 @@ pub struct HandlerContext {
     pub db: PgPool,
     pub config: Config,
     pub ip_bans: IpBanList,
+    pub notifications: NotificationHub,
 }
 
 pub async fn new_server(config: Config) -> Router {
@@ -84,6 +85,7 @@ pub async fn new_server(config: Config) -> Router {
         db,
         config,
         ip_bans: IpBanList::default(),
+        notifications: NotificationHub::default(),
     });
     // Every read is routed to either the primary or a synchronous local standby.
     // Never enable local reads with asynchronous replication: successful writes
@@ -123,6 +125,7 @@ pub async fn new_server(config: Config) -> Router {
                 db: read_db,
                 config: handler_context.config.clone(),
                 ip_bans: IpBanList::default(),
+                notifications: NotificationHub::default(),
             })
         }
         _ => handler_context.clone(),
