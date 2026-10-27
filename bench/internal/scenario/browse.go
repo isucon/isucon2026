@@ -175,9 +175,15 @@ func (r *Runner) react(ctx context.Context, u *user, s *session, post client.Fee
 		return false
 	}
 	w := r.model.BeginReplaceRealMoji(post.ID, u.ID)
-	reaction, err := u.API.ReplaceRealMoji(client.MayFailWith(ctx, http.StatusForbidden), u.Token, post.ID, dataset.ReactionType(u.rng), r.photos.RealMoji(hashOf(r.seed, "realmoji", u.Username, itoa(s.day), itoa(s.realMojis))))
+	reaction, err := u.API.ReplaceRealMoji(client.MayFailWith(ctx, http.StatusForbidden, http.StatusNotFound), u.Token, post.ID, dataset.ReactionType(u.rng), r.photos.RealMoji(hashOf(r.seed, "realmoji", u.Username, itoa(s.day), itoa(s.realMojis))))
 	allowed := r.model.CanView(u.ID, post.ID, r.model.ReadBetween(sent, time.Now()))
 	switch {
+	case isStatus(err, http.StatusNotFound) && allowed != model.True:
+		// 送っている間に投稿者が退会していれば 404 が正しい。
+		w.Rejected()
+	case isStatus(err, http.StatusNotFound):
+		w.Rejected()
+		r.invalid(ctx, u, "%s: 見える投稿 %s への RealMoji が 404 になりました", u.Username, post.ID)
 	case err == nil && allowed == model.False:
 		w.Unknown()
 		r.board.Criticalf("%s: 見えない投稿 %s に RealMoji を送れてしまいました", u.Username, post.ID)
@@ -256,9 +262,15 @@ func (r *Runner) comment(ctx context.Context, u *user, s *session, post client.F
 	}
 	body := dataset.CommentBody(u.rng)
 	creation := r.model.BeginCreateComment(post.ID, u.ID)
-	created, err := u.API.CreateComment(client.MayFailWith(ctx, http.StatusForbidden), u.Token, post.ID, body)
+	created, err := u.API.CreateComment(client.MayFailWith(ctx, http.StatusForbidden, http.StatusNotFound), u.Token, post.ID, body)
 	allowed := r.model.CanComment(u.ID, post.ID, r.model.ReadBetween(sent, time.Now()))
 	switch {
+	case isStatus(err, http.StatusNotFound) && allowed != model.True:
+		// 送っている間に投稿者が退会していれば 404 が正しい。
+		creation.Rejected()
+	case isStatus(err, http.StatusNotFound):
+		creation.Rejected()
+		r.invalid(ctx, u, "%s: コメントできる投稿 %s へのコメントが 404 になりました", u.Username, post.ID)
 	case err == nil && allowed == model.False:
 		creation.Unknown()
 		r.board.Criticalf("%s: コメントできない投稿 %s にコメントできてしまいました", u.Username, post.ID)

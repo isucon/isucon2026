@@ -339,7 +339,8 @@ func (c *Client) attempts(ctx context.Context, r request, record *Record) ([]byt
 		data, err := io.ReadAll(io.LimitReader(response.Body, maxBody))
 		_ = response.Body.Close()
 		if err != nil {
-			return nil, fmt.Errorf("%s %s: 応答の本体を読めません: %w", r.method, r.path, err)
+			// 本体の読み取りの時間切れや切断は、応答を受け取れなかったのと同じ扱いにする。
+			return nil, requestFailure(r, fmt.Errorf("応答の本体を読めません: %w", err))
 		}
 		if response.StatusCode != r.want {
 			return nil, &APIError{Method: r.method, Path: r.path, Status: response.StatusCode, Want: r.want, Code: problemCode(data), Attempts: record.Attempts}
