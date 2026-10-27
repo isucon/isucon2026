@@ -1,0 +1,54 @@
+---
+# Node.js は公式のバイナリを /home/isucon/local/node に置く（webapp/nodejs 用）
+- name: Read installed Node.js version
+  ansible.builtin.command:
+    argv: [/home/isucon/local/node/bin/node, --version]
+  register: nodejs_installed
+  changed_when: false
+  failed_when: false
+
+- name: Install Node.js
+  when: nodejs_installed.rc != 0 or nodejs_installed.stdout != 'v' ~ nodejs_version
+  block:
+    - name: Remove old Node.js
+      ansible.builtin.file:
+        path: /home/isucon/local/node
+        state: absent
+
+    - name: Create Node.js directory
+      ansible.builtin.file:
+        path: /home/isucon/local/node
+        state: directory
+        owner: isucon
+        group: isucon
+        mode: "0755"
+
+    - name: Download Node.js
+      ansible.builtin.get_url:
+        url: "https://nodejs.org/dist/v{{ nodejs_version }}/node-v{{ nodejs_version }}-linux-x64.tar.xz"
+        checksum: "sha256:https://nodejs.org/dist/v{{ nodejs_version }}/SHASUMS256.txt"
+        dest: "/tmp/node-v{{ nodejs_version }}-linux-x64.tar.xz"
+        mode: "0644"
+
+    - name: Extract Node.js
+      ansible.builtin.unarchive:
+        src: "/tmp/node-v{{ nodejs_version }}-linux-x64.tar.xz"
+        dest: /home/isucon/local/node
+        remote_src: true
+        extra_opts: [--strip-components=1]
+        owner: isucon
+        group: isucon
+
+    - name: Remove Node.js archive
+      ansible.builtin.file:
+        path: "/tmp/node-v{{ nodejs_version }}-linux-x64.tar.xz"
+        state: absent
+
+- name: Add Node.js to PATH
+  ansible.builtin.lineinfile:
+    path: /home/isucon/.profile
+    line: 'export PATH=$HOME/local/node/bin:$PATH'
+    create: true
+    owner: isucon
+    group: isucon
+    mode: "0644"
