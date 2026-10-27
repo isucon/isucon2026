@@ -1,13 +1,12 @@
 import type { Queryer } from "./db.ts";
-import type { Timestamp } from "./time.ts";
 
 export type PostingWindow = {
   id: string;
   region: string;
   localDate: string;
-  startsAt: Timestamp;
-  onTimeDeadline: Timestamp;
-  endedAt: Timestamp | null;
+  startsAt: Temporal.Instant;
+  onTimeDeadline: Temporal.Instant;
+  endedAt: Temporal.Instant | null;
 };
 
 export async function getPostingWindow(db: Queryer, windowID: string): Promise<PostingWindow | undefined> {

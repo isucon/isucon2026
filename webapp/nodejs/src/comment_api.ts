@@ -10,7 +10,6 @@ import type { RelationshipUserResponse } from "./relationship_list_api.ts";
 import { jsonResponse, noContent } from "./response.ts";
 import type { Env, HandlerContext } from "./server.ts";
 import { getSession } from "./session.ts";
-import type { Timestamp } from "./time.ts";
 import { getUser, validUserText, type User } from "./user.ts";
 import { newRelationshipUserResponse } from "./user_read_api.ts";
 
@@ -23,7 +22,7 @@ export type CommentResponse = {
   id: string;
   author: RelationshipUserResponse;
   body: string;
-  createdAt: Timestamp;
+  createdAt: Temporal.Instant;
 };
 
 export function newCommentResponse(comment: Comment, user: User): CommentResponse {

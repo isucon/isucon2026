@@ -38,7 +38,7 @@ export function logWarn(message: string): void {
 }
 
 function writeLog(level: string, message: string, error?: string): void {
-  const entry: Record<string, string> = { time: new Date().toISOString(), level, msg: message };
+  const entry: Record<string, string> = { time: Temporal.Now.instant().toString(), level, msg: message };
   if (error !== undefined) {
     entry.error = error;
   }

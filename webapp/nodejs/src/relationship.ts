@@ -2,15 +2,14 @@ import { randomUUID } from "node:crypto";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { APIError } from "./api_error.ts";
 import { must, type DB, type Queryer, type Row, type Tx } from "./db.ts";
-import type { Timestamp } from "./time.ts";
 
 export type FriendRequest = {
   id: string;
   requesterID: string;
   recipientID: string;
   status: string;
-  createdAt: Timestamp;
-  updatedAt: Timestamp;
+  createdAt: Temporal.Instant;
+  updatedAt: Temporal.Instant;
 };
 
 function friendRequestFromRow(row: Row): FriendRequest {
