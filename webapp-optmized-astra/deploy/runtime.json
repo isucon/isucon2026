@@ -3,7 +3,7 @@
   "archivePath": "var/astra/release.tar.gz",
   "replicationEnvPath": "var/astra/.replication.env",
   "replicasEnabled": true,
-  "replicasSynchronous": false,
+  "replicasSynchronous": true,
   "replicaReads": true,
   "database": {
     "instanceId": "i-0ecc0569db071b251",
@@ -30,6 +30,6 @@
   ],
   "writeProxyEnabled": true,
   "readFenceEnabled": false,
-  "writeFenceEnabled": true,
-  "writeFenceMode": "native"
+  "writeFenceEnabled": false,
+  "writeFenceMode": "poll"
 }

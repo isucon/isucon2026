@@ -124,39 +124,16 @@ async fn get_image(
     // Always check current visibility and owner credentials. Only image bytes
     // are cached; xmin changes when a row is replaced or modified, including
     // initialization, and prevents returning stale data under the same ID.
-    #[derive(sqlx::FromRow)]
-    struct ImageObject {
-        data: Option<Vec<u8>>,
-        media_type: String,
-        secret_key_hash: String,
-        version: String,
-        created_at: DateTime<Utc>,
+    // The cached timestamp is a search hint, never an authorization result.
+    // Check its partition first; a moved/replaced row falls back to all months.
+    let mut object = if cached.is_some() {
+        load_image_object(&h.db, &input.image_id, cached.as_ref(), &CACHED_IMAGE_QUERY).await?
+    } else {
+        None
+    };
+    if object.is_none() {
+        object = load_image_object(&h.db, &input.image_id, cached.as_ref(), IMAGE_QUERY).await?;
     }
-    let object: Option<ImageObject> = sqlx::query_as(
-        r#"
-   SELECT CASE WHEN i.xmin::text = $2 AND i.created_at = $3 THEN NULL ELSE i.data END AS data,
-          i.media_type, u.secret_key_hash, i.xmin::text AS version, i.created_at
-   FROM image_objects i JOIN users u ON u.id = i.owner_user_id AND u.status = 'active'
-   WHERE i.id = $1 AND (
-     u.profile_image_id = i.id
-     OR EXISTS (
-       SELECT 1 FROM posts p
-       WHERE p.image_id = i.id AND p.author_id = u.id AND p.deleted_at IS NULL
-     )
-     OR EXISTS (
-       SELECT 1 FROM realmojis r
-       JOIN posts p ON p.id = r.post_id AND p.deleted_at IS NULL
-       JOIN users author ON author.id = p.author_id AND author.status = 'active'
-       WHERE r.image_id = i.id AND r.reactor_id = u.id AND r.replaced_at IS NULL AND r.deleted_at IS NULL
-     )
-   )
-  "#,
-    )
-    .bind(&input.image_id)
-    .bind(cached.as_ref().map(|image| image.version.as_str()))
-    .bind(cached.as_ref().map(|image| image.created_at))
-    .fetch_optional(&h.db)
-    .await?;
     let Some(object) = object else {
         return Err(new_api_error(StatusCode::FORBIDDEN, "image_forbidden"));
     };
@@ -192,4 +169,49 @@ async fn get_image(
         data,
     )
         .into_response())
+}
+
+#[derive(sqlx::FromRow)]
+struct ImageObject {
+    data: Option<Vec<u8>>,
+    media_type: String,
+    secret_key_hash: String,
+    version: String,
+    created_at: DateTime<Utc>,
+}
+
+const IMAGE_QUERY: &str = r#"
+   SELECT CASE WHEN i.xmin::text = $2 AND i.created_at = $3 THEN NULL ELSE i.data END AS data,
+          i.media_type, u.secret_key_hash, i.xmin::text AS version, i.created_at
+   FROM image_objects i JOIN users u ON u.id = i.owner_user_id AND u.status = 'active'
+   WHERE i.id = $1 AND (
+     u.profile_image_id = i.id
+     OR EXISTS (
+       SELECT 1 FROM posts p
+       WHERE p.image_id = i.id AND p.author_id = u.id AND p.deleted_at IS NULL
+     )
+     OR EXISTS (
+       SELECT 1 FROM realmojis r
+       JOIN posts p ON p.id = r.post_id AND p.deleted_at IS NULL
+       JOIN users author ON author.id = p.author_id AND author.status = 'active'
+       WHERE r.image_id = i.id AND r.reactor_id = u.id AND r.replaced_at IS NULL AND r.deleted_at IS NULL
+     )
+   )
+  "#;
+
+static CACHED_IMAGE_QUERY: LazyLock<String> =
+    LazyLock::new(|| format!("{IMAGE_QUERY} AND i.created_at = $3"));
+
+async fn load_image_object(
+    db: &sqlx::PgPool,
+    image_id: &str,
+    cached: Option<&CachedImage>,
+    query: &str,
+) -> Result<Option<ImageObject>, sqlx::Error> {
+    sqlx::query_as(query)
+        .bind(image_id)
+        .bind(cached.map(|image| image.version.as_str()))
+        .bind(cached.map(|image| image.created_at))
+        .fetch_optional(db)
+        .await
 }

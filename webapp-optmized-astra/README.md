@@ -114,7 +114,7 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 - 未最適化Rust版の基準測定。
 - 投稿のロック、署名計算、通知、SQL往復の最適化。
 - JPEGは成功した検証結果を最大4096件保持し、初回は圧縮データ全体を検査しながら画素展開量を減らす。
-- 画像配信は1回の問い合わせで現在の閲覧権限と署名鍵を確認する。画像データは最大128MiB・4096件まで保持し、DB行の`xmin`と作成時刻が変われば取得し直す。署名・期限・削除状態を毎回検証する。
+- 画像配信は現在の閲覧権限と署名鍵を毎回確認する。画像データは最大128MiB・4096件まで保持し、DB行の`xmin`と作成時刻が変われば取得し直す。キャッシュがある場合は既知の作成時刻で検索先の月別テーブルを絞り、見つからなければ全体を再検索する。移動・削除・同じIDでの再作成や所有者の鍵変更も検証する。
 - SSE通知は地域内DBごとに100ミリ秒間隔で最大512接続ずつ一括確認する。接続ごとの通知時刻とユーザー状態は毎回確認する。
 - フィードは閲覧条件・友人関係・ブロック・投稿済み条件を1回の問い合わせで評価し、現在の投稿期間ごとに最大51件へ絞り、全地域の上位51件だけを取得する。従来のRustの判定との比較テストでページ送りと状態変更を検証する。
 - 新規登録はユーザー名の一意制約と単一INSERTで処理する。同名の並行登録は1件だけ成功し、別名の登録は互いをブロックしない。
@@ -141,3 +141,4 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261027T145324Z-team10 | asynchronous replicas with fresh batched WAL read fences | PASS | 32,193 |
 | 20261027T151601Z-team10 | post-commit write response fences release locks before replica replay | PASS | 35,586 |
 | 20261027T153400Z-team10 | native replica response barriers with durable local application commits | PASS | 36,101 |
+| 20261027T154339Z-team10 | prune image cache lookups by creation timestamp with fresh permission checks; restore synchronous commits | PASS | 37,148 |
