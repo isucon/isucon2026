@@ -273,8 +273,15 @@ function createTeam(t: Team) {
 						Role: "router",
 					},
 				},
-				// プライベート IP を固定しているので、置き換え時は古いインスタンスを先に消す
-				{ dependsOn: [internetGateway], deleteBeforeReplace: true },
+				// プライベート IP を固定しているので、置き換え時は古いインスタンスを先に消す。
+				// Router のユーザーデータ（write_files と runcmd）は初回起動でしか動かないので、既存の Router に差分を
+				// 流しても止めて起動し直すだけになる。データ用 ENI が付いたまま起動し直すとパブリック IPv4 も付かない。
+				// 新しいユーザーデータは作り直したときに使う
+				{
+					dependsOn: [internetGateway],
+					deleteBeforeReplace: true,
+					ignoreChanges: ["userDataBase64"],
+				},
 			)
 		: undefined;
 	if (router) {
