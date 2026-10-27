@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type pg from "pg";
 import { type C, readJSON, cursor, noContent } from "./http.js";
-import { fail, relationshipUserResponse, page } from "./core.js";
+import { fail, lookup, relationshipUserResponse, page } from "./core.js";
 import {
   type DB,
   exec,
@@ -67,6 +67,23 @@ const response = (r: FriendRequest) => ({
   status: r.status,
   updatedAt: r.updated_at,
 });
+const friendRequestTransitions = {
+  accept: "accepted",
+  reject: "rejected",
+  cancel: "cancelled",
+} as const;
+const relationshipQueries = {
+  friends:
+    "SELECT id, user_low_id AS first_id, user_high_id AS second_id, updated_at FROM friendships WHERE user_low_id=$1 OR user_high_id=$1",
+  following:
+    "SELECT id, follower_id AS first_id, followee_id AS second_id, updated_at FROM follows WHERE follower_id=$1",
+  followers:
+    "SELECT id, follower_id AS first_id, followee_id AS second_id, updated_at FROM follows WHERE followee_id=$1",
+  "incoming-requests":
+    "SELECT id, requester_id AS first_id, recipient_id AS second_id, updated_at FROM friend_requests WHERE recipient_id=$1 AND status='pending'",
+  "outgoing-requests":
+    "SELECT id, requester_id AS first_id, recipient_id AS second_id, updated_at FROM friend_requests WHERE requester_id=$1 AND status='pending'",
+} as const;
 export function relationshipHandlers(db: pg.Pool) {
   return {
     createRequest: async (c: C) => {
@@ -112,13 +129,7 @@ export function relationshipHandlers(db: pg.Pool) {
     },
     transitionRequest: async (c: C) => {
       const action = c.req.param("action")!,
-        status = (
-          {
-            accept: "accepted",
-            reject: "rejected",
-            cancel: "cancelled",
-          } as Record<string, string>
-        )[action];
+        status = lookup(friendRequestTransitions, action);
       if (!status) fail(403, "relationship_action_forbidden");
       const actor = c.var.session.user_id,
         id = c.req.param("requestId")!;
@@ -250,19 +261,7 @@ export function relationshipHandlers(db: pg.Pool) {
     list: async (c: C) => {
       const { at, id } = cursor(c, "beforeUpdatedAt", "beforeId"),
         kind = c.req.param("kind")!;
-      const queries: Record<string, string> = {
-        friends:
-          "SELECT id, user_low_id AS first_id, user_high_id AS second_id, updated_at FROM friendships WHERE user_low_id=$1 OR user_high_id=$1",
-        following:
-          "SELECT id, follower_id AS first_id, followee_id AS second_id, updated_at FROM follows WHERE follower_id=$1",
-        followers:
-          "SELECT id, follower_id AS first_id, followee_id AS second_id, updated_at FROM follows WHERE followee_id=$1",
-        "incoming-requests":
-          "SELECT id, requester_id AS first_id, recipient_id AS second_id, updated_at FROM friend_requests WHERE recipient_id=$1 AND status='pending'",
-        "outgoing-requests":
-          "SELECT id, requester_id AS first_id, recipient_id AS second_id, updated_at FROM friend_requests WHERE requester_id=$1 AND status='pending'",
-      };
-      const query = queries[kind];
+      const query = lookup(relationshipQueries, kind);
       if (!query) fail(400, "invalid_relationship");
       const records = await rows(
         db,

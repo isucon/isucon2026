@@ -7,6 +7,11 @@ import { caseFold } from "unicode-case-folding";
 export function fail(status: ContentfulStatusCode, code: string): never {
   throw new HTTPException(status, { message: code });
 }
+// Looks up a fixed table without falling back to Object.prototype members
+// such as "toString", which a URL parameter could otherwise name.
+export function lookup<T extends object>(table: T, key: string) {
+  return Object.hasOwn(table, key) ? table[key as keyof T] : undefined;
+}
 export const hash = (value: string) =>
   createHash("sha256").update(value).digest("hex");
 export const usernamePattern = /^[a-z0-9_.-]{1,64}$/;

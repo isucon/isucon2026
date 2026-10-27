@@ -1,10 +1,10 @@
 import { createMiddleware } from "hono/factory";
 import { matchedRoutes } from "hono/route";
-import { usernamePattern } from "./core.js";
+import { lookup, usernamePattern } from "./core.js";
 import type { Env } from "./http.js";
 import { extractClientIP } from "./ip_ban.js";
 
-const actionNames: Record<string, string> = {
+const actionNames = {
   "POST /api/initialize": "initialize",
   "POST /api/auth/register": "register",
   "POST /api/auth/login": "login",
@@ -47,9 +47,9 @@ const actionNames: Record<string, string> = {
   "PUT /api/admin/users/:userId/certification": "certify_user",
   "DELETE /api/admin/users/:userId/certification": "delete_user_certification",
   "POST /api/admin/posting-window": "open_posting_window",
-};
+} as const;
 
-const logLevelRanks: Record<string, number> = { debug: 0, info: 1, error: 2 };
+const logLevelRanks = { debug: 0, info: 1, error: 2 } as const;
 
 export interface LogOutput {
   write(line: string): unknown;
@@ -62,12 +62,12 @@ export const actionLogMiddleware = (minLevel: string, output: LogOutput) =>
     const status = c.res.status;
     const level =
       status >= 500 ? "error" : c.req.method === "GET" ? "debug" : "info";
-    if (logLevelRanks[level] < (logLevelRanks[minLevel] ?? 0)) return;
+    if (logLevelRanks[level] < (lookup(logLevelRanks, minLevel) ?? 0)) return;
     // The route is known even when a middleware such as the IP ban rejected
     // the request before its handler ran, as with echo's RouteInfo.
     const route = matchedRoutes(c).findLast((r) => r.method !== "ALL");
     const action =
-      (route && actionNames[`${route.method} ${route.path}`]) ?? null;
+      (route && lookup(actionNames, `${route.method} ${route.path}`)) ?? null;
     // Keys are in the same (sorted) order as Go's encoding of a map.
     const entry: Record<string, unknown> = {
       action,

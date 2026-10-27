@@ -309,6 +309,23 @@ test(
       undefined,
       403,
     );
+    // Object.prototype members are not actions or relationship kinds.
+    for (const action of ["toString", "constructor", "__proto__"])
+      await request(
+        "POST",
+        `/api/friend-requests/${fr.relationId}/${action}`,
+        bob.token,
+        undefined,
+        403,
+      );
+    for (const kind of ["toString", "constructor", "__proto__"])
+      await request(
+        "GET",
+        `/api/relationships/${kind}`,
+        alice.token,
+        undefined,
+        400,
+      );
     await request(
       "POST",
       `/api/friend-requests/${fr.relationId}/accept`,
