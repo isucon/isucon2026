@@ -9,6 +9,8 @@ use tokio::sync::{Semaphore, SemaphorePermit, oneshot};
 
 const WRITE_SLOTS: u32 = 32;
 const BYTES_PER_SLOT: u64 = 256 * 1024;
+const SMALL_BODY_BYTES: u64 = 64 * 1024;
+const SMALL_WRITE_SLOTS: usize = 32;
 
 #[derive(Default)]
 struct Pending {
@@ -22,6 +24,7 @@ struct Inner {
     pending: Mutex<Pending>,
     in_flight: Semaphore,
     mutations: Semaphore,
+    small_mutations: Semaphore,
 }
 
 #[derive(Clone)]
@@ -35,6 +38,7 @@ impl NativeWriteFence {
             pending: Mutex::default(),
             in_flight: Semaphore::new(4),
             mutations: Semaphore::new(WRITE_SLOTS as usize),
+            small_mutations: Semaphore::new(SMALL_WRITE_SLOTS),
         }))
     }
 
@@ -42,6 +46,17 @@ impl NativeWriteFence {
     /// Local commits release SQL locks immediately, but cannot build an
     /// unbounded queue of large image writes ahead of regional replay.
     pub async fn admit(&self, body_bytes: Option<u64>) -> SemaphorePermit<'_> {
+        // Small account/admin mutations must not queue behind image uploads.
+        // They retain their own bounded budget until the same replay barrier,
+        // so bypassing the image queue never bypasses visibility guarantees.
+        if body_bytes.is_some_and(|bytes| bytes <= SMALL_BODY_BYTES) {
+            return self
+                .0
+                .small_mutations
+                .acquire()
+                .await
+                .expect("small write admission stays open");
+        }
         let slots = body_bytes
             .map(|bytes| {
                 bytes

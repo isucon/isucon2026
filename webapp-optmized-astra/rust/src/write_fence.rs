@@ -399,21 +399,30 @@ mod tests {
                 wait_value(&primary, &table, 5).await;
                 let mut queued = tokio::spawn(app.clone().oneshot(
                     HttpRequest::builder().method("POST").uri("/write")
-                        .body(Body::empty()).unwrap(),
+                        .body(Body::from(vec![0u8; 8 * 1024 * 1024])).unwrap(),
                 ));
                 assert!(timeout(Duration::from_millis(100), &mut queued).await.is_err());
                 assert_eq!(value(&primary, &table).await, 5, "queued mutation bypassed admission");
+                assert_eq!(value(&replica2, &table).await, 4);
+                // An account/admin-sized write bypasses the upload admission
+                // queue, but its response still waits for both replicas.
+                let mut small = tokio::spawn(app.clone().oneshot(
+                    HttpRequest::builder().method("POST").uri("/write")
+                        .body(Body::empty()).unwrap(),
+                ));
+                wait_value(&primary, &table, 6).await;
+                assert!(timeout(Duration::from_millis(100), &mut small).await.is_err());
                 assert_eq!(value(&replica2, &table).await, 4);
                 assert_eq!(timeout(Duration::from_millis(100), app.clone().oneshot(
                     HttpRequest::get("/read").body(Body::empty()).unwrap(),
                 )).await.unwrap().unwrap().status(), StatusCode::OK);
                 sqlx::query("SELECT pg_wal_replay_resume()")
                     .execute(&replica2).await.unwrap();
-                for response in [large, queued] {
+                for response in [large, queued, small] {
                     assert_eq!(timeout(Duration::from_secs(3), response).await.unwrap().unwrap().unwrap().status(), StatusCode::NO_CONTENT);
                 }
-                assert_eq!(value(&replica, &table).await, 6);
-                assert_eq!(value(&replica2, &table).await, 6);
+                assert_eq!(value(&replica, &table).await, 7);
+                assert_eq!(value(&replica2, &table).await, 7);
             }
         })
         .catch_unwind()
