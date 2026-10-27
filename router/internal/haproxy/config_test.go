@@ -61,7 +61,10 @@ func TestRenderRouteMatrix(t *testing.T) {
 		"http-request set-bandwidth-limit up_80000000 if { var(txn.pair) -m str app/AP app/EU app/US app1/AP app2/EU app3/US }",
 		"use_backend app1 if { var(txn.pair) -m str app/AP app1/AP app1/EU app1/US }",
 		"use_backend app3 if { var(txn.pair) -m str app/US app3/AP app3/EU app3/US }",
-		"server app2 172.31.2.10:8080",
+		// The SSE endpoint alone goes to the backends that flush at once.
+		"use_backend app1_stream if { path /api/notifications } { var(txn.pair) -m str app/AP app1/AP app1/EU app1/US }",
+		"backend app2\n    server app2 172.31.2.10:8080",
+		"backend app2_stream\n    option http-no-delay\n    server app2 172.31.2.10:8080",
 		"timeout server 60s",
 	} {
 		if !strings.Contains(text, want+"\n") {
@@ -71,8 +74,12 @@ func TestRenderRouteMatrix(t *testing.T) {
 	if strings.Contains(text, "ssl crt") {
 		t.Error("HTTPS must stay disabled without an address")
 	}
-	// The checks that answer without an upstream must come before routing.
-	order := []string{"return status 503", "return status 404", "return status 400 if", "return status 400 unless", "lua.isureal_delay", "use_backend"}
+	if got := strings.Count(text, "option http-no-delay"); got != 3 || strings.Index(text, "option http-no-delay") < strings.Index(text, "backend app1_stream") {
+		t.Errorf("http-no-delay must be set in the 3 stream backends only, found %d", got)
+	}
+	// The checks that answer without an upstream must come before routing, and
+	// the stream backend must be chosen before the general one of each server.
+	order := []string{"return status 503", "return status 404", "return status 400 if", "return status 400 unless", "lua.isureal_delay", "use_backend app1_stream", "use_backend app1 if"}
 	last := -1
 	for _, marker := range order {
 		index := strings.Index(text, marker)
