@@ -10,6 +10,13 @@
       - rustc
       - zlib1g-dev
 
+# webapp/ruby は JPEG の検証に ruby-vips を使い、実行時に libvips を読み込む。
+# 推奨パッケージ（ghostscript やフォントなど）は JPEG の読み込みに要らないので入れない
+- name: Install libvips for webapp/ruby
+  ansible.builtin.apt:
+    name: libvips42t64
+    install_recommends: false
+
 - name: Read installed Ruby version
   ansible.builtin.command:
     argv: [/home/isucon/local/ruby/bin/ruby, -e, 'print RUBY_VERSION']
