@@ -4,6 +4,7 @@ import { APIError } from "./api_error.ts";
 import { bind, parseQuery, rawQuery } from "./bind.ts";
 import { imageSignature, imageSigningKey } from "./image_signature.ts";
 import { blobResponse } from "./response.ts";
+import { unix } from "./time.ts";
 import type { Env, HandlerContext } from "./server.ts";
 
 const getImageRequest = {
@@ -13,14 +14,8 @@ const getImageRequest = {
 } as const;
 
 function parseImageExp(value: string): number | null {
-  if (!/^[+-]?\d+$/.test(value)) {
-    return null;
-  }
-  const exp = BigInt(value);
-  if (exp < -(2n ** 63n) || exp >= 2n ** 63n || exp.toString() !== value) {
-    return null;
-  }
-  return Number(exp);
+  const exp = Number(value);
+  return /^-?\d+$/.test(value) && String(exp) === value ? exp : null;
 }
 
 export function getImageHandler(h: HandlerContext): Handler<Env> {
@@ -37,7 +32,7 @@ export function getImageHandler(h: HandlerContext): Handler<Env> {
       throw new APIError(403, "image_forbidden");
     }
     const exp = parseImageExp(input.exp);
-    if (exp === null || exp <= Date.now() / 1000) {
+    if (exp === null || exp <= unix(Temporal.Now.instant())) {
       throw new APIError(403, "image_forbidden");
     }
     const sig = Buffer.from(input.sig, "base64url");
@@ -85,7 +80,7 @@ export function getImageHandler(h: HandlerContext): Handler<Env> {
     if (object === undefined) {
       throw new APIError(403, "image_forbidden");
     }
-    if (exp <= Date.now() / 1000) {
+    if (exp <= unix(Temporal.Now.instant())) {
       throw new APIError(403, "image_forbidden");
     }
     return blobResponse(c, 200, object.media_type, object.data);
