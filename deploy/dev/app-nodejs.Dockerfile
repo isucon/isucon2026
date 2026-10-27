@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.10
-FROM node:26.10.0-trixie-slim AS nodejs-build
+FROM node:26.12.1-trixie-slim AS nodejs-build
 WORKDIR /app/nodejs
 COPY webapp/nodejs/package.json webapp/nodejs/package-lock.json ./
 RUN npm ci
@@ -15,7 +15,7 @@ COPY frontend/ ./
 ENV VITE_API_PREFIX=/api
 RUN npm run build
 
-FROM node:26.10.0-trixie-slim
+FROM node:26.12.1-trixie-slim
 RUN apt-get update \
   && apt-get install -y --no-install-recommends ca-certificates curl iproute2 nginx postgresql-client tzdata \
   && rm -rf /var/lib/apt/lists/* /etc/nginx/sites-enabled/default
