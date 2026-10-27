@@ -39,6 +39,22 @@ func searchUsersHandler(h *HandlerContext) echo.HandlerFunc {
 			return NewAPIError(http.StatusBadRequest, "invalid_pagination")
 		}
 		ctx := c.Request().Context()
+		if user, ok := hotSessionUser(c, h); ok {
+			if found, ok := hot.search(user.ID, normalizeSearchText(input.Q), input.BeforeUsername, input.BeforeID); ok {
+				items := make([]relationshipUserResponse, 0, len(found))
+				for _, u := range found {
+					if u.AccountType != "certified_public" {
+						u.Bio = ""
+					}
+					items = append(items, newRelationshipUserResponse(u))
+				}
+				hasMore := len(items) > 50
+				if hasMore {
+					items = items[:50]
+				}
+				return c.JSON(http.StatusOK, searchUsersResponse{Items: items, HasMore: hasMore})
+			}
+		}
 		viewer := GetSession(c).UserID
 		rows, err := h.DB.QueryxContext(ctx, `SELECT `+userProjection+` FROM users
           WHERE status='active' AND id<>$1 AND ($2='' OR (username,id)>($2,$3))

@@ -274,6 +274,8 @@ CREATE INDEX realmojis_image ON realmojis(image_id, reactor_id) INCLUDE (post_id
 -- The reset deletes the rows the load wrote by created_at; without these the
 -- deletes scan the history tables (about 5 s on the large data set).
 CREATE INDEX notifications_created ON notifications(created_at);
+-- The hot state reads the notified users of the open windows when it loads.
+CREATE INDEX notifications_window ON notifications(posting_window_id);
 CREATE INDEX comments_created ON comments(created_at);
 CREATE INDEX realmojis_created ON realmojis(created_at);
 CREATE INDEX posts_created ON posts(created_at);
