@@ -1,7 +1,6 @@
 package isureal
 
 import (
-	"crypto/sha1"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -20,20 +19,9 @@ type getNotificationsResponse struct {
 }
 
 // notificationID is the ID of the notification of a window to a user. It is
-// derived, so every region and the background writer agree on it, and it
-// starts with the window's time (like a UUID v7), so the rows of a window
-// enter the primary key index in order instead of at random leaf pages.
-func notificationID(windowID string, startsAt time.Time, userID string) string {
-	var id [16]byte
-	ms := uint64(startsAt.UnixMilli())
-	for i := 0; i < 6; i++ {
-		id[i] = byte(ms >> (40 - 8*i))
-	}
-	sum := sha1.Sum([]byte(windowID + ":" + userID))
-	copy(id[6:], sum[:10])
-	id[6] = 0x70 | (id[6] & 0x0f)
-	id[8] = 0x80 | (id[8] & 0x3f)
-	return uuid.UUID(id).String()
+// derived, so every region and the background writer agree on it.
+func notificationID(windowID, userID string) string {
+	return uuid.NewSHA1(uuid.NameSpaceOID, []byte(windowID+":"+userID)).String()
 }
 
 // notificationWaiter is a subscribed notification stream, waiting for the next
@@ -89,7 +77,7 @@ func (h *notificationHub) removeLocked(w *notificationWaiter) {
 }
 
 func notificationOf(w *hotWindow, userID string) *getNotificationsResponse {
-	return &getNotificationsResponse{ID: notificationID(w.ID, w.StartsAt, userID), PostingWindowID: w.ID, Region: w.Region, CreatedAt: w.StartsAt}
+	return &getNotificationsResponse{ID: notificationID(w.ID, userID), PostingWindowID: w.ID, Region: w.Region, CreatedAt: w.StartsAt}
 }
 
 // windowOpened delivers the window's notification to the waiting streams of
