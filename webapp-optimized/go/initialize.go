@@ -22,6 +22,7 @@ type initializeResponse struct {
 func initializeHandler(h *HandlerContext) echo.HandlerFunc {
 	return func(c *echo.Context) error {
 		notificationWrites.drain()
+		store.clear()
 		cmd := exec.Command("../sql/init.sh")
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr

@@ -419,7 +419,7 @@ BEGIN
   IF action='profile_image_delete' AND old_image IS NULL THEN PERFORM opt_fail(404,'account_not_found'); END IF;
   imageid:=NULL;
   IF action='profile_image_put' THEN
-   imageid:=gen_random_uuid()::text;
+   imageid:=coalesce(a->>'imageId',gen_random_uuid()::text);
    INSERT INTO image_objects(id,owner_user_id,data,media_type) VALUES(imageid,actor,image,'image/jpeg');
   END IF;
   UPDATE users SET profile_image_id=imageid,updated_at=clock_timestamp() WHERE id=actor;
@@ -444,7 +444,7 @@ BEGIN
     WHERE pp.author_id=actor AND pw.local_date=w.local_date;
    at_time:=clock_timestamp();
    IF active_count<>0 OR deleted_count>=2 OR at_time<w.starts_at THEN PERFORM opt_fail(409,'post_slot_unavailable'); END IF;
-   imageid:=gen_random_uuid()::text; newid:=gen_random_uuid()::text;
+   imageid:=coalesce(a->>'imageId',gen_random_uuid()::text); newid:=gen_random_uuid()::text;
    INSERT INTO image_objects(id,owner_user_id,data,media_type,created_at) VALUES(imageid,actor,image,'image/jpeg',at_time);
    INSERT INTO posts(id,author_id,posting_window_id,image_id,caption,visibility,location_kind,latitude,longitude,locality,posted_at)
     VALUES(newid,actor,w.id,imageid,a->>'caption',a->>'visibility',a->>'kind',
@@ -486,7 +486,7 @@ BEGIN
    RETURN jsonb_build_object('user',result,'comment',opt_comment(c));
   END IF;
   UPDATE realmojis SET replaced_at=clock_timestamp() WHERE post_id=p.id AND reactor_id=actor AND replaced_at IS NULL AND deleted_at IS NULL;
-  imageid:=gen_random_uuid()::text;
+  imageid:=coalesce(a->>'imageId',gen_random_uuid()::text);
   INSERT INTO image_objects(id,owner_user_id,data,media_type) VALUES(imageid,actor,image,'image/jpeg');
   INSERT INTO realmojis(id,post_id,reactor_id,image_id,reaction_type,created_at)
    VALUES(newid,p.id,actor,imageid,a->>'reactionType',clock_timestamp()) RETURNING * INTO r;
