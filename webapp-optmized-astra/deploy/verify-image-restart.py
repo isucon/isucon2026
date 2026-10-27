@@ -46,7 +46,7 @@ if sys.argv[1:] == ['capture']:
         if len(samples) >= 5 or time.monotonic() > deadline:
             break
     assert samples, 'No current public image could be sampled'
-    snapshot.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    snapshot.parent.mkdir(mode=0o711, parents=True, exist_ok=True)
     fd = os.open(snapshot, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, 'w') as output:
         json.dump(samples, output)
