@@ -83,6 +83,11 @@ export declare type ListTeamsResponse_TeamListItem = Message<"isuxportal.proto.s
    * @generated from field: bool hidden = 8;
    */
   hidden: boolean;
+
+  /**
+   * @generated from field: bool onsite_support_excluded = 9;
+   */
+  onsiteSupportExcluded: boolean;
 };
 
 /**
