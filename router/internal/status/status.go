@@ -6,14 +6,15 @@ import (
 )
 
 type Snapshot struct {
-	Status          string    `json:"status"`
-	Ready           bool      `json:"ready"`
-	PortalConnected bool      `json:"portal_connected"`
-	EnvoyConnected  bool      `json:"envoy_connected"`
-	EnvoySynced     bool      `json:"envoy_synced"`
+	Status          string `json:"status"`
+	Ready           bool   `json:"ready"`
+	PortalConnected bool   `json:"portal_connected"`
+	// ProxyServing and ProxyError come from a check of the proxy when the
+	// readiness endpoint is requested.
+	ProxyServing    bool      `json:"proxy_serving"`
+	ProxyError      string    `json:"proxy_error,omitempty"`
 	DesiredSnapshot string    `json:"desired_snapshot_id,omitempty"`
 	ActiveSnapshot  string    `json:"active_snapshot_id,omitempty"`
-	RDSVersion      string    `json:"rds_version,omitempty"`
 	Phase           string    `json:"phase"`
 	LastError       string    `json:"last_error,omitempty"`
 	Retry           uint64    `json:"retry"`
@@ -39,19 +40,6 @@ func (s *Store) SetPortalConnected(connected bool) {
 	s.update(func(state *Snapshot) { state.PortalConnected = connected })
 }
 
-func (s *Store) SetEnvoyConnected(connected bool) {
-	s.update(func(state *Snapshot) {
-		state.EnvoyConnected = connected
-		if !connected {
-			state.EnvoySynced = false
-		}
-	})
-}
-
-func (s *Store) SetEnvoySynced(synced bool) {
-	s.update(func(state *Snapshot) { state.EnvoySynced = synced })
-}
-
 func (s *Store) StartApply(snapshotID, phase string, retry uint64) {
 	s.update(func(state *Snapshot) {
 		state.DesiredSnapshot = snapshotID
@@ -65,11 +53,10 @@ func (s *Store) SetPhase(phase string) {
 	s.update(func(state *Snapshot) { state.Phase = phase })
 }
 
-func (s *Store) RecordActive(snapshotID, version string) {
+func (s *Store) RecordActive(snapshotID string) {
 	s.update(func(state *Snapshot) {
 		state.DesiredSnapshot = snapshotID
 		state.ActiveSnapshot = snapshotID
-		state.RDSVersion = version
 		state.Phase = "active"
 		state.LastError = ""
 		state.Retry = 0
@@ -77,9 +64,7 @@ func (s *Store) RecordActive(snapshotID, version string) {
 }
 
 func (s *Store) RecordFailure(snapshotID, phase, reason string, retry uint64) {
-	if len(reason) > 512 {
-		reason = reason[:512]
-	}
+	reason = bounded(reason)
 	s.update(func(state *Snapshot) {
 		state.DesiredSnapshot = snapshotID
 		state.Phase = phase
@@ -89,9 +74,7 @@ func (s *Store) RecordFailure(snapshotID, phase, reason string, retry uint64) {
 }
 
 func (s *Store) RecordReportError(reason string, retry uint64) {
-	if len(reason) > 512 {
-		reason = reason[:512]
-	}
+	reason = bounded(reason)
 	s.update(func(state *Snapshot) {
 		state.LastError = reason
 		state.Retry = retry
@@ -107,10 +90,16 @@ func (s *Store) ClearReportError() {
 	})
 }
 
+func bounded(reason string) string {
+	if len(reason) > 512 {
+		return reason[:512]
+	}
+	return reason
+}
+
 func (s *Store) update(change func(*Snapshot)) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	change(&s.state)
-	s.state.Ready = s.state.ActiveSnapshot != "" && s.state.EnvoyConnected && s.state.EnvoySynced
 	s.state.UpdatedAt = time.Now().UTC()
 }

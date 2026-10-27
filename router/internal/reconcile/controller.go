@@ -2,7 +2,6 @@ package reconcile
 
 import (
 	"context"
-	"crypto/sha256"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -10,13 +9,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	routev3 "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
 	portalv1 "github.com/isucon/isucon2026/gen/go/portal/v1"
 	"github.com/isucon/isucon2026/router/internal/config"
 	"github.com/isucon/isucon2026/router/internal/domain"
 	"github.com/isucon/isucon2026/router/internal/netcontrol"
 	statusstore "github.com/isucon/isucon2026/router/internal/status"
-	routerxds "github.com/isucon/isucon2026/router/internal/xds"
 )
 
 type NetworkPlane interface {
@@ -26,34 +23,36 @@ type NetworkPlane interface {
 	Active() *netcontrol.Candidate
 }
 
-type RoutePlane interface {
-	Publish(context.Context, string, *routev3.RouteConfiguration) error
-	Wait(context.Context, string) error
+// ProxyPlane is the HTTP proxy. Its routes are static; a snapshot only changes
+// the default country.
+type ProxyPlane interface {
+	Apply(context.Context, domain.Config) error
+	Serving(context.Context, domain.Config) error
 }
 
 type activeState struct {
 	snapshot domain.ActiveSnapshot
 	network  netcontrol.Candidate
-	routes   *routev3.RouteConfiguration
 }
 
 type Controller struct {
 	config     config.Config
 	portal     Portal
 	network    NetworkPlane
-	routes     RoutePlane
+	proxy      ProxyPlane
 	status     *statusstore.Store
 	pending    chan domain.DesiredSnapshot
 	reports    chan ApplyReport
 	generation atomic.Uint64
-	attempt    atomic.Uint64
 	mu         sync.RWMutex
 	active     *activeState
+	// proxyLost is true while the proxy does not serve the active snapshot.
+	proxyLost bool
 }
 
-func NewController(cfg config.Config, portal Portal, network NetworkPlane, routes RoutePlane, state *statusstore.Store) *Controller {
+func NewController(cfg config.Config, portal Portal, network NetworkPlane, proxy ProxyPlane, state *statusstore.Store) *Controller {
 	return &Controller{
-		config: cfg, portal: portal, network: network, routes: routes, status: state,
+		config: cfg, portal: portal, network: network, proxy: proxy, status: state,
 		pending: make(chan domain.DesiredSnapshot, 1), reports: make(chan ApplyReport, 1),
 	}
 }
@@ -95,6 +94,9 @@ func (c *Controller) Run(ctx context.Context) error {
 	}()
 	go c.reportLoop(ctx)
 
+	// A restarted proxy forgets the default country; the check restores it.
+	proxyCheck := time.NewTicker(c.config.ReportRetryInterval)
+	defer proxyCheck.Stop()
 	for {
 		select {
 		case <-ctx.Done():
@@ -106,6 +108,28 @@ func (c *Controller) Run(ctx context.Context) error {
 			return fmt.Errorf("Portal stream stopped: %w", err)
 		case desired := <-c.pending:
 			c.reconcileUntilSuccessOrSuperseded(ctx, desired)
+		case <-proxyCheck.C:
+			c.restoreProxy(ctx)
+		}
+	}
+}
+
+func (c *Controller) restoreProxy(ctx context.Context) {
+	active := c.activeCopy()
+	if active == nil {
+		return
+	}
+	err := c.proxy.Serving(ctx, active.snapshot.Config)
+	if err != nil {
+		err = c.proxy.Apply(ctx, active.snapshot.Config)
+		if err == nil {
+			slog.Info("Proxy default country restored", "snapshot_id", active.snapshot.ID)
+		}
+	}
+	if lost := err != nil; lost != c.proxyLost {
+		c.proxyLost = lost
+		if lost {
+			slog.Warn("Proxy does not serve the active snapshot", "snapshot_id", active.snapshot.ID, "error", err)
 		}
 	}
 }
@@ -128,6 +152,9 @@ func (c *Controller) reconcileUntilSuccessOrSuperseded(ctx context.Context, desi
 		retry++
 		c.status.RecordFailure(desired.ID, "apply-failed", err.Error(), retry)
 		c.enqueueReport(ApplyReport{SnapshotID: desired.ID, Reason: err.Error()})
+		// The last-known-good snapshot stays active while this one fails, so a
+		// proxy that restarts in the meantime still gets its default country.
+		c.restoreProxy(ctx)
 		timer := time.NewTimer(c.config.ReportRetryInterval)
 		select {
 		case <-ctx.Done():
@@ -143,10 +170,6 @@ func (c *Controller) reconcileUntilSuccessOrSuperseded(ctx context.Context, desi
 }
 
 func (c *Controller) apply(ctx context.Context, desired domain.DesiredSnapshot) error {
-	routeConfig, err := routerxds.BuildRoutes(c.config.RouteConfigName, c.config.Hosts, desired.Config, c.config.Traffic)
-	if err != nil {
-		return fmt.Errorf("build RDS: %w", err)
-	}
 	c.status.SetPhase("network")
 	candidate, err := c.network.Prepare(desired.Config)
 	if err != nil {
@@ -158,30 +181,21 @@ func (c *Controller) apply(ctx context.Context, desired domain.DesiredSnapshot) 
 		return fmt.Errorf("apply network: %w", err)
 	}
 
-	version := versionFor(desired, "apply", c.attempt.Add(1))
-	c.status.SetPhase("xds-publish")
-	if err := c.routes.Publish(ctx, version, routeConfig); err != nil {
-		return c.rollback(ctx, previousNetwork, previousActive, fmt.Errorf("publish RDS: %w", err))
-	}
-	c.status.SetPhase("xds-ack")
-	ackCtx, cancel := context.WithTimeout(ctx, c.config.XDSAckTimeout)
-	err = c.routes.Wait(ackCtx, version)
-	cancel()
-	if err != nil {
-		return c.rollback(ctx, previousNetwork, previousActive, fmt.Errorf("wait for RDS ACK: %w", err))
+	c.status.SetPhase("proxy")
+	if err := c.proxy.Apply(ctx, desired.Config); err != nil {
+		return c.rollback(ctx, previousNetwork, previousActive, fmt.Errorf("apply proxy: %w", err))
 	}
 
 	active := &activeState{
-		snapshot: domain.ActiveSnapshot{DesiredSnapshot: desired, RDSVersion: version, CommittedAt: time.Now().UTC()},
+		snapshot: domain.ActiveSnapshot{DesiredSnapshot: desired, CommittedAt: time.Now().UTC()},
 		network:  candidate,
-		routes:   routeConfig,
 	}
 	c.mu.Lock()
 	c.active = active
 	c.mu.Unlock()
-	c.status.RecordActive(desired.ID, version)
+	c.status.RecordActive(desired.ID)
 	c.enqueueReport(ApplyReport{SnapshotID: desired.ID, Config: desired.Config, Success: true})
-	slog.Info("Router snapshot applied", "snapshot_id", desired.ID, "generation", desired.Generation, "rds_version", version)
+	slog.Info("Router snapshot applied", "snapshot_id", desired.ID, "generation", desired.Generation)
 	return nil
 }
 
@@ -191,16 +205,8 @@ func (c *Controller) rollback(ctx context.Context, previousNetwork *netcontrol.C
 		rollbackErr = errors.Join(rollbackErr, fmt.Errorf("network rollback: %w", err))
 	}
 	if previousActive != nil {
-		version := versionFor(previousActive.snapshot.DesiredSnapshot, "rollback", c.attempt.Add(1))
-		if err := c.routes.Publish(ctx, version, previousActive.routes); err != nil {
-			rollbackErr = errors.Join(rollbackErr, fmt.Errorf("RDS rollback publish: %w", err))
-		} else {
-			ackCtx, cancel := context.WithTimeout(ctx, c.config.XDSAckTimeout)
-			err := c.routes.Wait(ackCtx, version)
-			cancel()
-			if err != nil {
-				rollbackErr = errors.Join(rollbackErr, fmt.Errorf("RDS rollback ACK: %w", err))
-			}
+		if err := c.proxy.Apply(ctx, previousActive.snapshot.Config); err != nil {
+			rollbackErr = errors.Join(rollbackErr, fmt.Errorf("proxy rollback: %w", err))
 		}
 	}
 	if rollbackErr != nil {
@@ -262,11 +268,6 @@ func (c *Controller) activeCopy() *activeState {
 	}
 	copyState := *c.active
 	return &copyState
-}
-
-func versionFor(snapshot domain.DesiredSnapshot, purpose string, attempt uint64) string {
-	digest := sha256.Sum256([]byte(snapshot.ID))
-	return fmt.Sprintf("%s-g%d-a%d-%x", purpose, snapshot.Generation, attempt, digest[:6])
 }
 
 func enqueueLatest[T any](channel chan T, value T) {

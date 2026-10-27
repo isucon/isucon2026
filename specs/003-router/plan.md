@@ -6,6 +6,9 @@
 
 ## Summary
 
+> 2026-10-27: HTTP data plane は Envoy と xDS から HAProxy 2.8 に置き換えた（research.md の Decision 8）。
+> 以下は当初の計画のまま残す。
+
 Portal の `portal.v1.PortalRouterService` を Streaming Pull する Go 製 Router Controller を独立
 `router/` module として追加する。Controller は最新 snapshot を検証し、Linux forwarding／nftables と
 HTB+netem の設定を冪等 reconcile すると同時に、Envoy へ RDS snapshot を配信して Host・国別の

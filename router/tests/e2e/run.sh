@@ -33,8 +33,8 @@ trap cleanup EXIT INT TERM
 
 echo "router e2e: preparing isolated project $project_name"
 "${compose[@]}" down --volumes --remove-orphans --timeout 5 >/dev/null 2>&1 || true
-"${compose[@]}" build portal router app1 app2 app3 db1 e2e
-"${compose[@]}" up --detach --wait --wait-timeout 90 portal router app1 app2 app3 db1 envoy
+"${compose[@]}" build portal router haproxy app1 app2 app3 db1 e2e
+"${compose[@]}" up --detach --wait --wait-timeout 90 portal router app1 app2 app3 db1 haproxy
 
 echo "router e2e: validating routing, shaping, and dynamic updates"
 "${compose[@]}" run --rm --no-deps e2e full
@@ -43,18 +43,18 @@ echo "router e2e: injecting Portal restart"
 "${compose[@]}" restart --timeout 5 portal
 "${compose[@]}" run --rm --no-deps e2e verify-initial
 
-echo "router e2e: injecting Envoy-only restart"
-"${compose[@]}" stop --timeout 5 envoy
+echo "router e2e: injecting HAProxy-only restart"
+"${compose[@]}" stop --timeout 5 haproxy
 if "${compose[@]}" exec --no-TTY router wget -q -O /dev/null http://127.0.0.1:18081/readyz; then
-  echo "router e2e: Router remained ready while Envoy was stopped" >&2
+  echo "router e2e: Router remained ready while HAProxy was stopped" >&2
   exit 1
 fi
-"${compose[@]}" up --detach --wait --wait-timeout 90 envoy
+"${compose[@]}" up --detach --wait --wait-timeout 90 haproxy
 "${compose[@]}" run --rm --no-deps e2e verify-initial
 
-echo "router e2e: injecting Router and Envoy restart"
-"${compose[@]}" stop --timeout 5 envoy router
-"${compose[@]}" up --detach --wait --wait-timeout 90 router envoy
+echo "router e2e: injecting Router and HAProxy restart"
+"${compose[@]}" stop --timeout 5 haproxy router
+"${compose[@]}" up --detach --wait --wait-timeout 90 router haproxy
 "${compose[@]}" run --rm --no-deps e2e verify-initial
 
 echo "router e2e: proving peer isolation while Router is down"
@@ -76,7 +76,7 @@ for peer_pair in "${peer_pairs[@]}"; do
   read -r source target <<<"$peer_pair"
   "${compose[@]}" exec --no-TTY "$source" wget -q -T 5 -O /dev/null "http://$target:8080/healthz"
 done
-"${compose[@]}" stop --timeout 5 envoy router
+"${compose[@]}" stop --timeout 5 haproxy router
 for peer_pair in "${peer_pairs[@]}"; do
   read -r source target <<<"$peer_pair"
   if "${compose[@]}" exec --no-TTY "$source" wget -q -T 2 -O /dev/null "http://$target:8080/healthz"; then
@@ -86,7 +86,7 @@ for peer_pair in "${peer_pairs[@]}"; do
 done
 echo "router e2e: PASS all twelve peer directions are isolated"
 
-"${compose[@]}" up --detach --wait --wait-timeout 90 router envoy
+"${compose[@]}" up --detach --wait --wait-timeout 90 router haproxy
 "${compose[@]}" run --rm --no-deps e2e verify-initial
 
 echo "router e2e: PASS"

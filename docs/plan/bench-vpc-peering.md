@@ -23,7 +23,7 @@ ens5 もジャンボフレーム（9001）になり、NAT gateway の処理料�
 | ルート | supervisor の private のルートテーブルは 0.0.0.0/0 → NAT | 192.168.0.0/16 → peering を足す。チームの `router-public-routes` に supervisor の CIDR → peering を足す |
 | Router のセキュリティグループ | 8080 を NAT の EIP から許可（`supervisor-to-router-*`） | 8080 を supervisor の CIDR から許可する |
 | ベンチの宛先 | Router の EIP（`routerPublicIps`、dev は `routerPublicAddress`） | Router の公開側 ENI のプライベート IP（`t.routerPublicIp`） |
-| X-Client-IP | ベンチが付ける（Envoy は無ければ接続元を足す） | 変えない |
+| X-Client-IP | ベンチが付ける（HAProxy は無ければ接続元を足す） | 変えない |
 
 CIDR は重ならない（10.80.0.0/24、10.26.0.0/16、192.168.0.0/16）。
 
