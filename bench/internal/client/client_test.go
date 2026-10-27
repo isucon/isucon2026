@@ -242,10 +242,11 @@ func TestRetry503ThenSuccess(t *testing.T) {
 			return
 		}
 		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"id":"c1","body":"hi"}`))
 	}))
 	defer server.Close()
 	observed := &recorder{}
-	if err := fastRetry(observed, server.URL).CreateComment(t.Context(), "token", "p1", "hi"); err != nil {
+	if _, err := fastRetry(observed, server.URL).CreateComment(t.Context(), "token", "p1", "hi"); err != nil {
 		t.Fatal(err)
 	}
 	records := observed.all()
@@ -382,10 +383,10 @@ func TestMayFailWith(t *testing.T) {
 	observed := &recorder{}
 	api := fastRetry(observed, server.URL)
 	// 許したステータスでも、呼び出し側にはエラーとして返る。
-	if err := api.CreateComment(client.MayFailWith(t.Context(), http.StatusForbidden), "token", "p1", "hi"); err == nil {
+	if _, err := api.CreateComment(client.MayFailWith(t.Context(), http.StatusForbidden), "token", "p1", "hi"); err == nil {
 		t.Fatal("expected error")
 	}
-	if err := api.CreateComment(t.Context(), "token", "p1", "hi"); err == nil {
+	if _, err := api.CreateComment(t.Context(), "token", "p1", "hi"); err == nil {
 		t.Fatal("expected error")
 	}
 	records := observed.all()
@@ -518,5 +519,27 @@ func TestConcurrentRequestsReuseConnections(t *testing.T) {
 	}
 	if got := conns.Load(); got != parallel {
 		t.Fatalf("opened %d connections, want %d", got, parallel)
+	}
+}
+
+// TestClientIPAndCode は、X-Client-IP を送り、期待外のステータスの応答の error を記録に残す
+// ことを確かめる。
+func TestClientIPAndCode(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("X-Client-IP"); got != "203.0.113.7" {
+			t.Errorf("X-Client-IP=%q", got)
+		}
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"error":"ip_banned"}`))
+	}))
+	defer server.Close()
+	observed := &recorder{}
+	api := fastRetry(observed, server.URL).WithClientIP("203.0.113.7")
+	if _, err := api.Me(t.Context(), "token"); err == nil {
+		t.Fatal("expected error")
+	}
+	records := observed.all()
+	if len(records) != 1 || records[0].Code != "ip_banned" || records[0].Status != http.StatusForbidden {
+		t.Fatalf("records=%+v", records)
 	}
 }

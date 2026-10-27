@@ -83,8 +83,9 @@ type Record struct {
 	Duration time.Duration // 再試行の待ちを含めた所要時間
 	Attempts int
 	Saw503   bool
-	Status   int   // 最後の試行のステータス。レスポンスを受け取れなければ 0
-	Err      error // 最後のステータスが期待どおりなら nil
+	Status   int    // 最後の試行のステータス。レスポンスを受け取れなければ 0
+	Code     string // 最後の試行が期待外のステータスのときの応答の error（ip_banned など）
+	Err      error  // 最後のステータスが期待どおりなら nil
 	Timeout  bool
 	// Allowed は、期待したステータスではないが、呼び出し側が許したステータスで終わったこと
 	// （MayFailWith）。計測では失敗に数えない。
@@ -127,6 +128,7 @@ type Client struct {
 	base     string
 	host     string
 	country  string
+	clientIP string
 	retry    RetryPolicy
 	observer Observer
 	http     *http.Client
@@ -178,6 +180,17 @@ func (c *Client) WithCountry(country string) *Client {
 	copied.country = country
 	return &copied
 }
+
+// WithClientIP は X-Client-IP: ip を送るクライアントを返す。ルーターはこのヘッダが
+// あればそのまま渡すので、ユーザーごとに異なる IP アドレスから来たように見える。
+func (c *Client) WithClientIP(ip string) *Client {
+	copied := *c
+	copied.clientIP = ip
+	return &copied
+}
+
+// ClientIP は X-Client-IP に送る値。
+func (c *Client) ClientIP() string { return c.clientIP }
 
 // WithOwnConnections は新しい Transport を持つクライアントを返す。
 // ユーザーごとに呼び、端末ごとに keep-alive 接続を持たせる。接続を
@@ -246,6 +259,9 @@ func (c *Client) newRequest(ctx context.Context, r request) (*http.Request, erro
 	if c.country != "" {
 		httpRequest.Header.Set("X-Country-Code", c.country)
 	}
+	if c.clientIP != "" {
+		httpRequest.Header.Set("X-Client-IP", c.clientIP)
+	}
 	if r.contentType != "" {
 		httpRequest.Header.Set("Content-Type", r.contentType)
 	}
@@ -269,6 +285,10 @@ func (c *Client) send(ctx context.Context, r request) ([]byte, error) {
 	data, err := c.attempts(ctx, r, &record)
 	record.Duration = time.Since(record.Start)
 	record.Err = err
+	var apiErr *APIError
+	if errors.As(err, &apiErr) {
+		record.Code = apiErr.Code
+	}
 	if allowed, ok := ctx.Value(allowedStatusKey{}).([]int); ok && err != nil && slices.Contains(allowed, record.Status) {
 		record.Allowed = true
 	}
@@ -412,7 +432,8 @@ type InitializeResult struct {
 
 func (c *Client) Initialize(ctx context.Context) (InitializeResult, error) {
 	var result InitializeResult
-	err := c.do(ctx, request{method: http.MethodPost, path: apiPrefix + "/initialize", want: http.StatusOK, timeout: 30 * time.Second}, &result)
+	// 前回の走行で増えた大きな写真を消すので時間がかかる。ルーターの上流タイムアウトと同じ 60 秒。
+	err := c.do(ctx, request{method: http.MethodPost, path: apiPrefix + "/initialize", want: http.StatusOK, timeout: 60 * time.Second}, &result)
 	return result, err
 }
 
@@ -629,26 +650,70 @@ func (c *Client) Feed(ctx context.Context, token, feed string, before *FeedPost)
 
 // --- 交流 ---
 
-func (c *Client) CreateComment(ctx context.Context, token, postID, body string) error {
-	return c.do(ctx, request{
+func (c *Client) CreateComment(ctx context.Context, token, postID, body string) (Comment, error) {
+	var comment Comment
+	err := c.do(ctx, request{
 		method: http.MethodPost, path: apiPrefix + "/posts/" + postID + "/comments", route: "POST /api/posts/:postId/comments",
 		token: token, contentType: "application/json",
 		body: marshalJSON(map[string]string{"body": body}), want: http.StatusCreated,
-	}, nil)
+	}, &comment)
+	return comment, err
 }
 
-func (c *Client) ReplaceRealMoji(ctx context.Context, token, postID, reactionType string, image []byte) error {
+func (c *Client) ReplaceRealMoji(ctx context.Context, token, postID, reactionType string, image []byte) (RealMoji, error) {
 	contentType, body, err := buildMultipart(
 		map[string]string{"reactionType": reactionType},
 		[]filePart{{field: "image", filename: multipartImageName, contentType: "image/jpeg", data: image}},
 	)
 	if err != nil {
-		return err
+		return RealMoji{}, err
 	}
-	return c.do(ctx, request{
+	var reaction RealMoji
+	err = c.do(ctx, request{
 		method: http.MethodPost, path: apiPrefix + "/posts/" + postID + "/realmojis", route: "POST /api/posts/:postId/realmojis",
 		token: token, contentType: contentType, body: body, want: http.StatusCreated,
-	}, nil)
+	}, &reaction)
+	return reaction, err
+}
+
+type CommentPage struct {
+	Items   []Comment `json:"items"`
+	HasMore bool      `json:"hasMore"`
+}
+
+// Comments は投稿のコメントを古い順に 1 ページ取る。after があればそれより後から。
+func (c *Client) Comments(ctx context.Context, token, postID string, after *Comment) (CommentPage, error) {
+	path := apiPrefix + "/posts/" + postID + "/comments"
+	if after != nil {
+		path += "?" + url.Values{"afterCreatedAt": {after.CreatedAt.Format(time.RFC3339Nano)}, "afterId": {after.ID}}.Encode()
+	}
+	var page CommentPage
+	err := c.do(ctx, request{method: http.MethodGet, path: path, route: "GET /api/posts/:postId/comments", token: token, want: http.StatusOK}, &page)
+	return page, err
+}
+
+func (c *Client) DeleteComment(ctx context.Context, token, commentID string) error {
+	return c.do(ctx, request{method: http.MethodDelete, path: apiPrefix + "/comments/" + commentID, route: "DELETE /api/comments/:commentId", token: token, want: http.StatusNoContent}, nil)
+}
+
+type RealMojiPage struct {
+	Items   []RealMoji `json:"items"`
+	HasMore bool       `json:"hasMore"`
+}
+
+// RealMojis は投稿の RealMoji を新しい順に 1 ページ取る。before があればそれより前から。
+func (c *Client) RealMojis(ctx context.Context, token, postID string, before *RealMoji) (RealMojiPage, error) {
+	path := apiPrefix + "/posts/" + postID + "/realmojis"
+	if before != nil {
+		path += "?" + url.Values{"beforeCreatedAt": {before.CreatedAt.Format(time.RFC3339Nano)}, "beforeId": {before.ID}}.Encode()
+	}
+	var page RealMojiPage
+	err := c.do(ctx, request{method: http.MethodGet, path: path, route: "GET /api/posts/:postId/realmojis", token: token, want: http.StatusOK}, &page)
+	return page, err
+}
+
+func (c *Client) DeleteRealMoji(ctx context.Context, token, realMojiID string) error {
+	return c.do(ctx, request{method: http.MethodDelete, path: apiPrefix + "/realmojis/" + realMojiID, route: "DELETE /api/realmojis/:realMojiId", token: token, want: http.StatusNoContent}, nil)
 }
 
 // --- 読み取り ---
@@ -745,9 +810,14 @@ func (c *Client) Image(ctx context.Context, path string) ([]byte, error) {
 }
 
 type Profile struct {
-	ID       string `json:"id"`
-	Username string `json:"username"`
-	Region   string `json:"region"`
+	ID              string  `json:"id"`
+	Username        string  `json:"username"`
+	DisplayName     string  `json:"displayName"`
+	Bio             string  `json:"bio"`
+	Region          string  `json:"region"`
+	AccountType     string  `json:"accountType"`
+	Status          string  `json:"status"`
+	ProfileImageURL *string `json:"profileImageUrl"`
 }
 
 func (c *Client) Me(ctx context.Context, token string) (Profile, error) {
@@ -870,4 +940,118 @@ func (c *Client) DeletePost(ctx context.Context, token, postID string) error {
 
 func (c *Client) Follow(ctx context.Context, token, userID string) error {
 	return c.do(ctx, request{method: http.MethodPut, path: apiPrefix + "/follows/" + userID, route: "PUT /api/follows/:userId", token: token, want: http.StatusNoContent}, nil)
+}
+
+// --- 投稿の閲覧と編集 ---
+
+// GetPost は投稿を 1 件取る。見えない投稿は 404。
+func (c *Client) GetPost(ctx context.Context, token, postID string) (Post, error) {
+	var post Post
+	err := c.do(ctx, request{method: http.MethodGet, path: apiPrefix + "/posts/" + postID, route: "GET /api/posts/:postId", token: token, want: http.StatusOK}, &post)
+	return post, err
+}
+
+// MyCurrentPost は自分の今日の投稿を取る。なければ 404。
+func (c *Client) MyCurrentPost(ctx context.Context, token string) (Post, error) {
+	var post Post
+	err := c.do(ctx, request{method: http.MethodGet, path: apiPrefix + "/posts/me/current", token: token, want: http.StatusOK}, &post)
+	return post, err
+}
+
+func (c *Client) UpdatePostCaption(ctx context.Context, token, postID, caption string) (Post, error) {
+	var post Post
+	err := c.do(ctx, request{
+		method: http.MethodPatch, path: apiPrefix + "/posts/" + postID, route: "PATCH /api/posts/:postId", token: token,
+		contentType: "application/json", body: marshalJSON(map[string]string{"caption": caption}), want: http.StatusOK,
+	}, &post)
+	return post, err
+}
+
+// MemoriesDate は date（YYYY-MM-DD）の Memories を 1 ページ取る。
+func (c *Client) MemoriesDate(ctx context.Context, token, date string, before *Post) (MemoryPage, error) {
+	path := apiPrefix + "/memories/" + date
+	if before != nil {
+		path += "?" + url.Values{"beforePostedAt": {before.PostedAt.Format(time.RFC3339Nano)}, "beforeId": {before.ID}}.Encode()
+	}
+	var page MemoryPage
+	err := c.do(ctx, request{method: http.MethodGet, path: path, route: "GET /api/memories/:date", token: token, want: http.StatusOK}, &page)
+	return page, err
+}
+
+// --- ユーザー ---
+
+type UserPage struct {
+	Items   []UserSummary `json:"items"`
+	HasMore bool          `json:"hasMore"`
+}
+
+// SearchUsers はユーザー名か表示名に q を含むユーザーを探す。
+func (c *Client) SearchUsers(ctx context.Context, token, q string) (UserPage, error) {
+	var page UserPage
+	err := c.do(ctx, request{method: http.MethodGet, path: apiPrefix + "/users?" + url.Values{"q": {q}}.Encode(), route: "GET /api/users", token: token, want: http.StatusOK}, &page)
+	return page, err
+}
+
+func (c *Client) GetUser(ctx context.Context, token, userID string) (UserSummary, error) {
+	var user UserSummary
+	err := c.do(ctx, request{method: http.MethodGet, path: apiPrefix + "/users/" + userID, route: "GET /api/users/:userId", token: token, want: http.StatusOK}, &user)
+	return user, err
+}
+
+// UpdateMe はプロフィールを変える。nil の項目は変えない。
+func (c *Client) UpdateMe(ctx context.Context, token string, displayName, bio, region *string) (Profile, error) {
+	body := map[string]string{}
+	if displayName != nil {
+		body["displayName"] = *displayName
+	}
+	if bio != nil {
+		body["bio"] = *bio
+	}
+	if region != nil {
+		body["region"] = *region
+	}
+	var profile Profile
+	err := c.do(ctx, request{method: http.MethodPatch, path: apiPrefix + "/me", token: token, contentType: "application/json", body: marshalJSON(body), want: http.StatusOK}, &profile)
+	return profile, err
+}
+
+func (c *Client) PutProfileImage(ctx context.Context, token string, image []byte) error {
+	return c.do(ctx, request{method: http.MethodPut, path: apiPrefix + "/me/profile-image", token: token, contentType: "image/jpeg", body: image, want: http.StatusNoContent}, nil)
+}
+
+func (c *Client) DeleteProfileImage(ctx context.Context, token string) error {
+	return c.do(ctx, request{method: http.MethodDelete, path: apiPrefix + "/me/profile-image", token: token, want: http.StatusNoContent}, nil)
+}
+
+func (c *Client) DeleteAccount(ctx context.Context, token string) error {
+	return c.do(ctx, request{method: http.MethodPost, path: apiPrefix + "/me/account-deletion", token: token, want: http.StatusNoContent}, nil)
+}
+
+// --- 関係の解消 ---
+
+func (c *Client) Unfollow(ctx context.Context, token, userID string) error {
+	return c.do(ctx, request{method: http.MethodDelete, path: apiPrefix + "/follows/" + userID, route: "DELETE /api/follows/:userId", token: token, want: http.StatusNoContent}, nil)
+}
+
+func (c *Client) Unblock(ctx context.Context, token, userID string) error {
+	return c.do(ctx, request{method: http.MethodDelete, path: apiPrefix + "/blocks/" + userID, route: "DELETE /api/blocks/:userId", token: token, want: http.StatusNoContent}, nil)
+}
+
+func (c *Client) Unfriend(ctx context.Context, token, userID string) error {
+	return c.do(ctx, request{method: http.MethodDelete, path: apiPrefix + "/friendships/" + userID, route: "DELETE /api/friendships/:userId", token: token, want: http.StatusNoContent}, nil)
+}
+
+// --- 管理者 ---
+
+func (c *Client) CertifyUser(ctx context.Context, token, userID string) error {
+	return c.do(ctx, request{method: http.MethodPut, path: apiPrefix + "/admin/users/" + userID + "/certification", route: "PUT /api/admin/users/:userId/certification", token: token, want: http.StatusNoContent}, nil)
+}
+
+// DeleteCertification は認定を取り消す。アプリは取り消しを認めない（409）。
+func (c *Client) DeleteCertification(ctx context.Context, token, userID string) error {
+	return c.do(ctx, request{method: http.MethodDelete, path: apiPrefix + "/admin/users/" + userID + "/certification", route: "DELETE /api/admin/users/:userId/certification", token: token, want: http.StatusNoContent}, nil)
+}
+
+func (c *Client) AdminLogout(ctx context.Context, token string) error {
+	return c.do(ctx, request{method: http.MethodPost, path: apiPrefix + "/admin/auth/logout", token: token, want: http.StatusNoContent}, nil)
 }

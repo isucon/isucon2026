@@ -180,7 +180,11 @@ func (f *fakeApp) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		for i, p := range posts {
 			path := fmt.Sprintf("images/%06d.jpg", i+1)
 			file, _ := archive.Create(path)
-			file.Write(f.c.world.ImageBytes(p.Image))
+			data := f.c.world.ImageBytes(p.Image)
+			if f.image != nil {
+				data = f.image(p.Image, data)
+			}
+			file.Write(data)
 			exported = append(exported, exportedPost{Post: f.post(p), ImagePath: path})
 		}
 		var manifest any = exported
@@ -348,5 +352,30 @@ func TestCheckMemoriesSampledSignatures(t *testing.T) {
 	}
 	if err == nil || !strings.Contains(err.Error(), "署名") {
 		t.Fatalf("want a signature error, got %v", err)
+	}
+}
+
+// TestCheckExportImages は、エクスポートの画像を比べる枚数の指定（0 は比べない、AllImages は
+// すべて）を確かめる。負荷走行では間引いた検証の分だけ画像を描き直して比べる。
+func TestCheckExportImages(t *testing.T) {
+	c := New(testWorld)
+	app := newFakeApp(c)
+	app.image = func(_ *dataset.Image, data []byte) []byte { return append(slices.Clone(data), 0) }
+	server := httptest.NewServer(app)
+	defer server.Close()
+	user := c.Targets()[0]
+	a := agent.New(client.New(server.URL), user.Region, 0)
+	a.ID, a.Username, a.SecretKey = user.ID, user.Username, user.SecretKey
+	if err := a.Login(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	isNew := func(string) bool { return false }
+	if err := c.CheckExport(t.Context(), a, 0, isNew); err != nil {
+		t.Fatalf("images=0 compared images: %v", err)
+	}
+	for _, images := range []int{1, AllImages} {
+		if err := c.CheckExport(t.Context(), a, images, isNew); err == nil || !strings.Contains(err.Error(), "画像と違います") {
+			t.Fatalf("images=%d: err=%v", images, err)
+		}
 	}
 }

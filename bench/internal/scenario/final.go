@@ -12,7 +12,7 @@ import (
 )
 
 // finalCheckTimeout は走行後の整合性チェックにかける時間の上限。
-const finalCheckTimeout = 30 * time.Second
+const finalCheckTimeout = 15 * time.Second
 
 // finalCheckUsers は走行後の整合性チェックで確かめる負荷ユーザーの数の上限、
 // finalCheckConcurrency は同時に確かめる数。速いアプリほど負荷ユーザーが増えるので、
@@ -34,7 +34,13 @@ func (r *Runner) finalCheck(ctx context.Context) string {
 	defer cancel()
 	start := time.Now()
 	defer func() { r.cfg.Logger.Info("final check done", "elapsed", time.Since(start).Round(time.Millisecond)) }()
-	users := r.agentsSnapshot()
+	var users []*agent.Agent
+	for _, u := range r.usersSnapshot() {
+		// 退会したユーザーと BAN されたユーザーは確かめられない。
+		if !u.stopped.Load() {
+			users = append(users, u.Agent)
+		}
+	}
 	rand.Shuffle(len(users), func(i, j int) { users[i], users[j] = users[j], users[i] })
 	users = users[:min(len(users), finalCheckUsers)]
 	months := r.model.LoadMonths()
