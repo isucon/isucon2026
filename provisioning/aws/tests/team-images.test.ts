@@ -1,5 +1,5 @@
 import * as pulumi from "@pulumi/pulumi";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 
 process.env.PULUMI_CONFIG = JSON.stringify({
 	"isucon2026:teamCount": "7",
@@ -14,6 +14,7 @@ process.env.PULUMI_CONFIG = JSON.stringify({
 		7: ["ssh-ed25519 AAAA fixture"],
 	}),
 	"isucon2026:disabledInstanceTeams": "[1,2,3]",
+	"isucon2026:stoppedTeams": "[6]",
 	"isucon2026:serviceAmiId": "ami-service",
 	"isucon2026:routerAmiId": "ami-router",
 	"isucon2026:teamImages": JSON.stringify({
@@ -110,5 +111,22 @@ test("uses new images only for the selected team and preserves existing instance
 				);
 			} else expect(instance.inputs.userData).not.toContain("authorized_keys");
 		}
+	}
+});
+
+test("stops only the instances of stopped teams", async () => {
+	const powerStates = () =>
+		resources.filter(
+			(r) => r.type === "aws:ec2transitgateway/instanceState:InstanceState",
+		);
+	await vi.waitFor(() => expect(powerStates()).toHaveLength(20));
+	for (const power of powerStates()) {
+		const target = power.name.replace(/-power$/, "");
+		expect(power.inputs.instanceId, power.name).toBe(
+			target.endsWith("-router") ? `${target}-id` : `${target}-instance-id`,
+		);
+		expect(power.inputs.state, power.name).toBe(
+			power.name.startsWith("team6-") ? "stopped" : "running",
+		);
 	}
 });
