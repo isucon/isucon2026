@@ -41,7 +41,9 @@ bundle.parent.mkdir(parents=True, exist_ok=True)
 with tarfile.open(bundle, "w:gz") as tar:
     for path in sorted(DEPLOY.glob("*.sh")):
         tar.add(path, arcname=path.name)
-    tar.add(ROOT / "webapp-optmized-astra/sql/004-indexes.sql", arcname="004-indexes.sql")
+    for path in sorted((ROOT / "webapp-optmized-astra/sql").glob("0??-*.sql")):
+        if int(path.name[:3]) >= 4:
+            tar.add(path, arcname=path.name)
 
 
 def stage(instance):
@@ -65,7 +67,7 @@ if mode in ("all", "application") and not runtime["replicaReads"]:
     parallel(application, applications)
 
 if mode in ("all", "database"):
-    remote(database, "cp /home/isucon/astra-deploy/004-indexes.sql /tmp/astra-indexes.sql && sudo bash /home/isucon/astra-deploy/database.sh")
+    remote(database, "sudo bash /home/isucon/astra-deploy/database.sh")
 
 if mode in ("all", "replication") and runtime["replicasEnabled"]:
     secret_file = ROOT / runtime["replicationEnvPath"]
