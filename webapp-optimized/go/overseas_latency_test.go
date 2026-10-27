@@ -108,7 +108,7 @@ func TestOverseasLatency(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := part.Write([]byte("photo")); err != nil {
+		if _, err := part.Write(testJPEG(t)); err != nil {
 			t.Fatal(err)
 		}
 		if err := multipartWriter.Close(); err != nil {

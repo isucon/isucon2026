@@ -245,3 +245,12 @@ func TestCreatePostIntegration(t *testing.T) {
 		t.Fatalf("image insert was not rolled back: count=%d", imageCount)
 	}
 }
+
+func testJPEG(t *testing.T) []byte {
+	t.Helper()
+	var data bytes.Buffer
+	if err := jpeg.Encode(&data, image.NewRGBA(image.Rect(0, 0, 2, 2)), nil); err != nil {
+		t.Fatal(err)
+	}
+	return data.Bytes()
+}

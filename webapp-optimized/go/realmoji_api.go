@@ -1,7 +1,6 @@
 package isureal
 
 import (
-	"io"
 	"mime/multipart"
 	"net/http"
 	"time"
@@ -46,9 +45,12 @@ func replaceRealMojiHandler(h *HandlerContext) echo.HandlerFunc {
 			return err
 		}
 		defer file.Close()
-		data, err := io.ReadAll(file)
+		data, ok, err := readJPEG(file, 512)
 		if err != nil {
 			return err
+		}
+		if !ok {
+			return NewAPIError(http.StatusBadRequest, "invalid_realmoji")
 		}
 		result, err := runWrite(c.Request().Context(), h.DB, "reaction_create", GetSession(c).UserID,
 			map[string]any{"postId": input.PostID, "reactionType": input.ReactionType}, data)
