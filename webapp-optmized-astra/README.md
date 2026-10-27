@@ -43,7 +43,7 @@ ASTRA_POST_TEST_DSN=postgres://postgres@127.0.0.1:26210/astra_post_test \
   python3 webapp-optmized-astra/tests/post_function.py
 ```
 
-RustのDB接続を伴うキャンセル検証と通知の結合テストは`ISUREAL_SESSION_TEST_DSN`がなければスキップされる。
+RustのDB接続を伴うキャンセル検証と通知・並行登録の結合テストは`ISUREAL_SESSION_TEST_DSN`がなければスキップされる。
 通知テストは一時スキーマを作り、接続時刻、通知順序、地域変更・退会・不正な署名鍵、接続切断、ポーラーの再起動を確認する。
 単体テストだけではAPI整合性は証明できないため、Team 10の実ベンチ結果を判定に使う。
 
@@ -64,6 +64,7 @@ RustのDB接続を伴うキャンセル検証と通知の結合テストは`ISUR
 - 投稿のロック、署名計算、通知、SQL往復の最適化。
 - JPEGは成功した検証結果を最大4096件保持し、初回は圧縮データ全体を検査しながら画素展開量を減らす。
 - SSE通知は地域内DBごとに100ミリ秒間隔で最大512接続ずつ一括確認する。接続ごとの通知時刻とユーザー状態は毎回確認する。
+- 新規登録はユーザー名の一意制約と単一INSERTで処理する。同名の並行登録は1件だけ成功し、別名の登録は互いをブロックしない。
 - europe/app2、america/app3へのPostgreSQL配置。同期レプリカと地域内読み取りを検証し、性能と整合性を比較する。
 
 計測結果は`results/`へ保存する。詳細なリソース統計の原本は`var/aws-bench/`と既存の結果用S3バケットに残る。
@@ -77,3 +78,4 @@ RustのDB接続を伴うキャンセル検証と通知の結合テストは`ISUR
 | 20261027T131543Z-team10 | distributed DB with one-round-trip post creation | PASS | 12,945 |
 | 20261027T133107Z-team10 | distributed DB with bounded cached JPEG validation | PASS | 13,910 |
 | 20261027T133643Z-team10 | distributed DB with shared batched SSE notification polling | PASS | 21,027 |
+| 20261027T134205Z-team10 | distributed DB with concurrent single-statement registration | PASS | 16,665 |
