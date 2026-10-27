@@ -2,6 +2,7 @@ package isureal
 
 import (
 	"context"
+	"log/slog"
 	"os"
 	"strconv"
 	"time"
@@ -61,6 +62,15 @@ func NewServer(config *Config) *echo.Echo {
 	err = db.Ping()
 	if err != nil {
 		panic("failed to ping database: " + err.Error())
+	}
+
+	if dir := os.Getenv("ISUREAL_IMAGE_DIR"); dir != "" {
+		if p, err := openImagePack(context.Background(), db, dir); err != nil {
+			slog.Warn("image pack not used", "error", err)
+		} else {
+			pack = p
+			slog.Info("image pack", "images", len(p.entries))
+		}
 	}
 
 	adminDB, err := sqlx.Open("pgx-auth", config.DatabaseDSN())
