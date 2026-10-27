@@ -37,6 +37,8 @@
           - --exclude=perl/local
           - --exclude=perl/t
           - --exclude=perl/hypnotoad.pid
+          - --exclude=nodejs/node_modules
+          - --exclude=nodejs/test
           - --exclude=sql/002-seed.sql
           - go
           - ruby
@@ -44,6 +46,7 @@
           - python
           - php
           - perl
+          - nodejs
           - sql
       changed_when: true
       when: "'webapp' in prepare_components"
