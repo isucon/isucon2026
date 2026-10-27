@@ -47,6 +47,8 @@ type persona struct {
 	phrases []string
 	// avatar と bio は、登録したときにプロフィール画像と自己紹介を設定する確率。
 	avatar, bio float64
+	// signOff は日を過ごし終えたあとでログアウトし、次の日に開き直してログインする確率。
+	signOff float64
 }
 
 // newPersona は username の好みと癖を決める。
@@ -92,6 +94,10 @@ func newPersona(seed uint64, username string) persona {
 		p.location = "approximate"
 	default:
 		p.location = "exact"
+	}
+	// 15% の人は、ときどき日の終わりにログアウトしてアプリを閉じる。
+	if at("signoff") < 0.15 {
+		p.signOff = 0.4 + 0.4*at("signoff-rate")
 	}
 	// 1 割弱の人はよく旅をし、ほかの人はリージョンを移らない。
 	if at("traveler") < 0.08 {

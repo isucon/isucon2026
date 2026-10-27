@@ -182,6 +182,15 @@ func (r *Runner) runUser(ctx context.Context, u *user, join bool, subscribed cha
 				}
 				continue
 			}
+			if r.signsOff(u, s.day) {
+				stopListening = r.closeApp(ctx, u, s.day, stopListening, notifications)
+				if status, err := u.API.CurrentWindow(ctx, u.Token); err == nil && status.Window != nil && status.CanPost && r.model.HasWindow(status.Window.ID) {
+					s, previous = r.enterWindow(ctx, u, status.Window.ID, previous, time.Time{}, notifications)
+				} else if err != nil && u.Token != "" {
+					r.requestError(ctx, u, "%s: 現在の投稿期間を取得できません: %v", u.Username, err)
+				}
+				continue
+			}
 		}
 		if s == nil || s.budget <= 0 {
 			select {
