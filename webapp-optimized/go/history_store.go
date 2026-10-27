@@ -329,18 +329,17 @@ func (s *historyStore) load(ctx context.Context, db *sqlx.DB, region string) err
 	return nil
 }
 
-// signLead is how long before an expiry step begins its signatures are
-// computed, so the step starts with them.
-const signLead = 30 * time.Minute
+// signPace is how many times longer the next step's signatures wait than
+// they compute: about 5% of one CPU, so no load meets a burst of signing.
+const signPace = 19
 
 // sign keeps the image signatures of the posts and RealMojis computed for the
-// current expiry and, from signLead before it begins, the next one.
+// current expiry step and, slowly in the background, for the next one.
 func (s *historyStore) sign() {
-	workers := runtime.NumCPU()
 	signed := map[int64]bool{}
 	for {
-		now := time.Now()
-		for _, exp := range []int64{imageURLExpiry(now), imageURLExpiry(now.Add(signLead))} {
+		current := imageURLExpiry(time.Now())
+		for _, exp := range []int64{current, current + int64(imageURLExpiryStep/time.Second)} {
 			if signed[exp] {
 				continue
 			}
@@ -348,19 +347,24 @@ func (s *historyStore) sign() {
 			s.mu.RLock()
 			posts, reactions := len(s.posts), len(s.reactions)
 			s.mu.RUnlock()
+			// The current step (at startup) is signed by every CPU at once.
+			workers, pace := runtime.NumCPU(), 0
+			if exp != current {
+				workers, pace = 1, signPace
+			}
 			var wg sync.WaitGroup
 			for w := range workers {
 				wg.Go(func() {
 					for start := w * 256; start < posts+reactions; start += workers * 256 {
+						t := time.Now()
 						s.signRange(start, min(start+256, posts+reactions), posts, exp)
+						time.Sleep(time.Since(t) * time.Duration(pace))
 					}
 				})
 			}
 			wg.Wait()
 			signed[exp] = true
 			slog.Info("history signatures", "exp", exp, "elapsed", time.Since(started).Round(time.Second))
-			// Later steps are signed by one worker, leaving the other CPU to requests.
-			workers = 1
 		}
 		time.Sleep(time.Minute)
 	}
