@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/labstack/echo/v5"
 )
 
@@ -52,12 +53,17 @@ func replaceRealMojiHandler(h *HandlerContext) echo.HandlerFunc {
 		if !ok {
 			return NewAPIError(http.StatusBadRequest, "invalid_realmoji")
 		}
+		imageID := uuid.NewString()
+		if err := storeUploadedImage(imageID, data); err != nil {
+			return err
+		}
 		result, err := runWrite(c.Request().Context(), h.DB, "reaction_create", GetSession(c).UserID,
-			map[string]any{"postId": input.PostID, "reactionType": input.ReactionType}, data)
+			map[string]any{"postId": input.PostID, "reactionType": input.ReactionType, "imageId": imageID}, []byte{})
 		if err != nil {
 			return err
 		}
 		reaction, user := result.Reaction, result.User
+		cacheUploadedImage(imageID, user.SecretKeyHash, data)
 		return c.JSON(http.StatusCreated, newRealMojiResponse(reaction, user))
 	}
 }

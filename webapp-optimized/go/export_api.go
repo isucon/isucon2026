@@ -66,6 +66,11 @@ func exportPostsHandler(h *HandlerContext) echo.HandlerFunc {
 			if err != nil {
 				return err
 			}
+			if len(post.ImageData) == 0 {
+				if data, ok := imageBytes(ctx, post.ImageID); ok {
+					post.ImageData = data
+				}
+			}
 			if _, err := image.Write(post.ImageData); err != nil {
 				return err
 			}
