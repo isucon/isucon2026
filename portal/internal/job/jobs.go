@@ -774,7 +774,7 @@ func (e *Env) ClearContestData(ctx context.Context) error {
 		UPDATE teams SET best_benchmark_result_id = NULL, best_benchmark_result_for_audience_id = NULL, best_benchmark_result_for_admin_id = NULL`); err != nil {
 		return err
 	}
-	for _, table := range []string{"benchmark_results", "benchmark_jobs", "survey_responses", "clarifications", "contestant_instances"} {
+	for _, table := range []string{"benchmark_results", "benchmark_jobs", "survey_response_history", "survey_responses", "clarifications", "contestant_instances"} {
 		if _, err := tx.ExecContext(ctx, `DELETE FROM `+table); err != nil {
 			return err
 		}

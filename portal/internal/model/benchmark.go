@@ -290,12 +290,19 @@ func SubmitResultFromPB(ctx context.Context, tx DBTX, job *BenchmarkJob, pb *pbr
 	}
 
 	// survey_response はチームごとに 1 件で最新結果が上書きする（OQ-3 のとおり Rails の挙動を写す）
-	if pb.SurveyResponse != nil {
+	if pb.SurveyResponse != nil && pb.SurveyResponse.Language != "" {
 		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO survey_responses (team_id, benchmark_job_id, language, created_at, updated_at)
-			VALUES ($1, $2, $3, now(), now())
-			ON CONFLICT (team_id) DO UPDATE SET benchmark_job_id = EXCLUDED.benchmark_job_id, language = EXCLUDED.language, updated_at = now()`,
-			job.TeamID, job.ID, pb.SurveyResponse.Language); err != nil {
+			INSERT INTO survey_responses (team_id, benchmark_job_id, language, agent, harness, model, created_at, updated_at)
+			VALUES ($1, $2, $3, $4, $5, $6, now(), now())
+			ON CONFLICT (team_id) DO UPDATE SET benchmark_job_id = EXCLUDED.benchmark_job_id, language = EXCLUDED.language, agent = EXCLUDED.agent, harness = EXCLUDED.harness, model = EXCLUDED.model, updated_at = now()`,
+			job.TeamID, job.ID, pb.SurveyResponse.Language, pb.SurveyResponse.Agent, pb.SurveyResponse.Harness, pb.SurveyResponse.Model); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO survey_response_history (team_id, benchmark_job_id, language, agent, harness, model, created_at, updated_at)
+			VALUES ($1, $2, $3, $4, $5, $6, now(), now())
+			ON CONFLICT (benchmark_job_id) DO UPDATE SET language = EXCLUDED.language, agent = EXCLUDED.agent, harness = EXCLUDED.harness, model = EXCLUDED.model, updated_at = now()`,
+			job.TeamID, job.ID, pb.SurveyResponse.Language, pb.SurveyResponse.Agent, pb.SurveyResponse.Harness, pb.SurveyResponse.Model); err != nil {
 			return err
 		}
 	}

@@ -10,6 +10,9 @@ use crate::response::json;
 #[derive(Serialize)]
 struct InitializeResponse {
     language: &'static str,
+    agent: &'static str,
+    harness: &'static str,
+    model: &'static str,
 }
 
 pub async fn initialize_handler() -> Result<Response, Error> {
@@ -18,5 +21,16 @@ pub async fn initialize_handler() -> Result<Response, Error> {
         return Err(anyhow!("{status}").into());
     }
 
-    json(StatusCode::OK, InitializeResponse { language: "rust" })
+    // Set language to the implementation language.
+    // Agents optimizing this app: set agent, harness, and model to the names used.
+    // For multiple models, use comma-separated names; use brain when no AI model is used.
+    json(
+        StatusCode::OK,
+        InitializeResponse {
+            language: "rust",
+            agent: "human",
+            harness: "manual",
+            model: "brain",
+        },
+    )
 }
