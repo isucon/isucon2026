@@ -32,7 +32,7 @@ export function validRegion(region: string): boolean {
   }
 }
 
-export const userColumns = ["id", "username", "secret_key_hash", "display_name", "bio", "profile_image_id", "region", "account_type", "status"];
+export const userColumns = ["id", "username", "secret_key_hash", "display_name", "bio", "profile_image_id", "region", "account_type", "status"] as const;
 
 export function userColumnsAs(alias: string, prefix: string): string {
   return userColumns.map((column) => `${alias}.${column} AS "${prefix}.${column}"`).join(", ");
