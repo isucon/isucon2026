@@ -132,8 +132,14 @@ impl NotificationHub {
             // Chunking bounds the query and lets other database work interleave
             // when thousands of clients are waiting for a notification.
             for batch in recipients.chunks(512) {
+                // Probe each open window's (window, user) index, then choose
+                // the earliest candidate. The inner limit prevents a scan of
+                // each user's historical notifications and preserves tie order.
                 let rows = sqlx::query_as::<_, NotificationRow>(
                     r#"
+                    WITH active_windows AS MATERIALIZED (
+                        SELECT id, region FROM posting_windows WHERE ended_at IS NULL
+                    )
                     SELECT s.slot, u.secret_key_hash,
                            n.id, n.posting_window_id, n.region, n.created_at
                     FROM unnest($1::text[], $2::text[], $3::timestamptz[])
@@ -142,10 +148,14 @@ impl NotificationHub {
                          AND u.status = 'active' AND u.region = s.region
                     LEFT JOIN LATERAL (
                         SELECT n.id, n.posting_window_id, w.region, n.created_at
-                        FROM notifications n
-                        JOIN posting_windows w ON w.id = n.posting_window_id
-                        WHERE n.user_id = u.id AND n.created_at > s.connected_at
-                          AND w.ended_at IS NULL
+                        FROM active_windows w
+                        CROSS JOIN LATERAL (
+                            SELECT n.id, n.posting_window_id, n.created_at
+                            FROM notifications n
+                            WHERE n.posting_window_id = w.id AND n.user_id = u.id
+                              AND n.created_at > s.connected_at
+                            ORDER BY n.created_at, n.id LIMIT 1
+                        ) n
                         ORDER BY n.created_at, n.id LIMIT 1
                     ) n ON true
                 "#,
