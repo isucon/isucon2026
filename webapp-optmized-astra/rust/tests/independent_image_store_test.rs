@@ -173,11 +173,7 @@ async fn independent_bytes_publish_atomically_and_preserve_visibility_export_and
         .await
         .unwrap();
     next_window(&db, 0).await;
-    let store = ImageStore {
-        db: assets.clone(),
-        writes_enabled: true,
-        cache_peers: None,
-    };
+    let store = ImageStore::new(assets.clone(), true, None);
     let routed = app(db.clone(), Some(store.clone()));
 
     // Hold metadata publication. Durable bytes alone must not expose an image.
@@ -266,14 +262,7 @@ async fn independent_bytes_publish_atomically_and_preserve_visibility_export_and
         .acquire_timeout(Duration::from_millis(100))
         .connect_lazy("postgres://postgres@127.0.0.1:1/unreachable")
         .unwrap();
-    let cached_reader = app(
-        db.clone(),
-        Some(ImageStore {
-            db: unreachable,
-            writes_enabled: false,
-            cache_peers: None,
-        }),
-    );
+    let cached_reader = app(db.clone(), Some(ImageStore::new(unreachable, false, None)));
     assert_eq!(
         request(
             cached_reader.clone(),
@@ -387,6 +376,11 @@ async fn independent_bytes_publish_atomically_and_preserve_visibility_export_and
         StatusCode::CONFLICT
     );
     assert_eq!(count(&db, "posts").await, 2);
+    assert_eq!(count(&assets, "astra_image_data").await, 1);
+    assert_eq!(
+        request(routed.clone(), upload(second)).await.0,
+        StatusCode::CONFLICT
+    );
     assert_eq!(count(&assets, "astra_image_data").await, 2);
     let orphan: String = sqlx::query_scalar("SELECT id FROM astra_image_data WHERE id<>$1")
         .bind(&external_id)
@@ -420,7 +414,7 @@ async fn independent_bytes_publish_atomically_and_preserve_visibility_export_and
     );
     assert_eq!(count(&db, "posts").await, 2);
     assert_eq!(count(&db, "image_objects").await, 2);
-    assert_eq!(count(&assets, "astra_image_data").await, 3);
+    assert_eq!(count(&assets, "astra_image_data").await, 2);
     sqlx::raw_sql(
         "DROP TRIGGER fail_asset_publish ON image_objects; DROP FUNCTION fail_asset_publish()",
     )
@@ -429,13 +423,9 @@ async fn independent_bytes_publish_atomically_and_preserve_visibility_export_and
     .unwrap();
 
     // Switching off new external writes retains readers for already published bytes.
-    let local = app(
-        db.clone(),
-        Some(ImageStore {
-            writes_enabled: false,
-            ..store.clone()
-        }),
-    );
+    let mut local_store = store.clone();
+    local_store.writes_enabled = false;
+    let local = app(db.clone(), Some(local_store));
     let (status, response) = request(local.clone(), upload(second)).await;
     assert_eq!(status, StatusCode::CREATED);
     let response: Value = serde_json::from_slice(&response).unwrap();
@@ -456,7 +446,7 @@ async fn independent_bytes_publish_atomically_and_preserve_visibility_export_and
         .await,
         (StatusCode::OK, original.to_vec())
     );
-    assert_eq!(count(&assets, "astra_image_data").await, 3);
+    assert_eq!(count(&assets, "astra_image_data").await, 2);
     let (status, archive) = request(
         local.clone(),
         Request::get("/api/me/export").body(Body::empty()).unwrap(),
@@ -593,7 +583,7 @@ async fn independent_bytes_publish_atomically_and_preserve_visibility_export_and
         .unwrap();
     assert_eq!(count(&db, "posts").await, 1);
     assert_eq!(count(&db, "image_objects").await, 1);
-    assert_eq!(count(&assets, "astra_image_data").await, 3);
+    assert_eq!(count(&assets, "astra_image_data").await, 2);
     assert_eq!(
         request(
             local.clone(),
@@ -616,6 +606,90 @@ async fn independent_bytes_publish_atomically_and_preserve_visibility_export_and
         request(
             local.clone(),
             Request::get(image_url("legacy", &key))
+                .body(Body::empty())
+                .unwrap()
+        )
+        .await,
+        (StatusCode::OK, original.to_vec())
+    );
+    // Reusing the immutable bytes after reset must create a new, separately
+    // authorized public image. The old URL remains forbidden.
+    next_window(&db, 0).await;
+    let (status, response) = request(routed.clone(), upload(original)).await;
+    assert_eq!(status, StatusCode::CREATED);
+    let response: Value = serde_json::from_slice(&response).unwrap();
+    let shared_url = response["imageUrl"].as_str().unwrap();
+    let shared_key: String = sqlx::query_scalar(
+        "SELECT i.asset_key FROM image_objects i JOIN posts p ON p.image_id=i.id WHERE p.id=$1",
+    )
+    .bind(response["id"].as_str().unwrap())
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    assert_eq!(shared_key, external_id);
+    assert_eq!(count(&assets, "astra_image_data").await, 2);
+    assert_eq!(
+        request(
+            routed.clone(),
+            Request::get(shared_url).body(Body::empty()).unwrap()
+        )
+        .await,
+        (StatusCode::OK, original.to_vec())
+    );
+    assert_eq!(
+        request(
+            routed.clone(),
+            Request::get(&external_url).body(Body::empty()).unwrap()
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    // A fresh process reads shared references from PostgreSQL after caches reset.
+    let fresh_store = ImageStore::new(assets.clone(), false, None);
+    assert_eq!(fresh_store.get(&shared_key).await.unwrap(), original);
+    let fresh = app(db.clone(), Some(fresh_store));
+    assert_eq!(
+        request(fresh, Request::get(shared_url).body(Body::empty()).unwrap()).await,
+        (StatusCode::OK, original.to_vec())
+    );
+    let other_id = uuid::Uuid::new_v4().to_string();
+    let other_key = [0xcdu8; 32];
+    sqlx::query("INSERT INTO users(id,username,secret_key_hash,display_name,region) VALUES ('other','other',$1,'Other','asia')")
+        .bind(hex::encode(other_key)).execute(&db).await.unwrap();
+    sqlx::query("INSERT INTO image_objects(id,owner_user_id,data,asset_key,media_type) VALUES ($1,'other',''::bytea,$2,'image/jpeg')")
+        .bind(&other_id).bind(&shared_key).execute(&db).await.unwrap();
+    sqlx::query("INSERT INTO posts(id,author_id,posting_window_id,image_id,visibility,location_kind,posted_at) SELECT 'other','other',posting_window_id,$1,'public','none',now() FROM posts WHERE id=$2")
+        .bind(&other_id).bind(response["id"].as_str().unwrap()).execute(&db).await.unwrap();
+    assert_eq!(
+        request(
+            routed.clone(),
+            Request::get(image_url(&other_id, &key))
+                .body(Body::empty())
+                .unwrap()
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    sqlx::query("UPDATE posts SET deleted_at=now() WHERE id=$1")
+        .bind(response["id"].as_str().unwrap())
+        .execute(&db)
+        .await
+        .unwrap();
+    assert_eq!(
+        request(
+            routed.clone(),
+            Request::get(shared_url).body(Body::empty()).unwrap()
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        request(
+            routed.clone(),
+            Request::get(image_url(&other_id, &other_key))
                 .body(Body::empty())
                 .unwrap()
         )
