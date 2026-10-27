@@ -67,6 +67,7 @@ export function adminHandlers(db: pg.Pool) {
         fail(409, "certification_conflict");
       return noContent();
     },
+    // 2026-08-26: 認定されたユーザーを戻すことは禁止する
     uncertify: async (_c: C) => fail(409, "certification_irreversible"),
     openWindow: async (c: C) => {
       const {

@@ -37,6 +37,7 @@ export function imageHandlers(db: pg.Pool) {
         !timingSafeEqual(sig, imageSignature(imageSigningKey(secret), id, exp))
       )
         fail(403, "image_forbidden");
+      // 削除状態を毎回確認する。即時反映も5秒以内の許容範囲に含まれる。
       const object =
         (await first<{ data: Buffer; media_type: string }>(
           db,

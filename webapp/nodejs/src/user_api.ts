@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type pg from "pg";
-import { readJSON, noContent, type C } from "./http.js";
+import { readJSON, noContent, createLoginSessionTx, type C } from "./http.js";
 import {
   hash,
   fail,
@@ -45,6 +45,7 @@ export function userHandlers(db: pg.Pool) {
         fail(400, "invalid_registration");
       const secretKey = randomUUID();
       const user = await transaction(db, async (tx) => {
+        // ユーザー名が一意である必要があります。
         await exec(tx, "LOCK TABLE users IN SHARE ROW EXCLUSIVE MODE");
         if (
           await scalar(
@@ -87,32 +88,8 @@ export function userHandlers(db: pg.Pool) {
           user.secret_key_hash !== hash(secretKey)
         )
           fail(401, "invalid_credentials");
-        const token = randomUUID(),
-          tokenHash = hash(token);
-        await one(
-          tx,
-          "SELECT id FROM users WHERE id = $1 AND status = 'active' FOR NO KEY UPDATE",
-          user.id,
-        );
-        await exec(
-          tx,
-          "UPDATE login_sessions SET active = false, invalidated_at = clock_timestamp(), reason = 'replaced' WHERE user_id = $1 AND active = true",
-          user.id,
-        );
-        const id = randomUUID();
-        await exec(
-          tx,
-          "INSERT INTO login_sessions (id, user_id, token_hash) VALUES ($1, $2, $3)",
-          id,
-          user.id,
-          tokenHash,
-        );
-        await one(
-          tx,
-          "SELECT user_id, token_hash, created_at FROM login_sessions WHERE id = $1",
-          id,
-        );
-        return { token, user: sessionUserResponse(user) };
+        const session = await createLoginSessionTx(tx, user.id);
+        return { token: session.token, user: sessionUserResponse(user) };
       });
       return c.json(result);
     },
