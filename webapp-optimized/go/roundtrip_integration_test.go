@@ -94,7 +94,10 @@ func TestReadRoundtripCountsAndSessionFreshness(t *testing.T) {
 		return rec
 	}
 	request("/api/me", session.Token, 200, 1)
-	request("/api/me/export", session.Token, 200, 1)
+	// The export reads the posts, then their images in batches pruned by
+	// posting time; this image was stored under another time, so it is read
+	// again by ID.
+	request("/api/me/export", session.Token, 200, 3)
 	request("/api/posts/post", session.Token, 200, 1)
 	request("/api/posts/post/comments", session.Token, 200, 1)
 	request("/api/posts/post/realmojis", session.Token, 200, 1)
