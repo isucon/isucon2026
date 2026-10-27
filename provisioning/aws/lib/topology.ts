@@ -22,7 +22,7 @@ export interface Team {
 // VPC と EC2 Instance Connect Endpoint は全チームで共有する
 export const vpcCidr = "192.168.0.0/16";
 export const eiceSubnetCidr = "192.168.240.0/24";
-// Router の Envoy が転送する app の nginx のポート（provisioning/ansible の app_http_port と一致させる）
+// Router の HAProxy が転送する app の nginx のポート（provisioning/ansible の app_http_port と一致させる）
 export const appHttpPort = 80;
 // チームごとに 16 個の /24 を使うので、EIC Endpoint のサブネットと重ならない上限
 export const maxTeams = 15;
@@ -87,7 +87,7 @@ export interface AclRule {
 }
 
 // Router の公開側（パブリック IP とパブリック用サブネット）へサーバーから送らせない。
-// 開いていると Envoy 経由で同一リージョン扱いになり、遅延のないサーバー間通信ができてしまう
+// 開いていると HAProxy 経由で同一リージョン扱いになり、遅延のないサーバー間通信ができてしまう
 export function serverEgressRules(
 	t: Team,
 	routerPublicAddress: string,

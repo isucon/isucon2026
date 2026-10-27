@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	routev3 "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
 	portalv1 "github.com/isucon/isucon2026/gen/go/portal/v1"
 	"github.com/isucon/isucon2026/router/internal/config"
 	"github.com/isucon/isucon2026/router/internal/domain"
@@ -19,9 +18,9 @@ func TestControllerCoalescesPendingSnapshotsAndSkipsDuplicateApply(t *testing.T)
 	t.Parallel()
 	network := newFakeNetwork()
 	network.blockFirst = make(chan struct{})
-	routes := newFakeRoutes()
+	proxy := newFakeProxy()
 	portal := newFakePortal()
-	controller := newTestController(portal, network, routes)
+	controller := newTestController(portal, network, proxy)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go controller.Run(ctx)
@@ -37,25 +36,27 @@ func TestControllerCoalescesPendingSnapshotsAndSkipsDuplicateApply(t *testing.T)
 		t.Fatal(err)
 	}
 	close(network.blockFirst)
-	waitFor(t, time.Second, func() bool { return network.applyCount() == 2 && portal.successCount() >= 2 })
+	// Reports coalesce like snapshots, so the report for "one" may be skipped.
+	waitFor(t, time.Second, func() bool { return network.applyCount() == 2 && portal.lastSuccess() == "three" })
 	if got := network.appliedCountries(); len(got) != 2 || got[0] != "JP" || got[1] != "US" {
 		t.Fatalf("applied countries = %v", got)
 	}
+	reported := portal.successCount()
 	if err := controller.Submit(testProtoSnapshot("three", "US")); err != nil {
 		t.Fatal(err)
 	}
-	waitFor(t, time.Second, func() bool { return portal.successCount() >= 3 })
+	waitFor(t, time.Second, func() bool { return portal.successCount() > reported })
 	if got := network.applyCount(); got != 2 {
 		t.Fatalf("duplicate caused apply count %d", got)
 	}
 }
 
-func TestControllerRollsBackNetworkAfterXDSFailure(t *testing.T) {
+func TestControllerRollsBackNetworkAfterProxyFailure(t *testing.T) {
 	t.Parallel()
 	network := newFakeNetwork()
-	routes := newFakeRoutes()
+	proxy := newFakeProxy()
 	portal := newFakePortal()
-	controller := newTestController(portal, network, routes)
+	controller := newTestController(portal, network, proxy)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go controller.Run(ctx)
@@ -64,7 +65,7 @@ func TestControllerRollsBackNetworkAfterXDSFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitFor(t, time.Second, func() bool { return portal.successCount() == 1 })
-	routes.setWaitError(errors.New("route NACK"))
+	proxy.failFor("DE")
 	if err := controller.Submit(testProtoSnapshot("broken", "DE")); err != nil {
 		t.Fatal(err)
 	}
@@ -76,15 +77,70 @@ func TestControllerRollsBackNetworkAfterXDSFailure(t *testing.T) {
 	if snapshot := controller.Active(); snapshot == nil || snapshot.Config.DefaultCountry != "JP" {
 		t.Fatalf("controller active changed after failure: %+v", snapshot)
 	}
+	if got := proxy.servingCountry(); got != "JP" {
+		t.Fatalf("proxy did not roll back: serving %q", got)
+	}
+}
+
+func TestControllerRestoresRestartedProxy(t *testing.T) {
+	t.Parallel()
+	network := newFakeNetwork()
+	proxy := newFakeProxy()
+	portal := newFakePortal()
+	controller := newTestController(portal, network, proxy)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go controller.Run(ctx)
+
+	if err := controller.Submit(testProtoSnapshot("base", "GB")); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, time.Second, func() bool { return portal.successCount() == 1 })
+	proxy.restart()
+	waitFor(t, time.Second, func() bool { return proxy.servingCountry() == "GB" })
+	if network.applyCount() != 1 || portal.successCount() != 1 {
+		t.Fatalf("proxy restart reapplied the snapshot: network=%d reports=%d", network.applyCount(), portal.successCount())
+	}
+}
+
+func TestControllerConfirmsProxyBeforeReportingDuplicate(t *testing.T) {
+	t.Parallel()
+	network := newFakeNetwork()
+	proxy := newFakeProxy()
+	portal := newFakePortal()
+	controller := newTestController(portal, network, proxy)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go controller.Run(ctx)
+
+	if err := controller.Submit(testProtoSnapshot("base", "GB")); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, time.Second, func() bool { return portal.successCount() == 1 })
+	// HAProxy is restarting: its map is empty and the runtime API refuses.
+	proxy.failFor("GB")
+	proxy.restart()
+	if err := controller.Submit(testProtoSnapshot("base", "GB")); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, time.Second, func() bool { return portal.failureCount() > 0 })
+	if portal.successCount() != 1 {
+		t.Fatal("duplicate was reported applied while the proxy did not serve it")
+	}
+	proxy.failFor("")
+	waitFor(t, time.Second, func() bool { return portal.successCount() == 2 && proxy.servingCountry() == "GB" })
+	if network.applyCount() != 1 || network.restoreCount() != 0 {
+		t.Fatalf("duplicate touched the network: applies=%d restores=%d", network.applyCount(), network.restoreCount())
+	}
 }
 
 func TestControllerRetriesReportWithoutReapplying(t *testing.T) {
 	t.Parallel()
 	network := newFakeNetwork()
-	routes := newFakeRoutes()
+	proxy := newFakeProxy()
 	portal := newFakePortal()
 	portal.failReports = 2
-	controller := newTestController(portal, network, routes)
+	controller := newTestController(portal, network, proxy)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go controller.Run(ctx)
@@ -95,15 +151,40 @@ func TestControllerRetriesReportWithoutReapplying(t *testing.T) {
 	if portal.reportAttempts() < 3 {
 		t.Fatalf("report attempts = %d", portal.reportAttempts())
 	}
-	if network.applyCount() != 1 || routes.publishCount() != 1 {
-		t.Fatalf("report retry reapplied data plane: network=%d routes=%d", network.applyCount(), routes.publishCount())
+	if network.applyCount() != 1 || proxy.applyCount() != 1 {
+		t.Fatalf("report retry reapplied data plane: network=%d proxy=%d", network.applyCount(), proxy.applyCount())
 	}
 }
 
-func newTestController(portal *fakePortal, network *fakeNetwork, routes *fakeRoutes) *Controller {
+func TestControllerRestoresRestartedProxyWhileRetrying(t *testing.T) {
+	t.Parallel()
+	network := newFakeNetwork()
+	proxy := newFakeProxy()
+	portal := newFakePortal()
+	controller := newTestController(portal, network, proxy)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go controller.Run(ctx)
+
+	if err := controller.Submit(testProtoSnapshot("base", "GB")); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, time.Second, func() bool { return portal.successCount() == 1 })
+	network.failFor("US")
+	if err := controller.Submit(testProtoSnapshot("broken", "US")); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, time.Second, func() bool { return portal.failureCount() > 0 })
+	proxy.restart()
+	waitFor(t, time.Second, func() bool { return proxy.servingCountry() == "GB" })
+	if snapshot := controller.Active(); snapshot == nil || snapshot.ID != "base" {
+		t.Fatalf("active snapshot changed: %+v", snapshot)
+	}
+}
+
+func newTestController(portal *fakePortal, network *fakeNetwork, proxy *fakeProxy) *Controller {
 	cfg, err := config.Load(func(key string) (string, bool) {
 		values := map[string]string{
-			"ROUTER_XDS_ACK_TIMEOUT":              "100ms",
 			"ROUTER_REPORT_RETRY_INTERVAL":        "5ms",
 			"ROUTER_PORTAL_RECONNECT_MIN_BACKOFF": "5ms",
 			"ROUTER_PORTAL_RECONNECT_MAX_BACKOFF": "10ms",
@@ -114,7 +195,7 @@ func newTestController(portal *fakePortal, network *fakeNetwork, routes *fakeRou
 	if err != nil {
 		panic(err)
 	}
-	return NewController(cfg, portal, network, routes, statusstore.New())
+	return NewController(cfg, portal, network, proxy, statusstore.New())
 }
 
 type fakePortal struct {
@@ -157,6 +238,17 @@ func (p *fakePortal) successCount() int {
 	return count
 }
 
+func (p *fakePortal) lastSuccess() string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for index := len(p.reports) - 1; index >= 0; index-- {
+		if p.reports[index].Success {
+			return p.reports[index].SnapshotID
+		}
+	}
+	return ""
+}
+
 func (p *fakePortal) failureCount() int {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -180,6 +272,7 @@ type fakeNetwork struct {
 	applied      []domain.Config
 	active       *netcontrol.Candidate
 	restores     int
+	failing      string
 	firstEntered chan struct{}
 	blockFirst   chan struct{}
 }
@@ -202,6 +295,9 @@ func (n *fakeNetwork) Apply(_ context.Context, candidate netcontrol.Candidate) e
 	}
 	n.mu.Lock()
 	defer n.mu.Unlock()
+	if candidate.Config.DefaultCountry == n.failing {
+		return errors.New("nft check failed")
+	}
 	n.applied = append(n.applied, candidate.Config)
 	copyCandidate := candidate
 	n.active = &copyCandidate
@@ -231,8 +327,9 @@ func (n *fakeNetwork) Active() *netcontrol.Candidate {
 	return &copyCandidate
 }
 
-func (n *fakeNetwork) applyCount() int   { n.mu.Lock(); defer n.mu.Unlock(); return len(n.applied) }
-func (n *fakeNetwork) restoreCount() int { n.mu.Lock(); defer n.mu.Unlock(); return n.restores }
+func (n *fakeNetwork) failFor(country string) { n.mu.Lock(); defer n.mu.Unlock(); n.failing = country }
+func (n *fakeNetwork) applyCount() int        { n.mu.Lock(); defer n.mu.Unlock(); return len(n.applied) }
+func (n *fakeNetwork) restoreCount() int      { n.mu.Lock(); defer n.mu.Unlock(); return n.restores }
 func (n *fakeNetwork) appliedCountries() []string {
 	n.mu.Lock()
 	defer n.mu.Unlock()
@@ -243,27 +340,41 @@ func (n *fakeNetwork) appliedCountries() []string {
 	return result
 }
 
-type fakeRoutes struct {
-	mu        sync.Mutex
-	published []string
-	waitErr   error
+// fakeProxy holds the default country like HAProxy's runtime map, which a
+// restart empties.
+type fakeProxy struct {
+	mu      sync.Mutex
+	applied []string
+	serving string
+	failing string
 }
 
-func newFakeRoutes() *fakeRoutes { return &fakeRoutes{} }
+func newFakeProxy() *fakeProxy { return &fakeProxy{} }
 
-func (r *fakeRoutes) Publish(_ context.Context, version string, _ *routev3.RouteConfiguration) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.published = append(r.published, version)
+func (p *fakeProxy) Apply(_ context.Context, cfg domain.Config) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if cfg.DefaultCountry == p.failing {
+		return errors.New("proxy rejected the default country")
+	}
+	p.applied = append(p.applied, cfg.DefaultCountry)
+	p.serving = cfg.DefaultCountry
 	return nil
 }
-func (r *fakeRoutes) Wait(context.Context, string) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	return r.waitErr
+
+func (p *fakeProxy) Serving(_ context.Context, cfg domain.Config) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.serving != cfg.DefaultCountry {
+		return errors.New("proxy serves another default country")
+	}
+	return nil
 }
-func (r *fakeRoutes) setWaitError(err error) { r.mu.Lock(); defer r.mu.Unlock(); r.waitErr = err }
-func (r *fakeRoutes) publishCount() int      { r.mu.Lock(); defer r.mu.Unlock(); return len(r.published) }
+
+func (p *fakeProxy) failFor(country string) { p.mu.Lock(); defer p.mu.Unlock(); p.failing = country }
+func (p *fakeProxy) restart()               { p.mu.Lock(); defer p.mu.Unlock(); p.serving = "" }
+func (p *fakeProxy) servingCountry() string { p.mu.Lock(); defer p.mu.Unlock(); return p.serving }
+func (p *fakeProxy) applyCount() int        { p.mu.Lock(); defer p.mu.Unlock(); return len(p.applied) }
 
 func waitFor(t *testing.T, timeout time.Duration, condition func() bool) {
 	t.Helper()
