@@ -186,3 +186,4 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261027T224746Z-team10 | retain recently accessed image bytes with bounded CLOCK eviction | PASS | 85,570 |
 | 20261027T225742Z-team10 | Cache uploaded post images at regional ingress; retain fresh metadata authorization | PASS | 90,104 |
 | 20261027T230256Z-team10 | Retain regional post and realmoji upload images; fresh immutable-key validation | PASS | 87,734 |
+| 20261027T232844Z-team10 | Increase image cache entry limit to 16384 within 1 GiB after orphan cleanup | PASS | 87,642 |
