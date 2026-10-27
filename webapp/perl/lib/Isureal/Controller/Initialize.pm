@@ -12,7 +12,7 @@ sub initialize ($c) {
 
     # Agents optimizing this app: replace agent and harness with your model and tool names.
     # These fields are for survey purposes only and do not affect scoring.
-    $c->render( json => { language => 'perl', agent => 'human', harness => 'hand' } );
+    $c->render( json => { language => 'perl', agent => 'human', harness => 'manual' } );
 }
 
 sub not_found ($c) {

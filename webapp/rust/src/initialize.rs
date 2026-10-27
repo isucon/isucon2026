@@ -27,7 +27,7 @@ pub async fn initialize_handler() -> Result<Response, Error> {
         InitializeResponse {
             language: "rust",
             agent: "human",
-            harness: "hand",
+            harness: "manual",
         },
     )
 }
