@@ -40,6 +40,7 @@ struct CachedImage {
     version: String,
     created_at: DateTime<Utc>,
     data: Bytes,
+    recently_used: bool,
 }
 
 #[derive(Default)]
@@ -91,11 +92,38 @@ pub fn remember_stored_image(id: String, created_at: DateTime<Utc>, data: Bytes)
             version,
             created_at,
             data,
+            recently_used: false,
         },
     );
 }
 
 impl ImageCache {
+    fn get(&mut self, id: &str) -> Option<CachedImage> {
+        let image = self.images.get_mut(id)?;
+        image.recently_used = true;
+        Some(image.clone())
+    }
+
+    // CLOCK gives recently accessed bytes a second chance without maintaining
+    // a linked list or moving an entry on every request. Each pass clears its
+    // access bit, so eviction always finishes even if every image was used.
+    fn evict(&mut self) -> bool {
+        while let Some(key) = self.order.pop_front() {
+            if let Some(image) = self.images.get_mut(&key)
+                && image.recently_used
+            {
+                image.recently_used = false;
+                self.order.push_back(key);
+                continue;
+            }
+            if let Some(old) = self.images.remove(&key) {
+                self.bytes -= old.data.len();
+                return true;
+            }
+        }
+        false
+    }
+
     fn insert(&mut self, id: String, image: CachedImage) {
         if image.data.len() > IMAGE_CACHE_BYTES {
             return;
@@ -107,11 +135,8 @@ impl ImageCache {
         while self.bytes + image.data.len() > IMAGE_CACHE_BYTES
             || self.images.len() >= IMAGE_CACHE_ENTRIES
         {
-            let Some(key) = self.order.pop_front() else {
+            if !self.evict() {
                 break;
-            };
-            if let Some(old) = self.images.remove(&key) {
-                self.bytes -= old.data.len();
             }
         }
         self.bytes += image.data.len();
@@ -157,12 +182,7 @@ async fn get_image(
         _ => return Err(new_api_error(StatusCode::FORBIDDEN, "image_forbidden")),
     };
 
-    let cached = IMAGE_CACHE
-        .lock()
-        .unwrap()
-        .images
-        .get(&input.image_id)
-        .cloned();
+    let cached = IMAGE_CACHE.lock().unwrap().get(&input.image_id);
     // Always check current visibility and owner credentials. Only image bytes
     // are cached; xmin changes when a row is replaced or modified, including
     // initialization, and prevents returning stale data under the same ID.
@@ -230,6 +250,7 @@ async fn get_image(
                 input.image_id,
                 CachedImage {
                     data: data.clone(),
+                    recently_used: false,
                     version: object.version,
                     created_at: object.created_at,
                 },
@@ -330,4 +351,41 @@ async fn load_image_object(
         .bind(timestamp)
         .fetch_optional(db)
         .await
+}
+
+#[cfg(test)]
+mod cache_tests {
+    use super::*;
+
+    fn entry(bytes: &'static [u8]) -> CachedImage {
+        CachedImage {
+            version: "1".into(),
+            created_at: Utc::now(),
+            data: Bytes::from_static(bytes),
+            recently_used: false,
+        }
+    }
+
+    #[test]
+    fn eviction_retains_recently_used_images_and_preserves_byte_accounting() {
+        let mut cache = ImageCache::default();
+        cache.insert("a".into(), entry(b"aa"));
+        cache.insert("b".into(), entry(b"bbb"));
+        cache.insert("c".into(), entry(b"c"));
+        assert_eq!(cache.get("a").unwrap().data.as_ref(), b"aa");
+        assert!(cache.evict());
+        assert!(!cache.images.contains_key("b"));
+        assert!(cache.images.contains_key("a"));
+        assert_eq!(cache.bytes, 3);
+        cache.get("a");
+        cache.get("c");
+        assert!(cache.evict()); // A full pass must still finish.
+        assert_eq!(cache.bytes, 2);
+        cache.insert("a".into(), entry(b"replacement"));
+        assert_eq!(cache.bytes, 11);
+        assert_eq!(cache.order.len(), 1);
+        assert!(cache.evict());
+        assert_eq!(cache.bytes, 0);
+        assert!(!cache.evict());
+    }
 }
