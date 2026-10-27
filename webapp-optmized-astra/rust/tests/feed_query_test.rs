@@ -193,6 +193,7 @@ async fn feed_sql_matches_original_graph_and_filters_before_pagination() {
         config: config_from_env(),
         ip_bans: Default::default(),
         notifications: Default::default(),
+        read_fence: None,
     });
     compare(&h, "not posted").await;
     sqlx::query("INSERT INTO posts (id,author_id,posting_window_id,image_id,visibility,posted_at) VALUES ('own','viewer','asia','own-image','public','2026-10-01 10:00Z')")

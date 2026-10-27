@@ -26,6 +26,7 @@ pub mod post_api;
 pub mod posting_window;
 pub mod posting_window_api;
 pub mod profile_image_api;
+pub mod read_fence;
 pub mod realmoji;
 pub mod realmoji_api;
 pub mod region;
