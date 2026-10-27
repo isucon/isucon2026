@@ -74,7 +74,9 @@ function firstUsable(cidr: string): string {
 }
 
 // パブリック用 ENI は cloud-init の既定の設定（DHCP）に任せ、サーバーのサブネット宛てだけを
-// データ用 ENI から VPC へ送る
+// データ用 ENI から VPC へ送る。DHCP を使わないので MTU は既定の 1500 になる。サーバーは VPC の
+// 9001 を使うので、data0 も 9001 にしてサーバー間の転送と HAProxy の上流をジャンボフレームで通す
+// （1500 のままだと経路 MTU が 1500 に落ち、大きな転送ではルーターが処理するパケット数が約 6 倍になる）
 export function routerNetplan(t: Team, dataMac: string): string {
 	const routes = t.servers
 		.map(
@@ -90,6 +92,7 @@ export function routerNetplan(t: Team, dataMac: string): string {
         macaddress: ${dataMac.toLowerCase()}
       set-name: data0
       dhcp4: false
+      mtu: 9001
       addresses:
         - ${t.routerDataIp}/${t.routerDataSubnetCidr.split("/")[1]}
       routes:

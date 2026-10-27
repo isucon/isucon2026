@@ -39,7 +39,7 @@ func TestRenderTCClassifiesServerPairsByRegion(t *testing.T) {
 		"qdisc replace dev s1 root handle 1: htb default 10",
 		"class replace dev s1 parent 1: classid 1:10 htb rate 100000kbit ceil 100000kbit",
 		"class replace dev s1 parent 1: classid 1:22 htb rate 100000kbit ceil 100000kbit",
-		"qdisc replace dev s1 parent 1:22 handle 22: netem delay 0ms limit 1000",
+		"qdisc replace dev s1 parent 1:22 handle 22: pfifo limit 1000",
 		"class replace dev s1 parent 1: classid 1:32 htb rate 1000kbit ceil 1000kbit",
 		"qdisc replace dev s1 parent 1:32 handle 32: netem delay 60ms limit 1000",
 		"class replace dev s1 parent 1: classid 1:13 htb rate 2000kbit ceil 2000kbit",
@@ -110,9 +110,9 @@ func TestRenderTCAllRegionCombinations(t *testing.T) {
 		source, destination domain.Region
 		wantRate, wantDelay string
 	}{
-		{domain.RegionUS, domain.RegionUS, "10kbit", "0ms"},
-		{domain.RegionAP, domain.RegionAP, "10kbit", "0ms"},
-		{domain.RegionEU, domain.RegionEU, "10kbit", "0ms"},
+		{domain.RegionUS, domain.RegionUS, "10kbit", ""},
+		{domain.RegionAP, domain.RegionAP, "10kbit", ""},
+		{domain.RegionEU, domain.RegionEU, "10kbit", ""},
 		{domain.RegionAP, domain.RegionEU, "1kbit", "500us"},
 		{domain.RegionEU, domain.RegionAP, "1kbit", "500us"},
 		{domain.RegionEU, domain.RegionUS, "2kbit", "1ms"},
@@ -123,8 +123,11 @@ func TestRenderTCAllRegionCombinations(t *testing.T) {
 	for _, batch := range batches {
 		for _, test := range tests {
 			classID := pairClassID(test.source, test.destination)
-			if !strings.Contains(batch, "classid 1:"+classID+" htb rate "+test.wantRate+" ") ||
-				!strings.Contains(batch, "handle "+classID+": netem delay "+test.wantDelay+" ") {
+			leaf := "handle " + classID + ": netem delay " + test.wantDelay + " "
+			if test.wantDelay == "" {
+				leaf = "handle " + classID + ": pfifo limit "
+			}
+			if !strings.Contains(batch, "classid 1:"+classID+" htb rate "+test.wantRate+" ") || !strings.Contains(batch, leaf) {
 				t.Errorf("source=%s destination=%s has wrong class\n%s", test.source, test.destination, batch)
 			}
 		}
