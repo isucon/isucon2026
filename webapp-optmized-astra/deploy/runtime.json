@@ -3,15 +3,29 @@
   "archivePath": "var/astra/release.tar.gz",
   "replicationEnvPath": "var/astra/.replication.env",
   "replicasEnabled": true,
-  "replicasSynchronous": false,
-  "replicaReads": false,
+  "replicasSynchronous": true,
+  "replicaReads": true,
   "database": {
     "instanceId": "i-0ecc0569db071b251",
     "host": "192.168.148.10"
   },
   "applications": [
-    {"region": "asia", "instanceId": "i-011601eac543fe5ee", "host": "192.168.145.10"},
-    {"region": "europe", "instanceId": "i-072b8ec3440704170", "host": "192.168.146.10", "replicaName": "astra_europe"},
-    {"region": "america", "instanceId": "i-07c43b75dd34fbb7e", "host": "192.168.147.10", "replicaName": "astra_america"}
+    {
+      "region": "asia",
+      "instanceId": "i-011601eac543fe5ee",
+      "host": "192.168.145.10"
+    },
+    {
+      "region": "europe",
+      "instanceId": "i-072b8ec3440704170",
+      "host": "192.168.146.10",
+      "replicaName": "astra_europe"
+    },
+    {
+      "region": "america",
+      "instanceId": "i-07c43b75dd34fbb7e",
+      "host": "192.168.147.10",
+      "replicaName": "astra_america"
+    }
   ]
 }

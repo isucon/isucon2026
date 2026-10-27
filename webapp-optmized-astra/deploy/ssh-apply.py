@@ -55,9 +55,9 @@ parallel(stage, instances)
 
 def application(app):
     instance = app["instanceId"]
-    copy(instance, ROOT / runtime["archivePath"], "/tmp/astra-release.tar.gz")
+    copy(instance, ROOT / runtime["archivePath"], "/home/isucon/astra-release.tar.gz")
     read_host = "127.0.0.1" if runtime["replicaReads"] and "replicaName" in app else ""
-    remote(instance, "sudo bash /home/isucon/astra-deploy/application.sh /tmp/astra-release.tar.gz " + shlex.quote(read_host))
+    remote(instance, "sudo bash /home/isucon/astra-deploy/application.sh /home/isucon/astra-release.tar.gz " + shlex.quote(read_host))
 
 
 # Disable local reads before turning off synchronous replication on rollback.
