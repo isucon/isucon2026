@@ -493,14 +493,14 @@ BEGIN
   newid:=gen_random_uuid()::text;
   IF action='comment_create' THEN
    INSERT INTO comments(id,post_id,author_id,body,created_at) VALUES(newid,p.id,actor,a->>'body',clock_timestamp()) RETURNING * INTO c;
-   RETURN jsonb_build_object('user',result,'comment',opt_comment(c));
+   RETURN jsonb_build_object('user',result,'comment',opt_comment(c),'initialPost',p.created_at<=(SELECT created_at FROM initial_data_boundary));
   END IF;
   UPDATE realmojis SET replaced_at=clock_timestamp() WHERE post_id=p.id AND reactor_id=actor AND replaced_at IS NULL AND deleted_at IS NULL;
   imageid:=coalesce(a->>'imageId',gen_random_uuid()::text);
   INSERT INTO image_objects(id,owner_user_id,data,media_type) VALUES(imageid,actor,image,'image/jpeg');
   INSERT INTO realmojis(id,post_id,reactor_id,image_id,reaction_type,created_at)
    VALUES(newid,p.id,actor,imageid,a->>'reactionType',clock_timestamp()) RETURNING * INTO r;
-  RETURN jsonb_build_object('user',result,'reaction',opt_reaction(r));
+  RETURN jsonb_build_object('user',result,'reaction',opt_reaction(r),'initialPost',p.created_at<=(SELECT created_at FROM initial_data_boundary));
  ELSIF action IN ('comment_delete','reaction_delete') THEN
   PERFORM id FROM users WHERE id=actor FOR NO KEY UPDATE;
   IF action='comment_delete' THEN
@@ -515,9 +515,9 @@ BEGIN
    SELECT author_id INTO target FROM posts WHERE id=r.post_id;
    IF actor<>r.reactor_id AND actor<>target THEN PERFORM opt_fail(403,'interaction_forbidden'); END IF;
    UPDATE realmojis SET deleted_at=clock_timestamp() WHERE id=r.id;
-   RETURN jsonb_build_object('reaction',opt_reaction(r));
+   RETURN jsonb_build_object('reaction',opt_reaction(r),'initialPost',(SELECT pp.created_at<=(SELECT created_at FROM initial_data_boundary) FROM posts pp WHERE pp.id=r.post_id));
   END IF;
-  RETURN jsonb_build_object('comment',opt_comment(c));
+  RETURN jsonb_build_object('comment',opt_comment(c),'initialPost',(SELECT pp.created_at<=(SELECT created_at FROM initial_data_boundary) FROM posts pp WHERE pp.id=c.post_id));
  ELSIF action='friend_transition' THEN
   SELECT * INTO req FROM friend_requests WHERE id=a->>'id';
   IF NOT FOUND THEN PERFORM opt_fail(404,'relationship_not_found'); END IF;

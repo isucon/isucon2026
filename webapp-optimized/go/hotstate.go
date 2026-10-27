@@ -493,8 +493,12 @@ func (s *hotState) feed(viewerID, feed string, before *feedCursor) (posts []Post
 		scan = s.sorted[start:]
 	}
 	for _, p := range scan {
+		// Cheap tests first: the public feed skips most posts here.
+		if p.Deleted || feed == "public" && p.Visibility != "public" || p.AuthorID == viewerID {
+			continue
+		}
 		w := openWindows[p.PostingWindowID]
-		if w == nil || p.Deleted || p.AuthorID == viewerID {
+		if w == nil {
 			continue
 		}
 		author := s.users[p.AuthorID]

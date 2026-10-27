@@ -23,6 +23,9 @@ type writeResult struct {
 	Comment  Comment       `json:"comment"`
 	Reaction RealMoji      `json:"reaction"`
 	Request  FriendRequest `json:"request"`
+	// InitialPost tells whether a comment or RealMoji is on a post of the
+	// initial data, which the history stores hold.
+	InitialPost bool `json:"initialPost"`
 }
 
 // One statement is also the transaction boundary. Never retry mutations here:

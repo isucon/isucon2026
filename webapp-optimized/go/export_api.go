@@ -73,6 +73,11 @@ func exportPostsHandler(h *HandlerContext) echo.HandlerFunc {
 		}
 
 		var body bytes.Buffer
+		size := 64 << 10
+		for _, data := range imageData {
+			size += len(data) + 128
+		}
+		body.Grow(size + len(posts)*1024)
 		writer := zip.NewWriter(&body)
 		defer writer.Close()
 		items := make([]exportPostResponse, 0, len(posts))
@@ -87,7 +92,7 @@ func exportPostsHandler(h *HandlerContext) echo.HandlerFunc {
 			}
 			items = append(items, exportPostResponse{createPostResponse: newPostResponse(post, author), ImagePath: imagePath})
 		}
-		manifest, err := writer.Create("posts.json")
+		manifest, err := writer.CreateHeader(&zip.FileHeader{Name: "posts.json", Method: zip.Store})
 		if err != nil {
 			return err
 		}

@@ -36,6 +36,8 @@ type historyStore struct {
 	reactions []historyReaction
 	authors   map[string][]uint32 // post indexes, newest first (posted_at, id descending)
 	byID      map[[16]byte]uint32
+	// byImage maps an image to its post, or to its RealMoji with reactionImage set.
+	byImage map[[16]byte]uint32
 	// runDates are the local dates of windows outside the initial data.
 	runDates map[time.Time]bool
 	dirty    map[string]bool
@@ -249,6 +251,11 @@ func (s *historyStore) load(ctx context.Context, db *sqlx.DB, region string) err
 		return nil
 	}
 
+	byImage := make(map[[16]byte]uint32, len(posts)+len(reactions))
+	for i := range posts {
+		byImage[posts[i].image] = uint32(i)
+	}
+
 	slices.SortFunc(comments, func(a, b historyComment) int {
 		return cmp.Or(cmp.Compare(a.post, b.post), cmp.Compare(a.createdAt, b.createdAt), bytes.Compare(a.id[:], b.id[:]))
 	})
@@ -268,6 +275,7 @@ func (s *historyStore) load(ctx context.Context, db *sqlx.DB, region string) err
 			p.firstReaction = uint32(i)
 		}
 		p.reactions++
+		byImage[reactions[i].image] = uint32(i) | reactionImage
 	}
 	for _, list := range authors {
 		slices.SortFunc(list, func(a, b uint32) int {
@@ -276,7 +284,7 @@ func (s *historyStore) load(ctx context.Context, db *sqlx.DB, region string) err
 	}
 
 	s.mu.Lock()
-	s.text, s.posts, s.comments, s.reactions, s.authors, s.byID, s.loaded = l.text, posts, comments, reactions, authors, byID, true
+	s.text, s.posts, s.comments, s.reactions, s.authors, s.byID, s.byImage, s.loaded = l.text, posts, comments, reactions, authors, byID, byImage, true
 	for _, d := range runDates {
 		s.runDates[d] = true
 	}
@@ -387,6 +395,30 @@ func (s *historyStore) refresh(ctx context.Context, db sqlx.QueryerContext) {
 func (s *historyStore) known(id [16]byte) bool {
 	_, ok := s.byID[id]
 	return ok
+}
+
+const reactionImage = 1 << 31
+
+// imageSignature returns the precomputed signature of a post's or a RealMoji's
+// image for exp. It was computed with the key of the image's owner (the
+// post's author or the reactor), the only key that signs the image.
+func (s *historyStore) imageSignature(imageID string, exp int64) ([32]byte, bool) {
+	id, ok := parseImageID(imageID)
+	if !ok {
+		return [32]byte{}, false
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	i, found := s.byImage[id]
+	switch {
+	case !found:
+		return [32]byte{}, false
+	case i&reactionImage != 0:
+		r := &s.reactions[i&^reactionImage]
+		return r.sig, r.sigExp == exp
+	default:
+		return s.posts[i].sig, s.posts[i].sigExp == exp
+	}
 }
 
 // postImageURL returns the image URL of a post of the store when its

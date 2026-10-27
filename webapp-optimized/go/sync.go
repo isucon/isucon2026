@@ -216,9 +216,13 @@ func eventsFor(ctx context.Context, db *sqlx.DB, action, actor string, args any,
 	case "post_delete":
 		return []stateEvent{{Version: version, Kind: "post_deleted", A: argString(args, "id")}}
 	case "comment_create", "comment_delete":
-		return []stateEvent{{Version: version, Kind: "history_dirty", A: result.Comment.PostID}}
+		if result.InitialPost {
+			return []stateEvent{{Version: version, Kind: "history_dirty", A: result.Comment.PostID}}
+		}
 	case "reaction_create", "reaction_delete":
-		return []stateEvent{{Version: version, Kind: "history_dirty", A: result.Reaction.PostID}}
+		if result.InitialPost {
+			return []stateEvent{{Version: version, Kind: "history_dirty", A: result.Reaction.PostID}}
+		}
 	case "friend_create", "friend_transition":
 		if r := result.Request; r.Status == "accepted" {
 			return []stateEvent{{Version: version, Kind: "friend", A: r.RequesterID, B: r.RecipientID, Exists: true}}
