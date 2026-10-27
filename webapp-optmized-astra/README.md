@@ -46,3 +46,4 @@ RustのDB接続を伴うキャンセル検証は`ISUREAL_SESSION_TEST_DSN`がな
 | --- | --- | --- | ---: |
 | 20261027T121146Z-team10 | Rust基準版、asia単一DB | PASS | 9,022 |
 | 20261027T121933Z-team10 | indexes, shared posting locks and cached HMAC | PASS | 16,363 |
+| 20261027T122322Z-team10 | repeat indexed Rust with warm database | PASS | 14,156 |
