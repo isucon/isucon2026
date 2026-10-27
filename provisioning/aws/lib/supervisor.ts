@@ -8,6 +8,7 @@ export interface SupervisorConfig {
   retainDedicatedNetwork?: boolean;
   sharedNetwork?: { vpcId: string; subnetId: string; egressPublicIp: string };
   benchmarkScale?: string;
+  benchmarkImages?: string;
   availabilityZone: string;
   image: string;
   teamImages?: Record<string, string>;
@@ -86,6 +87,16 @@ export function supervisorContainer(c: SupervisorConfig, logGroup: string) {
   ) {
     throw new Error("benchmarkScale must be small or large");
   }
+  if (
+    c.benchmarkImages !== undefined &&
+    !/^(\/[a-zA-Z0-9._\/-]+|https:\/\/[a-zA-Z0-9._~:\/?#@!$&'()*+,;=%-]+)$/.test(
+      c.benchmarkImages,
+    )
+  ) {
+    throw new Error(
+      "benchmarkImages must be an absolute path in the image or an HTTPS URL",
+    );
+  }
   const scaleArgs = c.benchmarkScale === undefined
     ? []
     : ["--scale", c.benchmarkScale];
@@ -132,6 +143,11 @@ esac`;
         name: "ISUXPORTAL_SUPERVISOR_LOG_DIRECTORY",
         value: "/var/log/isuxportal-supervisor",
       },
+      // The benchmark child process inherits this and loads the photo archive
+      // for posts from it (bench -images). Unset, it posts small generated images.
+      ...(c.benchmarkImages === undefined
+        ? []
+        : [{ name: "ISUXBENCH_IMAGES", value: c.benchmarkImages }]),
     ],
     secrets: [{
       name: "ISUXPORTAL_SUPERVISOR_TOKEN",

@@ -5,6 +5,7 @@ const config = new pulumi.Config();
 const worker = createSupervisor({
   detachedRouterHosts: config.getObject<string[]>("detachedRouterHosts"),
   benchmarkScale: config.get("benchmarkScale"),
+  benchmarkImages: config.get("benchmarkImages"),
   routerNetworkInterfaces: config.getObject<Record<string, string>>(
     "routerNetworkInterfaces",
   ),
