@@ -192,6 +192,19 @@ aws-bench-image:
 aws-bench-show:
 	provisioning/aws/bench-runner/run.sh show $(RUN)
 
+# ポータルの Supervisor（provisioning/aws/supervisor）用のイメージ。supervisor/Dockerfile に投稿用の写真のアーカイブを
+# 同梱して linux/amd64 でビルドし、Supervisor stack の ECR へ push して、Pulumi の image に書く値を表示する。
+# アーカイブは bench-runner の結果バケットの assets/merged.zip から var/photos/ に取る（PHOTOS_S3 で別の場所を指定できる）
+.PHONY: supervisor-photos supervisor-image
+SUPERVISOR_PHOTOS = var/photos/merged.zip
+supervisor-photos: $(SUPERVISOR_PHOTOS)
+$(SUPERVISOR_PHOTOS):
+	mkdir -p $(dir $@)
+	$(AWS_SDK_ENV) aws s3 cp "$(or $(PHOTOS_S3),s3://$$($(BENCH_RUNNER_PULUMI) stack output infra --json --stack "$(or $(RUNNER_STACK),dev)" | jq -r .bucket)/assets/merged.zip)" $@
+
+supervisor-image: $(SUPERVISOR_PHOTOS)
+	$(AWS_SDK_ENV) SUPERVISOR_STACK="$(or $(SUPERVISOR_STACK),portal-dev)" provisioning/aws/supervisor/image.sh
+
 check: proto-lint vet frontend-lint frontend-typecheck contract test build
 
 .PHONY: dev-up dev-down dev-logs dev-check
