@@ -79,7 +79,7 @@ pub fn remember_image_timestamp(image_id: &str, timestamp: DateTime<Utc>) {
 
 static IMAGE_CACHE: LazyLock<Mutex<ImageCache>> = LazyLock::new(Mutex::default);
 const IMAGE_CACHE_BYTES: usize = 1024 * 1024 * 1024;
-const IMAGE_CACHE_ENTRIES: usize = 4096;
+const IMAGE_CACHE_ENTRIES: usize = 16384;
 
 pub fn remember_stored_image(id: String, created_at: DateTime<Utc>, data: Bytes) {
     // An asset key names bytes that the application role cannot update/delete.
