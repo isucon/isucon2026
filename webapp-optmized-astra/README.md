@@ -169,3 +169,4 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261027T204142Z-team10 | bound pending mutation bytes and pipeline replica response barriers | PASS | 50,680 |
 | 20261027T205127Z-team10 | fetch full search profiles only for matched users | PASS | 50,565 |
 | 20261027T205643Z-team10 | reserve bounded write capacity for small mutations | PASS | 59,727 |
+| 20261027T210236Z-team10 | prune export image partitions using post timestamps with fallback | PASS | 58,813 |
