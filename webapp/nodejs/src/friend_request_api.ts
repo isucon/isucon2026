@@ -43,7 +43,7 @@ export function createFriendRequestHandler(h: HandlerContext): Handler<Env> {
       input.recipientId,
     );
     let requestID: string;
-    if (existing !== undefined) {
+    if (existing) {
       const request = must(await getFriendRequest(tx, existing.id));
       if (request.requesterID === actor) {
         throw new APIError(409, "relationship_conflict");
@@ -91,7 +91,7 @@ export function transitionFriendRequestHandler(h: HandlerContext): Handler<Env> 
     }
     const actor = getSession(c)!.userID;
     let request = await getFriendRequest(h.db, input.requestId);
-    if (request === undefined) {
+    if (!request) {
       throw new APIError(404, "relationship_not_found");
     }
     if ((status === "cancelled" && actor !== request.requesterID) || (status !== "cancelled" && actor !== request.recipientID)) {

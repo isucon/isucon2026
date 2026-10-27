@@ -48,7 +48,7 @@ export function getImageHandler(h: HandlerContext): Handler<Env> {
   `,
       input.imageId,
     );
-    if (owner === undefined) {
+    if (!owner) {
       throw new APIError(403, "image_forbidden");
     }
     const key = imageSigningKey(owner.secret_key_hash);
@@ -77,7 +77,7 @@ export function getImageHandler(h: HandlerContext): Handler<Env> {
   `,
       input.imageId,
     );
-    if (object === undefined) {
+    if (!object) {
       throw new APIError(403, "image_forbidden");
     }
     if (exp <= unix(Temporal.Now.instant())) {

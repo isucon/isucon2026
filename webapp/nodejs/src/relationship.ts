@@ -44,7 +44,7 @@ export async function beginRelationshipTx(db: DB, actor: string, target: string)
   try {
     for (const id of [minID(actor, target), maxID(actor, target)]) {
       const locked = await tx.get(`SELECT id FROM users WHERE id=$1 AND status='active' FOR NO KEY UPDATE`, id);
-      if (locked === undefined) {
+      if (!locked) {
         throw new APIError(404, "relationship_not_found");
       }
     }

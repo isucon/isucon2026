@@ -9,7 +9,7 @@ export function deleteAccountHandler(h: HandlerContext): Handler<Env> {
     const userID = getSession(c)!.userID;
     await using tx = await h.db.begin();
     const locked = await tx.get(`SELECT id FROM users WHERE id=$1 AND status='active' FOR NO KEY UPDATE`, userID);
-    if (locked === undefined) {
+    if (!locked) {
       throw new APIError(404, "account_not_found");
     }
     await tx.exec(`UPDATE users SET status='deleted', deleted_at=clock_timestamp(), updated_at=clock_timestamp() WHERE id=$1`, userID);
