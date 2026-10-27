@@ -405,6 +405,8 @@ func marshalJSON(value any) []byte {
 
 type InitializeResult struct {
 	Language string `json:"language"`
+	Agent    string `json:"agent"`
+	Harness  string `json:"harness"`
 }
 
 func (c *Client) Initialize(ctx context.Context) (InitializeResult, error) {
