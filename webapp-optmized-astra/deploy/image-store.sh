@@ -14,8 +14,14 @@ set +a
 : "${ISUREAL_DB_PASSWORD:=isureal}"
 export ISUREAL_DB_USER ISUREAL_DB_PASSWORD
 [ "$ISUREAL_DB_USER" != postgres ] || { echo 'Image store requires an application role' >&2; exit 1; }
-cluster=astra-assets
+cluster=astraassets
 configuration=/etc/postgresql/16/$cluster
+# Debian's systemd template expands every dash into a path separator.
+# Reconcile the initial, stopped cluster from the first deployment attempt.
+if [ -f /etc/postgresql/16/astra-assets/postgresql.conf ] && [ ! -f "$configuration/postgresql.conf" ]; then
+    pg_renamecluster 16 astra-assets "$cluster"
+    systemctl reset-failed postgresql@16-astra-assets || true
+fi
 if [ ! -f "$configuration/postgresql.conf" ]; then
     # The original 16/main database is preserved and remains untouched.
     pg_createcluster 16 "$cluster" --port=5433 --start-conf=auto
@@ -56,9 +62,10 @@ for name in astra.conf pg_hba.conf; do
         changed=true
     fi
 done
+systemctl daemon-reload
 systemctl enable postgresql
-if [ "$changed" = true ] || ! systemctl is-active --quiet postgresql@16-astra-assets; then
-    systemctl restart postgresql@16-astra-assets
+if [ "$changed" = true ] || ! systemctl is-active --quiet postgresql@16-astraassets; then
+    systemctl restart postgresql@16-astraassets
 fi
 # Read credentials from the private existing env file, never from command text.
 # psql emits command tags, not the dynamically generated password statement.
@@ -91,4 +98,4 @@ SELECT 1 / (has_table_privilege(:'app_user','astra_image_data','SELECT')
     AND NOT has_table_privilege(:'app_user','astra_image_data','UPDATE')
     AND NOT has_table_privilege(:'app_user','astra_image_data','DELETE'))::int AS immutable_permissions_verified;
 SQL
-systemctl is-active postgresql@16-astra-assets
+systemctl is-active postgresql@16-astraassets

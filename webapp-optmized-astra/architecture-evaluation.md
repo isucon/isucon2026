@@ -40,7 +40,7 @@ db1の役割変更はまだ実施していない。画像DBの試作では、空
 
 ## 独立した画像DBの比較手順
 
-`imageStore.enabled`で画像DBへの接続、`imageStore.writesEnabled`で新規投稿画像の保存先を切り替える。既存のAsiaアプリVMにPostgreSQL 16の`astra-assets`クラスタをポート5433で作成する。元の`16/main`は変更しない。AWSリソースは作成せず、接続情報は既存の非公開`env.sh`を使う。構成はPulumiのruntime出力とSSH/SCPの適用スクリプトで管理する。
+`imageStore.enabled`で画像DBへの接続、`imageStore.writesEnabled`で新規投稿画像の保存先を切り替える。既存のAsiaアプリVMにPostgreSQL 16の`astraassets`クラスタをポート5433で作成する。元の`16/main`は変更しない。AWSリソースは作成せず、接続情報は既存の非公開`env.sh`を使う。構成はPulumiのruntime出力とSSH/SCPの適用スクリプトで管理する。
 
 画像のバイト列を独立DBへ永続化してから、メタデータ側の同じトランザクションで投稿・画像行・保存先参照を公開する。メタデータの公開に失敗した画像は外部から参照できない。画像DBのアプリ用権限はSELECTとINSERTだけで、保存済みバイト列は変更しない。プロフィール画像とリアルモジの画像は、まず従来の保存先を維持する。
 
