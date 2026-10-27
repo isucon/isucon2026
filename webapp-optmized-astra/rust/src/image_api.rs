@@ -1,18 +1,19 @@
-use std::sync::Arc;
+use std::collections::{HashMap, VecDeque};
+use std::sync::{Arc, LazyLock, Mutex};
 
 use axum::extract::{RawQuery, State};
 use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use chrono::Utc;
+use bytes::Bytes;
+use chrono::{DateTime, Utc};
 use serde::Deserialize;
 use subtle::ConstantTimeEq;
 
 use crate::api_error::{Error, new_api_error};
 use crate::bind::{Bind, Bindable, Binder, parse_query};
 use crate::image_signature::{image_signature, image_signing_key};
-use crate::response::blob;
 use crate::server::HandlerContext;
 
 #[derive(Default, Deserialize)]
@@ -31,6 +32,49 @@ impl Bindable for GetImageRequest {
         b.param("imageId", &mut self.image_id)?;
         b.query("exp", &mut self.exp)?;
         b.query("sig", &mut self.sig)
+    }
+}
+
+#[derive(Clone)]
+struct CachedImage {
+    version: String,
+    created_at: DateTime<Utc>,
+    data: Bytes,
+}
+
+#[derive(Default)]
+struct ImageCache {
+    images: HashMap<String, CachedImage>,
+    order: VecDeque<String>,
+    bytes: usize,
+}
+
+static IMAGE_CACHE: LazyLock<Mutex<ImageCache>> = LazyLock::new(Mutex::default);
+const IMAGE_CACHE_BYTES: usize = 128 * 1024 * 1024;
+const IMAGE_CACHE_ENTRIES: usize = 4096;
+
+impl ImageCache {
+    fn insert(&mut self, id: String, image: CachedImage) {
+        if image.data.len() > IMAGE_CACHE_BYTES {
+            return;
+        }
+        if let Some(old) = self.images.remove(&id) {
+            self.bytes -= old.data.len();
+            self.order.retain(|key| key != &id);
+        }
+        while self.bytes + image.data.len() > IMAGE_CACHE_BYTES
+            || self.images.len() >= IMAGE_CACHE_ENTRIES
+        {
+            let Some(key) = self.order.pop_front() else {
+                break;
+            };
+            if let Some(old) = self.images.remove(&key) {
+                self.bytes -= old.data.len();
+            }
+        }
+        self.bytes += image.data.len();
+        self.order.push_back(id.clone());
+        self.images.insert(id, image);
     }
 }
 
@@ -71,33 +115,27 @@ async fn get_image(
         _ => return Err(new_api_error(StatusCode::FORBIDDEN, "image_forbidden")),
     };
 
-    let secret_key_hash: Option<String> = sqlx::query_scalar(
-        r#"
-   SELECT u.secret_key_hash
-   FROM image_objects i JOIN users u ON u.id = i.owner_user_id
-   WHERE i.id = $1 AND u.status = 'active'
-  "#,
-    )
-    .bind(&input.image_id)
-    .fetch_optional(&h.db)
-    .await?;
-    let Some(secret_key_hash) = secret_key_hash else {
-        return Err(new_api_error(StatusCode::FORBIDDEN, "image_forbidden"));
-    };
-    let key = image_signing_key(&secret_key_hash)?;
-    if !bool::from(sig.ct_eq(&image_signature(&key, &input.image_id, exp))) {
-        return Err(new_api_error(StatusCode::FORBIDDEN, "image_forbidden"));
-    }
-
-    // 削除状態を毎回確認する。即時反映も5秒以内の許容範囲に含まれる。
+    let cached = IMAGE_CACHE
+        .lock()
+        .unwrap()
+        .images
+        .get(&input.image_id)
+        .cloned();
+    // Always check current visibility and owner credentials. Only image bytes
+    // are cached; xmin changes when a row is replaced or modified, including
+    // initialization, and prevents returning stale data under the same ID.
     #[derive(sqlx::FromRow)]
     struct ImageObject {
-        data: Vec<u8>,
+        data: Option<Vec<u8>>,
         media_type: String,
+        secret_key_hash: String,
+        version: String,
+        created_at: DateTime<Utc>,
     }
     let object: Option<ImageObject> = sqlx::query_as(
         r#"
-   SELECT i.data, i.media_type
+   SELECT CASE WHEN i.xmin::text = $2 AND i.created_at = $3 THEN NULL ELSE i.data END AS data,
+          i.media_type, u.secret_key_hash, i.xmin::text AS version, i.created_at
    FROM image_objects i JOIN users u ON u.id = i.owner_user_id AND u.status = 'active'
    WHERE i.id = $1 AND (
      u.profile_image_id = i.id
@@ -115,13 +153,43 @@ async fn get_image(
   "#,
     )
     .bind(&input.image_id)
+    .bind(cached.as_ref().map(|image| image.version.as_str()))
+    .bind(cached.as_ref().map(|image| image.created_at))
     .fetch_optional(&h.db)
     .await?;
     let Some(object) = object else {
         return Err(new_api_error(StatusCode::FORBIDDEN, "image_forbidden"));
     };
+    let key = image_signing_key(&object.secret_key_hash)?;
+    if !bool::from(sig.ct_eq(&image_signature(&key, &input.image_id, exp))) {
+        return Err(new_api_error(StatusCode::FORBIDDEN, "image_forbidden"));
+    }
     if exp <= Utc::now().timestamp() {
         return Err(new_api_error(StatusCode::FORBIDDEN, "image_forbidden"));
     }
-    blob(StatusCode::OK, &object.media_type, object.data)
+    let data = match object.data {
+        Some(data) => {
+            let data = Bytes::from(data);
+            IMAGE_CACHE.lock().unwrap().insert(
+                input.image_id,
+                CachedImage {
+                    data: data.clone(),
+                    version: object.version,
+                    created_at: object.created_at,
+                },
+            );
+            data
+        }
+        None => {
+            cached
+                .expect("data omitted only for the matching cached version")
+                .data
+        }
+    };
+    Ok((
+        StatusCode::OK,
+        [(header::CONTENT_TYPE, object.media_type)],
+        data,
+    )
+        .into_response())
 }
