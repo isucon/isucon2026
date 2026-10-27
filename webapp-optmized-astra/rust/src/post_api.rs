@@ -122,25 +122,43 @@ pub async fn create_post_handler(
         .map(|column| format!("(r.author).{column} AS \"author.{column}\""))
         .collect::<Vec<_>>()
         .join(", ");
-    let mut result: crate::post::PostWithAuthor = sqlx::query_as(&format!(
+    let store = h.image_store.as_ref().filter(|store| store.writes_enabled);
+    if let Some(store) = store {
+        store.put(&image_id, &image_data).await?;
+    }
+    let mut image_tx = if store.is_some() {
+        Some(h.db.begin().await?)
+    } else {
+        None
+    };
+    let data = if store.is_some() {
+        &[][..]
+    } else {
+        &image_data[..]
+    };
+    let statement = format!(
         "SELECT {}, {user_columns} FROM astra_create_post($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) r \
          CROSS JOIN LATERAL (SELECT (r.post_row).*) p \
          CROSS JOIN LATERAL (SELECT (r.window_row).*) w",
         crate::post::POST_COLUMNS
-    ))
-    .bind(&session.user_id)
-    .bind(&post_id)
-    .bind(&image_id)
-    .bind(&image_data[..])
-    .bind(&input.caption)
-    .bind(&input.visibility)
-    .bind(&location.kind)
-    .bind(f64_to_numeric(location.latitude))
-    .bind(f64_to_numeric(location.longitude))
-    .bind(&location.locality)
-    .fetch_one(&h.db)
-    .await
-    .map_err(|err| {
+    );
+    let query = sqlx::query_as::<_, crate::post::PostWithAuthor>(&statement)
+        .bind(&session.user_id)
+        .bind(&post_id)
+        .bind(&image_id)
+        .bind(data)
+        .bind(&input.caption)
+        .bind(&input.visibility)
+        .bind(&location.kind)
+        .bind(f64_to_numeric(location.latitude))
+        .bind(f64_to_numeric(location.longitude))
+        .bind(&location.locality);
+    let result = if let Some(tx) = image_tx.as_mut() {
+        query.fetch_one(&mut **tx).await
+    } else {
+        query.fetch_one(&h.db).await
+    };
+    let mut result = result.map_err(|err| {
         if let Some(database_error) = err.as_database_error()
             && database_error.code().as_deref() == Some("PZ001")
             && database_error.message() == "post_slot_unavailable"
@@ -150,6 +168,18 @@ pub async fn create_post_handler(
             Error::from(err)
         }
     })?;
+    if let Some(mut tx) = image_tx {
+        let updated =
+            sqlx::query("UPDATE image_objects SET asset_key=id WHERE id=$1 AND created_at=$2")
+                .bind(&image_id)
+                .bind(result.post.posted_at)
+                .execute(&mut *tx)
+                .await?;
+        if updated.rows_affected() != 1 {
+            return Err(anyhow::anyhow!("image metadata was not published").into());
+        }
+        tx.commit().await?;
+    }
     result.author.set_image_key()?;
     json(
         StatusCode::CREATED,

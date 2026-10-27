@@ -24,3 +24,13 @@ if (runtime.replicaReads && !runtime.replicasSynchronous && !runtime.readFenceEn
 export const artifactSha256 = createHash("sha256")
 	.update(readFileSync("../../../" + runtime.archivePath))
 	.digest("hex");
+
+if (runtime.imageStore) {
+    const store = runtime.imageStore;
+    const asia = runtime.applications.find((app: {region: string}) => app.region === "asia");
+    if (typeof store.enabled !== "boolean" || typeof store.writesEnabled !== "boolean"
+        || (store.writesEnabled && !store.enabled) || store.port !== 5433
+        || store.host !== asia.host || store.instanceId !== asia.instanceId) {
+        throw new Error("The image store must use the existing Asia application VM and requires enabled readers before writes");
+    }
+}

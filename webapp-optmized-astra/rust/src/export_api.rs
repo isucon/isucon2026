@@ -47,7 +47,19 @@ pub async fn export_posts_handler(
     let query = export_query();
     let mut rows = sqlx::query_as::<_, ExportPost>(&query)
         .bind(user_id)
-        .fetch(&h.db);
+        .fetch(&h.db)
+        .map(|row| async {
+            let mut row: ExportPost = row?;
+            if let Some(key) = &row.asset_key {
+                let store = h
+                    .image_store
+                    .as_ref()
+                    .ok_or_else(|| sqlx::Error::Protocol("image store unavailable".into()))?;
+                row.image_data = store.get(key).await?;
+            }
+            Ok(row)
+        })
+        .buffered(8);
     while let Some(row) = rows.next().await {
         let failed = row.is_err();
         if sender.send(row).await.is_err() || failed {
@@ -73,17 +85,17 @@ pub async fn export_posts_handler(
 fn export_query() -> String {
     format!(
         r#"
-   SELECT {POST_COLUMNS}, i.data AS image_data
+   SELECT {POST_COLUMNS}, i.data AS image_data, i.asset_key
    FROM posts p
    JOIN posting_windows w ON w.id = p.posting_window_id
    JOIN LATERAL (
      WITH hinted AS MATERIALIZED (
-       SELECT data FROM image_objects
+       SELECT data, asset_key FROM image_objects
        WHERE id = p.image_id AND created_at = p.posted_at
      )
-     SELECT data FROM hinted
+     SELECT data, asset_key FROM hinted
      UNION ALL
-     SELECT data FROM image_objects
+     SELECT data, asset_key FROM image_objects
      WHERE id = p.image_id AND NOT EXISTS (SELECT 1 FROM hinted)
    ) i ON true
    WHERE p.author_id = $1 AND p.deleted_at IS NULL
@@ -98,12 +110,14 @@ static EXPORTS: Semaphore = Semaphore::const_new(2);
 struct ExportPost {
     post: Post,
     image_data: Vec<u8>,
+    asset_key: Option<String>,
 }
 impl FromRow<'_, PgRow> for ExportPost {
     fn from_row(row: &PgRow) -> sqlx::Result<ExportPost> {
         Ok(ExportPost {
             post: Post::from_row(row)?,
             image_data: row.try_get("image_data")?,
+            asset_key: row.try_get("asset_key")?,
         })
     }
 }
@@ -174,6 +188,7 @@ mod tests {
                 window_ended_at: None,
             },
             image_data,
+            asset_key: None,
         }
     }
 
@@ -273,7 +288,7 @@ mod tests {
           CREATE TABLE posts (id text PRIMARY KEY, author_id text, posting_window_id text,
             image_id text, caption text, visibility text, location_kind text,
             latitude numeric, longitude numeric, locality text, posted_at timestamptz, deleted_at timestamptz);
-          CREATE TABLE image_objects (id text, data bytea, created_at timestamptz,
+          CREATE TABLE image_objects (id text, data bytea, asset_key text, created_at timestamptz,
             PRIMARY KEY(id,created_at)) PARTITION BY RANGE(created_at);
           CREATE TABLE image_objects_old PARTITION OF image_objects FOR VALUES FROM ('2020-01-01') TO ('2021-01-01');
           CREATE TABLE image_objects_new PARTITION OF image_objects FOR VALUES FROM ('2021-01-01') TO ('2022-01-01');
@@ -287,7 +302,7 @@ mod tests {
             NULL, '2020-01-01'::timestamptz+(i/2)*interval '1 day',
             CASE WHEN i%17=0 THEN '2021-01-01'::timestamptz ELSE NULL END
           FROM generate_series(1,100) i;
-          INSERT INTO image_objects
+          INSERT INTO image_objects (id,data,created_at)
           SELECT image_id, convert_to('bytes-'||id,'UTF8'),
             CASE WHEN author_id='matched' THEN posted_at ELSE posted_at+interval '1 year' END
           FROM posts WHERE id<>'p-99';
@@ -295,7 +310,7 @@ mod tests {
           ANALYZE;
         "#).execute(&db).await.unwrap();
         let baseline = format!(
-            "SELECT {POST_COLUMNS}, i.data AS image_data FROM posts p \
+            "SELECT {POST_COLUMNS}, i.data AS image_data, i.asset_key FROM posts p \
             JOIN posting_windows w ON w.id=p.posting_window_id \
             JOIN image_objects i ON i.id=p.image_id \
             WHERE p.author_id=$1 AND p.deleted_at IS NULL ORDER BY p.posted_at,p.id"
@@ -317,7 +332,7 @@ mod tests {
         // must not make a post disappear or retain its old image bytes.
         sqlx::raw_sql("UPDATE image_objects SET created_at='2025-02-03', data='changed'::bytea WHERE id='image-1'; \
             DELETE FROM image_objects WHERE id='image-2'; \
-            INSERT INTO image_objects VALUES ('image-2','recreated'::bytea,'2021-05-01')")
+            INSERT INTO image_objects (id,data,created_at) VALUES ('image-2','recreated'::bytea,'2021-05-01')")
             .execute(&db).await.unwrap();
         let old: Vec<ExportPost> = sqlx::query_as(&baseline)
             .bind("matched")

@@ -120,6 +120,7 @@ async fn search_preserves_unicode_pagination_and_fresh_account_visibility() {
         ip_bans: Default::default(),
         notifications: Default::default(),
         read_fence: None,
+        image_store: None,
     });
     let app = Router::new()
         .route("/api/users", get(search_users_handler))

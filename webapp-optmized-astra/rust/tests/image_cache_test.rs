@@ -68,7 +68,7 @@ async fn cached_image_checks_current_content_visibility_and_credentials() {
         .unwrap();
     sqlx::raw_sql(r#"
         CREATE TABLE users (id text PRIMARY KEY, secret_key_hash text NOT NULL, status text NOT NULL DEFAULT 'active', profile_image_id text);
-        CREATE TABLE image_objects (id text, owner_user_id text, data bytea NOT NULL, media_type text NOT NULL DEFAULT 'image/jpeg', created_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY(id,created_at)) PARTITION BY RANGE(created_at);
+        CREATE TABLE image_objects (id text, owner_user_id text, data bytea NOT NULL, asset_key text, media_type text NOT NULL DEFAULT 'image/jpeg', created_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY(id,created_at)) PARTITION BY RANGE(created_at);
         CREATE TABLE image_objects_old PARTITION OF image_objects FOR VALUES FROM ('2020-01-01') TO ('2021-01-01');
         CREATE TABLE image_objects_other PARTITION OF image_objects DEFAULT;
         CREATE TABLE posts (id text PRIMARY KEY, image_id text, author_id text, deleted_at timestamptz);
@@ -100,6 +100,7 @@ async fn cached_image_checks_current_content_visibility_and_credentials() {
         ip_bans: Default::default(),
         notifications: Default::default(),
         read_fence: None,
+        image_store: None,
     });
     let app = Router::new()
         .route("/api/images/{imageId}", get(get_image_handler))

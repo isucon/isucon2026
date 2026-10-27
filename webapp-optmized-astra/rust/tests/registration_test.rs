@@ -71,6 +71,7 @@ async fn registration_is_unique_and_independent_users_do_not_serialize() {
         ip_bans: Default::default(),
         notifications: Default::default(),
         read_fence: None,
+        image_store: None,
     });
     let app = Router::new()
         .route("/register", post(register_handler))
