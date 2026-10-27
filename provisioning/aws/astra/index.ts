@@ -54,3 +54,7 @@ if (runtime.localUploadCacheEnabled && (!runtime.imageStore?.enabled || !runtime
 if (!Number.isInteger(runtime.tokioWorkerThreads) || runtime.tokioWorkerThreads < 1 || runtime.tokioWorkerThreads > 16) {
     throw new Error("Invalid Tokio worker thread count");
 }
+
+if (runtime.regionalReactionCacheEnabled && !runtime.regionalUploadCacheEnabled) {
+    throw new Error("Regional reaction caching requires upload caching");
+}
