@@ -228,12 +228,15 @@ CREATE TABLE comments (
 -- Versions of hot state changes pushed between the regional apps.
 CREATE SEQUENCE change_seq;
 
+-- The app writes the notifications of a window once, with IDs derived from
+-- the window and the user, so (user_id, posting_window_id) is unique by
+-- construction. The unique index of the original schema put every row of a
+-- window at a random leaf page (user IDs are random) of a cold 270 MB index.
 CREATE TABLE notifications (
   id varchar(36) PRIMARY KEY,
   user_id varchar(36) NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
   posting_window_id varchar(36) NOT NULL REFERENCES posting_windows(id) ON DELETE RESTRICT,
-  created_at timestamptz NOT NULL,
-  UNIQUE(user_id,posting_window_id)
+  created_at timestamptz NOT NULL
 );
 
 CREATE TABLE ip_bans (
