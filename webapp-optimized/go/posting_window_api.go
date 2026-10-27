@@ -26,12 +26,28 @@ type getCurrentPostingWindowResponse struct {
 
 func getCurrentPostingWindowHandler(h *HandlerContext) echo.HandlerFunc {
 	return func(c *echo.Context) error {
+		if user, ok := hotSessionUser(c, h); ok {
+			if window, active, deleted, ok := hot.currentWindow(user.ID); ok {
+				if window == nil {
+					return c.JSON(http.StatusOK, getCurrentPostingWindowResponse{})
+				}
+				return c.JSON(http.StatusOK, getCurrentPostingWindowResponse{
+					Window: &currentPostingWindowResponse{
+						ID: window.ID, Region: window.Region, LocalDate: window.LocalDate.Format(time.DateOnly),
+						StartsAt: window.StartsAt, OnTimeDeadline: window.OnTimeDeadline,
+					},
+					HasPosted:     active > 0,
+					CanPost:       active == 0 && deleted < 2 && !time.Now().Before(window.StartsAt),
+					DeletionCount: deleted,
+				})
+			}
+		}
 		var state struct {
 			PostingWindow
 			Active  int `db:"active"`
 			Deleted int `db:"deleted"`
 		}
-		err := h.ReadDB.GetContext(c.Request().Context(), &state, `
+		err := h.DB.GetContext(c.Request().Context(), &state, `
    SELECT w.id, w.region, w.local_date, w.starts_at, w.on_time_deadline, w.ended_at,
           count(p.id) FILTER (WHERE p.deleted_at IS NULL) AS active,
           count(p.id) FILTER (WHERE p.deleted_at IS NOT NULL) AS deleted

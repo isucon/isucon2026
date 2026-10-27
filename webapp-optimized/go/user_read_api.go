@@ -40,7 +40,7 @@ func searchUsersHandler(h *HandlerContext) echo.HandlerFunc {
 		}
 		ctx := c.Request().Context()
 		viewer := GetSession(c).UserID
-		rows, err := h.ReadDB.QueryxContext(ctx, `SELECT `+userProjection+` FROM users
+		rows, err := h.DB.QueryxContext(ctx, `SELECT `+userProjection+` FROM users
           WHERE status='active' AND id<>$1 AND ($2='' OR (username,id)>($2,$3))
             AND NOT EXISTS (SELECT 1 FROM block_relations WHERE blocker_id=$1 AND blocked_id=users.id)
             AND NOT EXISTS (SELECT 1 FROM block_relations WHERE blocked_id=$1 AND blocker_id=users.id)
@@ -94,13 +94,24 @@ func getUserHandler(h *HandlerContext) echo.HandlerFunc {
 			return err
 		}
 		ctx := c.Request().Context()
+		if viewer, ok := hotSessionUser(c, h); ok {
+			if user, friend, visible, ok := hot.viewUser(viewer.ID, input.UserID); ok {
+				if !visible {
+					return NewAPIError(http.StatusNotFound, "relationship_not_found")
+				}
+				if user.AccountType != "certified_public" && !friend {
+					user.Bio = ""
+				}
+				return c.JSON(http.StatusOK, getUserResponse(newRelationshipUserResponse(user)))
+			}
+		}
 		viewer := GetSession(c).UserID
 		var state struct {
 			User
 			IsBlocked bool `db:"is_blocked"`
 			Friend    bool `db:"friend"`
 		}
-		err := h.ReadDB.GetContext(ctx, &state, `SELECT `+userProjection+`,
+		err := h.DB.GetContext(ctx, &state, `SELECT `+userProjection+`,
           EXISTS(SELECT 1 FROM block_relations
             WHERE (blocker_id=$1 AND blocked_id=$2) OR (blocker_id=$2 AND blocked_id=$1)) AS is_blocked,
           EXISTS(SELECT 1 FROM friendships

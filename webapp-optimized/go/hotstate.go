@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"database/sql"
+	"os"
 	"slices"
 	"sync"
 	"time"
@@ -60,8 +61,26 @@ type hotWindow struct {
 	ID             string
 	Region         string
 	LocalDate      time.Time
+	StartsAt       time.Time
 	OnTimeDeadline time.Time
-	Version        int64
+	// Notified lists the users notified when the window opened (the active
+	// users of the region at that moment); their notification rows are written
+	// in the background. A subscriber connected before StartsAt receives the
+	// notification of the window.
+	Notified []string `json:",omitempty"`
+	Version  int64
+	notified map[string]bool
+}
+
+// notifiedSet is the set of notified users, built on first use.
+func (w *hotWindow) notifiedSet() map[string]bool {
+	if w.notified == nil {
+		w.notified = make(map[string]bool, len(w.Notified))
+		for _, id := range w.Notified {
+			w.notified[id] = true
+		}
+	}
+	return w.notified
 }
 
 type hotPost struct {
@@ -144,6 +163,13 @@ func friendKey(a, b string) relationKey {
 // that arrive while loading are applied afterwards by the caller's lock order:
 // load holds the write lock, so they wait and then apply on top.
 func (s *hotState) load(ctx context.Context, db *sqlx.DB) error {
+	if os.Getenv("ISUREAL_HOT_STATE") == "off" {
+		// Reads are served by the database (tests that edit it directly).
+		s.mu.Lock()
+		s.reset()
+		s.mu.Unlock()
+		return nil
+	}
 	tx, err := db.BeginTxx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
 	if err != nil {
 		return err
@@ -177,9 +203,14 @@ func (s *hotState) load(ctx context.Context, db *sqlx.DB) error {
 		return err
 	}
 	var windows []hotWindow
-	if err := tx.SelectContext(ctx, &windows, `SELECT id AS "id", region AS "region", local_date AS "localdate", on_time_deadline AS "ontimedeadline"
+	if err := tx.SelectContext(ctx, &windows, `SELECT id AS "id", region AS "region", local_date AS "localdate", starts_at AS "startsat", on_time_deadline AS "ontimedeadline"
       FROM posting_windows WHERE ended_at IS NULL`); err != nil {
 		return err
+	}
+	for i := range windows {
+		if err := tx.SelectContext(ctx, &windows[i].Notified, `SELECT user_id FROM notifications WHERE posting_window_id = $1`, windows[i].ID); err != nil {
+			return err
+		}
 	}
 	var posts []struct {
 		Post
@@ -257,6 +288,7 @@ func (s *hotState) apply(events []stateEvent) {
 			if current := s.users[u.ID]; current == nil || (e.Version > current.Version && current.Status != "deleted") {
 				if u.setImageKey() == nil {
 					s.users[u.ID] = &hotUser{User: u, Version: e.Version}
+					notifications.userChanged(u.ID, u.Region, u.Status == "active")
 				}
 			}
 		case "user_deleted":
@@ -265,6 +297,7 @@ func (s *hotState) apply(events []stateEvent) {
 				deleted.Status = "deleted"
 				deleted.Version = max(e.Version, current.Version)
 				s.users[e.A] = &deleted
+				notifications.userChanged(e.A, deleted.Region, false)
 			}
 		case "session":
 			if current := s.userSession[e.A]; e.Version > current.Version {
@@ -301,6 +334,7 @@ func (s *hotState) apply(events []stateEvent) {
 				w.Version = e.Version
 				s.windows[w.Region] = w
 				s.dropClosedPosts()
+				notifications.windowOpened(w)
 			}
 		case "post":
 			p := e.Post
@@ -458,4 +492,159 @@ func (s *hotState) imageLive(imageID string) (live bool, secretKeyHash string, k
 		return false, "", false
 	}
 	return !p.Deleted && author.Status == "active", author.SecretKeyHash, true
+}
+
+// openWindow returns the open window with the ID, if any.
+func (s *hotState) openWindow(id string) *hotWindow {
+	for _, w := range s.windows {
+		if w.ID == id {
+			return w
+		}
+	}
+	return nil
+}
+
+// userState returns a user of the state when loaded.
+func (s *hotState) userState(userID string) (User, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	u := s.users[userID]
+	if !s.loaded || u == nil {
+		return User{}, false
+	}
+	return u.User, true
+}
+
+// currentWindow returns the open window of a region, with the viewer's active
+// and deleted posts of the window's date, like getCurrentPostingWindowHandler's
+// SQL. ok is false when the state cannot answer.
+func (s *hotState) currentWindow(userID string) (window *hotWindow, active, deleted int, ok bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	u := s.users[userID]
+	if !s.loaded || u == nil {
+		return nil, 0, 0, false
+	}
+	w := s.windows[u.Region]
+	if w == nil {
+		return nil, 0, 0, true
+	}
+	for _, p := range s.byAuthor[userID] {
+		if pw := s.openWindow(p.PostingWindowID); pw != nil && pw.LocalDate.Equal(w.LocalDate) {
+			if p.Deleted {
+				deleted++
+			} else {
+				active++
+			}
+		}
+	}
+	copied := *w
+	return &copied, active, deleted, true
+}
+
+// myCurrentPost returns the viewer's live post of the date of the open window
+// of the viewer's region, like getMyCurrentPostHandler's SQL.
+func (s *hotState) myCurrentPost(userID string) (post PostWithAuthor, found, ok bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	u := s.users[userID]
+	if !s.loaded || u == nil {
+		return post, false, false
+	}
+	if u.Status != "active" {
+		return post, false, true
+	}
+	current := s.windows[u.Region]
+	if current == nil {
+		return post, false, true
+	}
+	for _, p := range s.byAuthor[userID] {
+		if p.Deleted {
+			continue
+		}
+		if w := s.openWindow(p.PostingWindowID); w != nil && w.LocalDate.Equal(current.LocalDate) {
+			post = PostWithAuthor{Post: p.Post, Author: u.User}
+			post.OnTimeDeadline = w.OnTimeDeadline
+			post.WindowEndedAt = nil
+			return post, true, true
+		}
+	}
+	return post, false, true
+}
+
+// viewPost returns a post of an open window if the viewer may see it, like
+// loadPostAccess and canView. ok is false when the state does not know the
+// post (a closed window, or a post the viewer may only see through the
+// database), and the database must be asked.
+func (s *hotState) viewPost(viewerID, postID string) (post PostWithAuthor, visible, ok bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	viewer := s.users[viewerID]
+	p := s.posts[postID]
+	if !s.loaded || viewer == nil || p == nil {
+		return post, false, false
+	}
+	w := s.openWindow(p.PostingWindowID)
+	author := s.users[p.AuthorID]
+	if w == nil || author == nil {
+		return post, false, false
+	}
+	if p.Deleted || viewer.Status != "active" || author.Status != "active" {
+		return post, false, true
+	}
+	post = PostWithAuthor{Post: p.Post, Author: author.User}
+	post.OnTimeDeadline = w.OnTimeDeadline
+	post.WindowEndedAt = nil
+	if p.AuthorID == viewerID {
+		return post, true, true
+	}
+	if s.blocks[[2]string{viewerID, p.AuthorID}] || s.blocks[[2]string{p.AuthorID, viewerID}] {
+		return post, false, true
+	}
+	current := s.windows[viewer.Region]
+	if current == nil {
+		return post, false, true
+	}
+	postedToday := false
+	for _, own := range s.byAuthor[viewerID] {
+		if ow := s.openWindow(own.PostingWindowID); !own.Deleted && ow != nil && ow.LocalDate.Equal(current.LocalDate) {
+			postedToday = true
+			break
+		}
+	}
+	if !postedToday {
+		return post, false, true
+	}
+	friend := s.friends[viewerID][p.AuthorID]
+	switch p.Visibility {
+	case "public":
+		return post, true, true
+	case "friends":
+		return post, friend, true
+	case "friends_of_friends":
+		if friend {
+			return post, true, true
+		}
+		for f := range s.friends[viewerID] {
+			if s.friends[f][p.AuthorID] {
+				return post, true, true
+			}
+		}
+	}
+	return post, false, true
+}
+
+// viewUser returns a user for the viewer, like getUserHandler's SQL: the
+// user when active and not blocked either way, with whether they are friends.
+func (s *hotState) viewUser(viewerID, userID string) (user User, friend, visible, ok bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	u := s.users[userID]
+	if !s.loaded || u == nil {
+		return user, false, false, false
+	}
+	if u.Status != "active" || s.blocks[[2]string{viewerID, userID}] || s.blocks[[2]string{userID, viewerID}] {
+		return user, false, false, true
+	}
+	return u.User, s.friends[viewerID][userID], true, true
 }

@@ -138,6 +138,9 @@ func getMeHandler(h *HandlerContext) echo.HandlerFunc {
 		if session == nil {
 			return NewAPIError(http.StatusUnauthorized, "invalid_session")
 		}
+		if user, ok := hotSessionUser(c, h); ok {
+			return c.JSON(http.StatusOK, newGetMeResponse(user))
+		}
 		user, err := readSessionUser(c, h)
 		if errors.Is(err, sql.ErrNoRows) {
 			return NewAPIError(http.StatusNotFound, "account_not_found")

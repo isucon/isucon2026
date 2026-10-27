@@ -14,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/stdlib"
+	"github.com/labstack/echo/v5"
 )
 
 type batchSessionKey struct{}
@@ -284,4 +285,31 @@ func (r *streamSessionRows) Next(dest []driver.Value) error {
 		dest[i] = value
 	}
 	return nil
+}
+
+// hotSessionUser authenticates a batched session against the regional hot
+// state. When the session is known, the user is returned and the handler
+// may answer from the state without a database round trip; the session's
+// region is checked by the caller's RegionMiddleware contract (the user must
+// belong to this app's region). ok is false when the state cannot answer and
+// the handler must use the database path.
+func hotSessionUser(c *echo.Context, h *HandlerContext) (User, bool) {
+	state, _ := c.Request().Context().Value(batchSessionKey{}).(*batchSession)
+	if state == nil {
+		return User{}, false
+	}
+	if state.attempted {
+		if state.session.user != nil {
+			return *state.session.user, true
+		}
+		return User{}, false
+	}
+	user, ok := hot.authenticate(state.session.TokenHash, state.region)
+	if !ok {
+		return User{}, false
+	}
+	state.attempted = true
+	state.session.UserID, state.session.Region = user.ID, user.Region
+	state.session.user = &user
+	return user, true
 }
