@@ -14,7 +14,7 @@ pub struct ImageStore {
     pub db: PgPool,
     pub writes_enabled: bool,
     pub cache_peers: Option<crate::image_cache_push::CachePeers>,
-    cache: Arc<Mutex<AssetCache>>,
+    cache: Option<Arc<Mutex<AssetCache>>>,
 }
 
 impl ImageStore {
@@ -27,8 +27,15 @@ impl ImageStore {
             db,
             writes_enabled,
             cache_peers,
-            cache: Arc::new(Mutex::new(AssetCache::default())),
+            cache: Some(Arc::new(Mutex::new(AssetCache::default()))),
         }
+    }
+
+    pub fn with_cache_enabled(mut self, enabled: bool) -> Self {
+        if !enabled {
+            self.cache = None;
+        }
+        self
     }
 
     pub async fn from_env(config: &Config) -> Option<Self> {
@@ -88,16 +95,26 @@ impl ImageStore {
             exists,
             "install image store schema before deploying readers"
         );
-        Some(Self::new(
-            db,
-            writes == "1",
-            crate::image_cache_push::CachePeers::from_env(),
-        ))
+        let cache = std::env::var("ISUREAL_IMAGE_STORE_CACHE").unwrap_or_else(|_| "0".into());
+        assert!(
+            matches!(cache.as_str(), "0" | "1"),
+            "invalid asset cache flag"
+        );
+        Some(
+            Self::new(
+                db,
+                writes == "1",
+                crate::image_cache_push::CachePeers::from_env(),
+            )
+            .with_cache_enabled(cache == "1"),
+        )
     }
 
     pub async fn put(&self, id: &str, data: &Bytes) -> Result<String, sqlx::Error> {
-        let hash: [u8; 32] = Sha256::digest(data).into();
-        if let Some(key) = self.cache.lock().unwrap().matching_key(&hash, data) {
+        let hash: Option<[u8; 32]> = self.cache.as_ref().map(|_| Sha256::digest(data).into());
+        if let (Some(cache), Some(hash)) = (&self.cache, &hash)
+            && let Some(key) = cache.lock().unwrap().matching_key(hash, data)
+        {
             return Ok(key);
         }
         sqlx::query("INSERT INTO astra_image_data (id,data) VALUES ($1,$2)")
@@ -107,15 +124,20 @@ impl ImageStore {
             .await?;
         // Cache only after the durable INSERT completes. Concurrent misses may
         // store identical bytes twice, which is safe and needs no global lock.
-        self.cache
-            .lock()
-            .unwrap()
-            .insert(id.to_owned(), hash, data.clone());
+        if let (Some(cache), Some(hash)) = (&self.cache, hash) {
+            cache
+                .lock()
+                .unwrap()
+                .insert(id.to_owned(), hash, data.clone());
+        }
         Ok(id.to_owned())
     }
 
     pub async fn get(&self, id: &str) -> Result<Vec<u8>, sqlx::Error> {
-        let cached = self.cache.lock().unwrap().by_key.get(id).cloned();
+        let cached = self
+            .cache
+            .as_ref()
+            .and_then(|cache| cache.lock().unwrap().by_key.get(id).cloned());
         if let Some(data) = cached {
             return Ok(data.to_vec());
         }
@@ -123,13 +145,17 @@ impl ImageStore {
             .bind(id)
             .fetch_one(&self.db)
             .await?;
-        let data = Bytes::from(data);
-        let hash = Sha256::digest(&data).into();
-        self.cache
-            .lock()
-            .unwrap()
-            .insert(id.to_owned(), hash, data.clone());
-        Ok(data.to_vec())
+        if let Some(cache) = &self.cache {
+            let data = Bytes::from(data);
+            let hash = Sha256::digest(&data).into();
+            cache
+                .lock()
+                .unwrap()
+                .insert(id.to_owned(), hash, data.clone());
+            Ok(data.to_vec())
+        } else {
+            Ok(data)
+        }
     }
 }
 

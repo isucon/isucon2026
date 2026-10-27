@@ -696,6 +696,25 @@ async fn independent_bytes_publish_atomically_and_preserve_visibility_export_and
         .await,
         (StatusCode::OK, original.to_vec())
     );
+    let uncached_store = ImageStore::new(assets.clone(), true, None).with_cache_enabled(false);
+    let uncached_id = uuid::Uuid::new_v4().to_string();
+    let uncached_id2 = uuid::Uuid::new_v4().to_string();
+    assert_eq!(
+        uncached_store
+            .put(&uncached_id, &bytes::Bytes::copy_from_slice(original))
+            .await
+            .unwrap(),
+        uncached_id
+    );
+    assert_eq!(
+        uncached_store
+            .put(&uncached_id2, &bytes::Bytes::copy_from_slice(original))
+            .await
+            .unwrap(),
+        uncached_id2
+    );
+    assert_eq!(uncached_store.get(&shared_key).await.unwrap(), original);
+    assert_eq!(uncached_store.get(&uncached_id).await.unwrap(), original);
     drop(routed);
     drop(local);
     drop(store);

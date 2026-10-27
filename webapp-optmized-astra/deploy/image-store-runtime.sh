@@ -17,6 +17,7 @@ print('[Service]')
 print(f'Environment=ISUREAL_IMAGE_STORE_HOST={host}')
 print(f'Environment=ISUREAL_IMAGE_STORE_PORT={port}')
 print(f'Environment=ISUREAL_IMAGE_STORE_WRITES={writes}')
+print(f"Environment=ISUREAL_IMAGE_STORE_CACHE={int(enabled and s.get('cacheEnabled',False))}")
 cache_enabled=enabled and runtime.get('imageCachePushEnabled',False)
 peers={app['region']: app['host']+':8080' for app in runtime['applications'] if app['region']!='asia'} if cache_enabled else None
 peer_json=json.dumps(peers,separators=(',',':')) if peers is not None else ''
