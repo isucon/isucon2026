@@ -7,7 +7,9 @@ use std::time::Duration;
 use sqlx::PgPool;
 use tokio::sync::{Semaphore, SemaphorePermit, oneshot};
 
-const WRITE_SLOTS: u32 = 32;
+// Immutable image bytes no longer enter the metadata replication stream.
+// Keep a finite upload budget while allowing more independent-store work.
+const WRITE_SLOTS: u32 = 64;
 const BYTES_PER_SLOT: u64 = 256 * 1024;
 const SMALL_BODY_BYTES: u64 = 64 * 1024;
 const SMALL_WRITE_SLOTS: usize = 32;
