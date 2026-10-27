@@ -55,8 +55,36 @@ type historyPost struct {
 	postedAt, deadline, endedAt, localDate int64
 	firstComment, comments                 uint32
 	firstReaction, reactions               uint32
-	sigExp                                 int64
-	sig                                    [32]byte
+	sigs                                   signatures
+}
+
+// signatures holds an image's signature for two expiries: the current step
+// and the next one, computed before the step begins.
+type signatures struct {
+	exp [2]int64
+	sig [2][32]byte
+}
+
+func (s *signatures) has(exp int64) bool {
+	return s.exp[0] == exp || s.exp[1] == exp
+}
+
+func (s *signatures) get(exp int64) ([32]byte, bool) {
+	for k := range s.exp {
+		if s.exp[k] == exp {
+			return s.sig[k], true
+		}
+	}
+	return [32]byte{}, false
+}
+
+// set replaces the signature of the older expiry.
+func (s *signatures) set(exp int64, sig [32]byte) {
+	k := 0
+	if s.exp[1] < s.exp[0] {
+		k = 1
+	}
+	s.exp[k], s.sig[k] = exp, sig
 }
 
 const (
@@ -77,8 +105,7 @@ type historyReaction struct {
 	kind               textRef
 	createdAt          int64
 	post               uint32
-	sigExp             int64
-	sig                [32]byte
+	sigs               signatures
 }
 
 var history = &historyStore{runDates: map[time.Time]bool{}, dirty: map[string]bool{}}
@@ -304,32 +331,38 @@ func (s *historyStore) load(ctx context.Context, db *sqlx.DB, region string) err
 
 // signLead is how long before an expiry step begins its signatures are
 // computed, so the step starts with them.
-const signLead = 15 * time.Minute
+const signLead = 30 * time.Minute
 
 // sign keeps the image signatures of the posts and RealMojis computed for the
-// expiry that is current signLead from now.
+// current expiry and, from signLead before it begins, the next one.
 func (s *historyStore) sign() {
 	workers := runtime.NumCPU()
+	signed := map[int64]bool{}
 	for {
-		exp := imageURLExpiry(time.Now().Add(signLead))
-		started := time.Now()
-		s.mu.RLock()
-		posts, reactions := len(s.posts), len(s.reactions)
-		s.mu.RUnlock()
-		var wg sync.WaitGroup
-		for w := range workers {
-			wg.Go(func() {
-				for start := w * 256; start < posts+reactions; start += workers * 256 {
-					s.signRange(start, min(start+256, posts+reactions), posts, exp)
-				}
-			})
+		now := time.Now()
+		for _, exp := range []int64{imageURLExpiry(now), imageURLExpiry(now.Add(signLead))} {
+			if signed[exp] {
+				continue
+			}
+			started := time.Now()
+			s.mu.RLock()
+			posts, reactions := len(s.posts), len(s.reactions)
+			s.mu.RUnlock()
+			var wg sync.WaitGroup
+			for w := range workers {
+				wg.Go(func() {
+					for start := w * 256; start < posts+reactions; start += workers * 256 {
+						s.signRange(start, min(start+256, posts+reactions), posts, exp)
+					}
+				})
+			}
+			wg.Wait()
+			signed[exp] = true
+			slog.Info("history signatures", "exp", exp, "elapsed", time.Since(started).Round(time.Second))
+			// Later steps are signed by one worker, leaving the other CPU to requests.
+			workers = 1
 		}
-		wg.Wait()
-		slog.Info("history signatures", "exp", exp, "elapsed", time.Since(started).Round(time.Second))
-		// Later steps are signed by one worker, leaving the other CPU to requests.
-		workers = 1
-		next := time.Unix(exp, 0).Add(imageURLExpiryStep - imageURLLifetime - signLead)
-		time.Sleep(max(time.Until(next), time.Minute))
+		time.Sleep(time.Minute)
 	}
 }
 
@@ -342,10 +375,10 @@ func (s *historyStore) signRange(start, end, posts int, exp int64) {
 	s.mu.RLock()
 	for i := start; i < end; i++ {
 		if i < posts {
-			if p := &s.posts[i]; p.sigExp != exp {
+			if p := &s.posts[i]; !p.sigs.has(exp) {
 				jobs = append(jobs, job{i, p.author, p.image})
 			}
-		} else if r := &s.reactions[i-posts]; r.sigExp != exp {
+		} else if r := &s.reactions[i-posts]; !r.sigs.has(exp) {
 			jobs = append(jobs, job{i, r.reactor, r.image})
 		}
 	}
@@ -365,9 +398,9 @@ func (s *historyStore) signRange(start, end, posts int, exp int64) {
 			continue
 		}
 		if j.i < posts {
-			s.posts[j.i].sig, s.posts[j.i].sigExp = sigs[k], exp
+			s.posts[j.i].sigs.set(exp, sigs[k])
 		} else {
-			s.reactions[j.i-posts].sig, s.reactions[j.i-posts].sigExp = sigs[k], exp
+			s.reactions[j.i-posts].sigs.set(exp, sigs[k])
 		}
 	}
 	s.mu.Unlock()
@@ -423,9 +456,9 @@ func (s *historyStore) imageSignature(imageID string, exp int64) ([32]byte, bool
 		return [32]byte{}, false
 	case i&reactionImage != 0:
 		r := &s.reactions[i&^reactionImage]
-		return r.sig, r.sigExp == exp
+		return r.sigs.get(exp)
 	default:
-		return s.posts[i].sig, s.posts[i].sigExp == exp
+		return s.posts[i].sigs.get(exp)
 	}
 }
 
@@ -494,10 +527,11 @@ func (s *historyStore) postImageURL(postID, imageID string) (string, bool) {
 		p = s.posts[i]
 	}
 	s.mu.RUnlock()
-	if !found || p.sigExp != exp || uuid.UUID(p.image).String() != imageID {
+	sig, ok := p.sigs.get(exp)
+	if !found || !ok || uuid.UUID(p.image).String() != imageID {
 		return "", false
 	}
-	return imageURLWith(imageID, exp, p.sig), true
+	return imageURLWith(imageID, exp, sig), true
 }
 
 func (s *historyStore) touch(postID string) {
@@ -640,8 +674,8 @@ func (s *historyStore) memories(viewer User, start, end time.Time, beforeAt *tim
 			post.WindowEndedAt = &ended
 		}
 		var postResponse createPostResponse
-		if p.sigExp == exp {
-			postResponse = newPostResponseWithURL(post, viewer, imageURLWith(post.ImageID, exp, p.sig))
+		if sig, ok := p.sigs.get(exp); ok {
+			postResponse = newPostResponseWithURL(post, viewer, imageURLWith(post.ImageID, exp, sig))
 		} else {
 			postResponse = newPostResponseWithURL(post, viewer, signedImageURL(viewer, post.ImageID))
 		}
@@ -657,9 +691,9 @@ func (s *historyStore) memories(viewer User, start, end time.Time, beforeAt *tim
 			if u := users[r.reactor]; u != nil && u.Status == "active" && len(item0.RealMojis) < 50 {
 				reaction := RealMoji{ID: uuid.UUID(r.id).String(), PostID: post.ID, ReactorID: u.ID, ImageID: uuid.UUID(r.image).String(),
 					ReactionType: text.str(r.kind), CreatedAt: fromMicros(r.createdAt)}
-				if r.sigExp == exp {
+				if sig, ok := r.sigs.get(exp); ok {
 					response := replaceRealMojiResponse{ID: reaction.ID, Reactor: newRelationshipUserResponse(*u), ReactionType: reaction.ReactionType,
-						ImageURL: imageURLWith(reaction.ImageID, exp, r.sig), CreatedAt: reaction.CreatedAt}
+						ImageURL: imageURLWith(reaction.ImageID, exp, sig), CreatedAt: reaction.CreatedAt}
 					item0.RealMojis = append(item0.RealMojis, response)
 				} else {
 					item0.RealMojis = append(item0.RealMojis, newRealMojiResponse(reaction, *u))
