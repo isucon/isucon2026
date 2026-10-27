@@ -1,3 +1,4 @@
+import type pg from "pg";
 import { type DB, rows, first, one, scalar } from "./db.js";
 import { type User, type Post, imageSigningKey, canView } from "./core.js";
 export const userColumns = [
@@ -13,12 +14,19 @@ export const userColumns = [
 ];
 export const userColumnsAs = (alias: string, prefix: string) =>
   userColumns.map((c) => `${alias}.${c} AS "${prefix}.${c}"`).join(", ");
-export function joinedUser(row: Record<string, unknown>, prefix: string): User {
-  const user = Object.fromEntries(
-    userColumns.map((c) => [c, row[`${prefix}.${c}`]]),
-  ) as unknown as User;
-  user.imageKey = imageSigningKey(user.secret_key_hash);
-  return user;
+export function joinedUser(row: pg.QueryResultRow, prefix: string): User {
+  return {
+    id: row[`${prefix}.id`],
+    username: row[`${prefix}.username`],
+    secret_key_hash: row[`${prefix}.secret_key_hash`],
+    display_name: row[`${prefix}.display_name`],
+    bio: row[`${prefix}.bio`],
+    profile_image_id: row[`${prefix}.profile_image_id`],
+    region: row[`${prefix}.region`],
+    account_type: row[`${prefix}.account_type`],
+    status: row[`${prefix}.status`],
+    imageKey: imageSigningKey(row[`${prefix}.secret_key_hash`]),
+  };
 }
 export async function getUser(db: DB, id: string) {
   const user = await first<User>(
@@ -48,13 +56,12 @@ export async function selectPostsWithAuthor(
     `SELECT ${postColumns}, ${userColumnsAs("u", "author")} FROM posts p JOIN posting_windows w ON w.id = p.posting_window_id JOIN users u ON u.id = p.author_id AND u.status = 'active' WHERE p.deleted_at IS NULL ${conditions}`,
     ...args,
   );
-  for (const p of posts)
-    p.author = joinedUser(p as unknown as Record<string, unknown>, "author");
+  for (const p of posts) p.author = joinedUser(p, "author");
   return posts;
 }
 export async function getPostWithAuthor(db: DB, id: string) {
   const posts = await selectPostsWithAuthor(db, "AND p.id = $1", id);
-  return posts[0] as Post | undefined;
+  return posts.at(0);
 }
 export async function getFriendIDs(db: DB, id: string) {
   const friendships = await rows<{ user_low_id: string; user_high_id: string }>(
