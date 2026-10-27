@@ -195,6 +195,15 @@ async fn get_image(
     }
     let data = match object.data {
         Some(data) => {
+            let data = if let Some(key) = &object.asset_key {
+                h.image_store
+                    .as_ref()
+                    .ok_or_else(|| anyhow::anyhow!("image store unavailable"))?
+                    .get(key)
+                    .await?
+            } else {
+                data
+            };
             let data = Bytes::from(data);
             IMAGE_CACHE.lock().unwrap().insert(
                 input.image_id,
@@ -227,11 +236,12 @@ struct ImageObject {
     secret_key_hash: String,
     version: String,
     created_at: DateTime<Utc>,
+    asset_key: Option<String>,
 }
 
 const IMAGE_QUERY: &str = r#"
    SELECT CASE WHEN i.xmin::text = $2 AND i.created_at = $3 THEN NULL ELSE i.data END AS data,
-          i.media_type, u.secret_key_hash, i.xmin::text AS version, i.created_at
+          i.media_type, u.secret_key_hash, i.xmin::text AS version, i.created_at, i.asset_key
    FROM image_objects i JOIN users u ON u.id = i.owner_user_id AND u.status = 'active'
    WHERE i.id = $1 AND (
      u.profile_image_id = i.id
