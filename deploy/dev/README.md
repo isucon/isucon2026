@@ -46,7 +46,15 @@ ISUREAL_WEBAPP_LANGUAGE=ruby make dev-up
 ISUREAL_WEBAPP_LANGUAGE=rust make dev-up
 ```
 
-アプリのイメージは `deploy/dev/app-<言語>.Dockerfile`（`app-go.Dockerfile`、`app-ruby.Dockerfile`、`app-rust.Dockerfile`）でビルドします。実装を追加するときは同じ名前で Dockerfile を置き、`ISUREAL_WEBAPP_LANGUAGE` にその言語名を指定します。
+## Python 実装で起動
+
+`ISUREAL_WEBAPP_LANGUAGE=python` を付けて起動すると、アプリコンテナが Python 実装（`webapp/python`）になります。Go に戻すときは付けずに起動し直します。
+
+```bash
+ISUREAL_WEBAPP_LANGUAGE=python make dev-up
+```
+
+アプリのイメージは `deploy/dev/app-<言語>.Dockerfile`（`app-go.Dockerfile`、`app-ruby.Dockerfile`、`app-rust.Dockerfile`、`app-python.Dockerfile`）でビルドします。実装を追加するときは同じ名前で Dockerfile を置き、`ISUREAL_WEBAPP_LANGUAGE` にその言語名を指定します。
 
 ## 変更反映と初期化
 

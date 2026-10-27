@@ -27,10 +27,15 @@
           - --exclude=rust/isureal
           - --exclude=rust/target
           - --exclude=rust/tests
+          - --exclude=python/.venv
+          - --exclude=python/tests
+          - --exclude=__pycache__
+          - --exclude=.*_cache
           - --exclude=sql/002-seed.sql
           - go
           - ruby
           - rust
+          - python
           - sql
       changed_when: true
       when: "'webapp' in prepare_components"
