@@ -67,42 +67,20 @@ export function signedImageURL(user: User, id: string) {
   const exp = Math.floor(Date.now() / 1000) + 86400;
   return `/api/images/${encodeURIComponent(id)}?exp=${exp}&sig=${imageSignature(user.imageKey!, id, exp).toString("base64url")}`;
 }
-export function timestamp(value: string) {
-  const normalized = value.replace(" ", "T").replace(/([+-]\d\d)$/, "$1:00");
-  const fraction = normalized.match(/\.(\d+)/)?.[1] ?? "";
-  const seconds = new Date(normalized).toISOString().slice(0, 19);
-  const trimmed = fraction.replace(/0+$/, "");
-  return seconds + (trimmed ? "." + trimmed : "") + "Z";
-}
-export function micros(value: string) {
-  const fraction = value.match(/\.(\d+)/)?.[1] ?? "";
-  return (
-    Math.floor(new Date(value).getTime() / 1000) * 1000000 +
-    Number(fraction.padEnd(6, "0").slice(0, 6))
-  );
-}
-export function addSeconds(value: string, seconds: number) {
-  const result = micros(value) + seconds * 1000000;
-  const whole = Math.floor(result / 1000000);
-  const frac = (result - whole * 1000000)
-    .toString()
-    .padStart(6, "0")
-    .replace(/0+$/, "");
-  return (
-    new Date(Number(whole) * 1000).toISOString().slice(0, 19) +
-    (frac ? "." + frac : "") +
-    "Z"
-  );
-}
+export const timestamp = (value: string) =>
+  Temporal.Instant.from(value).toString();
+export const addSeconds = (value: string, seconds: number) =>
+  Temporal.Instant.from(value).add({ seconds }).toString();
 export function validDate(value: string, month = false) {
   if (!(month ? /^\d{4}-\d{2}$/ : /^\d{4}-\d{2}-\d{2}$/).test(value))
     return false;
-  const date = month ? value + "-01" : value;
-  const parsed = new Date(date + "T00:00:00Z");
-  return (
-    !Number.isNaN(parsed.getTime()) &&
-    parsed.toISOString().slice(0, 10) === date
-  );
+  try {
+    if (month) Temporal.PlainYearMonth.from(value);
+    else Temporal.PlainDate.from(value);
+    return true;
+  } catch {
+    return false;
+  }
 }
 export function validTimestamp(value: string) {
   const m =
@@ -211,7 +189,7 @@ export function postResponse(p: Post, u: User) {
   if (p.latitude != null) location.latitude = p.latitude;
   if (p.longitude != null) location.longitude = p.longitude;
   if (p.locality != null) location.locality = p.locality;
-  const late = micros(p.posted_at) - micros(p.on_time_deadline);
+  const late = Temporal.Instant.from(p.posted_at).since(p.on_time_deadline);
   return {
     id: p.id,
     author: relationshipUserResponse(u),
@@ -221,8 +199,8 @@ export function postResponse(p: Post, u: User) {
     visibility: p.visibility,
     location,
     postedAt: p.posted_at,
-    onTime: late <= 0,
-    lateSeconds: late > 0 ? Math.floor(late / 1000000) : 0,
+    onTime: late.sign <= 0,
+    lateSeconds: late.sign > 0 ? late.seconds : 0,
   };
 }
 export const page = <T>(items: T[]) => ({

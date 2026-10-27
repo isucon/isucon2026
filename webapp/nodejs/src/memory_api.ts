@@ -24,17 +24,17 @@ export function memoryHandlers(db: pg.Pool) {
       if (!validDate(period, day === undefined))
         fail(400, "invalid_memory_period");
       const start =
-          (day === undefined ? period + "-01" : period) + "T00:00:00Z",
-        end = new Date(start);
-      if (day === undefined) end.setUTCMonth(end.getUTCMonth() + 1);
-      else end.setUTCDate(end.getUTCDate() + 1);
+          day === undefined
+            ? Temporal.PlainYearMonth.from(period).toPlainDate({ day: 1 })
+            : Temporal.PlainDate.from(period),
+        end = start.add(day === undefined ? { months: 1 } : { days: 1 });
       const { at, id } = cursor(c, "beforePostedAt", "beforeId");
       const posts = await selectPostsWithAuthor(
         db,
         `AND p.author_id = $1 AND w.local_date >= $2 AND w.local_date < $3 AND ($4::timestamptz IS NULL OR (p.posted_at, p.id) < ($4, $5)) ORDER BY p.posted_at DESC, p.id DESC LIMIT 51`,
         c.var.session.user_id,
-        start,
-        end.toISOString(),
+        start.toString(),
+        end.toString(),
         at,
         id,
       );
