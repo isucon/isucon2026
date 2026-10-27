@@ -24,14 +24,50 @@ DROP TABLE IF EXISTS
 
 -- 2026-09-01: 画像をDBにおかないと、別のサーバーからデータを返却したときに404になってしまう。ファイル配置に変更して障害になってしまったので注意。ここは決して変更しないこと。
 CREATE TABLE image_objects (
-  id varchar(36) PRIMARY KEY,
+  id varchar(36) NOT NULL,
   owner_user_id varchar(36) NOT NULL,
   data bytea NOT NULL,
   -- like: image/jpeg, image/png
   media_type text NOT NULL,
   content_version uuid NOT NULL DEFAULT gen_random_uuid(),
-  created_at timestamptz NOT NULL DEFAULT clock_timestamp()
-);
+  created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+  PRIMARY KEY (id, created_at)
+) PARTITION BY RANGE (created_at);
+CREATE TABLE image_objects_202409 PARTITION OF image_objects FOR VALUES FROM ('2024-09-01 00:00:00+00') TO ('2024-10-01 00:00:00+00');
+CREATE TABLE image_objects_202410 PARTITION OF image_objects FOR VALUES FROM ('2024-10-01 00:00:00+00') TO ('2024-11-01 00:00:00+00');
+CREATE TABLE image_objects_202411 PARTITION OF image_objects FOR VALUES FROM ('2024-11-01 00:00:00+00') TO ('2024-12-01 00:00:00+00');
+CREATE TABLE image_objects_202412 PARTITION OF image_objects FOR VALUES FROM ('2024-12-01 00:00:00+00') TO ('2025-01-01 00:00:00+00');
+CREATE TABLE image_objects_202501 PARTITION OF image_objects FOR VALUES FROM ('2025-01-01 00:00:00+00') TO ('2025-02-01 00:00:00+00');
+CREATE TABLE image_objects_202502 PARTITION OF image_objects FOR VALUES FROM ('2025-02-01 00:00:00+00') TO ('2025-03-01 00:00:00+00');
+CREATE TABLE image_objects_202503 PARTITION OF image_objects FOR VALUES FROM ('2025-03-01 00:00:00+00') TO ('2025-04-01 00:00:00+00');
+CREATE TABLE image_objects_202504 PARTITION OF image_objects FOR VALUES FROM ('2025-04-01 00:00:00+00') TO ('2025-05-01 00:00:00+00');
+CREATE TABLE image_objects_202505 PARTITION OF image_objects FOR VALUES FROM ('2025-05-01 00:00:00+00') TO ('2025-06-01 00:00:00+00');
+CREATE TABLE image_objects_202506 PARTITION OF image_objects FOR VALUES FROM ('2025-06-01 00:00:00+00') TO ('2025-07-01 00:00:00+00');
+CREATE TABLE image_objects_202507 PARTITION OF image_objects FOR VALUES FROM ('2025-07-01 00:00:00+00') TO ('2025-08-01 00:00:00+00');
+CREATE TABLE image_objects_202508 PARTITION OF image_objects FOR VALUES FROM ('2025-08-01 00:00:00+00') TO ('2025-09-01 00:00:00+00');
+CREATE TABLE image_objects_202509 PARTITION OF image_objects FOR VALUES FROM ('2025-09-01 00:00:00+00') TO ('2025-10-01 00:00:00+00');
+CREATE TABLE image_objects_202510 PARTITION OF image_objects FOR VALUES FROM ('2025-10-01 00:00:00+00') TO ('2025-11-01 00:00:00+00');
+CREATE TABLE image_objects_202511 PARTITION OF image_objects FOR VALUES FROM ('2025-11-01 00:00:00+00') TO ('2025-12-01 00:00:00+00');
+CREATE TABLE image_objects_202512 PARTITION OF image_objects FOR VALUES FROM ('2025-12-01 00:00:00+00') TO ('2026-01-01 00:00:00+00');
+CREATE TABLE image_objects_202601 PARTITION OF image_objects FOR VALUES FROM ('2026-01-01 00:00:00+00') TO ('2026-02-01 00:00:00+00');
+CREATE TABLE image_objects_202602 PARTITION OF image_objects FOR VALUES FROM ('2026-02-01 00:00:00+00') TO ('2026-03-01 00:00:00+00');
+CREATE TABLE image_objects_202603 PARTITION OF image_objects FOR VALUES FROM ('2026-03-01 00:00:00+00') TO ('2026-04-01 00:00:00+00');
+CREATE TABLE image_objects_202604 PARTITION OF image_objects FOR VALUES FROM ('2026-04-01 00:00:00+00') TO ('2026-05-01 00:00:00+00');
+CREATE TABLE image_objects_202605 PARTITION OF image_objects FOR VALUES FROM ('2026-05-01 00:00:00+00') TO ('2026-06-01 00:00:00+00');
+CREATE TABLE image_objects_202606 PARTITION OF image_objects FOR VALUES FROM ('2026-06-01 00:00:00+00') TO ('2026-07-01 00:00:00+00');
+CREATE TABLE image_objects_202607 PARTITION OF image_objects FOR VALUES FROM ('2026-07-01 00:00:00+00') TO ('2026-08-01 00:00:00+00');
+CREATE TABLE image_objects_202608 PARTITION OF image_objects FOR VALUES FROM ('2026-08-01 00:00:00+00') TO ('2026-09-01 00:00:00+00');
+CREATE TABLE image_objects_202609 PARTITION OF image_objects FOR VALUES FROM ('2026-09-01 00:00:00+00') TO ('2026-10-01 00:00:00+00');
+CREATE TABLE image_objects_202610 PARTITION OF image_objects FOR VALUES FROM ('2026-10-01 00:00:00+00') TO ('2026-11-01 00:00:00+00');
+CREATE TABLE image_objects_202611 PARTITION OF image_objects FOR VALUES FROM ('2026-11-01 00:00:00+00') TO ('2026-12-01 00:00:00+00');
+CREATE TABLE image_objects_202612 PARTITION OF image_objects FOR VALUES FROM ('2026-12-01 00:00:00+00') TO ('2027-01-01 00:00:00+00');
+CREATE TABLE image_objects_202701 PARTITION OF image_objects FOR VALUES FROM ('2027-01-01 00:00:00+00') TO ('2027-02-01 00:00:00+00');
+CREATE TABLE image_objects_202702 PARTITION OF image_objects FOR VALUES FROM ('2027-02-01 00:00:00+00') TO ('2027-03-01 00:00:00+00');
+CREATE TABLE image_objects_202703 PARTITION OF image_objects FOR VALUES FROM ('2027-03-01 00:00:00+00') TO ('2027-04-01 00:00:00+00');
+CREATE TABLE image_objects_202704 PARTITION OF image_objects FOR VALUES FROM ('2027-04-01 00:00:00+00') TO ('2027-05-01 00:00:00+00');
+CREATE TABLE image_objects_202705 PARTITION OF image_objects FOR VALUES FROM ('2027-05-01 00:00:00+00') TO ('2027-06-01 00:00:00+00');
+CREATE TABLE image_objects_202706 PARTITION OF image_objects FOR VALUES FROM ('2027-06-01 00:00:00+00') TO ('2027-07-01 00:00:00+00');
+CREATE TABLE image_objects_default PARTITION OF image_objects DEFAULT;
 
 -- A fresh version survives ID reuse across initialization and is shared by all
 -- app VMs. Metadata reads can validate cached bytes without reading the bytea.
@@ -54,7 +90,7 @@ CREATE TABLE users (
   secret_key_hash text NOT NULL,
   display_name text NOT NULL,
   bio text NOT NULL DEFAULT '',
-  profile_image_id varchar(36) REFERENCES image_objects(id) ON DELETE RESTRICT,
+  profile_image_id varchar(36),
   -- america/europe/asia
   region text NOT NULL,
   -- regular/certified_public
@@ -146,7 +182,7 @@ CREATE TABLE posts (
   id varchar(36) PRIMARY KEY,
   author_id varchar(36) NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
   posting_window_id varchar(36) NOT NULL REFERENCES posting_windows(id) ON DELETE RESTRICT,
-  image_id varchar(36) NOT NULL REFERENCES image_objects(id) ON DELETE RESTRICT,
+  image_id varchar(36) NOT NULL,
   caption text NOT NULL DEFAULT '',
   visibility text NOT NULL,
   location_kind text NOT NULL,
@@ -171,7 +207,7 @@ CREATE TABLE realmojis (
   id varchar(36) PRIMARY KEY,
   post_id varchar(36) NOT NULL REFERENCES posts(id) ON DELETE RESTRICT,
   reactor_id varchar(36) NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
-  image_id varchar(36) NOT NULL REFERENCES image_objects(id) ON DELETE RESTRICT,
+  image_id varchar(36) NOT NULL,
   reaction_type text NOT NULL,
   created_at timestamptz NOT NULL,
   replaced_at timestamptz,
