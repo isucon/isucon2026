@@ -258,9 +258,16 @@ async fn get_image(
             data
         }
         None => {
-            cached
-                .expect("data omitted only for the matching cached version")
-                .data
+            let cached = cached.expect("data omitted only for the matching cached version");
+            // Immutable asset identity validates bytes even when the upload
+            // response timestamp differs from the image row timestamp.
+            if cached.created_at != object.created_at
+                && let Some(current) = IMAGE_CACHE.lock().unwrap().images.get_mut(&input.image_id)
+                && current.version == cached.version
+            {
+                current.created_at = object.created_at;
+            }
+            cached.data
         }
     };
     Ok((
@@ -285,7 +292,7 @@ struct ImageObject {
 // one image per partition and otherwise chooses a full users scan per GET.
 // OFFSET 0 preserves every matching row while preventing that join flattening.
 const IMAGE_QUERY: &str = r#"
-   SELECT CASE WHEN i.created_at = $3 AND (i.xmin::text = $2 OR (i.asset_key IS NOT NULL AND 'asset:' || i.asset_key = $2)) THEN NULL ELSE i.data END AS data,
+   SELECT CASE WHEN (i.created_at = $3 AND i.xmin::text = $2) OR (i.asset_key IS NOT NULL AND 'asset:' || i.asset_key = $2) THEN NULL ELSE i.data END AS data,
           i.media_type, u.secret_key_hash, i.xmin::text AS version, i.created_at, i.asset_key
    FROM image_objects i
    JOIN LATERAL (
