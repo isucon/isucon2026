@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Register this contest instance on every boot; this is not environment validation."""
+"""Register this instance on boot."""
 
 import json
 from pathlib import Path
