@@ -43,9 +43,15 @@ ASTRA_POST_TEST_DSN=postgres://postgres@127.0.0.1:26210/astra_post_test \
   python3 webapp-optmized-astra/tests/post_function.py
 ```
 
-RustのDB接続を伴うキャンセル検証と通知・並行登録・画像配信の結合テストは`ISUREAL_SESSION_TEST_DSN`がなければスキップされる。
+RustのDB接続を伴うキャンセル検証と通知・並行登録・画像配信・フィードの結合テストは`ISUREAL_SESSION_TEST_DSN`がなければスキップされる。
 通知テストは一時スキーマを作り、接続時刻、通知順序、地域変更・退会・不正な署名鍵、接続切断、ポーラーの再起動を確認する。
 単体テストだけではAPI整合性は証明できないため、Team 10の実ベンチ結果を判定に使う。
+
+読み取り前のWAL確認は、専用のローカルプライマリと物理レプリカで検証する。
+`ISUREAL_FENCE_PRIMARY_DSN`と`ISUREAL_FENCE_REPLICA_DSN`を指定してRustテストを実行すると、
+レプリカを一時停止し、並行リクエストの待機、最新値の取得、時間切れ時の503、削除済み利用者への通知抑止を確認する。
+テスト終了時にはレプリカの反映を再開する。
+
 
 ## DB複製の切り替え
 
@@ -54,6 +60,16 @@ RustのDB接続を伴うキャンセル検証と通知・並行登録・画像�
 次に`replicasSynchronous=true`へ変更して同じコマンドで`remote_apply`を有効にする。
 最後に`replicaReads=true`として`deploy/apply.sh application`で読み取りを地域内のDBへ切り替える。
 アプリは起動時に同期設定とレプリカのリカバリー状態を検証する。
+
+同期反映待ちを読み取り側へ移す場合は、先に`readFenceEnabled=true`として
+`deploy/apply.sh application`で地域内アプリにWAL確認を有効化する。
+その後`replicasSynchronous=false`として`deploy/apply.sh replication`を実行する。
+同期反映へ戻す場合は、先に`replicasSynchronous=true`をDBへ反映してから読み取り側の確認を無効にする。
+デプロイ時には、地域内読み取りが有効なのに同期反映もWAL確認もない状態を拒否する。
+
+WAL確認は、読み取り要求が届いた後にプライマリの永続化済みLSNを取得し、地域内レプリカがその位置まで
+反映したことを確認してから認証・閲覧判定を始める。同時に到着済みの要求だけを一括確認し、以前の結果は使い回さない。
+通知ポーリングも同じ確認を行う。10秒以内に追従しなければ、古いデータを返さず503または通知接続の終了とする。
 
 単一DBへ戻す際は、先に`replicaReads=false`として`deploy/apply.sh application`で全台を切り替え、
 その完了後に同期レプリケーションを解除する。初期AMIのDBは各VMの`16/main`に保持する。
@@ -99,3 +115,4 @@ RustのDB接続を伴うキャンセル検証と通知・並行登録・画像�
 | 20261027T140308Z-team10 | regional reads with HTTP write forwarding near primary DB | PASS | 45,790 |
 | 20261027T140625Z-team10 | repeat regional reads and HTTP write forwarding | PASS | 38,158 |
 | 20261027T142139Z-team10 | bounded regional feed queries with SQL visibility filtering | PASS | 42,375 |
+| 20261027T145324Z-team10 | asynchronous replicas with fresh batched WAL read fences | PASS | 32,193 |

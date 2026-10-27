@@ -154,6 +154,7 @@ mod region_tests {
             config,
             ip_bans: Default::default(),
             notifications: Default::default(),
+            read_fence: None,
         });
         let session = Session {
             user_id: "user".into(),

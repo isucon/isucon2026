@@ -2,6 +2,8 @@
 set -euo pipefail
 archive=$1
 read_host=${2:-}
+read_fence=${3:-0}
+case "$read_fence" in 0|1) ;; *) exit 2 ;; esac
 case "$read_host" in ''|127.0.0.1) ;; *) exit 2 ;; esac
 destination=/home/isucon/webapp-optmized-astra
 mkdir -p "$destination"
@@ -27,7 +29,7 @@ LimitNOFILE=65536
 WantedBy=multi-user.target
 UNIT
 mkdir -p /etc/systemd/system/webapp-optmized-astra.service.d
-printf '[Service]\nEnvironment=ISUREAL_DB_READ_HOST=%s\n' "$read_host" >/etc/systemd/system/webapp-optmized-astra.service.d/reader.conf
+printf '[Service]\nEnvironment=ISUREAL_DB_READ_HOST=%s\nEnvironment=ISUREAL_READ_FENCE=%s\n' "$read_host" "$read_fence" >/etc/systemd/system/webapp-optmized-astra.service.d/reader.conf
 systemctl stop isureal-go isureal-rust
 systemctl disable isureal-go isureal-rust
 systemctl daemon-reload
