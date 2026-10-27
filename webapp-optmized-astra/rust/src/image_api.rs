@@ -80,6 +80,21 @@ static IMAGE_CACHE: LazyLock<Mutex<ImageCache>> = LazyLock::new(Mutex::default);
 const IMAGE_CACHE_BYTES: usize = 512 * 1024 * 1024;
 const IMAGE_CACHE_ENTRIES: usize = 4096;
 
+pub fn remember_stored_image(id: String, created_at: DateTime<Utc>, data: Bytes) {
+    // An asset key names bytes that the application role cannot update/delete.
+    // Visibility, owner credentials and the current metadata reference are
+    // always checked again by IMAGE_QUERY before using these bytes.
+    let version = format!("asset:{id}");
+    IMAGE_CACHE.lock().unwrap().insert(
+        id,
+        CachedImage {
+            version,
+            created_at,
+            data,
+        },
+    );
+}
+
 impl ImageCache {
     fn insert(&mut self, id: String, image: CachedImage) {
         if image.data.len() > IMAGE_CACHE_BYTES {
@@ -240,7 +255,7 @@ struct ImageObject {
 }
 
 const IMAGE_QUERY: &str = r#"
-   SELECT CASE WHEN i.xmin::text = $2 AND i.created_at = $3 THEN NULL ELSE i.data END AS data,
+   SELECT CASE WHEN i.created_at = $3 AND (i.xmin::text = $2 OR (i.asset_key IS NOT NULL AND 'asset:' || i.asset_key = $2)) THEN NULL ELSE i.data END AS data,
           i.media_type, u.secret_key_hash, i.xmin::text AS version, i.created_at, i.asset_key
    FROM image_objects i JOIN users u ON u.id = i.owner_user_id AND u.status = 'active'
    WHERE i.id = $1 AND (

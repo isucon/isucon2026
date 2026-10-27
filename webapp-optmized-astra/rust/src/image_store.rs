@@ -8,6 +8,7 @@ use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 pub struct ImageStore {
     pub db: PgPool,
     pub writes_enabled: bool,
+    pub cache_peers: Option<crate::image_cache_push::CachePeers>,
 }
 
 impl ImageStore {
@@ -71,6 +72,7 @@ impl ImageStore {
         Some(Self {
             db,
             writes_enabled: writes == "1",
+            cache_peers: crate::image_cache_push::CachePeers::from_env(),
         })
     }
 

@@ -34,3 +34,7 @@ if (runtime.imageStore) {
         throw new Error("The image store must use the existing Asia application VM and requires enabled readers before writes");
     }
 }
+
+if (runtime.imageCachePushEnabled && !runtime.imageStore?.enabled) {
+    throw new Error("Image cache warming requires immutable image storage");
+}

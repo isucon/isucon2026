@@ -180,6 +180,15 @@ pub async fn create_post_handler(
         }
         tx.commit().await?;
     }
+    if let Some(peers) = store.and_then(|store| store.cache_peers.as_ref()) {
+        peers.publish(
+            &result.author.region,
+            &h.config.region,
+            &image_id,
+            result.post.posted_at,
+            image_data.clone(),
+        );
+    }
     result.author.set_image_key()?;
     json(
         StatusCode::CREATED,

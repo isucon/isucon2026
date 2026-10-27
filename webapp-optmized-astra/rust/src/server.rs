@@ -314,7 +314,17 @@ pub async fn new_server(config: Config) -> Router {
         )
         .with_state(handler_context);
 
-    match WriteIngress::from_env() {
+    let ingress = WriteIngress::from_env();
+    let server = if ingress.is_none() {
+        if let Some(receiver) = crate::image_cache_push::receiver_from_env() {
+            server.merge(receiver)
+        } else {
+            server
+        }
+    } else {
+        server
+    };
+    match ingress {
         Some(policy) => server.layer(from_fn_with_state(policy, write_ingress_middleware)),
         None => server,
     }
