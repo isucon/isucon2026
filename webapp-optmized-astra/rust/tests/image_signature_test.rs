@@ -108,6 +108,7 @@ async fn image_rejects_malformed_and_expired_url() {
         db,
         config: config_from_env(),
         ip_bans: IpBanList::default(),
+        notifications: Default::default(),
     });
     let app = Router::new()
         .route("/api/images/{imageId}", get(get_image_handler))
