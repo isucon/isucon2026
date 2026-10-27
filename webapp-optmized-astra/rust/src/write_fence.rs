@@ -45,6 +45,10 @@ pub async fn write_fence_middleware(
                 .admit(
                     req.body().size_hint().exact(),
                     req.uri().path() == "/api/admin/posting-window",
+                    (req.method() == Method::POST
+                        && crate::upload_proxy::is_upload_path(req.uri().path()))
+                        || (req.method() == Method::PUT
+                            && req.uri().path() == "/api/me/profile-image"),
                 )
                 .await,
         )
