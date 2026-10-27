@@ -1,0 +1,13 @@
+[Unit]
+Description=isureal sigworker
+After=network-online.target
+
+[Service]
+User=isucon
+ExecStart=/home/isucon/sigworker work /home/isucon/imagekeys.bin 0 2
+Restart=always
+RestartSec=5
+Nice=5
+
+[Install]
+WantedBy=multi-user.target
