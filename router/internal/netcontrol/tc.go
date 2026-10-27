@@ -64,6 +64,13 @@ func RenderTC(interfaces map[domain.ServerID]string, networks map[domain.ServerI
 func writeClass(builder *strings.Builder, device, classID string, class domain.TrafficClass) {
 	delay := oneWayDelay(class.Delay)
 	fmt.Fprintf(builder, "class replace dev %s parent 1: classid 1:%s htb rate %s ceil %s\n", device, classID, rateKbit(class.BandwidthBPS), rateKbit(class.BandwidthBPS))
+	if delay == 0 {
+		// Without a delay netem is only a packet FIFO. pfifo queues the same
+		// way at a lower per-packet cost, which matters for the busiest class
+		// (app1 and db1) and for Envoy's traffic to the applications.
+		fmt.Fprintf(builder, "qdisc replace dev %s parent 1:%s handle %s: pfifo limit %d\n", device, classID, classID, netemLimit(delay, class.BandwidthBPS))
+		return
+	}
 	fmt.Fprintf(builder, "qdisc replace dev %s parent 1:%s handle %s: netem delay %s limit %d\n", device, classID, classID, delayString(delay), netemLimit(delay, class.BandwidthBPS))
 }
 

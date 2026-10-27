@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { expect, test } from "vitest";
 import { team } from "../lib/topology";
 import {
+	routerNetplan,
 	routerCloudInitConfig,
 	routerDataReconfigurePath,
 	routerDataReconfigureScript,
@@ -65,4 +66,10 @@ test("starts the router services only after data0 has its static routes", () => 
   - until ${routerNetworkScriptPath}; do sleep 5; done
   - systemctl enable --now isureal-portal isureal-router isureal-envoy
 `);
+});
+
+test("uses jumbo frames on the data interface like the servers", () => {
+	expect(routerNetplan(team(6), "06:ff:f7:f4:e5:2b")).toMatch(
+		/set-name: data0\n\s+dhcp4: false\n\s+mtu: 9001\n/,
+	);
 });
