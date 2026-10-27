@@ -149,17 +149,35 @@ func run(parent context.Context, args []string, stdout, stderr io.Writer) int {
 	if *memProfile != "" {
 		defer writeAllocProfile(*memProfile, logger)
 	}
-	// 写真のアーカイブは対象に触る前に読む。全体の上限には含めない。
+	// 写真のアーカイブは初期化と並行して読み、初期化のあと、対象に写真を送る前に待つ。
+	// 読めなかったときはベンチマーカー側の失敗として扱う。
 	photos := photo.Generated()
+	var awaitPhotos func(context.Context) (*photo.Set, error)
+	var photoErr error
 	if *images != "" {
-		started := time.Now()
-		loaded, err := photo.Load(parent, *images)
-		if err != nil {
-			logger.Error("photo archive", "error", err)
-			return fail("benchmarker setup failed: photo archive", 2)
+		type loaded struct {
+			set *photo.Set
+			err error
 		}
-		logger.Info("photo archive loaded", "photos", loaded.Count(), "markable", loaded.Markable(), "elapsed", time.Since(started).Round(time.Millisecond))
-		photos = loaded
+		done := make(chan loaded, 1)
+		go func() {
+			started := time.Now()
+			set, err := photo.Load(parent, *images)
+			if err == nil {
+				logger.Info("photo archive loaded", "photos", set.Count(), "markable", set.Markable(), "elapsed", time.Since(started).Round(time.Millisecond))
+			}
+			done <- loaded{set: set, err: err}
+		}()
+		awaitPhotos = func(ctx context.Context) (*photo.Set, error) {
+			select {
+			case l := <-done:
+				done <- l
+				photoErr = l.err
+				return l.set, l.err
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+		}
 	}
 	var evilFunc scenario.EvilFunc
 	if *evilUsers {
@@ -169,7 +187,7 @@ func run(parent context.Context, args []string, stdout, stderr io.Writer) int {
 	defer cancel()
 	var reportErr error
 	runner, err := scenario.NewRunner(scenario.Config{
-		Photos: photos, Seed: *seed, Evil: evilFunc, Growth: growth,
+		Photos: photos, AwaitPhotos: awaitPhotos, Seed: *seed, Evil: evilFunc, Growth: growth,
 		Target: normalized, Host: *host, Users: *users, Duration: *duration, VerifyRate: *verifyRate,
 		Dataset: dataset.Generate(datasetConfig()), Logger: progressLogger,
 		OnProgress: func(result scenario.Result) {
@@ -186,6 +204,10 @@ func run(parent context.Context, args []string, stdout, stderr io.Writer) int {
 		return fail("benchmarker setup failed", 2)
 	}
 	result := runner.Run(ctx)
+	if photoErr != nil {
+		logger.Error("photo archive", "error", photoErr)
+		return fail("benchmarker setup failed: photo archive", 2)
+	}
 	if reportErr != nil {
 		logger.Error("progress report failed", "error", reportErr)
 		return 2

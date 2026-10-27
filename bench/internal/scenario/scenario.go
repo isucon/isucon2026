@@ -73,6 +73,9 @@ type Config struct {
 	Dataset *dataset.World
 	// Photos は投稿に使う写真。nil なら生成した小さな画像を使う。
 	Photos *photo.Set
+	// AwaitPhotos は、写真のアーカイブの読み込みを初期化と並行して進めるためのもの。初期化の
+	// あと、写真を使う前に呼び、返った写真を Photos の代わりに使う。nil なら待たない。
+	AwaitPhotos func(context.Context) (*photo.Set, error)
 	// Seed は走行の種。0 なら無作為に決める。
 	Seed uint64
 	// Evil は不正な利用者を動かす。nil なら動かさない。
@@ -262,7 +265,7 @@ func NewRunner(cfg Config) (*Runner, error) {
 func (r *Runner) Run(ctx context.Context) Result {
 	defer r.closeConnections()
 	reason := ""
-	for _, phase := range []func(context.Context) string{r.initialize, r.preload, r.load} {
+	for _, phase := range []func(context.Context) string{r.initialize, r.awaitPhotos, r.preload, r.load} {
 		r.progress()
 		if reason = phase(ctx); reason != "" {
 			break
@@ -396,6 +399,20 @@ func (r *Runner) initialize(ctx context.Context) string {
 // step は事前検証で今していることを記録する。時間切れのときに理由として出す。
 func (r *Runner) step(name string) {
 	r.stepName.Store(name)
+}
+
+// awaitPhotos は初期化と並行して読んでいた写真のアーカイブを待つ。読めなかったときは
+// 参加者の責任ではないので、ベンチマーカー側の失敗として止める。
+func (r *Runner) awaitPhotos(ctx context.Context) string {
+	if r.cfg.AwaitPhotos == nil {
+		return ""
+	}
+	photos, err := r.cfg.AwaitPhotos(ctx)
+	if err != nil {
+		return "ベンチマーカーの準備に失敗しました（写真のアーカイブ）: " + err.Error()
+	}
+	r.photos = photos
+	return ""
 }
 
 // preload は事前検証、初期データの検証、負荷ユーザーの準備を preloadTimeout 以内に行う。
