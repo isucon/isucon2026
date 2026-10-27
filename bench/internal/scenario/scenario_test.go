@@ -708,3 +708,33 @@ func TestUncertainMoveIsReconciled(t *testing.T) {
 		}
 	}
 }
+
+// TestRejectedRetryAfterAppliedMove は、反映されたのに 500 だった変更のあとで送り直しが拒否
+// されても、前のリージョンに戻ったとみなさず、そのユーザーを止めて使えなかった人として数え
+// 続けることを確かめる。偽のアプリは、所属と違う国からの要求でテストを失敗させる。
+func TestRejectedRetryAfterAppliedMove(t *testing.T) {
+	runner, app := newTestRunner(t, 3, metrics.SLO{FailRate: 1000, MinOps: 1})
+	runner.setDuration(2 * time.Second)
+	runner.moveRate = 1
+	app.mu.Lock()
+	app.moveReplies = []int{http.StatusInternalServerError, http.StatusConflict}
+	app.mu.Unlock()
+	runner.load(t.Context())
+	for _, e := range runner.board.Errors() {
+		if !strings.Contains(e, "所属リージョンを") {
+			t.Errorf("unexpected error: %s", e)
+		}
+	}
+	stranded := 0
+	for _, u := range runner.usersSnapshot() {
+		if u.stranded.Load() {
+			stranded++
+			if !u.stopped.Load() {
+				t.Errorf("%s: stranded but still running", u.Username)
+			}
+		}
+	}
+	if stranded != 1 {
+		t.Fatalf("stranded users = %d, want 1", stranded)
+	}
+}
