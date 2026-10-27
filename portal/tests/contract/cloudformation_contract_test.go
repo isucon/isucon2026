@@ -179,7 +179,9 @@ func extractPortalCredentials(t *testing.T, template string) []byte {
 }
 
 func TestContestTemplateProvides2026Topology(t *testing.T) {
-	document, err := cloudformation.ContestTemplate(cfnConfig(t), 42, "apne1-az2", time.Now())
+	cfg := cfnConfig(t)
+	cfg.RouterAMIID = "ami-router"
+	document, err := cloudformation.ContestTemplate(cfg, 42, "apne1-az2", time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -197,7 +199,7 @@ func TestContestTemplateProvides2026Topology(t *testing.T) {
 			t.Errorf("%q count = %d, want %d", text, got, count)
 		}
 	}
-	for _, want := range []string{"AWS CloudFormation for ISUCON2026", "RouterAMIID:", "SourceDestCheck: false", "ROUTER_TEAM_NUMBER=42", "app.team42-aws.127.0.0.1.nip.io", "ISUREAL_DB_HOST=192.168.4.10", "Iops: 6000", "Throughput: 200", "RouterPublicIP:", "Value: !Ref RouterIP", "RuleAction: deny"} {
+	for _, want := range []string{"AWS CloudFormation for ISUCON2026", "ImageId: ami-router", "SourceDestCheck: false", "ROUTER_TEAM_NUMBER=42", "app.team42-aws.127.0.0.1.nip.io", "ISUREAL_DB_HOST=192.168.4.10", "Iops: 6000", "Throughput: 200", "RouterPublicIP:", "Value: !Ref RouterIP", "RuleAction: deny"} {
 		if !strings.Contains(document, want) {
 			t.Errorf("missing %q", want)
 		}
