@@ -150,11 +150,11 @@ secretsの権限は[AWSの実行role仕様](https://docs.aws.amazon.com/AmazonEC
 ### 現在の配備状況（2026-10-27時点）
 
 portal-devのベンチは、このstackのチーム別workerではなく、共有プール`isucon2026-shared-supervisor`（3タスク、チームもAZも絞らずポーリング、接続先`https://portal-dev.isucon.net`）が実行しています。
-共有プールはこのstackのcluster、実行role、ネットワーク、ECR、log groupを使いますが、サービスとタスク定義は`isucon/isucon2026-private`の`ops/shared-supervisor`（Pulumiで設定を保持し、ecspressoで配備）が管理します。
-このstackのチーム別service 1〜6は`desiredCount: 0`で退役しており、適用済みの設定は同じ場所の`legacy-supervisor.Pulumi.portal-dev.yaml`に保存されています。
+共有プールはこのstackのcluster、実行role、ネットワーク、ECR、log groupを使いますが、サービスとタスク定義は[共有プールの定義](../shared-supervisor/README.md)（Pulumiで設定を保持し、ecspressoで配備）が管理します。
+このstackのチーム別service 1〜6は`desiredCount: 0`で退役しており、適用済みの設定は[Pulumi.portal-dev.yaml.example](Pulumi.portal-dev.yaml.example)です。
 このstackを適用するときはその設定を使い、`desiredCount`を戻さないでください。
 旧ホスト名`portal-dev.isucon.whywrite.it`は解決できなくなっています。
-このstackの`image`と`benchmarkImages`を更新してもポータルで走るベンチは変わらないので、ベンチを更新するときは共有プール側の設定（`pool.json`のimageとタスク定義の環境変数）も更新します。
+このstackの`image`と`benchmarkImages`を更新してもポータルで走るベンチは変わらないので、ベンチを更新するときは共有プールの`pool.json`も更新して配備します。
 
 ## Benchmark dataset and regional routing
 
