@@ -110,7 +110,7 @@ export type ViewerContext = {
 
 export async function loadViewerContext(db: Queryer, viewerID: string): Promise<ViewerContext | undefined> {
   const user = await getUser(db, viewerID);
-  if (user === undefined) {
+  if (!user) {
     return undefined;
   }
   const viewer: ViewerContext = { user, hasPostedToday: false, friends: new Set(), friendsOfFriends: new Set(), blocked: new Set() };
@@ -158,7 +158,7 @@ export function canView(viewer: ViewerContext, post: Post): boolean {
   if (post.authorID === viewer.user.id) {
     return true;
   }
-  if (post.windowEndedAt !== null || !viewer.hasPostedToday || viewer.blocked.has(post.authorID)) {
+  if (post.windowEndedAt || !viewer.hasPostedToday || viewer.blocked.has(post.authorID)) {
     return false;
   }
   switch (post.visibility) {
@@ -175,11 +175,11 @@ export function canView(viewer: ViewerContext, post: Post): boolean {
 
 export async function canViewPost(db: Queryer, viewerID: string, postID: string): Promise<boolean> {
   const post = await getPostWithAuthor(db, postID);
-  if (post === undefined) {
+  if (!post) {
     return false;
   }
   const viewer = await loadViewerContext(db, viewerID);
-  if (viewer === undefined) {
+  if (!viewer) {
     return false;
   }
   return canView(viewer, post.post);

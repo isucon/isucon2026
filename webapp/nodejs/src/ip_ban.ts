@@ -25,7 +25,7 @@ export class IPBanList {
         this.#reloading = false;
       }
     }
-    if (snapshot === null) {
+    if (!snapshot) {
       return false;
     }
     const until = snapshot.bans.get(ip);
@@ -46,7 +46,7 @@ async function loadIPBans(db: DB): Promise<IPBanSnapshot> {
 
 export function extractClientIP(c: Context<Env>): string {
   const ip = c.env.incoming.headersDistinct["x-client-ip"]?.[0];
-  if (ip !== undefined && ip !== "") {
+  if (ip) {
     return ip;
   }
   return (c.env.incoming.socket.remoteAddress ?? "").replace(/^::ffff:(?=\d+\.\d+\.\d+\.\d+$)/, "");

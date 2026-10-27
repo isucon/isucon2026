@@ -49,7 +49,7 @@ async function streamNotification(
         }
         return;
       }
-      if (user === undefined || user.region !== session.region) {
+      if (!user || user.region !== session.region) {
         return;
       }
       let row;
@@ -70,7 +70,7 @@ async function streamNotification(
         }
         return;
       }
-      if (row !== undefined) {
+      if (row) {
         const notification: GetNotificationsResponse = {
           id: row.id,
           postingWindowId: row.posting_window_id,

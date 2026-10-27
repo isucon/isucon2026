@@ -14,7 +14,7 @@ export async function getPostingWindow(db: Queryer, windowID: string): Promise<P
     `SELECT id, region, local_date, starts_at, on_time_deadline, ended_at FROM posting_windows WHERE id = $1`,
     windowID,
   );
-  if (row === undefined) {
+  if (!row) {
     return undefined;
   }
   return {

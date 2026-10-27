@@ -33,7 +33,7 @@ async function getAdminSessionFromHeader(c: Context<Env>, db: DB): Promise<Admin
  `,
     sha256Hex(token),
   );
-  if (row === undefined) {
+  if (!row) {
     return null;
   }
   return { token: "", administratorID: row.administrator_id, tokenHash: row.token_hash, createdAt: row.created_at };
