@@ -58,6 +58,18 @@ RustのDB接続を伴うキャンセル検証と通知・並行登録・画像�
 単一DBへ戻す際は、先に`replicaReads=false`として`deploy/apply.sh application`で全台を切り替え、
 その完了後に同期レプリケーションを解除する。初期AMIのDBは各VMの`16/main`に保持する。
 
+## 更新APIの地域間転送
+
+`runtime.json`の`writeProxyEnabled=true`では、europeとamericaのnginxがGET/HEADを地域内アプリへ、
+それ以外のAPIをasia/app1の内部ワーカー`192.168.145.10:8081`へ転送する。
+更新トランザクションをプライマリDBの近くで実行し、SQLごとの地域間往復を減らす。
+転送は既存ルーターのデータ通信経路を使い、固定リージョン、遅延、帯域の設定は維持する。
+
+内部ワーカーはapp2/app3の接続元IPだけを受け付け、元の受付地域とユーザーの所属地域を比較する。
+外部から渡された地域ヘッダーは判定に使わない。各VMの`ISUREAL_REGION`も変更しない。
+設定・systemd・nginxの変更は`deploy/apply.sh application`で反映する。
+`writeProxyEnabled=false`に戻すと、先に各地域の更新先をローカルへ戻してから内部ワーカーを停止する。
+
 ## 最適化の対象
 
 - 未最適化Rust版の基準測定。
@@ -83,3 +95,4 @@ RustのDB接続を伴うキャンセル検証と通知・並行登録・画像�
 | 20261027T134205Z-team10 | distributed DB with concurrent single-statement registration | PASS | 16,665 |
 | 20261027T134837Z-team10 | distributed DB with versioned image cache and single-query authorization | PASS | 18,075 |
 | 20261027T135518Z-team10 | distributed DB with bounded asynchronous export pipeline | PASS | 17,555 |
+| 20261027T140308Z-team10 | regional reads with HTTP write forwarding near primary DB | PASS | 45,790 |
