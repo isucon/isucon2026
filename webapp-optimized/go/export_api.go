@@ -30,7 +30,7 @@ func exportPostsHandler(h *HandlerContext) echo.HandlerFunc {
 				return err
 			}
 		}
-		rows, err := h.ReadDB.QueryxContext(ctx, `
+		rows, err := h.DB.QueryxContext(ctx, `
    SELECT `+postColumns+`, i.data AS image_data
    FROM posts p
    JOIN posting_windows w ON w.id = p.posting_window_id

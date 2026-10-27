@@ -13,6 +13,9 @@ ISUREAL_DB_USER=${ISUREAL_DB_USER:-isureal}
 ISUREAL_DB_PASSWORD=${ISUREAL_DB_PASSWORD:-isureal}
 ISUREAL_DB_NAME=${ISUREAL_DB_NAME:-isureal}
 
+# Only the tables the reset rewrites are analyzed. A database-wide ANALYZE
+# samples every image partition and the history tables (about 25 s on the
+# large data set) and their statistics do not change.
 PGPASSWORD="$ISUREAL_DB_PASSWORD" psql \
 	--no-psqlrc \
 	--no-password \
@@ -22,4 +25,4 @@ PGPASSWORD="$ISUREAL_DB_PASSWORD" psql \
 	--dbname="$ISUREAL_DB_NAME" \
 	--set=ON_ERROR_STOP=1 \
 	--file=reset.sql \
-	--command=ANALYZE
+	--command='ANALYZE users, login_sessions, posting_windows, friendships, friend_requests, follows, block_relations, ip_bans'

@@ -14,11 +14,7 @@ import (
 )
 
 type HandlerContext struct {
-	DB *sqlx.DB
-	// ReadDB serves read-only requests. With a regional standby it avoids the
-	// round trip to the primary. The primary commits with remote_apply on every
-	// standby, so a read that starts after a write's response observes the write.
-	ReadDB *sqlx.DB
+	DB     *sqlx.DB
 	Config *Config
 	IPBans *IPBanList
 }
@@ -55,28 +51,19 @@ func NewServer(config *Config) *echo.Echo {
 		panic("failed to ping database: " + err.Error())
 	}
 
-	readDB := db
-	if config.DBReadHost != "" {
-		readDB, err = sqlx.Open("pgx-auth", config.ReadDatabaseDSN())
-		if err != nil {
-			panic("failed to open read database: " + err.Error())
-		}
-		readDB.SetMaxOpenConns(64)
-		readDB.SetMaxIdleConns(64)
-	}
-
 	handlerContext := &HandlerContext{
 		DB:     db,
-		ReadDB: readDB,
 		Config: config,
 		IPBans: &IPBanList{},
 	}
 	// Load once before serving so bans apply from the first request.
-	_ = handlerContext.IPBans.reload(context.Background(), readDB)
-	go handlerContext.IPBans.run(context.Background(), readDB)
+	_ = handlerContext.IPBans.reload(context.Background(), db)
+	go handlerContext.IPBans.run(context.Background(), db)
 	e.Use(IPBanMiddleware(handlerContext))
 
 	registerSyncHandlers(e, handlerContext)
+	// ISUREAL_HOT_STATE=off keeps the regional state unloaded, so every read
+	// goes to the database (for tests that edit the database directly).
 	go func() {
 		for {
 			if err := hot.load(context.Background(), db); err == nil {
