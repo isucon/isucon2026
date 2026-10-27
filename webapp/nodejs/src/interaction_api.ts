@@ -78,8 +78,7 @@ export async function selectCommentsWithAuthor(
     `SELECT c.id, c.post_id, c.author_id, c.body, c.created_at, c.deleted_at, ${userColumnsAs("u", "author")} FROM comments c JOIN users u ON u.id = c.author_id AND u.status = 'active' WHERE c.deleted_at IS NULL ${conditions}`,
     ...args,
   );
-  for (const r of records)
-    r.author = joinedUser(r as unknown as Record<string, unknown>, "author");
+  for (const r of records) r.author = joinedUser(r, "author");
   return records;
 }
 export async function selectCurrentRealMojis(
@@ -92,8 +91,7 @@ export async function selectCurrentRealMojis(
     `SELECT r.id, r.post_id, r.reactor_id, r.image_id, r.reaction_type, r.created_at, r.replaced_at, r.deleted_at, ${userColumnsAs("u", "reactor")} FROM realmojis r JOIN users u ON u.id = r.reactor_id AND u.status = 'active' WHERE r.replaced_at IS NULL AND r.deleted_at IS NULL ${conditions}`,
     ...args,
   );
-  for (const r of records)
-    r.reactor = joinedUser(r as unknown as Record<string, unknown>, "reactor");
+  for (const r of records) r.reactor = joinedUser(r, "reactor");
   return records;
 }
 export function interactionHandlers(db: pg.Pool) {
