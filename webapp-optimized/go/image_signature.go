@@ -28,6 +28,9 @@ func imageSigningKey(secretKeyHash string) ([]byte, error) {
 }
 
 func imageSignature(key []byte, imageID string, exp int64) []byte {
+	if value, ok := history.imageSignature(imageID, exp); ok {
+		return value[:]
+	}
 	// Cache only the pure cryptographic result. Authorization, deletion and
 	// expiration checks remain in getImageHandler on every request.
 	if len(key) == sha256.Size && len(imageID) <= 128 {
