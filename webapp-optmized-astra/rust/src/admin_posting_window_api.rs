@@ -91,13 +91,29 @@ pub async fn open_posting_window_handler(
     .bind(starts_at + TimeDelta::nanoseconds(seconds.wrapping_mul(1_000_000_000)))
     .execute(&mut *tx)
     .await?;
+    // Keep the same eligibility snapshot under the users lock, but insert in
+    // user order and generate time-ordered UUIDs. Both the primary key and the
+    // (window, user) uniqueness index then receive nearby writes.
+    let recipients: Vec<String> = sqlx::query_scalar(
+        "SELECT id FROM users WHERE region = $1 AND status = 'active' ORDER BY id",
+    )
+    .bind(region)
+    .fetch_all(&mut *tx)
+    .await?;
+    let notification_ids: Vec<String> = recipients
+        .iter()
+        .map(|_| Uuid::now_v7().to_string())
+        .collect();
     sqlx::query(
         r#"
    INSERT INTO notifications (id, user_id, posting_window_id, created_at)
-   SELECT gen_random_uuid()::text, id, $2, $3 FROM users WHERE region = $1 AND status = 'active'
+   SELECT n.id, n.user_id, $3, $4
+   FROM unnest($1::text[], $2::text[]) WITH ORDINALITY AS n(id, user_id, position)
+   ORDER BY n.position
   "#,
     )
-    .bind(region)
+    .bind(&notification_ids)
+    .bind(&recipients)
     .bind(&window_id)
     .bind(starts_at)
     .execute(&mut *tx)
