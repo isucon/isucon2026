@@ -78,10 +78,11 @@ ensure_idle() {
 # チームのサーバーでも sampler.sh を動かす。SSM の出力（統計の tar.gz を base64 にしたもの）は
 # バケットの ssm/<RUN_ID>/ に置かれる
 HOST_STATS_DIR=/tmp/isureal-bench-stats
-# Router の HAProxy の統計（runtime API の show stat）を「プロキシ.サーバー.列: 値」の行にする。ほかのホストでは何も出さない
+# Router の HAProxy の統計（runtime API の show stat）を「プロキシ.サーバー.列: 値」の行にする。ほかのホストでは何も出さない。
+# 18001 で応答を閉じない相手につないでも SSM のタイムアウトまで止まらないよう、5 秒で打ち切る
 HAPROXY_STATS="$(
 	cat <<'EOF'
-bash -c 'exec 3<>/dev/tcp/127.0.0.1/18001 && echo "show stat" >&3 && cat <&3' 2>/dev/null | awk -F, 'NR == 1 { sub(/^# /, ""); for (i = 1; i <= NF; i++) column[i] = $i; next } NF > 2 { for (i = 3; i <= NF; i++) if ($i ~ /^[0-9]+$/) print $1 "." $2 "." column[i] ": " $i }'
+timeout 5 bash -c 'exec 3<>/dev/tcp/127.0.0.1/18001 && echo "show stat" >&3 && cat <&3' 2>/dev/null | awk -F, 'NR == 1 { sub(/^# /, ""); for (i = 1; i <= NF; i++) column[i] = $i; next } NF > 2 { for (i = 3; i <= NF; i++) if ($i ~ /^[0-9]+$/) print $1 "." $2 "." column[i] ": " $i }'
 EOF
 )"
 
