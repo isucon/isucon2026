@@ -24,5 +24,5 @@ CREATE INDEX IF NOT EXISTS astra_posting_windows_date ON posting_windows(local_d
 CREATE INDEX IF NOT EXISTS astra_comments_post_page ON comments(post_id, created_at, id) WHERE deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS astra_realmojis_post_page ON realmojis(post_id, created_at DESC, id DESC) WHERE replaced_at IS NULL AND deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS astra_realmojis_image ON realmojis(image_id, reactor_id) INCLUDE (post_id, replaced_at, deleted_at);
-CREATE INDEX IF NOT EXISTS astra_notifications_user_page ON notifications(user_id, created_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS astra_notifications_user ON notifications(user_id);
 ANALYZE;

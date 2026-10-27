@@ -116,6 +116,7 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 - JPEGは成功した検証結果を最大4096件保持し、初回は圧縮データ全体を検査しながら画素展開量を減らす。
 - 画像配信は現在の閲覧権限と署名鍵を毎回確認する。画像データは最大128MiB・4096件まで保持し、DB行の`xmin`と作成時刻が変われば取得し直す。キャッシュがある場合は既知の作成時刻で検索先の月別テーブルを絞り、見つからなければ全体を再検索する。移動・削除・同じIDでの再作成や所有者の鍵変更も検証する。
 - SSE通知は地域内DBごとに100ミリ秒間隔で最大512接続ずつ一括確認する。接続ごとの通知時刻とユーザー状態は毎回確認する。
+- 通知の検索は開いている投稿期間を列挙し、期間・ユーザーの一意索引から該当通知を探す。各期間の最初の通知から全体の最初の1件を選ぶため、履歴を毎回走査せずに従来の順序を保つ。ユーザー削除時の外部キー確認用には、ユーザーIDだけの小さな索引を残す。
 - 通知のユーザー・投稿期間ペアの一意制約は、索引の先頭を投稿期間に変更する。同じ期間の通知をまとめて書き込み、一意性と全通知の保存を維持しながら履歴索引へのランダムアクセスを減らす。
 - 通知IDは標準のUUIDv7で生成し、対象ユーザー順に一括登録する。対象者の判定、通知時刻、ロック、トランザクションは維持し、主キーの書き込みも時系列でまとまるようにする。
 - フィードは閲覧条件・友人関係・ブロック・投稿済み条件を1回の問い合わせで評価し、現在の投稿期間ごとに最大51件へ絞り、全地域の上位51件だけを取得する。従来のRustの判定との比較テストでページ送りと状態変更を検証する。
@@ -146,3 +147,4 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261027T154339Z-team10 | prune image cache lookups by creation timestamp with fresh permission checks; restore synchronous commits | PASS | 37,148 |
 | 20261027T155128Z-team10 | cluster notification uniqueness checks by posting window | PASS | 45,932 |
 | 20261027T160125Z-team10 | generate ordered UUIDv7 notification batches while preserving recipient transactions | PASS | 45,956 |
+| 20261027T161141Z-team10 | probe open windows for notifications and replace historical polling index with compact user index | PASS | 45,394 |
