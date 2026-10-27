@@ -16,4 +16,6 @@ if ! cmp -s "$config.new" "$config"; then
 else
     rm "$config.new"
 fi
-sudo -u postgres psql --no-psqlrc --set ON_ERROR_STOP=1 --dbname isureal --file /tmp/astra-indexes.sql
+for migration in /home/isucon/astra-deploy/0??-*.sql; do
+    sudo -u postgres psql --no-psqlrc --set ON_ERROR_STOP=1 --dbname isureal --file "$migration"
+done

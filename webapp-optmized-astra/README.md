@@ -35,6 +35,14 @@ cd provisioning/aws
 node_modules/.bin/tsc --noEmit -p astra
 ```
 
+投稿用DB関数の結合テストは、専用の`astra_post_test`データベースに対して実行する。
+このテストは専用DBのテーブルを作り直す。並行投稿、重複投稿、途中失敗時のロールバック、期間切り替えとの競合を検証する。
+
+```sh
+ASTRA_POST_TEST_DSN=postgres://postgres@127.0.0.1:26210/astra_post_test \
+  python3 webapp-optmized-astra/tests/post_function.py
+```
+
 RustのDB接続を伴うキャンセル検証は`ISUREAL_SESSION_TEST_DSN`がなければスキップされる。
 単体テストだけではAPI整合性は証明できないため、Team 10の実ベンチ結果を判定に使う。
 
@@ -49,7 +57,7 @@ RustのDB接続を伴うキャンセル検証は`ISUREAL_SESSION_TEST_DSN`がな
 単一DBへ戻す際は、先に`replicaReads=false`として`deploy/apply.sh application`で全台を切り替え、
 その完了後に同期レプリケーションを解除する。初期AMIのDBは各VMの`16/main`に保持する。
 
-## 実験予定
+## 最適化の対象
 
 - 未最適化Rust版の基準測定。
 - 投稿のロック、署名計算、通知、SQL往復の最適化。
@@ -63,3 +71,4 @@ RustのDB接続を伴うキャンセル検証は`ISUREAL_SESSION_TEST_DSN`がな
 | 20261027T121933Z-team10 | indexes, shared posting locks and cached HMAC | PASS | 16,363 |
 | 20261027T122322Z-team10 | repeat indexed Rust with warm database | PASS | 14,156 |
 | 20261027T130427Z-team10 | synchronous Europe and America PostgreSQL replicas with local reads | PASS | 8,742 |
+| 20261027T131543Z-team10 | distributed DB with one-round-trip post creation | PASS | 12,945 |

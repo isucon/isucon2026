@@ -4,7 +4,7 @@ use axum::Extension;
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::Response;
-use chrono::{DateTime, NaiveDate, Utc};
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -114,90 +114,46 @@ pub async fn create_post_handler(
         return Err(new_api_error(StatusCode::BAD_REQUEST, "invalid_post"));
     }
 
-    let user_id = &session.user_id;
-    let mut tx = h.db.begin().await?;
-    let _locked_user_id: String =
-        sqlx::query_scalar("SELECT id FROM users WHERE id = $1 FOR NO KEY UPDATE")
-            .bind(user_id)
-            .fetch_one(&mut *tx)
-            .await?;
-    let user = get_user(&mut *tx, user_id).await?;
-    #[derive(sqlx::FromRow)]
-    struct Window {
-        id: String,
-        local_date: NaiveDate,
-        starts_at: DateTime<Utc>,
-    }
-    let mut window: Option<Window> = sqlx::query_as(
-        "SELECT id, local_date, starts_at FROM posting_windows WHERE region = $1 AND ended_at IS NULL FOR SHARE",
-    )
-    .bind(&user.region)
-    .fetch_optional(&mut *tx)
-    .await?;
-    if window.is_none() {
-        window = sqlx::query_as(
-            "SELECT id, local_date, starts_at FROM posting_windows WHERE region = $1 AND ended_at IS NULL FOR SHARE",
-        )
-        .bind(&user.region)
-        .fetch_optional(&mut *tx)
-        .await?;
-    }
-    let Some(window) = window else {
-        return Err(new_api_error(StatusCode::CONFLICT, "post_slot_unavailable"));
-    };
-    #[derive(sqlx::FromRow)]
-    struct Counts {
-        active: i64,
-        deleted: i64,
-    }
-    let counts: Counts = sqlx::query_as(
-        r#"
-   SELECT count(*) FILTER (WHERE deleted_at IS NULL) AS active,
-          count(*) FILTER (WHERE deleted_at IS NOT NULL) AS deleted
-   FROM posts p JOIN posting_windows w ON w.id = p.posting_window_id
-   WHERE p.author_id = $1 AND w.local_date = $2
-  "#,
-    )
-    .bind(user_id)
-    .bind(window.local_date)
-    .fetch_one(&mut *tx)
-    .await?;
-    let posted_at = Utc::now();
-    if counts.active != 0 || counts.deleted >= 2 || posted_at < window.starts_at {
-        return Err(new_api_error(StatusCode::CONFLICT, "post_slot_unavailable"));
-    }
     let image_id = Uuid::new_v4().to_string();
-    sqlx::query("INSERT INTO image_objects (id, owner_user_id, data, media_type, created_at) VALUES ($1, $2, $3, 'image/jpeg', $4)")
-        .bind(&image_id)
-        .bind(user_id)
-        .bind(&image_data[..])
-        .bind(posted_at)
-        .execute(&mut *tx)
-        .await?;
     let post_id = Uuid::new_v4().to_string();
-    sqlx::query(
-        r#"
-   INSERT INTO posts (id, author_id, posting_window_id, image_id, caption, visibility,
-                      location_kind, latitude, longitude, locality, posted_at)
-   VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-  "#,
-    )
+    let user_columns = crate::user::USER_COLUMNS
+        .iter()
+        .map(|column| format!("(r.author).{column} AS \"author.{column}\""))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let mut result: crate::post::PostWithAuthor = sqlx::query_as(&format!(
+        "SELECT {}, {user_columns} FROM astra_create_post($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) r \
+         CROSS JOIN LATERAL (SELECT (r.post_row).*) p \
+         CROSS JOIN LATERAL (SELECT (r.window_row).*) w",
+        crate::post::POST_COLUMNS
+    ))
+    .bind(&session.user_id)
     .bind(&post_id)
-    .bind(user_id)
-    .bind(&window.id)
     .bind(&image_id)
+    .bind(&image_data[..])
     .bind(&input.caption)
     .bind(&input.visibility)
     .bind(&location.kind)
     .bind(f64_to_numeric(location.latitude))
     .bind(f64_to_numeric(location.longitude))
     .bind(&location.locality)
-    .bind(posted_at)
-    .execute(&mut *tx)
-    .await?;
-    let post = get_post(&mut *tx, &post_id).await?;
-    tx.commit().await?;
-    json(StatusCode::CREATED, new_post_response(&post, &user))
+    .fetch_one(&h.db)
+    .await
+    .map_err(|err| {
+        if let Some(database_error) = err.as_database_error()
+            && database_error.code().as_deref() == Some("PZ001")
+            && database_error.message() == "post_slot_unavailable"
+        {
+            new_api_error(StatusCode::CONFLICT, "post_slot_unavailable")
+        } else {
+            Error::from(err)
+        }
+    })?;
+    result.author.set_image_key()?;
+    json(
+        StatusCode::CREATED,
+        new_post_response(&result.post, &result.author),
+    )
 }
 
 pub fn new_post_response(post: &Post, user: &User) -> CreatePostResponse {
