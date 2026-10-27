@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[2]
 DEPLOY = ROOT / "webapp-optmized-astra/deploy"
 runtime = json.loads((DEPLOY / "runtime.json").read_text())
 mode = sys.argv[1] if len(sys.argv) > 1 else "all"
-assert mode in ("all", "application", "database", "replication")
+assert mode in ("all", "application", "database", "replication", "image-store")
 read_fence = runtime.get("readFenceEnabled", False)
 write_fence = runtime.get("writeFenceEnabled", False)
 write_fence_mode = runtime.get("writeFenceMode", "poll")
@@ -63,6 +63,26 @@ if runtime["replicaReads"] and not runtime["replicasSynchronous"] and not read_f
     require_write_fences()
 
 
+image_store = runtime.get("imageStore", {})
+if image_store.get("writesEnabled", False):
+    assert image_store.get("enabled", False)
+    services = [(app["instanceId"], "webapp-optmized-astra") for app in applications]
+    if write_proxy:
+        services.append((write_host, "webapp-optmized-astra-writer"))
+    for instance, service in services:
+        for key, value in (("HOST", image_store["host"]), ("PORT", image_store["port"])):
+            expected = shlex.quote(f"ISUREAL_IMAGE_STORE_{key}={value}")
+            remote(instance, f"systemctl is-active --quiet {service} && systemctl show {service} -p Environment --value | tr ' ' '\\n' | grep -Fxq {expected} || {{ echo 'Deploy image store readers with writes disabled on every application first' >&2; exit 1; }}")
+elif not image_store.get("enabled", False):
+    check = """DO $$ DECLARE used boolean; BEGIN
+      IF EXISTS (SELECT 1 FROM pg_attribute WHERE attrelid='image_objects'::regclass AND attname='asset_key' AND NOT attisdropped) THEN
+        EXECUTE 'SELECT EXISTS(SELECT 1 FROM image_objects WHERE asset_key IS NOT NULL)' INTO used;
+        IF used THEN RAISE EXCEPTION 'Retain image store readers while published external images exist'; END IF;
+      END IF;
+    END $$"""
+    remote(database, "sudo -u postgres psql -X -v ON_ERROR_STOP=1 -d isureal -c " + shlex.quote(check))
+
+
 bundle = ROOT / "var/astra/configuration.tar.gz"
 bundle.parent.mkdir(parents=True, exist_ok=True)
 with tarfile.open(bundle, "w:gz") as tar:
@@ -81,6 +101,13 @@ def stage(instance):
 
 instances = [database] + [app["instanceId"] for app in applications]
 parallel(stage, instances)
+
+# Provision the independent cluster only on an existing application VM. Readers
+# must be deployed with writes disabled before enabling new image publication.
+image_store = runtime.get("imageStore", {})
+if mode in ("all", "image-store") and image_store.get("enabled", False):
+    assert image_store["instanceId"] == write_host
+    remote(write_host, "sudo bash /home/isucon/astra-deploy/image-store.sh")
 
 
 def application(app):

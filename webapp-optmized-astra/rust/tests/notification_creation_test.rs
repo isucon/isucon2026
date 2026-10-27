@@ -77,6 +77,7 @@ async fn ordered_notification_batches_preserve_recipients_conflicts_and_atomicit
         ip_bans: Default::default(),
         notifications: Default::default(),
         read_fence: None,
+        image_store: None,
     });
     let (status, first) = open(&h, "asia", "2026-10-01").await;
     assert_eq!(status, StatusCode::CREATED, "{first}");

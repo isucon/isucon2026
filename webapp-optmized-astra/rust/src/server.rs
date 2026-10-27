@@ -65,6 +65,7 @@ pub struct HandlerContext {
     pub ip_bans: IpBanList,
     pub notifications: NotificationHub,
     pub read_fence: Option<ReadFence>,
+    pub image_store: Option<crate::image_store::ImageStore>,
 }
 
 pub async fn new_server(config: Config) -> Router {
@@ -85,6 +86,19 @@ pub async fn new_server(config: Config) -> Router {
         Err(err) => panic!("failed to ping database: {err}"),
     };
 
+    let image_store = crate::image_store::ImageStore::from_env(&config).await;
+    if image_store.is_none() {
+        let external: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM image_objects WHERE asset_key IS NOT NULL)",
+        )
+        .fetch_one(&db)
+        .await
+        .expect("image reference schema is installed");
+        assert!(
+            !external,
+            "retain image store readers while published external images exist"
+        );
+    }
     let action_log = ActionLog::new(&config.log_level, io::stdout());
     let handler_context = Arc::new(HandlerContext {
         db,
@@ -92,6 +106,7 @@ pub async fn new_server(config: Config) -> Router {
         ip_bans: IpBanList::default(),
         notifications: NotificationHub::default(),
         read_fence: None,
+        image_store,
     });
     let write_fence = match std::env::var("ISUREAL_WRITE_FENCE_HOSTS") {
         Ok(hosts) if !hosts.is_empty() => {
@@ -218,6 +233,7 @@ pub async fn new_server(config: Config) -> Router {
                 )
             });
             Arc::new(HandlerContext {
+                image_store: handler_context.image_store.clone(),
                 read_fence,
                 db: read_db,
                 config: handler_context.config.clone(),
