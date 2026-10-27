@@ -36,6 +36,7 @@ roleが存在しない場合は、構築者が`aws iam create-service-linked-rol
 
 Supervisorイメージはリポジトリルートをcontextに`supervisor/Dockerfile`でlinux/amd64向けにビルドし、同一アカウントのECRまたは認証不要のregistryへpushします。
 `image`にはpushした成果物のdigestを指定します。
+ビルドとpushは下の「イメージのビルドとpush」の`make supervisor-image`で行えます。
 トークンはポータルの`ISUXPORTAL_BENCH_TOKEN`と一致させます。 同一regionのSSM
 SecureStringを使う場合は`tokenParameterArn`、ポータルの既存application JSON
 secretを使う場合は`tokenSecretArn`を設定します。
@@ -63,6 +64,30 @@ pulumi stack output
 `instanceName`は例をそのまま使わず、対象チームの`availability_zone`に一致させてください。
 AZ名とAZ IDは別の識別子です。 ISUCON14はAZ
 IDを使用していましたが、現行Supervisorは渡された文字列をそのままポータルへ送ります。
+
+## イメージのビルドとpush
+
+ベンチは投稿に使う写真のアーカイブ（`-images`、環境変数`ISUXBENCH_IMAGES`）がないと生成した小さな画像を投稿し、本番の条件と変わります。
+bench-runnerは走行ごとに署名付きURLを渡しますが、ポータルから走るSupervisorにはその経路がないため、アーカイブをイメージに同梱し、タスク定義の環境変数で場所を渡します。
+
+```bash
+# repository root
+make supervisor-photos                  # S3 の assets/merged.zip を var/photos/merged.zip に取る（あれば省く）
+make supervisor-image                   # linux/amd64 でビルドし、stack の ECR へ push して repository@digest を表示する
+make supervisor-image SUPERVISOR_STACK=portal-dev TAG=photos-20261027   # stack とタグを指定する例
+```
+
+`make supervisor-image`は`supervisor/Dockerfile`を`PHOTOS=archive`でビルドし、`var/photos/merged.zip`を`/opt/isucon/photos/merged.zip`に入れます。
+push先はstackの出力`repositoryUrl`（`REPOSITORY`で上書き可）、タグは省略するとイメージの内容から決め、同じタグがECRにあればpushを省きます。
+表示されたdigestを`image`（必要なら`teamImages`）に設定し、`benchmarkImages`に同梱したパスを設定します。
+`benchmarkImages`は各workerの環境変数`ISUXBENCH_IMAGES`になり、省略すると生成画像のままです。
+アーカイブを同梱しないイメージ（`PHOTOS=none`、bench-runnerと同じ）でもこのstackは動きます。
+
+```bash
+cd provisioning/aws/supervisor
+pulumi config set image "$(cd ../../.. && make -s supervisor-image)"
+pulumi config set benchmarkImages /opt/isucon/photos/merged.zip
+```
 
 ## Router接続と動作確認
 
@@ -121,6 +146,15 @@ secretsの権限は[AWSの実行role仕様](https://docs.aws.amazon.com/AmazonEC
 
 2026-10-03にteam1〜3のSupervisorを適用しました。
 実行結果と既存アプリ側の未解決事項は[適用記録](deployment-20261003.md)に記録しています。
+
+### 現在の配備状況（2026-10-27時点）
+
+portal-devのベンチは、このstackのチーム別workerではなく、共有プール`isucon2026-shared-supervisor`（3タスク、チームもAZも絞らずポーリング、接続先`https://portal-dev.isucon.net`）が実行しています。
+共有プールはこのstackのcluster、実行role、ネットワーク、ECR、log groupを使いますが、サービスとタスク定義は[共有プールの定義](../shared-supervisor/README.md)（Pulumiで設定を保持し、ecspressoで配備）が管理します。
+このstackのチーム別service 1〜6は`desiredCount: 0`で退役しており、適用済みの設定は[Pulumi.portal-dev.yaml.example](Pulumi.portal-dev.yaml.example)です。
+このstackを適用するときはその設定を使い、`desiredCount`を戻さないでください。
+旧ホスト名`portal-dev.isucon.whywrite.it`は解決できなくなっています。
+このstackの`image`と`benchmarkImages`を更新してもポータルで走るベンチは変わらないので、ベンチを更新するときは共有プールの`pool.json`も更新して配備します。
 
 ## Benchmark dataset and regional routing
 

@@ -223,6 +223,31 @@ test("passes the configured large dataset scale to direct and routed benchmarks"
   expect(routed.command[2]).toContain("--scale large");
 });
 
+test("passes the bundled photo archive to the benchmark through ISUXBENCH_IMAGES", () => {
+  const images = (c: Partial<typeof config> & { benchmarkImages?: string }) =>
+    supervisorContainer({ ...config, ...c }, "logs").environment.find((e) =>
+      e.name === "ISUXBENCH_IMAGES"
+    )?.value;
+  expect(images({})).toBeUndefined();
+  expect(images({ benchmarkImages: "/opt/isucon/photos/merged.zip" })).toBe(
+    "/opt/isucon/photos/merged.zip",
+  );
+  expect(images({ benchmarkImages: "https://assets.example/merged.zip" }))
+    .toBe("https://assets.example/merged.zip");
+  for (
+    const bad of [
+      "var/photos/merged.zip",
+      "http://assets.example/merged.zip",
+      "/opt/isucon/photos/merged.zip\nX=1",
+      "",
+    ]
+  ) {
+    expect(() => images({ benchmarkImages: bad })).toThrow(
+      "benchmarkImages must be an absolute path in the image or an HTTPS URL",
+    );
+  }
+});
+
 test("rejects unsupported dataset scales", () => {
   expect(() =>
     supervisorContainer({ ...config, benchmarkScale: "large; exit 0" }, "logs")

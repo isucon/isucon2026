@@ -22,6 +22,22 @@ make -C supervisor docker-build
 既定の起動コマンドは `isuxportal-supervisor /usr/local/bin/isureal-bench --target-port 8080` です。
 ベンチの実行対象はポータルのジョブから取得します。
 
+### 投稿に使う写真のアーカイブを同梱する
+
+ベンチは `-images`（環境変数 `ISUXBENCH_IMAGES`）に写真のアーカイブ（zip のパスか http(s) の URL）を取ります。
+空なら生成した小さな画像を投稿するので、本番の条件とは違います。
+ポータルから走る Supervisor には走行ごとに URL を渡す仕組みがないため、アーカイブをイメージに同梱します。
+
+```bash
+make supervisor-photos   # S3 の assets/merged.zip を var/photos/merged.zip に取る
+docker build --platform linux/amd64 --build-arg PHOTOS=archive -f supervisor/Dockerfile -t isucon2026-supervisor:photos .
+```
+
+`PHOTOS=archive` で `var/photos/merged.zip` を `/opt/isucon/photos/merged.zip` に入れます。
+既定の `PHOTOS=none` では同梱しないので、アーカイブがなくてもビルドできます（bench-runner はこちらを使い、走行ごとに署名付き URL を渡します）。
+同梱したイメージでは、タスク定義の環境変数 `ISUXBENCH_IMAGES=/opt/isucon/photos/merged.zip` を supervisor に与えると、子プロセスのベンチがそれを読みます（Pulumi の `benchmarkImages`）。
+ECR への push まで行うには、リポジトリルートで `make supervisor-image` を使います（[Supervisor構築手順](../provisioning/aws/supervisor/README.md)）。
+
 ## ホストでビルドする
 
 Linux または macOS、Rust 1.90.0、Go（リポジトリ指定版）が必要です。
@@ -137,6 +153,7 @@ docker inspect --format '{{(index .NetworkSettings.Networks "isureal_default").I
 150秒はベンチの全体上限120秒を含む開発用の初期値です。
 本番の時間予算は実測して確定してください。
 HTTPS の証明書検証は有効で、Docker イメージは CA 証明書を含みます。
+supervisor の環境変数は子プロセスのベンチにそのまま渡るので、ベンチの `ISUXBENCH_IMAGES`（写真のアーカイブ）などもタスク定義の環境変数で与えられます。
 
 ## 検証と残タスク
 

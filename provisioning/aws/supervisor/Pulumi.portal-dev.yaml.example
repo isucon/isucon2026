@@ -1,101 +1,111 @@
+encryptionsalt: v1:Qiz6zYuNH5I=:v1:p6BclRjnqVujiJMN:xnMY7wNzlD0PDbE9EYXISlrrp8nQOA==
 config:
   aws:region: ap-northeast-1
+  isucon2026-trial-supervisor:availabilityZone: ap-northeast-1a
   isucon2026-trial-supervisor:benchmarkScale: large
+  isucon2026-trial-supervisor:benchmarkImages: /opt/isucon/photos/merged.zip
+  isucon2026-trial-supervisor:desiredCount: "0"
+  isucon2026-trial-supervisor:detachedRouterHosts:
+    - app.team2-aws.127.0.0.1.nip.io
+    - app.team3-aws.127.0.0.1.nip.io
+  isucon2026-trial-supervisor:image: 124502390568.dkr.ecr.ap-northeast-1.amazonaws.com/isucon2026-supervisor-portal-dev@sha256:a70d4cf10b3d4623a9446016797260108f108e0b4e99c2b388d0303f8f16530e
+  isucon2026-trial-supervisor:instanceName: apne1-az4
+  isucon2026-trial-supervisor:portalEndpoint: https://portal-dev.isucon.whywrite.it
   isucon2026-trial-supervisor:routerNetworkInterfaces:
     app.team2-aws.127.0.0.1.nip.io: eni-01cf2faf4fc94c7d8
     app.team3-aws.127.0.0.1.nip.io: eni-0a2745b0e1ff8f92d
     app.team5-aws.127.0.0.1.nip.io: eni-05c33fb40ca55f1ff
     app.team6-aws.127.0.0.1.nip.io: eni-0a62f85b7aaae6189
-  isucon2026-trial-supervisor:sharedNetwork:
-    vpcId: vpc-0e2be8c91c07a48f3
-    subnetId: subnet-055a5ee88a1c5764b
-    egressPublicIp: 52.68.140.39
-  isucon2026-trial-supervisor:availabilityZone: ap-northeast-1a
-  isucon2026-trial-supervisor:instanceName: apne1-az4
-  isucon2026-trial-supervisor:portalEndpoint: https://portal-dev.isucon.whywrite.it
-  isucon2026-trial-supervisor:tokenSecretArn: arn:aws:secretsmanager:ap-northeast-1:124502390568:secret:portal-develop/application-xloqzw
-  isucon2026-trial-supervisor:desiredCount: '1'
-  isucon2026-trial-supervisor:teamIds:
-    - '1'
-    - '2'
-    - '3'
-    - '4'
-    - '5'
-    - '6'
-  isucon2026-trial-supervisor:image: 124502390568.dkr.ecr.ap-northeast-1.amazonaws.com/isucon2026-supervisor-portal-dev@sha256:0ccf2b3decc32e88c565a7e703e11ab6132797494ceef8adb26927375f791822
   isucon2026-trial-supervisor:routerSecurityGroupIds:
     - sg-09663cf353f2246e7
+  isucon2026-trial-supervisor:sharedNetwork:
+    egressPublicIp: 52.68.140.39
+    subnetId: subnet-055a5ee88a1c5764b
+    vpcId: vpc-0e2be8c91c07a48f3
   isucon2026-trial-supervisor:targetOverrides:
-    13.231.83.243:
-      target: 54.249.70.149
-      host: app.team1-aws.127.0.0.1.nip.io
-    54.168.216.11:
-      target: 54.249.70.149
-      host: app.team1-aws.127.0.0.1.nip.io
-    18.183.90.14:
-      target: 54.249.70.149
-      host: app.team1-aws.127.0.0.1.nip.io
-    54.92.60.154:
-      target: 54.199.99.27
-      host: app.team2-aws.127.0.0.1.nip.io
-    43.207.232.197:
-      target: 54.199.99.27
-      host: app.team2-aws.127.0.0.1.nip.io
-    35.77.91.215:
-      target: 54.199.99.27
-      host: app.team2-aws.127.0.0.1.nip.io
-    3.112.214.78:
-      target: 43.207.87.177
-      host: app.team3-aws.127.0.0.1.nip.io
-    52.195.4.68:
-      target: 43.207.87.177
-      host: app.team3-aws.127.0.0.1.nip.io
-    13.112.9.41:
-      target: 43.207.87.177
-      host: app.team3-aws.127.0.0.1.nip.io
-    3.112.190.233:
-      target: 13.114.71.155
-      host: app.team2-aws.127.0.0.1.nip.io
-    54.249.185.225:
-      target: 13.114.71.155
-      host: app.team2-aws.127.0.0.1.nip.io
-    13.112.120.193:
-      target: 13.193.253.167
-      host: app.team3-aws.127.0.0.1.nip.io
-    54.238.146.111:
-      target: 13.193.253.167
-      host: app.team3-aws.127.0.0.1.nip.io
-    3.112.234.132:
-      target: 13.114.71.155
-      host: app.team2-aws.127.0.0.1.nip.io
-    52.193.198.127:
-      target: 13.193.253.167
-      host: app.team3-aws.127.0.0.1.nip.io
-    54.238.192.11:
-      target: 52.195.195.61
-      host: app.team4-aws.127.0.0.1.nip.io
-    54.168.241.156:
-      target: 52.195.195.61
-      host: app.team4-aws.127.0.0.1.nip.io
-    13.113.253.143:
-      target: 52.195.195.61
-      host: app.team4-aws.127.0.0.1.nip.io
-    3.113.4.120:
-      target: 52.195.237.31
-      host: app.team5-aws.127.0.0.1.nip.io
-    13.114.191.55:
-      target: 52.195.237.31
-      host: app.team5-aws.127.0.0.1.nip.io
     3.112.20.139:
-      target: 52.195.237.31
       host: app.team5-aws.127.0.0.1.nip.io
+      target: 52.195.237.31
+    3.112.190.233:
+      host: app.team2-aws.127.0.0.1.nip.io
+      target: 13.114.71.155
+    3.112.214.78:
+      host: app.team3-aws.127.0.0.1.nip.io
+      target: 43.207.87.177
+    3.112.234.132:
+      host: app.team2-aws.127.0.0.1.nip.io
+      target: 13.114.71.155
+    3.113.4.120:
+      host: app.team5-aws.127.0.0.1.nip.io
+      target: 52.195.237.31
+    13.112.9.41:
+      host: app.team3-aws.127.0.0.1.nip.io
+      target: 43.207.87.177
+    13.112.120.193:
+      host: app.team3-aws.127.0.0.1.nip.io
+      target: 13.193.253.167
+    13.113.253.143:
+      host: app.team4-aws.127.0.0.1.nip.io
+      target: 52.195.195.61
+    13.114.191.55:
+      host: app.team5-aws.127.0.0.1.nip.io
+      target: 52.195.237.31
+    13.115.115.176:
+      host: app.team6-aws.127.0.0.1.nip.io
+      target: 54.150.135.30
+    13.231.83.243:
+      host: app.team1-aws.127.0.0.1.nip.io
+      target: 54.249.70.149
+    18.183.90.14:
+      host: app.team1-aws.127.0.0.1.nip.io
+      target: 54.249.70.149
+    35.77.91.215:
+      host: app.team2-aws.127.0.0.1.nip.io
+      target: 54.199.99.27
     43.207.225.96:
-      target: 13.192.234.219
       host: app.team6-aws.127.0.0.1.nip.io
+      target: 13.192.234.219
+    43.207.232.197:
+      host: app.team2-aws.127.0.0.1.nip.io
+      target: 54.199.99.27
+    52.193.198.127:
+      host: app.team3-aws.127.0.0.1.nip.io
+      target: 13.193.253.167
+    52.195.4.68:
+      host: app.team3-aws.127.0.0.1.nip.io
+      target: 43.207.87.177
+    54.92.60.154:
+      host: app.team2-aws.127.0.0.1.nip.io
+      target: 54.199.99.27
+    54.168.216.11:
+      host: app.team1-aws.127.0.0.1.nip.io
+      target: 54.249.70.149
+    54.168.241.156:
+      host: app.team4-aws.127.0.0.1.nip.io
+      target: 52.195.195.61
+    54.238.146.111:
+      host: app.team3-aws.127.0.0.1.nip.io
+      target: 13.193.253.167
+    54.238.192.11:
+      host: app.team4-aws.127.0.0.1.nip.io
+      target: 52.195.195.61
+    54.249.185.225:
+      host: app.team2-aws.127.0.0.1.nip.io
+      target: 13.114.71.155
     54.250.147.168:
-      target: 13.192.234.219
       host: app.team6-aws.127.0.0.1.nip.io
+      target: 13.192.234.219
     57.180.245.99:
-      target: 13.192.234.219
       host: app.team6-aws.127.0.0.1.nip.io
-encryptionsalt: v1:Qiz6zYuNH5I=:v1:p6BclRjnqVujiJMN:xnMY7wNzlD0PDbE9EYXISlrrp8nQOA==
+      target: 13.192.234.219
+  isucon2026-trial-supervisor:teamIds:
+    - "1"
+    - "2"
+    - "3"
+    - "4"
+    - "5"
+    - "6"
+  isucon2026-trial-supervisor:tokenSecretArn: arn:aws:secretsmanager:ap-northeast-1:124502390568:secret:portal-develop/application-xloqzw
+  isucon2026-trial-supervisor:teamEndpoints:
+    "4": https://portal-dev.isucon.net
+    "6": https://portal-dev.isucon.net
