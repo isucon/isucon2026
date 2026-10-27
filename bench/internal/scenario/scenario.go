@@ -67,6 +67,9 @@ type Config struct {
 	// VerifyRate は負荷走行で重い検証（フィードの欠落、画像 URL の署名、履歴の画像）を行う
 	// 操作の割合（0 より大きく 1 以下）。0 なら DefaultVerifyRate。
 	VerifyRate float64
+	// MoveRate は正なら、好みにかかわらず、移れるユーザーが日を過ごし終えるたびにこの確率で
+	// リージョンを移る（開発で移動を確かめる用）。0 なら好み（persona）に従う。
+	MoveRate float64
 	// Growth はユーザーの増え方。ゼロ値なら DefaultGrowth。
 	Growth GrowthConfig
 	// Dataset は対象の DB に入っている初期データ。nil なら dataset.Small() から作る。
@@ -148,8 +151,7 @@ type Runner struct {
 	visibility func() string
 	// peekRate は、通知を受けて投稿する前にフィードを覗くユーザーの割合。
 	peekRate float64
-	// moveRate は正なら、旅をする人の好み（persona.wanderlust）の代わりに、移れるユーザー
-	// 全員が日を過ごし終えるたびにこの確率でリージョンを移る（テスト用）。
+	// moveRate は Config.MoveRate。
 	moveRate float64
 	// historyImages は履歴を 1 か月読むたびに中身を取得する画像の数。
 	historyImages int
@@ -247,6 +249,7 @@ func NewRunner(cfg Config) (*Runner, error) {
 		changeRate:        0.1,
 		historyImages:     4,
 		verifyRate:        cfg.VerifyRate,
+		moveRate:          cfg.MoveRate,
 		returningRatio:    returningRatio,
 		users:             map[string][]*user{},
 		byID:              map[string]*user{},

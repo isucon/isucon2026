@@ -82,6 +82,7 @@ func run(parent context.Context, args []string, stdout, stderr io.Writer) int {
 	timeout := flags.Duration("timeout", 190*time.Second, "overall benchmark deadline; supervisor hard timeout must be longer")
 	postValidation := flags.Bool("only-post-validation", false, "reserved: report unsupported without initializing the application")
 	verifyRate := flags.Float64("verify-rate", scenario.DefaultVerifyRate, "fraction of load-phase operations that get heavy verification, in (0, 1] (env ISUXBENCH_VERIFY_RATE)")
+	moveRate := flags.Float64("move-rate", 0, "development: if positive, every registered user moves to another region with this probability after each day (default follows each user's persona)")
 	cpuProfile := flags.String("cpuprofile", "", "write a CPU profile of the whole run to this file")
 	memProfile := flags.String("memprofile", "", "write an allocation profile to this file at the end of the run")
 	report := func(result scenario.Result, finished bool, reason string) error {
@@ -188,7 +189,7 @@ func run(parent context.Context, args []string, stdout, stderr io.Writer) int {
 	var reportErr error
 	runner, err := scenario.NewRunner(scenario.Config{
 		Photos: photos, AwaitPhotos: awaitPhotos, Seed: *seed, Evil: evilFunc, Growth: growth,
-		Target: normalized, Host: *host, Users: *users, Duration: *duration, VerifyRate: *verifyRate,
+		Target: normalized, Host: *host, Users: *users, Duration: *duration, VerifyRate: *verifyRate, MoveRate: *moveRate,
 		Dataset: dataset.Generate(datasetConfig()), Logger: progressLogger,
 		OnProgress: func(result scenario.Result) {
 			if reportErr != nil {
