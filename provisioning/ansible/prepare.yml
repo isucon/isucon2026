@@ -34,12 +34,16 @@
           - --exclude=php/vendor
           - --exclude=php/tests
           - --exclude=php/.phpunit.cache
+          - --exclude=perl/local
+          - --exclude=perl/t
+          - --exclude=perl/hypnotoad.pid
           - --exclude=sql/002-seed.sql
           - go
           - ruby
           - rust
           - python
           - php
+          - perl
           - sql
       changed_when: true
       when: "'webapp' in prepare_components"
