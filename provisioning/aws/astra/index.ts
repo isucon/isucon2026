@@ -50,3 +50,7 @@ if (runtime.regionalUploadCacheEnabled && (!runtime.writeProxyEnabled || !runtim
 if (runtime.localUploadCacheEnabled && (!runtime.imageStore?.enabled || !runtime.imageStore?.writesEnabled)) {
     throw new Error("Local upload caching requires immutable image storage");
 }
+
+if (!Number.isInteger(runtime.tokioWorkerThreads) || runtime.tokioWorkerThreads < 1 || runtime.tokioWorkerThreads > 16) {
+    throw new Error("Invalid Tokio worker thread count");
+}
