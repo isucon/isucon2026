@@ -8,6 +8,12 @@ const config = new pulumi.Config();
 export const runtime = JSON.parse(
 	readFileSync(config.require("runtimeConfigPath"), "utf8"),
 );
+if (!["poll", "native"].includes(runtime.writeFenceMode ?? "poll")) {
+	throw new Error("Unknown write fence mode");
+}
+if (runtime.writeFenceMode === "native" && (!runtime.writeFenceEnabled || !runtime.replicasEnabled)) {
+	throw new Error("Native write fences require enabled write fences and replicas");
+}
 if (runtime.replicaReads && !runtime.replicasSynchronous && !runtime.readFenceEnabled && !runtime.writeFenceEnabled) {
 	throw new Error("Replica reads require synchronous remote_apply replication, read fences, or write response fences");
 }
