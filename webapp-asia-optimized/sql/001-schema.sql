@@ -1,0 +1,193 @@
+DROP TABLE IF EXISTS
+  ip_bans,
+  notifications,
+  comments,
+  realmojis,
+  friend_requests,
+  posts,
+  posting_windows,
+  app_settings,
+  worker_jobs,
+  idempotency_records,
+  block_relations,
+  follows,
+  friendships,
+  administrator_sessions,
+  login_sessions,
+  administrators,
+  users,
+  image_objects;
+
+-- [作問] 画像情報
+-- [作問] usernameも当然UniqueだがIndex貼っていないので気を付けること
+-- [作問] ログインにはsecretKeyを使う。secret_key_hashはサーバーで生成されたsecretKeyをSHA256ハッシュしたもの。
+
+-- 2026-09-01: 画像をDBにおかないと、別のサーバーからデータを返却したときに404になってしまう。ファイル配置に変更して障害になってしまったので注意。ここは決して変更しないこと。
+CREATE TABLE image_objects (
+  id varchar(36) PRIMARY KEY,
+  owner_user_id varchar(36) NOT NULL,
+  data bytea NOT NULL,
+  -- like: image/jpeg, image/png
+  media_type text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT clock_timestamp()
+);
+
+-- [作問] ユーザーの情報
+-- [作問] usernameも当然UniqueだがIndex貼っていないので気を付けること
+-- [作問] ログインにはsecretKeyを使う。secret_key_hashはサーバーで生成されたsecretKeyをSHA256ハッシュしたもの。
+CREATE TABLE users (
+  id varchar(36) PRIMARY KEY,
+  username varchar(64) NOT NULL,
+  secret_key_hash text NOT NULL,
+  display_name text NOT NULL,
+  bio text NOT NULL DEFAULT '',
+  profile_image_id varchar(36) REFERENCES image_objects(id) ON DELETE RESTRICT,
+  -- america/europe/asia
+  region text NOT NULL,
+  -- regular/certified_public
+  account_type text NOT NULL DEFAULT 'regular',
+  -- active/deleted
+  status text NOT NULL DEFAULT 'active',
+  deleted_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+  updated_at timestamptz NOT NULL DEFAULT clock_timestamp()
+);
+ALTER TABLE image_objects ADD CONSTRAINT image_objects_owner_fk FOREIGN KEY (owner_user_id) REFERENCES users(id) ON DELETE RESTRICT;
+
+-- 2026-09-10 管理者を消す時のオペレーションはどうすればよいですか？
+-- 2026-09-13 消すことは想定されていません
+CREATE TABLE administrators (
+  id varchar(36) PRIMARY KEY,
+  username varchar(64) NOT NULL,
+  password_hash text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT clock_timestamp()
+);
+
+-- [作問] ログインしているユーザーのセッション情報。1ユーザーは1ログインのみ有効
+-- [作問] idは特に意味なし。user_idはユーザー情報。ユーザー毎に1つしかログインできない
+-- [作問] token_hashはサーバーで生成されたトークンをSHA256ハッシュしたもの。  
+-- [作問] activeはログイン中かどうか。
+-- [作問] 他はFlavor。特に使われていない
+-- [作問] token_hashにはINDEXがなく、Unique制約もないため、アプリ側でUniqueであることを保証すること。ユーザー単位に1ログインも同じく
+-- [作問] ベンチマークは出来ればこれを検証したい
+CREATE TABLE login_sessions (
+  id varchar(36) PRIMARY KEY,
+  user_id varchar(36) NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+  token_hash text NOT NULL,
+  active boolean NOT NULL DEFAULT true,
+  created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+  invalidated_at timestamptz,
+  reason text
+);
+
+CREATE TABLE administrator_sessions (
+  id varchar(36) PRIMARY KEY,
+  administrator_id varchar(36) NOT NULL REFERENCES administrators(id) ON DELETE RESTRICT,
+  token_hash text NOT NULL,
+  active boolean NOT NULL DEFAULT true,
+  created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+  invalidated_at timestamptz
+);
+
+CREATE TABLE friendships (
+  id varchar(36) PRIMARY KEY,
+  user_low_id varchar(36) NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+  user_high_id varchar(36) NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+  source_request_id varchar(36),
+  created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+  updated_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+  UNIQUE(user_low_id,user_high_id)
+);
+
+CREATE TABLE follows (
+  id varchar(36) PRIMARY KEY,
+  follower_id varchar(36) NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+  followee_id varchar(36) NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+  created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+  updated_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+  UNIQUE(follower_id,followee_id)
+);
+
+CREATE TABLE block_relations (
+  id varchar(36) PRIMARY KEY,
+  blocker_id varchar(36) NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+  blocked_id varchar(36) NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+  created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+  UNIQUE(blocker_id,blocked_id)
+);
+
+-- [作問] ある論理日付での投稿となる期間を表すWindow
+CREATE TABLE posting_windows (
+  id varchar(36) PRIMARY KEY,
+  region text NOT NULL,
+  local_date date NOT NULL,
+  starts_at timestamptz NOT NULL,
+  on_time_deadline timestamptz NOT NULL,
+  ended_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+  UNIQUE(region,local_date)
+);
+CREATE UNIQUE INDEX posting_windows_one_active_region ON posting_windows(region) WHERE ended_at IS NULL;
+
+CREATE TABLE posts (
+  id varchar(36) PRIMARY KEY,
+  author_id varchar(36) NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+  posting_window_id varchar(36) NOT NULL REFERENCES posting_windows(id) ON DELETE RESTRICT,
+  image_id varchar(36) NOT NULL REFERENCES image_objects(id) ON DELETE RESTRICT,
+  caption text NOT NULL DEFAULT '',
+  visibility text NOT NULL,
+  location_kind text NOT NULL,
+  latitude numeric,
+  longitude numeric,
+  locality text,
+  posted_at timestamptz NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+  deleted_at timestamptz
+);
+CREATE INDEX posts_author_id ON posts(author_id);
+CREATE INDEX posts_posting_window_id ON posts(posting_window_id);
+
+CREATE TABLE friend_requests (
+  id varchar(36) PRIMARY KEY,
+  requester_id varchar(36) NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+  recipient_id varchar(36) NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+  status text NOT NULL,
+  created_at timestamptz NOT NULL,
+  updated_at timestamptz NOT NULL
+);
+
+CREATE TABLE realmojis (
+  id varchar(36) PRIMARY KEY,
+  post_id varchar(36) NOT NULL REFERENCES posts(id) ON DELETE RESTRICT,
+  reactor_id varchar(36) NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+  image_id varchar(36) NOT NULL REFERENCES image_objects(id) ON DELETE RESTRICT,
+  reaction_type text NOT NULL,
+  created_at timestamptz NOT NULL,
+  replaced_at timestamptz,
+  deleted_at timestamptz
+);
+CREATE UNIQUE INDEX realmojis_one_active ON realmojis(post_id,reactor_id) WHERE replaced_at IS NULL AND deleted_at IS NULL;
+CREATE INDEX realmojis_post_id ON realmojis(post_id);
+
+CREATE TABLE comments (
+  id varchar(36) PRIMARY KEY,
+  post_id varchar(36) NOT NULL REFERENCES posts(id) ON DELETE RESTRICT,
+  author_id varchar(36) NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+  body text NOT NULL,
+  created_at timestamptz NOT NULL,
+  deleted_at timestamptz
+);
+CREATE INDEX comments_post_id ON comments(post_id);
+
+CREATE TABLE notifications (
+  id varchar(36) PRIMARY KEY,
+  user_id varchar(36) NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+  posting_window_id varchar(36) NOT NULL REFERENCES posting_windows(id) ON DELETE RESTRICT,
+  created_at timestamptz NOT NULL,
+  UNIQUE(user_id,posting_window_id)
+);
+
+CREATE TABLE ip_bans (
+  ip text PRIMARY KEY,
+  banned_until timestamptz NOT NULL
+);
