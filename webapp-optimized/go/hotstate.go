@@ -536,6 +536,65 @@ func (s *hotState) feed(viewerID, feed string, before *feedCursor) (posts []Post
 	return posts, true
 }
 
+// interactionAllowed decides opt_access for a post of an open window: whether
+// the viewer may list its comments (comments) or RealMojis. ok is false when
+// the state cannot answer.
+func (s *hotState) interactionAllowed(viewerID, postID string, comments bool) (allowed, ok bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	viewer := s.users[viewerID]
+	p := s.posts[postID]
+	if !s.loaded || viewer == nil || p == nil {
+		return false, false
+	}
+	w := s.openWindow(p.PostingWindowID)
+	author := s.users[p.AuthorID]
+	if w == nil || author == nil {
+		return false, false
+	}
+	if p.Deleted || viewer.Status != "active" || author.Status != "active" {
+		return false, true
+	}
+	if p.AuthorID == viewerID {
+		return true, true
+	}
+	current := s.windows[viewer.Region]
+	if current == nil {
+		return false, true
+	}
+	postedToday := false
+	for _, own := range s.byAuthor[viewerID] {
+		if ow := s.openWindow(own.PostingWindowID); !own.Deleted && ow != nil && ow.LocalDate.Equal(current.LocalDate) {
+			postedToday = true
+			break
+		}
+	}
+	if !postedToday || s.blocks[[2]string{viewerID, p.AuthorID}] || s.blocks[[2]string{p.AuthorID, viewerID}] {
+		return false, true
+	}
+	if p.Visibility == "public" {
+		return true, true
+	}
+	friend := s.friends[viewerID][p.AuthorID]
+	if comments {
+		return friend && (p.Visibility == "friends" || p.Visibility == "friends_of_friends"), true
+	}
+	switch p.Visibility {
+	case "friends":
+		return friend, true
+	case "friends_of_friends":
+		if friend {
+			return true, true
+		}
+		for f := range s.friends[viewerID] {
+			if s.friends[f][p.AuthorID] {
+				return true, true
+			}
+		}
+	}
+	return false, true
+}
+
 // imageLive reports whether a post image is live, with its owner's signing
 // key hash, when the image belongs to a post of an open window.
 func (s *hotState) imageLive(imageID string) (live bool, secretKeyHash string, known bool) {
