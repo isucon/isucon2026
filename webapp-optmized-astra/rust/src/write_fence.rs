@@ -40,7 +40,14 @@ pub async fn write_fence_middleware(
 ) -> Response {
     let mutation = !matches!(*req.method(), Method::GET | Method::HEAD);
     let _admission = if mutation && let Some(WriteFence::Native(native)) = &fence {
-        Some(native.admit(req.body().size_hint().exact()).await)
+        Some(
+            native
+                .admit(
+                    req.body().size_hint().exact(),
+                    req.uri().path() == "/api/admin/posting-window",
+                )
+                .await,
+        )
     } else {
         None
     };
@@ -82,21 +89,20 @@ mod tests {
     use tower::ServiceExt;
 
     fn app(primary: PgPool, table: String, fence: WriteFence) -> Router {
+        let mutation = post(move || {
+            let primary = primary.clone();
+            let table = table.clone();
+            async move {
+                sqlx::query(&format!("UPDATE {table} SET value=value+1"))
+                    .execute(&primary)
+                    .await
+                    .unwrap();
+                StatusCode::NO_CONTENT
+            }
+        });
         Router::new()
-            .route(
-                "/write",
-                post(move || {
-                    let primary = primary.clone();
-                    let table = table.clone();
-                    async move {
-                        sqlx::query(&format!("UPDATE {table} SET value=value+1"))
-                            .execute(&primary)
-                            .await
-                            .unwrap();
-                        StatusCode::NO_CONTENT
-                    }
-                }),
-            )
+            .route("/write", mutation.clone())
+            .route("/api/admin/posting-window", mutation)
             .route("/read", get(|| async { StatusCode::OK }))
             .layer(from_fn_with_state(Some(fence), write_fence_middleware))
             .layer(from_fn(crate::server::run_to_completion))
@@ -423,6 +429,41 @@ mod tests {
                 }
                 assert_eq!(value(&replica, &table).await, 7);
                 assert_eq!(value(&replica2, &table).await, 7);
+                // Saturating normal metadata writes must not prevent opening
+                // the next posting window. Its response still waits for replay.
+                sqlx::query("SELECT pg_wal_replay_pause()").execute(&replica2).await.unwrap();
+                timeout(Duration::from_secs(2), async {
+                    while !sqlx::query_scalar::<_, bool>("SELECT pg_get_wal_replay_pause_state()='paused'")
+                        .fetch_one(&replica2).await.unwrap() {
+                        sleep(Duration::from_millis(5)).await;
+                    }
+                }).await.unwrap();
+                let mut ordinary = Vec::new();
+                for _ in 0..32 {
+                    ordinary.push(tokio::spawn(app.clone().oneshot(
+                        HttpRequest::post("/write").body(Body::empty()).unwrap(),
+                    )));
+                }
+                wait_value(&primary, &table, 39).await;
+                let mut queued_small = tokio::spawn(app.clone().oneshot(
+                    HttpRequest::post("/write").body(Body::empty()).unwrap(),
+                ));
+                assert!(timeout(Duration::from_millis(100), &mut queued_small).await.is_err());
+                assert_eq!(value(&primary, &table).await, 39);
+                let mut control = tokio::spawn(app.clone().oneshot(
+                    HttpRequest::post("/api/admin/posting-window").body(Body::empty()).unwrap(),
+                ));
+                wait_value(&primary, &table, 40).await;
+                assert!(timeout(Duration::from_millis(100), &mut control).await.is_err());
+                assert_eq!(value(&replica2, &table).await, 7);
+                sqlx::query("SELECT pg_wal_replay_resume()").execute(&replica2).await.unwrap();
+                ordinary.extend([queued_small, control]);
+                for response in ordinary {
+                    assert_eq!(timeout(Duration::from_secs(3), response).await.unwrap().unwrap().unwrap().status(), StatusCode::NO_CONTENT);
+                }
+                assert_eq!(value(&replica, &table).await, 41);
+                assert_eq!(value(&replica2, &table).await, 41);
+
             }
         })
         .catch_unwind()
