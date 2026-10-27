@@ -43,7 +43,7 @@ async function getSessionFromHeader(c: Context<Env>, db: DB): Promise<Session | 
 	`,
     tokenHash,
   );
-  if (row === undefined) {
+  if (!row) {
     return null;
   }
   return { region: row.region, token: "", userID: row.user_id, tokenHash: row.token_hash, createdAt: row.created_at };

@@ -33,7 +33,7 @@ export function getCurrentPostingWindowHandler(h: HandlerContext): Handler<Env> 
   `,
       getSession(c)!.userID,
     );
-    if (state === undefined) {
+    if (!state) {
       const response: GetCurrentPostingWindowResponse = { window: null, hasPosted: false, canPost: false, deletionCount: 0 };
       return jsonResponse(c, 200, response);
     }

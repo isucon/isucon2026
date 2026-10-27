@@ -14,7 +14,7 @@ const rfc3339Pattern = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:[.,](
 
 export function parseRFC3339(value: string): Temporal.Instant {
   const match = rfc3339Pattern.exec(value);
-  if (match === null) {
+  if (!match) {
     throw new Error(`parsing time ${JSON.stringify(value)} as "2006-01-02T15:04:05Z07:00"`);
   }
   const [, year, month, day, hour, minute, second, fraction, zulu, sign, offsetHour, offsetMinute] = match;

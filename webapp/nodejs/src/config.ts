@@ -22,7 +22,7 @@ export function configFromEnv(): Config {
 
 export function envOrDefault(key: string, defaultValue: string): string {
   const value = process.env[key];
-  if (value !== undefined && value !== "") {
+  if (value) {
     return value;
   }
   return defaultValue;
