@@ -52,6 +52,10 @@ RustのDB接続を伴うキャンセル検証と通知・並行登録・画像�
 レプリカを一時停止し、並行リクエストの待機、最新値の取得、時間切れ時の503、削除済み利用者への通知抑止を確認する。
 テスト終了時にはレプリカの反映を再開する。
 
+`ISUREAL_FENCE_REPLICA2_DSN`も指定すると、更新レスポンスの反映待ちを2台の物理レプリカで検証する。
+片方を停止してレスポンスが待機する間も、同じ行への別トランザクションが更新できること、
+反映を再開すると両レプリカから更新結果を読めることを確認する。
+
 
 ## DB複製の切り替え
 
@@ -70,6 +74,15 @@ RustのDB接続を伴うキャンセル検証と通知・並行登録・画像�
 WAL確認は、読み取り要求が届いた後にプライマリの永続化済みLSNを取得し、地域内レプリカがその位置まで
 反映したことを確認してから認証・閲覧判定を始める。同時に到着済みの要求だけを一括確認し、以前の結果は使い回さない。
 通知ポーリングも同じ確認を行う。10秒以内に追従しなければ、古いデータを返さず503または通知接続の終了とする。
+
+反映待ちを更新レスポンス側へ移す場合は、まず`readFenceEnabled=true`を維持したまま
+`writeFenceEnabled=true`として`deploy/apply.sh application`を実行する。
+全地域の通常アプリとasiaの内部更新ワーカーに設定が入った後で、`readFenceEnabled=false`として
+もう一度アプリを反映する。スクリプトは全更新プロセスの稼働と実際の設定を確認してから読み取り側の確認を外す。
+更新ハンドラのコミット後に両レプリカのWAL反映を待つため、地域間の反映待ち中にはDBのロックを保持しない。
+GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に追従しない場合は503とする。
+クライアントが切断しても更新処理と反映確認は継続する。確認が失敗した場合、更新自体はコミット済みの場合がある。
+この方式を解除するときは、先に同期レプリケーションか全読み取り側の確認を有効にする。
 
 単一DBへ戻す際は、先に`replicaReads=false`として`deploy/apply.sh application`で全台を切り替え、
 その完了後に同期レプリケーションを解除する。初期AMIのDBは各VMの`16/main`に保持する。
@@ -116,3 +129,4 @@ WAL確認は、読み取り要求が届いた後にプライマリの永続化�
 | 20261027T140625Z-team10 | repeat regional reads and HTTP write forwarding | PASS | 38,158 |
 | 20261027T142139Z-team10 | bounded regional feed queries with SQL visibility filtering | PASS | 42,375 |
 | 20261027T145324Z-team10 | asynchronous replicas with fresh batched WAL read fences | PASS | 32,193 |
+| 20261027T151601Z-team10 | post-commit write response fences release locks before replica replay | PASS | 35,586 |
