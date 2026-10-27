@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"sync"
@@ -25,6 +26,11 @@ type exportPostResponse struct {
 // pruned to their month partitions instead of probing every partition per
 // image; an image not found that way is read by ID alone.
 const exportImageBatch = 64
+
+// exportBudget bounds an export. When the database is saturated (the grand
+// prix's simultaneous posts), an export that would take longer answers 503
+// at once rather than holding the connection past the client's deadline.
+const exportBudget = 8 * time.Second
 
 func exportPostsHandler(h *HandlerContext) echo.HandlerFunc {
 	return func(c *echo.Context) error {
@@ -57,7 +63,10 @@ func exportPostsHandler(h *HandlerContext) echo.HandlerFunc {
 				return err
 			}
 		}
-		imageData, err := exportImages(ctx, h.DB, posts)
+		imageData, err := exportImages(ctx, h.DB, posts, time.Now().Add(exportBudget))
+		if errors.Is(err, errExportBusy) {
+			return NewAPIError(http.StatusServiceUnavailable, "export_busy")
+		}
 		if err != nil {
 			return err
 		}
@@ -97,7 +106,9 @@ func exportPostsHandler(h *HandlerContext) echo.HandlerFunc {
 // posting time, a few batches at a time so the database overlaps the random
 // reads, then by ID for any image stored under another time, and from the
 // image store for images uploaded during the load.
-func exportImages(ctx context.Context, db *sqlx.DB, posts []Post) (map[string][]byte, error) {
+var errExportBusy = errors.New("export over budget")
+
+func exportImages(ctx context.Context, db *sqlx.DB, posts []Post, deadline time.Time) (map[string][]byte, error) {
 	data := make(map[string][]byte, len(posts))
 	var mu sync.Mutex
 	group, gctx := errgroup.WithContext(ctx)
@@ -105,6 +116,9 @@ func exportImages(ctx context.Context, db *sqlx.DB, posts []Post) (map[string][]
 	for start := 0; start < len(posts); start += exportImageBatch {
 		batch := posts[start:min(start+exportImageBatch, len(posts))]
 		group.Go(func() error {
+			if time.Now().After(deadline) {
+				return errExportBusy
+			}
 			ids := make([]string, len(batch))
 			times := make([]time.Time, len(batch))
 			for i, p := range batch {
@@ -135,6 +149,9 @@ func exportImages(ctx context.Context, db *sqlx.DB, posts []Post) (map[string][]
 	for _, p := range posts {
 		body, ok := data[p.ImageID]
 		if !ok {
+			if time.Now().After(deadline) {
+				return nil, errExportBusy
+			}
 			if err := db.GetContext(ctx, &body, `SELECT data FROM image_objects WHERE id = $1`, p.ImageID); err != nil {
 				return nil, err
 			}
