@@ -1,0 +1,6 @@
+[env]
+# 共有プールの stack の state は private リポジトリ（isucon2026-private の ops/shared-supervisor）が使っていた
+# バケットにある。親の mise.toml の値を上書きする。
+PULUMI_BACKEND_URL = "s3://isucon2026-pulumi-state-124502390568/shared-supervisor"
+# 初期作成時の passphrase provider（空 passphrase）を使う。
+PULUMI_CONFIG_PASSPHRASE = ""
