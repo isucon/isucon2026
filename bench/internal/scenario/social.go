@@ -102,10 +102,10 @@ func (r *Runner) requestFriend(ctx context.Context, u *user, target *user, searc
 	case err == nil && request.Status == "accepted":
 		w.Applied()
 		r.addFriendship(u.ID, target.ID)
-		r.board.Add(score.TagFriendRequest)
+		r.award(u, r.dayNow(u.Region), score.TagFriendRequest)
 	case err == nil:
 		w.Rejected()
-		r.board.Add(score.TagFriendRequest)
+		r.award(u, r.dayNow(u.Region), score.TagFriendRequest)
 	case isStatus(err, http.StatusConflict):
 		// 送る前に友達になったか、同じ申請が保留中。
 		w.Rejected()
@@ -139,7 +139,7 @@ func (r *Runner) searchUser(ctx context.Context, u *user, target *user) {
 			return
 		}
 	}
-	r.board.Add(score.TagSearch)
+	r.award(u, r.dayNow(u.Region), score.TagSearch)
 }
 
 // declineRequest は届いた申請があれば 1 つ断る。
@@ -171,7 +171,7 @@ func (r *Runner) cancelRequest(ctx context.Context, u *user) {
 	_, err = u.API.TransitionFriendRequest(client.MayFailWith(ctx, http.StatusForbidden, http.StatusNotFound), u.Token, request.RelationID, "cancel")
 	switch {
 	case err == nil:
-		r.board.Add(score.TagFriendDecline)
+		r.award(u, r.dayNow(u.Region), score.TagFriendDecline)
 	case isStatus(err, http.StatusForbidden) || isStatus(err, http.StatusNotFound):
 		// 相手が先に承認したか断った。
 	default:
@@ -212,7 +212,7 @@ func (r *Runner) listRelationships(ctx context.Context, u *user) {
 		r.invalid(ctx, u, "%s: %s の一覧: %s", u.Username, kind, problem)
 	}
 	if len(problems) == 0 {
-		r.board.Add(score.TagRelationships)
+		r.award(u, r.dayNow(u.Region), score.TagRelationships)
 	}
 }
 
@@ -235,7 +235,7 @@ func (r *Runner) unfriend(ctx context.Context, u *user) {
 	settle(w, err)
 	switch {
 	case err == nil:
-		r.board.Add(score.TagUnfriend)
+		r.award(u, r.dayNow(u.Region), score.TagUnfriend)
 	case isStatus(err, http.StatusConflict):
 	case isStatus(err, http.StatusNotFound):
 		// 送っている間に相手が退会すれば 404 が正しい。
@@ -286,7 +286,7 @@ func (r *Runner) updateBio(ctx context.Context, u *user) {
 	case profile.ID != u.ID || profile.Bio != bio:
 		r.invalid(ctx, u, "%s: プロフィールを変えた応答が違います", u.Username)
 	default:
-		r.board.Add(score.TagProfileUpdate)
+		r.award(u, r.dayNow(u.Region), score.TagProfileUpdate)
 	}
 }
 
@@ -330,7 +330,7 @@ func (r *Runner) changeProfileImage(ctx context.Context, u *user) {
 			return
 		}
 	}
-	r.board.Add(score.TagProfileImage)
+	r.award(u, r.dayNow(u.Region), score.TagProfileImage)
 }
 
 // toggleFollow は認定公開アカウントを 1 つフォローするか、フォローしているものを 1 つ解除する。
@@ -348,7 +348,7 @@ func (r *Runner) toggleFollow(ctx context.Context, u *user) {
 		switch {
 		case err == nil:
 			delete(u.follows, id)
-			r.board.Add(score.TagUnfollow)
+			r.award(u, r.dayNow(u.Region), score.TagUnfollow)
 		case isStatus(err, http.StatusConflict):
 			delete(u.follows, id)
 		default:
@@ -383,7 +383,7 @@ func (r *Runner) followCertified(ctx context.Context, u *user, n int) {
 		switch {
 		case err == nil:
 			u.follows[id] = true
-			r.board.Add(score.TagFollow)
+			r.award(u, r.dayNow(u.Region), score.TagFollow)
 		case isStatus(err, http.StatusConflict):
 			u.follows[id] = true
 		case isStatus(err, http.StatusNotFound):
@@ -420,7 +420,7 @@ func (r *Runner) editCaption(ctx context.Context, u *user, s *session) {
 	case post.Caption != caption:
 		r.invalid(ctx, u, "%s: キャプションを変えた応答が違います", u.Username)
 	default:
-		r.board.Add(score.TagCaption)
+		r.award(u, s.day, score.TagCaption)
 	}
 }
 
@@ -435,7 +435,7 @@ func (r *Runner) toggleBlock(ctx context.Context, u *user) {
 		switch {
 		case err == nil:
 			u.blocking = u.blocking[:len(u.blocking)-1]
-			r.board.Add(score.TagUnblock)
+			r.award(u, r.dayNow(u.Region), score.TagUnblock)
 		case isStatus(err, http.StatusConflict) || isStatus(err, http.StatusNotFound):
 			u.blocking = u.blocking[:len(u.blocking)-1]
 		default:
@@ -462,7 +462,7 @@ func (r *Runner) toggleBlock(ctx context.Context, u *user) {
 	switch {
 	case err == nil:
 		u.blocking = append(u.blocking, target.ID)
-		r.board.Add(score.TagBlock)
+		r.award(u, r.dayNow(u.Region), score.TagBlock)
 	case isStatus(err, http.StatusConflict):
 	case isStatus(err, http.StatusNotFound):
 		// 送っている間に相手が退会すれば 404 が正しい。

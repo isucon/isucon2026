@@ -475,6 +475,35 @@ def main():
     else:
         print("no saturated host found")
     print(f"timeline: {run / 'timeline.csv'}")
+    score_section(run)
+
+
+def score_section(run):
+    """result.json の scores（リージョン・日・要素ごとの得点）を、日×地域と要素×地域の表にする。"""
+    path = run / "result.json"
+    if not path.exists():
+        return
+    cells = json.loads(path.read_text()).get("scores") or []
+    if not cells:
+        return
+    regions = ["asia", "europe", "america"]
+
+    def points(cond):
+        return [sum(c["points"] for c in cells if c["region"] == r and cond(c)) for r in regions]
+
+    def row(label, values):
+        print(f"  {label:<16}" + "".join(f"{v:>9}" for v in values) + f"{sum(values):>9}")
+
+    print()
+    print("score by day and region (points; day 0 = before the region's first day)")
+    print("  " + "day".ljust(16) + "".join(f"{r:>9}" for r in regions) + f"{'total':>9}")
+    for day in sorted({c["day"] for c in cells}):
+        row(str(day), points(lambda c, day=day: c["day"] == day))
+    row("all", points(lambda c: True))
+    print("score by element and region (points)")
+    tags = sorted({c["tag"] for c in cells}, key=lambda t: -sum(c["points"] for c in cells if c["tag"] == t))
+    for tag in tags:
+        row(tag, points(lambda c, tag=tag: c["tag"] == tag))
 
 
 if __name__ == "__main__":

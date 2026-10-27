@@ -176,7 +176,7 @@ func (r *Runner) recordHistory(ctx context.Context, u *user, err error, tag scor
 	var requestErr *client.RequestError
 	switch {
 	case err == nil:
-		r.board.Add(tag)
+		r.award(u, r.dayNow(u.Region), tag)
 	case ctx.Err() != nil:
 	case r.bannedErr(u, err):
 	case errors.As(err, &apiErr) || errors.As(err, &requestErr):

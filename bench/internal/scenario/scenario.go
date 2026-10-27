@@ -102,6 +102,8 @@ type Result struct {
 	Harness   string           `json:"harness"`
 	Model     string           `json:"model"`
 	Breakdown map[string]int64 `json:"breakdown"`
+	// Scores はリージョンと日と要素ごとの件数と得点。
+	Scores []score.Cell `json:"scores"`
 	// OpenedWindows はリージョンごとに開いた投稿期間の数、Users は最後の負荷ユーザーの数。
 	OpenedWindows map[string]int `json:"openedWindows"`
 	Users         map[string]int `json:"users"`
@@ -290,6 +292,7 @@ func (r *Runner) Run(ctx context.Context) Result {
 		Reason:        reason,
 		Story:         r.storyLines(),
 		Breakdown:     r.board.Breakdown(),
+		Scores:        r.board.Cells(),
 		OpenedWindows: r.openedCounts(),
 		Users:         r.populations(),
 		Reputation:    r.reputations(),
@@ -299,6 +302,9 @@ func (r *Runner) Run(ctx context.Context) Result {
 	}
 	if b := r.books.Load(); b != nil {
 		result.Days = b.report()
+		for i := range result.Days {
+			result.Days[i].Points = r.board.DayPoints(result.Days[i].Region, result.Days[i].Day)
+		}
 		_, result.GrandPrix = b.passes()
 	}
 	result.Messages = messages(reason, result.Story, result.Critical, result.Errors)
@@ -394,6 +400,21 @@ func (r *Runner) initialize(ctx context.Context) string {
 		r.firstDate = next
 	}
 	return ""
+}
+
+// award は u の操作 tag を得点に数える。day はその操作が属するリージョンの日で、日が
+// 始まる前なら 0。
+func (r *Runner) award(u *user, day int, tag score.Tag) {
+	r.board.Add(tag, u.Region, day)
+}
+
+// dayNow は region のいまの日（1 始まり）。負荷走行の前と、1 日目が始まる前は 0。
+func (r *Runner) dayNow(region string) int {
+	b := r.books.Load()
+	if b == nil {
+		return 0
+	}
+	return r.tt.dayAt(region, time.Since(b.start))
 }
 
 // step は事前検証で今していることを記録する。時間切れのときに理由として出す。
@@ -666,7 +687,7 @@ func (r *Runner) deleteAccount(ctx context.Context, u *user) {
 		return
 	}
 	u.stopped.Store(true)
-	r.board.Add(score.TagDeleteAccount)
+	r.award(u, r.dayNow(u.Region), score.TagDeleteAccount)
 	if _, err := u.API.Me(client.MayFailWith(ctx, http.StatusUnauthorized), u.Token); !isStatus(err, http.StatusUnauthorized) {
 		r.invalid(ctx, u, "%s: 退会したユーザーのセッションが無効になっていません: %v", u.Username, err)
 	}

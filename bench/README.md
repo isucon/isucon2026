@@ -267,9 +267,10 @@ friends-of-friends は友達の友達の投稿だけを索引から引く（publ
 - 単独実行の終了コードは pass=0、fail=1、設定などの異常=2。
 - supervisor 実行時は通常の fail も終了コード 0 とし、結果の `passed=false` で不合格を報告する。
 
-結果 JSON の `pass`、`score`、`messages`（日本語）は参加者向け、`story`（日ごとの出来事）、`breakdown`、
-`openedWindows`（リージョンごとに開いた投稿期間の数）、`users`（リージョンごとの最終的な負荷ユーザー数）、`grandPrix`、
-`days`、`reputation`（BAN した正常なユーザーの数）、`seed`、`critical`、`errors`、`windows`（観測窓ごと・リージョンごとの
+結果 JSON の `pass`、`score`、`messages`（日本語）は参加者向け、`story`（日ごとの出来事）、`breakdown`（要素ごとの件数）、
+`scores`（リージョンと日と要素ごとの件数と得点。日はリージョンの日で、始まる前は 0。bench-runner の report.py が日×地域と
+要素×地域の表にする）、`openedWindows`（リージョンごとに開いた投稿期間の数）、`users`（リージョンごとの最終的な負荷ユーザー数）、`grandPrix`、
+`days`（リージョンと日ごとの人数、通過、失敗率、得点 `points`）、`reputation`（BAN した正常なユーザーの数）、`seed`、`critical`、`errors`、`windows`（観測窓ごと・リージョンごとの
 操作数、失敗数、タイムアウト数、503 を受けた数、読み取り p99 [ns]）、`routes`（リージョンとルートごとの操作数、失敗数、
 所要時間の p50 / p90 / p99 / 最大 [ns]）は運営向けである。
 
