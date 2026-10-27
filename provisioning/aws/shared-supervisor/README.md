@@ -75,3 +75,14 @@ private の `deployments` には退役したチーム別 service 7 件（`desire
 ecspresso は `mise exec "aqua:kayac/ecspresso@2.8.7" -- ecspresso` で使えます（bench-runner と同じ版）。
 `render.py build pool.json task.json service.json` は雛形をファイルから読んで定義を標準出力に書くので、
 AWS に触らずに結果を確かめられます。
+
+## 適用記録
+
+### 2026-10-27 写真のアーカイブを同梱したベンチへの更新
+
+- イメージを `sha256:aec29420…`（pr46-14cfada5-20261020）から `sha256:a70d4cf10b3d4623a9446016797260108f108e0b4e99c2b388d0303f8f16530e`
+  （タグ `photos-a70d4cf10b3d4623`、ベンチ `a0cd2da` と `assets/merged.zip` を同梱）にし、
+  環境変数 `ISUXBENCH_IMAGES=/opt/isucon/photos/merged.zip` を加えた。`--timeout 300s` と `HARD_TIMEOUT` 310 は据え置き。
+- `pulumi up` は stack の出力 `deployments` の変更だけ（リソース 1 件変更なし）。`ecspresso diff` はタスク定義の
+  イメージと環境変数の追加だけで、サービス定義に差分なし。
+- 走行中のジョブがないことを 3 ストリームで確かめてから `ecspresso deploy` した。
