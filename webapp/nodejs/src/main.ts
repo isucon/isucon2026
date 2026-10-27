@@ -1,6 +1,9 @@
 import { serve } from "@hono/node-server";
 import { configFromEnv, createPool } from "./db.js";
 import { createApp } from "./server.js";
+
+// 2026-09-23
+
 const config = configFromEnv();
 const db = createPool(config);
 await db.query("SELECT 1");
