@@ -21,6 +21,10 @@ const statusText = {
   415: "Unsupported Media Type",
 } as const;
 
+export function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
 export class HTTPError extends Error {
   readonly status: ContentfulStatusCode;
 
@@ -30,8 +34,7 @@ export class HTTPError extends Error {
   }
 
   static badRequest(err: unknown): HTTPError {
-    const message = err instanceof Error ? err.message : String(err);
-    return new HTTPError(400, `code=400, message=Bad Request, err=${message}`);
+    return new HTTPError(400, `code=400, message=Bad Request, err=${errorMessage(err)}`);
   }
 
   static unsupportedMediaType(): HTTPError {
