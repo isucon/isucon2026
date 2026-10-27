@@ -15,6 +15,8 @@ integration test against the portal before deploying.
 
 Local changes:
 
+- SurveyResponse includes agent (field 2), harness (field 3), and model (field 4), matching the portal protocol.
+
 - Default hard timeout: 70 → 150 seconds for the benchmark's 120-second budget.
 - HTTP requests have a 15-second timeout, including progress reports.
 - Nonzero/signal/missing exit status and supervisor errors force fail and zero score.
