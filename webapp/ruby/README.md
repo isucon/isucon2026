@@ -4,6 +4,7 @@
 
 - Ruby 4.0 / [Sinatra](https://sinatrarb.com/) / [Puma](https://puma.io/) / [pg](https://github.com/ged/ruby-pg)
 - 依存 gem は `Gemfile` と `Gemfile.lock` で固定しています
+- 画像の検証に libjpeg-turbo の TurboJPEG API を [ffi](https://github.com/ffi/ffi) から呼びます。実行には `libturbojpeg.so.0`（Debian では `libturbojpeg0`、Ubuntu では `libturbojpeg`）が必要です
 
 ## 構成
 
