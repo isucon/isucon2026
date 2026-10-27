@@ -32,6 +32,13 @@ func main() {
 		}()
 	}
 	server := isureal.NewServer(config)
+	if addr := os.Getenv("ISUREAL_PUBLIC_LISTEN"); addr != "" {
+		go func() {
+			if err := isureal.ServePublic(server, addr); err != nil {
+				panic("failed to start public listener: " + err.Error())
+			}
+		}()
+	}
 	if err := server.Start(":8080"); err != nil {
 		panic("failed to start server: " + err.Error())
 	}
