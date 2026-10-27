@@ -33,6 +33,7 @@ use crate::image_api::get_image_handler;
 use crate::initialize::initialize_handler;
 use crate::ip_ban::{IpBanList, ip_ban_middleware};
 use crate::memory_api::{get_memories_by_date_handler, get_memories_handler};
+use crate::native_write_fence::NativeWriteFence;
 use crate::notification_api::{NotificationHub, get_notifications_handler};
 use crate::post_api::{
     create_post_handler, delete_post_handler, get_my_current_post_handler, get_post_handler,
@@ -106,37 +107,62 @@ pub async fn new_server(config: Config) -> Router {
                 .await
                 .expect("read commit mode");
             assert!(
-                matches!(mode.as_str(), "on" | "remote_apply"),
+                matches!(mode.as_str(), "local" | "on" | "remote_apply"),
                 "write fences require durable primary commits"
             );
-            let mut fences = Vec::new();
-            for host in hosts {
-                assert!(!host.is_empty(), "write fence host must not be empty");
-                let mut replica_config = handler_context.config.clone();
-                replica_config.db_host = host.to_owned();
-                let options = PgConnectOptions::from_str(&replica_config.database_dsn())
-                    .expect("write fence database options")
-                    .options([("default_transaction_read_only", "on")]);
-                // Avoid a separate cross-region ping before every WAL query.
-                // A dead connection fails the barrier closed instead.
-                let replica = PgPoolOptions::new()
-                    .max_connections(2)
-                    .test_before_acquire(false)
-                    .connect_with(options)
+            let fence_mode =
+                std::env::var("ISUREAL_WRITE_FENCE_MODE").unwrap_or_else(|_| "poll".into());
+            if fence_mode == "native" {
+                let standbys: String = sqlx::query_scalar("SHOW synchronous_standby_names")
+                    .fetch_one(&handler_context.db)
                     .await
-                    .expect("connect write fence standby");
-                let in_recovery: bool = sqlx::query_scalar("SELECT pg_is_in_recovery()")
-                    .fetch_one(&replica)
-                    .await
-                    .expect("read write fence recovery state");
-                assert!(in_recovery, "write fence target must be a standby");
-                fences.push(ReadFence::new(
+                    .expect("read synchronous standbys");
+                assert_eq!(
+                    standbys, "FIRST 2 (astra_europe, astra_america)",
+                    "native write fences require both synchronous standbys"
+                );
+                let table_exists: bool = sqlx::query_scalar(
+                    "SELECT to_regclass('astra_visibility_barriers') IS NOT NULL",
+                )
+                .fetch_one(&handler_context.db)
+                .await
+                .expect("check barrier table");
+                assert!(table_exists, "install visibility barrier migration first");
+                Some(WriteFence::Native(NativeWriteFence::new(
                     handler_context.db.clone(),
-                    replica,
                     std::time::Duration::from_secs(30),
-                ));
+                )))
+            } else {
+                assert_eq!(fence_mode, "poll", "unknown write fence mode");
+                let mut fences = Vec::new();
+                for host in hosts {
+                    assert!(!host.is_empty(), "write fence host must not be empty");
+                    let mut replica_config = handler_context.config.clone();
+                    replica_config.db_host = host.to_owned();
+                    let options = PgConnectOptions::from_str(&replica_config.database_dsn())
+                        .expect("write fence database options")
+                        .options([("default_transaction_read_only", "on")]);
+                    // Avoid a separate cross-region ping before every WAL query.
+                    // A dead connection fails the barrier closed instead.
+                    let replica = PgPoolOptions::new()
+                        .max_connections(2)
+                        .test_before_acquire(false)
+                        .connect_with(options)
+                        .await
+                        .expect("connect write fence standby");
+                    let in_recovery: bool = sqlx::query_scalar("SELECT pg_is_in_recovery()")
+                        .fetch_one(&replica)
+                        .await
+                        .expect("read write fence recovery state");
+                    assert!(in_recovery, "write fence target must be a standby");
+                    fences.push(ReadFence::new(
+                        handler_context.db.clone(),
+                        replica,
+                        std::time::Duration::from_secs(30),
+                    ));
+                }
+                Some(WriteFence::new(fences))
             }
-            Some(WriteFence::new(fences))
         }
         _ => None,
     };
@@ -155,7 +181,7 @@ pub async fn new_server(config: Config) -> Router {
             let fenced = std::env::var("ISUREAL_READ_FENCE").is_ok_and(|value| value == "1");
             if fenced || write_fence.is_some() {
                 assert!(
-                    matches!(mode.as_str(), "on" | "remote_apply"),
+                    matches!(mode.as_str(), "local" | "on" | "remote_apply"),
                     "fenced reads require durable primary commits"
                 );
             } else {

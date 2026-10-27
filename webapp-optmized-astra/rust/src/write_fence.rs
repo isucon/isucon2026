@@ -6,19 +6,28 @@ use axum::response::{IntoResponse, Response};
 
 use crate::api_error::new_api_error;
 use crate::logger;
+use crate::native_write_fence::NativeWriteFence;
 use crate::read_fence::ReadFence;
 
 #[derive(Clone)]
-pub struct WriteFence(Vec<ReadFence>);
+pub enum WriteFence {
+    Polling(Vec<ReadFence>),
+    Native(NativeWriteFence),
+}
 
 impl WriteFence {
     pub fn new(replicas: Vec<ReadFence>) -> Self {
         assert_eq!(replicas.len(), 2, "both regional replicas must be fenced");
-        Self(replicas)
+        Self::Polling(replicas)
     }
 
     pub async fn wait(&self) -> Result<(), String> {
-        futures_util::future::try_join_all(self.0.iter().map(ReadFence::wait)).await?;
+        match self {
+            Self::Polling(replicas) => {
+                futures_util::future::try_join_all(replicas.iter().map(ReadFence::wait)).await?;
+            }
+            Self::Native(fence) => fence.wait().await?,
+        }
         Ok(())
     }
 }
@@ -59,7 +68,9 @@ mod tests {
     };
     use futures_util::FutureExt;
     use sqlx::PgPool;
+    use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
     use std::panic::AssertUnwindSafe;
+    use std::str::FromStr;
     use std::time::Duration;
     use tokio::time::{sleep, timeout};
     use tower::ServiceExt;
@@ -104,6 +115,15 @@ mod tests {
 
     #[tokio::test]
     async fn responses_wait_for_both_replicas_after_releasing_write_locks() {
+        check_released_locks(false).await;
+    }
+
+    #[tokio::test]
+    async fn native_commit_waits_for_both_replicas_without_application_locks() {
+        check_released_locks(true).await;
+    }
+
+    async fn check_released_locks(native: bool) {
         let (Ok(primary_dsn), Ok(replica_dsn), Ok(replica2_dsn)) = (
             std::env::var("ISUREAL_FENCE_PRIMARY_DSN"),
             std::env::var("ISUREAL_FENCE_REPLICA_DSN"),
@@ -112,7 +132,14 @@ mod tests {
             return;
         };
         let _serial = crate::read_fence::TEST_REPLICA_LOCK.lock().await;
-        let primary = PgPool::connect(&primary_dsn).await.unwrap();
+        let primary = PgPoolOptions::new()
+            .connect_with(
+                PgConnectOptions::from_str(&primary_dsn)
+                    .unwrap()
+                    .options([("synchronous_commit", "local")]),
+            )
+            .await
+            .unwrap();
         let replica = PgPool::connect(&replica_dsn).await.unwrap();
         let replica2 = PgPool::connect(&replica2_dsn).await.unwrap();
         assert!(
@@ -128,11 +155,56 @@ mod tests {
                 .unwrap()
         );
         let table = format!("astra_write_fence_{}", uuid::Uuid::new_v4().simple());
-        let fence = WriteFence::new(vec![
-            ReadFence::new(primary.clone(), replica.clone(), Duration::from_secs(3)),
-            ReadFence::new(primary.clone(), replica2.clone(), Duration::from_secs(3)),
-        ]);
+        let fence = if native {
+            WriteFence::Native(NativeWriteFence::new(
+                primary.clone(),
+                Duration::from_secs(3),
+            ))
+        } else {
+            WriteFence::new(vec![
+                ReadFence::new(primary.clone(), replica.clone(), Duration::from_secs(3)),
+                ReadFence::new(primary.clone(), replica2.clone(), Duration::from_secs(3)),
+            ])
+        };
         let result = AssertUnwindSafe(async {
+            if native {
+                let previous: String = sqlx::query_scalar("SHOW synchronous_standby_names")
+                    .fetch_one(&primary)
+                    .await
+                    .unwrap();
+                assert_eq!(
+                    previous, "",
+                    "native test requires a dedicated asynchronous test primary"
+                );
+                sqlx::query(
+                    "CREATE TABLE IF NOT EXISTS astra_visibility_barriers (id text PRIMARY KEY)",
+                )
+                .execute(&primary)
+                .await
+                .unwrap();
+                sqlx::query("ALTER SYSTEM SET synchronous_standby_names = 'FIRST 2 (*)'")
+                    .execute(&primary)
+                    .await
+                    .unwrap();
+                sqlx::query("SELECT pg_reload_conf()")
+                    .execute(&primary)
+                    .await
+                    .unwrap();
+                timeout(Duration::from_secs(3), async {
+                    while sqlx::query_scalar::<_, i64>(
+                        "SELECT count(*) FROM pg_stat_replication WHERE sync_state='sync'",
+                    )
+                    .fetch_one(&primary)
+                    .await
+                    .unwrap()
+                        != 2
+                    {
+                        sleep(Duration::from_millis(10)).await;
+                    }
+                })
+                .await
+                .unwrap();
+            }
             sqlx::raw_sql(&format!(
                 "CREATE TABLE {table} (value integer); INSERT INTO {table} VALUES (0);"
             ))
@@ -242,6 +314,61 @@ mod tests {
             );
             assert_eq!(value(&replica, &table).await, 3);
             assert_eq!(value(&replica2, &table).await, 3);
+            if native {
+                // A timeout after the application commit must never return its
+                // successful response while one standby is still behind.
+                sqlx::query("SELECT pg_wal_replay_pause()")
+                    .execute(&replica2)
+                    .await
+                    .unwrap();
+                timeout(Duration::from_secs(2), async {
+                    while !sqlx::query_scalar::<_, bool>(
+                        "SELECT pg_get_wal_replay_pause_state()='paused'",
+                    )
+                    .fetch_one(&replica2)
+                    .await
+                    .unwrap()
+                    {
+                        sleep(Duration::from_millis(5)).await;
+                    }
+                })
+                .await
+                .unwrap();
+                let short = WriteFence::Native(NativeWriteFence::new(
+                    primary.clone(),
+                    Duration::from_millis(100),
+                ));
+                let response = timeout(
+                    Duration::from_secs(2),
+                    super::tests::app(primary.clone(), table.clone(), short).oneshot(
+                        HttpRequest::builder()
+                            .method("POST")
+                            .uri("/write")
+                            .body(Body::empty())
+                            .unwrap(),
+                    ),
+                )
+                .await
+                .unwrap()
+                .unwrap();
+                assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+                assert_eq!(value(&primary, &table).await, 4);
+                assert_eq!(value(&replica2, &table).await, 3);
+                sqlx::query("SELECT pg_wal_replay_resume()")
+                    .execute(&replica2)
+                    .await
+                    .unwrap();
+                fence.wait().await.unwrap();
+                assert_eq!(value(&replica, &table).await, 4);
+                assert_eq!(value(&replica2, &table).await, 4);
+                assert_eq!(
+                    sqlx::query_scalar::<_, i64>("SELECT count(*) FROM astra_visibility_barriers")
+                        .fetch_one(&primary)
+                        .await
+                        .unwrap(),
+                    0
+                );
+            }
         })
         .catch_unwind()
         .await;
@@ -249,6 +376,20 @@ mod tests {
             .execute(&replica2)
             .await
             .unwrap();
+        if native {
+            sqlx::query("ALTER SYSTEM SET synchronous_standby_names = ''")
+                .execute(&primary)
+                .await
+                .unwrap();
+            sqlx::query("SELECT pg_reload_conf()")
+                .execute(&primary)
+                .await
+                .unwrap();
+            sqlx::query("DROP TABLE IF EXISTS astra_visibility_barriers")
+                .execute(&primary)
+                .await
+                .unwrap();
+        }
         sqlx::query(&format!("DROP TABLE IF EXISTS {table}"))
             .execute(&primary)
             .await

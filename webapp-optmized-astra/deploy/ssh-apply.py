@@ -18,6 +18,10 @@ mode = sys.argv[1] if len(sys.argv) > 1 else "all"
 assert mode in ("all", "application", "database", "replication")
 read_fence = runtime.get("readFenceEnabled", False)
 write_fence = runtime.get("writeFenceEnabled", False)
+write_fence_mode = runtime.get("writeFenceMode", "poll")
+assert write_fence_mode in ("poll", "native")
+native_fence = write_fence_mode == "native"
+assert not native_fence or write_fence
 assert not runtime["replicaReads"] or runtime["replicasSynchronous"] or read_fence or write_fence
 ssh = str(DEPLOY / "ssh.sh")
 database = runtime["database"]["instanceId"]
@@ -52,6 +56,7 @@ def require_write_fences():
     expected = shlex.quote("ISUREAL_WRITE_FENCE_HOSTS=" + write_fence_hosts)
     for instance, service in services:
         remote(instance, f"systemctl is-active --quiet {service} && systemctl show {service} -p Environment --value | tr ' ' '\\n' | grep -Fxq {expected} || {{ echo 'Enable write fences on every writer with read fences still enabled first' >&2; exit 1; }}")
+        remote(instance, f"systemctl show {service} -p Environment --value | tr ' ' '\\n' | grep -Fxq ISUREAL_WRITE_FENCE_MODE={write_fence_mode} || {{ echo 'Deploy the requested fence mode with synchronous replication enabled first' >&2; exit 1; }}")
 
 
 if runtime["replicaReads"] and not runtime["replicasSynchronous"] and not read_fence:
@@ -83,7 +88,7 @@ def application(app):
     copy(instance, ROOT / runtime["archivePath"], "/home/isucon/astra-release.tar.gz")
     read_host = "127.0.0.1" if runtime["replicaReads"] and "replicaName" in app else ""
     fenced = "1" if read_host and read_fence else "0"
-    remote(instance, "sudo bash /home/isucon/astra-deploy/application.sh /home/isucon/astra-release.tar.gz " + shlex.quote(read_host) + " " + fenced + " " + shlex.quote(write_fence_hosts))
+    remote(instance, "sudo bash /home/isucon/astra-deploy/application.sh /home/isucon/astra-release.tar.gz " + shlex.quote(read_host) + " " + fenced + " " + shlex.quote(write_fence_hosts) + " " + shlex.quote(write_fence_mode))
 
 
 def write_frontend(app):
@@ -124,7 +129,7 @@ if mode in ("all", "replication") and runtime["replicasEnabled"]:
     elif not runtime["replicasSynchronous"]:
         for app in replicas:
             remote(app["instanceId"], "if systemctl show webapp-optmized-astra -p Environment --value | grep -q ISUREAL_DB_READ_HOST=127.0.0.1 && ! systemctl show webapp-optmized-astra -p Environment --value | grep -q ISUREAL_READ_FENCE=1; then echo 'Enable read fences or disable local reads before disabling synchronous replication' >&2; exit 1; fi")
-    remote(database, "sudo bash /home/isucon/astra-deploy/replication-primary.sh " + synchronous)
+    remote(database, "sudo bash /home/isucon/astra-deploy/replication-primary.sh " + synchronous + " " + str(native_fence).lower())
 
     def standby(app):
         remote(app["instanceId"], "sudo bash /home/isucon/astra-deploy/replication-standby.sh " + shlex.quote(app["replicaName"]))

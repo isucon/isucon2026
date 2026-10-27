@@ -84,6 +84,16 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 クライアントが切断しても更新処理と反映確認は継続する。確認が失敗した場合、更新自体はコミット済みの場合がある。
 この方式を解除するときは、先に同期レプリケーションか全読み取り側の確認を有効にする。
 
+`writeFenceMode=native`では、通常更新とは別の小さなトランザクションで`remote_apply`の完了を待つ。
+まず`replicasSynchronous=true`をDBへ反映し、`deploy/apply.sh database`で007の空テーブルを追加する。
+同期設定を維持したまま`writeFenceMode=native`として全アプリを反映した後、
+`replicasSynchronous=false`をDBへ反映する。この場合は両同期スタンバイ名を残して通常のコミットを
+`local`へ変更し、レスポンス待ち専用トランザクションだけが`remote_apply`を使う。
+通常更新のロックは保持せず、専用テーブルへの挿入・削除とそのコミット記録で、それ以前の更新の反映を確認する。
+テーブルは各トランザクション完了後に空になる。`poll`へ戻す場合も先に同期設定を復旧する。
+ローカルDBへの永続化とトランザクションごとの設定変更は
+[PostgreSQL 16の同期設定](https://www.postgresql.org/docs/16/runtime-config-wal.html#GUC-SYNCHRONOUS-COMMIT)に従う。
+
 単一DBへ戻す際は、先に`replicaReads=false`として`deploy/apply.sh application`で全台を切り替え、
 その完了後に同期レプリケーションを解除する。初期AMIのDBは各VMの`16/main`に保持する。
 
@@ -130,3 +140,4 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261027T142139Z-team10 | bounded regional feed queries with SQL visibility filtering | PASS | 42,375 |
 | 20261027T145324Z-team10 | asynchronous replicas with fresh batched WAL read fences | PASS | 32,193 |
 | 20261027T151601Z-team10 | post-commit write response fences release locks before replica replay | PASS | 35,586 |
+| 20261027T153400Z-team10 | native replica response barriers with durable local application commits | PASS | 36,101 |
