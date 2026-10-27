@@ -7,6 +7,7 @@ import (
 	"net/netip"
 	"net/url"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"time"
@@ -45,18 +46,26 @@ func (h Hostnames) For(server domain.ServerID) string {
 type Config struct {
 	PortalEndpoint      string
 	TeamNumber          uint32
-	XDSListenAddress    string
 	StatusListenAddress string
-	EnvoyNodeID         string
-	RouteConfigName     string
-	Hosts               Hostnames
-	Servers             map[domain.ServerID]ServerNetwork
-	Traffic             domain.TrafficProfile
-	XDSAckTimeout       time.Duration
-	CommandTimeout      time.Duration
-	ReportRetryInterval time.Duration
-	ReconnectMinBackoff time.Duration
-	ReconnectMaxBackoff time.Duration
+	// HTTPListenAddress and HTTPSListenAddress are where HAProxy accepts
+	// clients. HTTPS is disabled when its address is empty.
+	HTTPListenAddress  string
+	HTTPSListenAddress string
+	// TLSCertificate is a PEM file holding the certificate chain and the key.
+	TLSCertificate string
+	// UpstreamPort is the HTTP port of the application servers.
+	UpstreamPort uint16
+	// HAProxyDir holds the files that HAProxy loads.
+	HAProxyDir string
+	// HAProxyRuntimeAddress is the TCP address of the HAProxy runtime API.
+	HAProxyRuntimeAddress string
+	Hosts                 Hostnames
+	Servers               map[domain.ServerID]ServerNetwork
+	Traffic               domain.TrafficProfile
+	CommandTimeout        time.Duration
+	ReportRetryInterval   time.Duration
+	ReconnectMinBackoff   time.Duration
+	ReconnectMaxBackoff   time.Duration
 }
 
 func FromEnv() (Config, error) {
@@ -69,13 +78,21 @@ func Load(lookup LookupFunc) (Config, error) {
 		return Config{}, errors.New("ROUTER_TEAM_NUMBER must be a positive uint32")
 	}
 
+	upstreamPort, err := uint32Value(lookup, "ROUTER_UPSTREAM_PORT", 8080)
+	if err != nil || upstreamPort == 0 || upstreamPort > 65535 {
+		return Config{}, errors.New("ROUTER_UPSTREAM_PORT must be a TCP port")
+	}
+
 	cfg := Config{
-		PortalEndpoint:      stringValue(lookup, "ROUTER_PORTAL_ENDPOINT", "http://portal:8080"),
-		TeamNumber:          teamNumber,
-		XDSListenAddress:    stringValue(lookup, "ROUTER_XDS_LISTEN_ADDRESS", "0.0.0.0:18000"),
-		StatusListenAddress: stringValue(lookup, "ROUTER_STATUS_LISTEN_ADDRESS", "0.0.0.0:18081"),
-		EnvoyNodeID:         stringValue(lookup, "ROUTER_ENVOY_NODE_ID", "isureal-router-envoy"),
-		RouteConfigName:     stringValue(lookup, "ROUTER_ROUTE_CONFIG_NAME", "isureal_routes"),
+		PortalEndpoint:        stringValue(lookup, "ROUTER_PORTAL_ENDPOINT", "http://portal:8080"),
+		TeamNumber:            teamNumber,
+		StatusListenAddress:   stringValue(lookup, "ROUTER_STATUS_LISTEN_ADDRESS", "0.0.0.0:18081"),
+		HTTPListenAddress:     stringValue(lookup, "ROUTER_HTTP_LISTEN_ADDRESS", "0.0.0.0:8080"),
+		HTTPSListenAddress:    stringValue(lookup, "ROUTER_HTTPS_LISTEN_ADDRESS", ""),
+		TLSCertificate:        stringValue(lookup, "ROUTER_TLS_CERTIFICATE", ""),
+		UpstreamPort:          uint16(upstreamPort),
+		HAProxyDir:            stringValue(lookup, "ROUTER_HAPROXY_DIR", "/run/isureal-haproxy"),
+		HAProxyRuntimeAddress: stringValue(lookup, "ROUTER_HAPROXY_RUNTIME_ADDRESS", "127.0.0.1:18001"),
 		Hosts: Hostnames{
 			App:  stringValue(lookup, "ROUTER_APP_HOST", "app.team1-abc123.isucon2026.westens.tokyo"),
 			App1: stringValue(lookup, "ROUTER_APP1_HOST", "app1.team1-abc123.isucon2026.westens.tokyo"),
@@ -114,7 +131,7 @@ func Load(lookup LookupFunc) (Config, error) {
 		cfg.Servers[server] = ServerNetwork{Subnet: subnet, RouterIP: routerIP, ServerIP: serverIP}
 	}
 
-	crossRegion := domain.TrafficClass{Delay: 200 * time.Millisecond, BandwidthBPS: 200_000_000}
+	crossRegion := domain.TrafficClass{Delay: 100 * time.Millisecond, BandwidthBPS: 200_000_000}
 	for _, class := range []struct {
 		prefix   string
 		target   *domain.TrafficClass
@@ -133,10 +150,6 @@ func Load(lookup LookupFunc) (Config, error) {
 		if err != nil {
 			return Config{}, err
 		}
-	}
-	cfg.XDSAckTimeout, err = durationValue(lookup, "ROUTER_XDS_ACK_TIMEOUT", 5*time.Second)
-	if err != nil {
-		return Config{}, err
 	}
 	cfg.CommandTimeout, err = durationValue(lookup, "ROUTER_COMMAND_TIMEOUT", 5*time.Second)
 	if err != nil {
@@ -167,13 +180,24 @@ func (c Config) Validate() error {
 	if err != nil || (portalURL.Scheme != "http" && portalURL.Scheme != "https") || portalURL.Host == "" {
 		return errors.New("ROUTER_PORTAL_ENDPOINT must be an absolute HTTP(S) URL")
 	}
-	for name, address := range map[string]string{"xds": c.XDSListenAddress, "status": c.StatusListenAddress} {
+	for name, address := range map[string]string{"status": c.StatusListenAddress, "HTTP": c.HTTPListenAddress, "HAProxy runtime": c.HAProxyRuntimeAddress} {
 		if _, _, err := net.SplitHostPort(address); err != nil {
-			return fmt.Errorf("%s listen address: %w", name, err)
+			return fmt.Errorf("%s address: %w", name, err)
 		}
 	}
-	if c.EnvoyNodeID == "" || c.RouteConfigName == "" {
-		return errors.New("Envoy node ID and route config name are required")
+	if c.HTTPSListenAddress != "" {
+		if _, _, err := net.SplitHostPort(c.HTTPSListenAddress); err != nil {
+			return fmt.Errorf("HTTPS listen address: %w", err)
+		}
+		if !filepath.IsAbs(c.TLSCertificate) {
+			return errors.New("ROUTER_TLS_CERTIFICATE must be an absolute path when HTTPS is enabled")
+		}
+	}
+	if c.UpstreamPort == 0 {
+		return errors.New("upstream port is required")
+	}
+	if !filepath.IsAbs(c.HAProxyDir) {
+		return errors.New("ROUTER_HAPROXY_DIR must be an absolute path")
 	}
 	hosts := []string{c.Hosts.App, c.Hosts.App1, c.Hosts.App2, c.Hosts.App3}
 	seenHosts := make(map[string]struct{}, len(hosts))
@@ -198,7 +222,7 @@ func (c Config) Validate() error {
 	if err := c.Traffic.Validate(); err != nil {
 		return err
 	}
-	if c.XDSAckTimeout <= 0 || c.CommandTimeout <= 0 || c.ReportRetryInterval <= 0 || c.ReconnectMinBackoff <= 0 || c.ReconnectMaxBackoff <= 0 {
+	if c.CommandTimeout <= 0 || c.ReportRetryInterval <= 0 || c.ReconnectMinBackoff <= 0 || c.ReconnectMaxBackoff <= 0 {
 		return errors.New("timeouts and backoffs must be positive")
 	}
 	if c.ReconnectMinBackoff > c.ReconnectMaxBackoff {

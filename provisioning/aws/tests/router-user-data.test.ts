@@ -1,8 +1,10 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test } from "vitest";
-import { team } from "../lib/topology";
+import { appHttpPort, team } from "../lib/topology";
 import {
+	routerEnvironment,
+	routerNetplan,
 	routerCloudInitConfig,
 	routerDataReconfigurePath,
 	routerDataReconfigureScript,
@@ -63,6 +65,31 @@ test("starts the router services only after data0 has its static routes", () => 
 	const runcmd = userData.slice(userData.indexOf("runcmd:\n"));
 	expect(runcmd).toBe(`runcmd:
   - until ${routerNetworkScriptPath}; do sleep 5; done
-  - systemctl enable --now isureal-portal isureal-router isureal-envoy
+  - systemctl enable --now isureal-portal isureal-router isureal-haproxy
 `);
+});
+
+test("uses jumbo frames on the data interface like the servers", () => {
+	expect(routerNetplan(team(6), "06:ff:f7:f4:e5:2b")).toMatch(
+		/set-name: data0\n\s+dhcp4: false\n\s+mtu: 9001\n/,
+	);
+});
+
+// HAProxy は証明書のチェーンと鍵を 1 つの PEM から読む
+test("writes the certificate and key in one PEM for HAProxy", () => {
+	expect(writtenFile("/etc/isucon/haproxy/tls/server.pem")).toEqual({
+		permissions: "0640",
+		content: "cert\nkey\n",
+	});
+	expect(userData).not.toContain("envoy");
+});
+
+test("points the Router and HAProxy at the team's servers", () => {
+	const env = routerEnvironment(team(6));
+	expect(env).toContain("ROUTER_HTTPS_LISTEN_ADDRESS=0.0.0.0:443\n");
+	expect(env).toContain(
+		"ROUTER_TLS_CERTIFICATE=/etc/isucon/haproxy/tls/server.pem\n",
+	);
+	expect(env).toContain(`ROUTER_UPSTREAM_PORT=${appHttpPort}\n`);
+	expect(env).not.toMatch(/XDS|ENVOY/);
 });

@@ -1,0 +1,29 @@
+[Unit]
+Description=ISUReal HAProxy edge proxy
+After=network-online.target
+Wants=network-online.target
+
+# The configuration comes from the Router environment; the Router controller
+# sets the Portal's default country through the runtime API.
+[Service]
+Type=notify
+User=isureal-router
+Group=isureal-router
+EnvironmentFile=/etc/isucon/router.env
+RuntimeDirectory=isureal-haproxy
+LimitNOFILE=1048576
+ExecStartPre=/opt/isucon/bin/isureal-router haproxy-config
+ExecStartPre=/usr/sbin/haproxy -c -q -f /run/isureal-haproxy/haproxy.cfg
+ExecStart=/usr/sbin/haproxy -Ws -f /run/isureal-haproxy/haproxy.cfg
+KillMode=mixed
+Restart=on-failure
+RestartSec=1s
+NoNewPrivileges=true
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target
