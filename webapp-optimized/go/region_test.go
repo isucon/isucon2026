@@ -90,7 +90,7 @@ func TestRegionIntegration(t *testing.T) {
 	}
 	request("GET", "/api/me", "", "", "", http.StatusUnauthorized)
 	request("PATCH", "/api/me", token, `{"displayName":"Changed","bio":"bio"}`, "application/json", http.StatusOK)
-	request("PUT", "/api/me/profile-image", token, "image bytes", "image/jpeg", http.StatusNoContent)
+	request("PUT", "/api/me/profile-image", token, string(testJPEG(t)), "image/jpeg", http.StatusNoContent)
 	request("DELETE", "/api/me/profile-image", token, "", "", http.StatusNoContent)
 	request("PATCH", "/api/me", token, `{"region":"asia"}`, "application/json", http.StatusOK)
 	request("GET", "/api/me", token, "", "", http.StatusOK)

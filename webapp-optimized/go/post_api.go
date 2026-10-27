@@ -3,7 +3,6 @@ package isureal
 import (
 	"database/sql"
 	"errors"
-	"io"
 	"mime/multipart"
 	"net/http"
 	"time"
@@ -69,9 +68,12 @@ func createPostHandler(h *HandlerContext) echo.HandlerFunc {
 			return err
 		}
 		defer imageFile.Close()
-		imageData, err := io.ReadAll(imageFile)
+		imageData, ok, err := readJPEG(imageFile, 4096)
 		if err != nil {
 			return err
+		}
+		if !ok {
+			return NewAPIError(http.StatusBadRequest, "invalid_post")
 		}
 
 		result, err := runWrite(c.Request().Context(), h.DB, "post_create", GetSession(c).UserID,

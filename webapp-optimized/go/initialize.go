@@ -30,6 +30,9 @@ func initializeHandler(h *HandlerContext) echo.HandlerFunc {
 		if err := reloadEverywhere(c.Request().Context(), h.DB); err != nil {
 			return err
 		}
+		if err := h.IPBans.reload(c.Request().Context(), h.ReadDB); err != nil {
+			return err
+		}
 		warmConnections(c.Request().Context(), h.DB)
 
 		// Set language to the implementation language.
