@@ -117,7 +117,18 @@ def main():
         # A failed copy, SQL check or cleanup must not leave applications down.
         def start(item):
             instance, service = item
-            remote(instance, f"sudo systemctl start {service} && systemctl is-active {service}")
+            host, port = (asia["host"], 8081) if service.endswith("-writer") else ("127.0.0.1", 8080)
+            ready = f"""import socket,time
+end=time.monotonic()+30
+while True:
+    try:
+        socket.create_connection(({host!r},{port}),timeout=1).close()
+        break
+    except OSError:
+        if time.monotonic()>=end: raise
+        time.sleep(0.2)
+"""
+            remote(instance, f"sudo systemctl start {service} && systemctl is-active {service} && python3 -c " + shlex.quote(ready))
         with ThreadPoolExecutor(max_workers=4) as pool:
             list(pool.map(start, reversed(stopped)))
         remote(store["instanceId"], f"sudo rm -rf -- {remote_dir} {incoming}")
