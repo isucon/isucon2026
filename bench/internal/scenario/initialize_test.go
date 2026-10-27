@@ -14,7 +14,7 @@ import (
 
 func TestInitializeSurvey(t *testing.T) {
 	for _, tc := range []struct{ name, body, agent, harness, model string }{
-		{"manual", `{"language":"go","agent":"human","harness":"manual","model":""}`, "human", "manual", ""},
+		{"manual", `{"language":"go","agent":"human","harness":"manual","model":"brain"}`, "human", "manual", "brain"},
 		{"custom", `{"language":"go","agent":"custom-agent","harness":"custom-tool","model":"model-a,model-b"}`, "custom-agent", "custom-tool", "model-a,model-b"},
 		{"single", `{"language":"go","agent":"custom-agent","harness":"custom-tool","model":"model-a"}`, "custom-agent", "custom-tool", "model-a"},
 		{"legacy", `{"language":"go"}`, "", "", ""},

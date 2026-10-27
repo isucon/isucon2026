@@ -24,8 +24,8 @@ final class InitializeHandler
             throw new \RuntimeException('failed to run ' . self::INIT_SCRIPT . ': exit status ' . ($status ?? -1));
         }
         // Agents optimizing this app: set agent, harness, and model to the names used.
-        // For multiple models, use comma-separated names; leave model empty for manual work.
+        // For multiple models, use comma-separated names; use brain when no AI model is used.
         // These fields are for survey purposes only and do not affect scoring.
-        return Json::respond($response, ['language' => 'php', 'agent' => 'human', 'harness' => 'manual', 'model' => '']);
+        return Json::respond($response, ['language' => 'php', 'agent' => 'human', 'harness' => 'manual', 'model' => 'brain']);
     }
 }

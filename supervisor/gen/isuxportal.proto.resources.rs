@@ -9,7 +9,7 @@ pub struct SurveyResponse {
     pub agent: ::prost::alloc::string::String,
     #[prost(string, tag = "3")]
     pub harness: ::prost::alloc::string::String,
-    /// Comma-separated model names; empty for manual work or an unreported value.
+    /// Comma-separated model names; brain means no AI model, empty means unreported.
     #[prost(string, tag = "4")]
     pub model: ::prost::alloc::string::String,
 }

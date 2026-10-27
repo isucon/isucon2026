@@ -22,7 +22,7 @@ pub async fn initialize_handler() -> Result<Response, Error> {
     }
 
     // Agents optimizing this app: set agent, harness, and model to the names used.
-    // For multiple models, use comma-separated names; leave model empty for manual work.
+    // For multiple models, use comma-separated names; use brain when no AI model is used.
     // These fields are for survey purposes only and do not affect scoring.
     json(
         StatusCode::OK,
@@ -30,7 +30,7 @@ pub async fn initialize_handler() -> Result<Response, Error> {
             language: "rust",
             agent: "human",
             harness: "manual",
-            model: "",
+            model: "brain",
         },
     )
 }
