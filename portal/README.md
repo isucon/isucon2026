@@ -187,3 +187,47 @@ bypass token の Ruby ⇔ Go 相互運用などを検証する。
 buf generate                              # Go → gen/pb
 buf generate --template buf.gen.ruby.yaml # Ruby（テスト用） → rspec/lib
 ```
+
+
+## 利用言語とエージェントの調査
+
+ベンチマーカーは初期化レスポンスの `language`、`agent`、`harness` を `SurveyResponse` で送信し、スーパーバイザーがポータルへ中継します。
+申告は調査用で、得点や合否の判定には使いません。
+`agent` と `harness` が未申告の場合は空文字で保存します。
+初期化前など `language` が空の報告は、既存の申告を上書きしません。
+
+| テーブル | 保存単位 | 更新方法 |
+| --- | --- | --- |
+| `survey_responses` | チームごとに1行 | 最新の申告で上書き |
+| `survey_response_history` | ベンチジョブごとに1行 | 同じジョブの途中報告と確定報告で更新。別ジョブの行は保持 |
+
+履歴の `created_at` は最初の保存時刻、`updated_at` は最後の更新時刻です。
+同じ組み合わせのまま次のベンチを実行した場合も、別の履歴行を保存します。
+初期化が成功すれば、その後ベンチが失敗した場合も申告を保存します。
+履歴はベンチ実行時の申告であり、実行と実行の間の編集履歴や、同じジョブ内の申告の変更過程は記録しません。
+競技データのリセット時は、最新値と履歴の両方を削除します。
+
+チームごとの最新の組み合わせを集計する例です。
+
+```sql
+SELECT language, agent, harness, COUNT(*) AS teams
+FROM survey_responses
+GROUP BY language, agent, harness
+ORDER BY teams DESC;
+```
+
+チームの変遷をベンチ実行順に確認する例です。
+`$1` には対象のチーム ID を指定します。
+
+```sql
+SELECT benchmark_job_id, language, agent, harness, created_at, updated_at
+FROM survey_response_history
+WHERE team_id = $1
+ORDER BY benchmark_job_id;
+```
+
+既存 DB には `005_survey_metadata.sql` を適用します。
+移行時点の最新の申告を履歴へコピーし、過去の未収集の `agent` と `harness` は空文字で残します。
+移行前に上書きされた申告は復元できません。
+既存の運用手順どおり、ポータルのサービス更新前に `cmd/migrate` を実行し、ベンチマーカーを含むスーパーバイザーも更新してください。
+古いスーパーバイザーは追加フィールドを中継時に破棄するため、ポータルだけの更新では収集できません。
