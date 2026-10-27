@@ -114,7 +114,7 @@ func Load(lookup LookupFunc) (Config, error) {
 		cfg.Servers[server] = ServerNetwork{Subnet: subnet, RouterIP: routerIP, ServerIP: serverIP}
 	}
 
-	crossRegion := domain.TrafficClass{Delay: 200 * time.Millisecond, BandwidthBPS: 200_000_000}
+	crossRegion := domain.TrafficClass{Delay: 100 * time.Millisecond, BandwidthBPS: 200_000_000}
 	for _, class := range []struct {
 		prefix   string
 		target   *domain.TrafficClass
