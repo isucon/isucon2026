@@ -22,8 +22,6 @@ async function loadIPBans(db: pg.Pool): Promise<IPBanSnapshot> {
   };
 }
 
-// Like Go's echo.ExtractIPDirect, an IPv4 peer is reported without the
-// IPv4-mapped IPv6 prefix that Node's dual-stack listener adds.
 export function extractClientIP(c: Context) {
   const header = c.req.header("X-Client-IP");
   if (header) return header;
@@ -38,7 +36,6 @@ export function ipBanMiddleware(db: pg.Pool) {
   let snapshot: IPBanSnapshot | undefined;
   let reloading = false;
   return createMiddleware(async (c, next) => {
-    // While one request reloads the list, the others use the previous snapshot.
     if (
       (snapshot === undefined ||
         Date.now() - snapshot.loadedAt >= ipBanReloadInterval) &&

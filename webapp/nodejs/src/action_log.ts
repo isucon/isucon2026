@@ -55,7 +55,6 @@ export interface LogOutput {
   write(line: string): unknown;
 }
 
-// Writes one JSON line per request, like Go's ActionLogMiddleware.
 export const actionLogMiddleware = (minLevel: string, output: LogOutput) =>
   createMiddleware<Env>(async (c, next) => {
     await next();
@@ -63,12 +62,9 @@ export const actionLogMiddleware = (minLevel: string, output: LogOutput) =>
     const level =
       status >= 500 ? "error" : c.req.method === "GET" ? "debug" : "info";
     if (logLevelRanks[level] < (lookup(logLevelRanks, minLevel) ?? 0)) return;
-    // The route is known even when a middleware such as the IP ban rejected
-    // the request before its handler ran, as with echo's RouteInfo.
     const route = matchedRoutes(c).findLast((r) => r.method !== "ALL");
     const action =
       (route && lookup(actionNames, `${route.method} ${route.path}`)) ?? null;
-    // Keys are in the same (sorted) order as Go's encoding of a map.
     const entry: Record<string, unknown> = {
       action,
       ip: extractClientIP(c),
