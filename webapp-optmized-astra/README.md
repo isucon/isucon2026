@@ -3,6 +3,16 @@
 Team 10向けのRust最適化実装。`webapp/rust`と`webapp/sql`を2335d5fから複製した。
 作業期限は2026年10月28日09:00 JST。各ベンチ結果をこのディレクトリに記録し、コミットしてpushする。
 
+<!-- astra-final-summary-start -->
+## 採用構成と最終確認
+
+最高点は[**95,017点・PASS**](results/20261027T234159Z-team10/result.json)。採用構成を再配置した最終確認は[93,597点・PASS](results/20261027T235343Z-team10/result.json)だった。各走行のソース、配布物のSHA-256、ベンチイメージは対応する`experiment.json`に記録している。
+
+メタデータはAsiaのプライマリから欧州・米州へ複製し、新規画像のバイト列は既存AsiaアプリVMの独立PostgreSQLへ保存する。欧州・米州では投稿画像とリアルモジを受信時に保持し、Asiaでも投稿画像を保持する。画像キャッシュは1GiB・16,384件、署名計算のキャッシュは65,536件、Tokioは2スレッド。画像の公開状態・現在の鍵・有効期限と、更新応答前の両レプリカへの反映確認を維持する。
+
+3地域での再起動前後の画像一致を確認済み。構成比較と未計測の候補は[DB構成とVMの役割の比較](architecture-evaluation.md)にまとめた。
+<!-- astra-final-summary-end -->
+
 ## デプロイ
 
 アプリとDBの実行設定は`deploy/runtime.json`に記録し、Pulumiプロジェクト`provisioning/aws/astra`の`dev`スタックから参照する。

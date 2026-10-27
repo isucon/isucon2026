@@ -34,10 +34,10 @@ if sys.argv[1:] == ['capture']:
     deadline = time.monotonic() + 45
     for line in reversed(lines):
         match = re.search(r'"GET (/api/images/[^ ]+) HTTP/[^\"]+" 200 ', line)
-        if not match or match[1] in seen:
+        if not match or match[1].split('?', 1)[0] in seen:
             continue
         uri = match[1]
-        seen.add(uri)
+        seen.add(uri.split('?', 1)[0])
         try:
             samples.append({'uri': uri, **fetch(uri)})
         except urllib.error.HTTPError as error:
