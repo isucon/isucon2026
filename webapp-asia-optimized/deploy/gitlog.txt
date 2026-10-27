@@ -1,0 +1,39 @@
+f4a3b5e 2026-10-20 13:45:01 +0000 use UUID v7 for new row ids (secrets stay v4)
+89cd2b8 2026-10-20 13:26:50 +0000 wake notification waiters on window open with random spread
+8b4a2ed 2026-10-20 13:12:25 +0000 lazy friends-of-friends, pooled feed buffers, worklog
+3ecf9eb 2026-10-20 12:58:50 +0000 pointer-free sig cache, refcounted key locks, compact memories caches
+5566d58 2026-10-20 12:54:08 +0000 mmap sig tables, pointer-free image index, memlimit 2000MiB
+3943d7e 2026-10-20 12:40:35 +0000 cache active interactions, pack cached strings, per-second stats
+9dc167b 2026-10-20 12:28:47 +0000 noescape for SHA block, cache per-post feed JSON
+fee7d5b 2026-10-19 15:49:13 +0000 worklog and env snapshot
+0e85dd8 2026-10-19 15:42:53 +0000 track cmd/sigworker; persist tables to disk
+209f9e2 2026-10-19 15:27:51 +0000 don't propagate client cancellation to DB queries
+ecdc373 2026-10-19 15:16:28 +0000 tune2: external storage, drop hot indexes
+5e87fea 2026-10-19 15:14:12 +0000 author posts w/o join; plan_cache_mode auto
+187189d 2026-10-19 15:10:22 +0000 precomputed signature tables from sigworkers on isu02/isu03
+8f666ce 2026-10-19 15:02:39 +0000 fast hmac chain via SHA-NI block
+e4c921d 2026-10-19 14:58:37 +0000 shared reaction locks, smaller mem image cache
+a393687 2026-10-19 14:51:29 +0000 memory-based interaction checks, pool 250, cache population
+f211414 2026-10-19 14:38:37 +0000 split lock keys
+43bd04e 2026-10-19 14:36:15 +0000 pair locks for relationships, login lock order + username cache
+3f69ab7 2026-10-19 14:33:27 +0000 route stats
+620c073 2026-10-19 14:31:27 +0000 disk image cache, memories caches, counts from memory
+91f4518 2026-10-19 14:19:07 +0000 Go listens directly per region port; drop nginx on isu01; minimal action logs
+62b461c 2026-10-19 14:16:21 +0000 bound memory: image cache 512MB, sig cache limit, GOMEMLIMIT
+ec3fedc 2026-10-19 14:11:27 +0000 register image refs at render time
+190d98d 2026-10-19 14:08:06 +0000 feed author index, go-json
+ee5326b 2026-10-19 14:03:48 +0000 exp quantum 600s
+973e0d1 2026-10-19 14:02:18 +0000 drop FKs, long-lived image meta cache
+2d65b7e 2026-10-19 13:59:50 +0000 runtime image index
+58d81d4 2026-10-19 13:57:23 +0000 app-level user/window locks instead of DB row locks
+abf2b74 2026-10-19 13:53:56 +0000 notifications in memory, no LOCK TABLE on window open, image meta TTL cache
+010d161 2026-10-19 13:50:57 +0000 in-memory state: windows, active posts, relations; feed/viewer from memory
+28f8262 2026-10-19 13:46:44 +0000 user/session caches
+0790c79 2026-10-19 13:41:44 +0000 image: single meta query + in-memory data cache
+45f0055 2026-10-19 13:38:57 +0000 feed: sql filtering + batching
+ea764d7 2026-10-19 13:36:20 +0000 faster hmac loop
+8e08ff5 2026-10-19 13:34:15 +0000 share lock on target user
+2d3bc31 2026-10-19 13:32:07 +0000 sig cache, FOR SHARE window, unique username
+03a905b 2026-10-19 13:28:29 +0000 logging
+5f26ef6 2026-10-19 13:26:25 +0000 proxy all regions to isu01, indexes, pg tuning, pool
+fb9efe7 2026-10-19 13:22:18 +0000 initial
