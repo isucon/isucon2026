@@ -5,8 +5,9 @@ Team 10向けのRust最適化実装。`webapp/rust`と`webapp/sql`を2335d5fか�
 
 ## デプロイ
 
-アプリとDBの実行設定は専用Pulumiプロジェクト`provisioning/aws/astra`の`dev`スタックで管理する。
-共有インフラや他チームの設定は変更しない。EC2への反映にはPulumi管理のSSM Document/Associationを使う。
+アプリとDBの実行設定は`deploy/runtime.json`に記録し、Pulumiプロジェクト`provisioning/aws/astra`の`dev`スタックから参照する。
+ISUCONルールに合わせて、新しいAWSリソースは作成しない。既存のTeam 10 VMへSSH/scpで反映する。
+接続には既存のEC2 Instance Connect Endpointを使い、共有インフラや他チームの設定は変更しない。
 ベンチのFargateタスクは既存のecspresso経由で実行する。
 
 ```sh
@@ -20,7 +21,10 @@ webapp-optmized-astra/deploy/benchmark.sh "experiment label"
 ```
 
 アプリは各VMの`/home/isucon/webapp-optmized-astra`へ配置し、同名のsystemdサービスで実行する。
-DB認証設定は既存VMの`/home/isucon/env.sh`を参照する。追加の秘密情報はSecrets Managerで管理する。
+DB認証設定は既存VMの`/home/isucon/env.sh`を参照する。レプリケーションの認証情報はgit管理外の
+`var/astra/.replication.env`から対象VMの`/home/isucon/.astra-replication.env`へscpで共有し、権限600で保存する。
+Secrets Managerは使用しない。秘密情報をコミットしない。初期に作成したAWS配備リソース16個は削除操作を完了し、Pulumiの状態には設定用スタックだけが残る。
+Secretの物理削除はAWSの非同期処理に従う。アプリやDBの実行・再起動はそのSecretに依存しない。
 公開された成功レスポンスの後は全地域から更新結果が見える仕様を維持する。
 
 ## 検証
@@ -33,6 +37,17 @@ node_modules/.bin/tsc --noEmit -p astra
 
 RustのDB接続を伴うキャンセル検証は`ISUREAL_SESSION_TEST_DSN`がなければスキップされる。
 単体テストだけではAPI整合性は証明できないため、Team 10の実ベンチ結果を判定に使う。
+
+## DB複製の切り替え
+
+`runtime.json`で`replicasEnabled=true`、`replicasSynchronous=false`、`replicaReads=false`として
+`deploy/apply.sh replication`を実行し、両レプリカのベースバックアップと追従を確認する。
+次に`replicasSynchronous=true`へ変更して同じコマンドで`remote_apply`を有効にする。
+最後に`replicaReads=true`として`deploy/apply.sh application`で読み取りを地域内のDBへ切り替える。
+アプリは起動時に同期設定とレプリカのリカバリー状態を検証する。
+
+単一DBへ戻す際は、先に`replicaReads=false`として`deploy/apply.sh application`で全台を切り替え、
+その完了後に同期レプリケーションを解除する。初期AMIのDBは各VMの`16/main`に保持する。
 
 ## 実験予定
 
