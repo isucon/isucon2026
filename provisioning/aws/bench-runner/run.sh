@@ -78,6 +78,12 @@ ensure_idle() {
 # チームのサーバーでも sampler.sh を動かす。SSM の出力（統計の tar.gz を base64 にしたもの）は
 # バケットの ssm/<RUN_ID>/ に置かれる
 HOST_STATS_DIR=/tmp/isureal-bench-stats
+# Router の HAProxy の統計（runtime API の show stat）を「プロキシ.サーバー.列: 値」の行にする。ほかのホストでは何も出さない
+HAPROXY_STATS="$(
+	cat <<'EOF'
+bash -c 'exec 3<>/dev/tcp/127.0.0.1/18001 && echo "show stat" >&3 && cat <&3' 2>/dev/null | awk -F, 'NR == 1 { sub(/^# /, ""); for (i = 1; i <= NF; i++) column[i] = $i; next } NF > 2 { for (i = 3; i <= NF; i++) if ($i ~ /^[0-9]+$/) print $1 "." $2 "." column[i] ": " $i }'
+EOF
+)"
 
 ssm_send() {
 	local run_id="$1" comment="$2" script="$3"
@@ -122,7 +128,8 @@ cat >"\$d/sampler.sh" <<'SAMPLER'
 $(cat "$RUNNER_DIR/sampler.sh")
 SAMPLER
 tc -s qdisc show >"\$d/tc-start.txt" 2>&1 || true
-curl -fsS 'http://127.0.0.1:9901/stats?usedonly' >"\$d/envoy-start.txt" 2>/dev/null || rm -f "\$d/envoy-start.txt"
+$HAPROXY_STATS >"\$d/haproxy-start.txt"
+[ -s "\$d/haproxy-start.txt" ] || rm -f "\$d/haproxy-start.txt"
 nohup setsid sh "\$d/sampler.sh" "\$d/stop" 1800 >"\$d/stats.tsv" 2>/dev/null </dev/null &
 EOF
 	)"
@@ -139,7 +146,7 @@ d=$HOST_STATS_DIR/$run_id
 touch "\$d/stop"
 sleep 2
 tc -s qdisc show >"\$d/tc-end.txt" 2>&1 || true
-[ ! -e "\$d/envoy-start.txt" ] || curl -fsS 'http://127.0.0.1:9901/stats?usedonly' >"\$d/envoy-end.txt" 2>/dev/null || true
+[ ! -e "\$d/haproxy-start.txt" ] || $HAPROXY_STATS >"\$d/haproxy-end.txt"
 rm -f "\$d/sampler.sh" "\$d/stop"
 tar -C "\$d" -czf - . | base64 -w0
 rm -rf "\$d"
