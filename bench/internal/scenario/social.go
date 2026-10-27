@@ -465,9 +465,11 @@ func (r *Runner) toggleBlock(ctx context.Context, u *user) {
 	}
 	now := r.model.Now()
 	var candidates []*user
-	for _, c := range r.usersSnapshot() {
+	// 同じリージョンの人から選ぶ。ほかのユーザーのリージョンは移動と競合しないよう、ロックの
+	// 中で取った一覧で見る。
+	for _, c := range r.usersByRegion()[u.Region] {
 		// 退会した人は選ばない（Visible は相手が有効で、どちら向きにもブロックしていないこと）。
-		if c.ID != u.ID && c.Region == u.Region && !c.certified.Load() && r.model.Friend(u.ID, c.ID, now) == model.False && r.model.Visible(u.ID, c.ID, now) == model.True {
+		if c.ID != u.ID && !c.certified.Load() && r.model.Friend(u.ID, c.ID, now) == model.False && r.model.Visible(u.ID, c.ID, now) == model.True {
 			candidates = append(candidates, c)
 		}
 	}

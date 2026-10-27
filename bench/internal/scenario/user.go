@@ -174,6 +174,9 @@ func (r *Runner) runUser(ctx context.Context, u *user, join bool, subscribed cha
 			s.done = true
 			if r.wandersOff(u, s.day) {
 				stopListening = r.move(ctx, u, stopListening, notifications)
+				if u.stopped.Load() {
+					continue
+				}
 				if status, err := u.API.CurrentWindow(ctx, u.Token); err == nil && status.Window != nil && status.CanPost && r.model.HasWindow(status.Window.ID) {
 					// 移った先でまだ投稿していない日付の投稿期間が開いていれば、通知を待たずに投稿する。
 					s, previous = r.enterWindow(ctx, u, status.Window.ID, previous, time.Time{}, notifications)
@@ -184,9 +187,14 @@ func (r *Runner) runUser(ctx context.Context, u *user, join bool, subscribed cha
 			}
 			if r.signsOff(u, s.day) {
 				stopListening = r.closeApp(ctx, u, s.day, stopListening, notifications)
+				if u.Token == "" {
+					// ログインし直せなかった。通知も受けないので、走行の終わりまで何もしない。
+					<-ctx.Done()
+					continue
+				}
 				if status, err := u.API.CurrentWindow(ctx, u.Token); err == nil && status.Window != nil && status.CanPost && r.model.HasWindow(status.Window.ID) {
 					s, previous = r.enterWindow(ctx, u, status.Window.ID, previous, time.Time{}, notifications)
-				} else if err != nil && u.Token != "" {
+				} else if err != nil {
 					r.requestError(ctx, u, "%s: 現在の投稿期間を取得できません: %v", u.Username, err)
 				}
 				continue
