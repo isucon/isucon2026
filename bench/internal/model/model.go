@@ -19,10 +19,13 @@ type User struct {
 	ID        string
 	Username  string
 	SecretKey string
-	Region    string
+	// Region は登録したときのリージョン。走行中に移ったあとのリージョンは region に記録する。
+	Region string
 
 	// active はユーザーが有効か（退会していないか）。
 	active *timeline[bool]
+	// region は所属するリージョンの履歴。
+	region *timeline[string]
 }
 
 // Window は投稿期間。LocalDate が同じ日の投稿で、他人の投稿のゲートが開く。
@@ -135,7 +138,7 @@ func (m *Model) LoadDataset(world *dataset.World) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for _, u := range world.Users {
-		m.users[u.ID] = &User{ID: u.ID, Username: u.Username, SecretKey: u.SecretKey, Region: u.Region, active: newTimeline(u.Status == "active")}
+		m.users[u.ID] = &User{ID: u.ID, Username: u.Username, SecretKey: u.SecretKey, Region: u.Region, active: newTimeline(u.Status == "active"), region: newTimeline(u.Region)}
 	}
 	for _, f := range world.Friendships {
 		m.friendship(f.UserLowID, f.UserHighID).initial = true
@@ -153,7 +156,17 @@ func (m *Model) AddUser(u User) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	u.active = newTimeline(true)
+	u.region = newTimeline(u.Region)
 	m.users[u.ID] = &u
+}
+
+// BeginMoveUser はユーザーが所属するリージョンを region に変える書き込みを始める。
+func (m *Model) BeginMoveUser(userID, region string) *Write {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	w := m.newWrite()
+	begin(w, m.users[userID].region, region)
+	return w
 }
 
 func (m *Model) User(id string) *User {

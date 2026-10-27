@@ -70,6 +70,12 @@ type dayStats struct {
 	ops, failures int64
 	// passers はゲートを通過した人と、投稿を始めてから通過するまでの時間。
 	passers map[string]time.Duration
+	// excused はその日に投稿しなかったが、通過できなかった人には数えない人（自分で休んだ
+	// 人と、その日をほかのリージョンで過ごして移ってきた人）。departed はその日のうちに
+	// ほかのリージョンへ移った人。rested、arrived はそのうちの休んだ人数と移ってきた人数。
+	excused         map[string]bool
+	departed        map[string]bool
+	rested, arrived int
 	// population はその日の始まりのユーザー数、newcomers はその日に来る新しいユーザー数。
 	// quick と missed は、前日にゲートを快適に（QuickShare 以内に）通過した人数と、通過
 	// できなかった人数。invites は前日に通過した人が誘った人数の合計。
@@ -96,12 +102,17 @@ type DayReport struct {
 	Invites float64 `json:"invites"`
 	// GateP50 と GateP90 は、その日のゲート通過にかかった時間（通知がすぐ届いていたら投稿を
 	// 始めたはずの時刻から）[ns]。
-	GateP50  time.Duration `json:"gateP50"`
-	GateP90  time.Duration `json:"gateP90"`
-	Passes   int           `json:"passes"`
-	Ops      int64         `json:"ops"`
-	Failures int64         `json:"failures"`
-	FailRate float64       `json:"failRate"`
+	GateP50 time.Duration `json:"gateP50"`
+	GateP90 time.Duration `json:"gateP90"`
+	Passes  int           `json:"passes"`
+	// Rested は投稿を休んだ人数、Arrived と Departed はその日にほかのリージョンから移って
+	// きた人数と、ほかのリージョンへ移った人数。
+	Rested   int     `json:"rested"`
+	Arrived  int     `json:"arrived"`
+	Departed int     `json:"departed"`
+	Ops      int64   `json:"ops"`
+	Failures int64   `json:"failures"`
+	FailRate float64 `json:"failRate"`
 	// Points はその日にそのリージョンの利用者が得た得点。
 	Points int64 `json:"points"`
 }
@@ -119,7 +130,7 @@ func newBook(tt timetable, start time.Time) *book {
 	b := &book{tt: tt, start: start, days: map[string][]*dayStats{}}
 	for _, region := range geo.Regions {
 		for range tt.days() {
-			b.days[region] = append(b.days[region], &dayStats{passers: map[string]time.Duration{}})
+			b.days[region] = append(b.days[region], &dayStats{passers: map[string]time.Duration{}, excused: map[string]bool{}, departed: map[string]bool{}})
 		}
 	}
 	return b
@@ -154,6 +165,39 @@ func (b *book) fail(region string, at time.Time, n int64) {
 	defer b.mu.Unlock()
 	if s := b.stats(region, b.tt.dayAt(region, at.Sub(b.start))); s != nil {
 		s.failures += n
+	}
+}
+
+// excuse は userID が region の day 日目に自分で投稿を休んだことを記録する。
+func (b *book) excuse(region string, day int, userID string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if s := b.stats(region, day); s != nil && !s.excused[userID] {
+		s.excused[userID] = true
+		s.rested++
+	}
+}
+
+// depart は userID が region の今の日のうちにほかのリージョンへ移ったことを記録する。
+func (b *book) depart(region, userID string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if s := b.stats(region, b.tt.dayAt(region, time.Since(b.start))); s != nil {
+		s.departed[userID] = true
+	}
+}
+
+// arrive は userID がほかのリージョンから region に移ってきたことを、region の今の日に
+// 記録する。その日はよそで過ごしたので、通過できなかった人には数えない。
+func (b *book) arrive(region, userID string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if s := b.stats(region, b.tt.dayAt(region, time.Since(b.start))); s != nil {
+		if !s.excused[userID] {
+			s.excused[userID] = true
+			s.arrived++
+		}
+		delete(s.departed, userID)
 	}
 }
 
@@ -194,7 +238,20 @@ func (b *book) decide(c GrowthConfig, region string, day, population int) *daySt
 		}
 		s.invites += c.invites(took, b.tt.period)
 	}
-	s.missed = max(population-len(prev.passers), 0)
+	// 前日にいて、通過したか通過しなくてよかった人。ほかのリージョンへ移った人は、
+	// 今の人数に入っていないので除く。
+	accounted := 0
+	for id := range prev.passers {
+		if !prev.departed[id] {
+			accounted++
+		}
+	}
+	for id := range prev.excused {
+		if _, ok := prev.passers[id]; !ok && !prev.departed[id] {
+			accounted++
+		}
+	}
+	s.missed = max(population-accounted, 0)
 	if s.healthy && !b.tt.isGrandPrix(day) {
 		s.newcomers = max(int(math.Ceil(s.invites-float64(s.missed)*c.Discourage)), 0)
 	}
@@ -210,7 +267,7 @@ func (b *book) report() []DayReport {
 			took := slices.Sorted(maps.Values(s.passers))
 			out = append(out, DayReport{
 				Region: region, Day: i + 1, Population: s.population, Newcomers: s.newcomers, Quick: s.quick, Missed: s.missed, Invites: s.invites,
-				Passes: len(s.passers), GateP50: percentileOf(took, 0.5), GateP90: percentileOf(took, 0.9),
+				Passes: len(s.passers), Rested: s.rested, Arrived: s.arrived, Departed: len(s.departed), GateP50: percentileOf(took, 0.5), GateP90: percentileOf(took, 0.9),
 				Ops: s.ops, Failures: s.failures, FailRate: min(1, float64(s.failures)/float64(max(s.ops, 1))),
 			})
 		}
@@ -322,15 +379,22 @@ func (r *Runner) recoverWindow(ctx context.Context, region string, day int, date
 	}
 	ctx, cancel := context.WithDeadline(ctx, b.start.Add(r.tt.end(region, day)))
 	defer cancel()
-	var candidates []*user
-	for _, u := range r.usersSnapshot() {
-		if u.Region == region && u.Token != "" && !u.stopped.Load() && !u.returning {
-			candidates = append(candidates, u)
+	// ユーザーはリージョンを移ると u.API を差し替えるので、ロックの中で取っておく。
+	type reader struct {
+		api   *client.Client
+		token string
+	}
+	var candidates []reader
+	r.mu.Lock()
+	for _, u := range r.users[region] {
+		if u.Token != "" && !u.stopped.Load() && !u.returning {
+			candidates = append(candidates, reader{api: u.API.WithObserver(nil), token: u.Token})
 		}
 	}
+	r.mu.Unlock()
 	for i := 0; i < len(candidates) && ctx.Err() == nil; {
-		u := candidates[i]
-		status, err := u.API.WithObserver(nil).CurrentWindow(ctx, u.Token)
+		c := candidates[i]
+		status, err := c.api.CurrentWindow(ctx, c.token)
 		switch {
 		case isStatus(err, http.StatusUnauthorized):
 			// セッションが切れていれば次のユーザーで読む。ほかの失敗は同じユーザーで待って読み直す。
