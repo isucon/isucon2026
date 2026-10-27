@@ -4,6 +4,9 @@ Description: >-
 Parameters:
   RouterAMIID:
     Type: AWS::EC2::Image::Id
+{{- if .RouterAMIID}}
+    Default: {{.RouterAMIID}}
+{{- end}}
     Description: ISUCON2026 Router AMI shared by the organizers
 Resources:
   GetAvailabilityZoneFunctionExecutionRole:
