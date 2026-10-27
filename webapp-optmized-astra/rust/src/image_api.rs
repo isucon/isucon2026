@@ -49,6 +49,33 @@ struct ImageCache {
     bytes: usize,
 }
 
+#[derive(Default)]
+struct ImageHints {
+    timestamps: HashMap<String, DateTime<Utc>>,
+    order: VecDeque<String>,
+}
+
+static IMAGE_HINTS: LazyLock<Mutex<ImageHints>> = LazyLock::new(Mutex::default);
+const IMAGE_HINT_ENTRIES: usize = 32768;
+
+/// A post timestamp is only a lookup hint, never proof of visibility or content.
+/// Importing or moving an image may invalidate it; the handler then searches all
+/// partitions. Keep hints separately so issuing a URL does not cache image data.
+pub fn remember_image_timestamp(image_id: &str, timestamp: DateTime<Utc>) {
+    let mut hints = IMAGE_HINTS.lock().unwrap();
+    if let Some(current) = hints.timestamps.get_mut(image_id) {
+        *current = timestamp;
+        return;
+    }
+    if hints.timestamps.len() >= IMAGE_HINT_ENTRIES
+        && let Some(oldest) = hints.order.pop_front()
+    {
+        hints.timestamps.remove(&oldest);
+    }
+    hints.order.push_back(image_id.to_owned());
+    hints.timestamps.insert(image_id.to_owned(), timestamp);
+}
+
 static IMAGE_CACHE: LazyLock<Mutex<ImageCache>> = LazyLock::new(Mutex::default);
 const IMAGE_CACHE_BYTES: usize = 128 * 1024 * 1024;
 const IMAGE_CACHE_ENTRIES: usize = 4096;
@@ -126,13 +153,35 @@ async fn get_image(
     // initialization, and prevents returning stale data under the same ID.
     // The cached timestamp is a search hint, never an authorization result.
     // Check its partition first; a moved/replaced row falls back to all months.
-    let mut object = if cached.is_some() {
-        load_image_object(&h.db, &input.image_id, cached.as_ref(), &CACHED_IMAGE_QUERY).await?
+    let timestamp = cached.as_ref().map(|image| image.created_at).or_else(|| {
+        IMAGE_HINTS
+            .lock()
+            .unwrap()
+            .timestamps
+            .get(&input.image_id)
+            .copied()
+    });
+    let mut object = if timestamp.is_some() {
+        load_image_object(
+            &h.db,
+            &input.image_id,
+            cached.as_ref(),
+            timestamp,
+            &CACHED_IMAGE_QUERY,
+        )
+        .await?
     } else {
         None
     };
     if object.is_none() {
-        object = load_image_object(&h.db, &input.image_id, cached.as_ref(), IMAGE_QUERY).await?;
+        object = load_image_object(
+            &h.db,
+            &input.image_id,
+            cached.as_ref(),
+            timestamp,
+            IMAGE_QUERY,
+        )
+        .await?;
     }
     let Some(object) = object else {
         return Err(new_api_error(StatusCode::FORBIDDEN, "image_forbidden"));
@@ -206,12 +255,13 @@ async fn load_image_object(
     db: &sqlx::PgPool,
     image_id: &str,
     cached: Option<&CachedImage>,
+    timestamp: Option<DateTime<Utc>>,
     query: &str,
 ) -> Result<Option<ImageObject>, sqlx::Error> {
     sqlx::query_as(query)
         .bind(image_id)
         .bind(cached.map(|image| image.version.as_str()))
-        .bind(cached.map(|image| image.created_at))
+        .bind(timestamp)
         .fetch_optional(db)
         .await
 }

@@ -105,6 +105,25 @@ async fn cached_image_checks_current_content_visibility_and_credentials() {
         .route("/api/images/{imageId}", get(get_image_handler))
         .with_state(context);
     let exp = Utc::now().timestamp() + 60;
+    // A cold lookup with a wrong post timestamp must fall back to all months.
+    isureal::image_api::remember_image_timestamp(&id, "2020-06-01T00:00:00Z".parse().unwrap());
+    // A cold lookup with a correct timestamp still fetches and validates bytes.
+    let hinted_id = uuid::Uuid::new_v4().to_string();
+    sqlx::query("INSERT INTO image_objects (id,owner_user_id,data,created_at) VALUES ($1,'owner',$2,'2020-06-01')")
+        .bind(&hinted_id).bind(original).execute(&db).await.unwrap();
+    sqlx::query("INSERT INTO posts (id,image_id,author_id) VALUES ('hinted-post',$1,'owner')")
+        .bind(&hinted_id)
+        .execute(&db)
+        .await
+        .unwrap();
+    isureal::image_api::remember_image_timestamp(
+        &hinted_id,
+        "2020-06-01T00:00:00Z".parse().unwrap(),
+    );
+    assert_eq!(
+        image(app.clone(), &hinted_id, &key, exp).await,
+        (StatusCode::OK, original.to_vec())
+    );
     for _ in 0..2 {
         let (status, body) = image(app.clone(), &id, &key, exp).await;
         assert_eq!(status, StatusCode::OK);
