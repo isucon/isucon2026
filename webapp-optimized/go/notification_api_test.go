@@ -134,7 +134,7 @@ func TestNotificationsIntegration(t *testing.T) {
 	if err := json.Unmarshal([]byte(strings.TrimSpace(strings.TrimPrefix(string(r.data), "data: "))), &notification); err != nil {
 		t.Fatal(err)
 	}
-	if notification.ID != notificationID(windowID, userID) || notification.PostingWindowID != windowID || notification.Region != "asia" {
+	if notification.ID != notificationID(windowID, notification.CreatedAt, userID) || notification.PostingWindowID != windowID || notification.Region != "asia" {
 		t.Fatalf("unexpected notification: %+v", notification)
 	}
 	// The rows are written in the background with the same IDs.
