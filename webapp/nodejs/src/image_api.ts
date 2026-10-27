@@ -1,7 +1,7 @@
 import { randomUUID, timingSafeEqual } from "node:crypto";
 import type pg from "pg";
-import { type C, noContent } from "./http.js";
-import { fail, imageSigningKey, imageSignature } from "./core.js";
+import type { C } from "./types/hono.js";
+import { fail, imageSigningKey, imageSignature, noContent } from "./core.js";
 import { exec, first, firstScalar, transaction } from "./db.js";
 import { decodeJPEG } from "./jpeg.js";
 export function imageHandlers(db: pg.Pool) {

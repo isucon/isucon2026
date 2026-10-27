@@ -6,12 +6,12 @@ import type pg from "pg";
 import { validRegion } from "./core.js";
 import { actionLogMiddleware, type LogOutput } from "./action_log.js";
 import { ipBanMiddleware } from "./ip_ban.js";
+import type { Env } from "./types/hono.js";
 import {
-  type Env,
   sessionMiddleware,
   adminSessionMiddleware,
   regionMiddleware,
-} from "./http.js";
+} from "./middlewares.js";
 import { userHandlers } from "./user_api.js";
 import { postHandlers } from "./post_api.js";
 import { relationshipHandlers } from "./relationship_api.js";

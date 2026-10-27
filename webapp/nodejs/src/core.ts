@@ -9,6 +9,7 @@ export function fail(status: ContentfulStatusCode, code: string): never {
 export function lookup<T extends object>(table: T, key: string) {
   return Object.hasOwn(table, key) ? table[key as keyof T] : undefined;
 }
+export const noContent = () => new Response(null, { status: 204 });
 export const hash = (value: string) =>
   createHash("sha256").update(value).digest("hex");
 export const usernamePattern = /^[a-z0-9_.-]{1,64}$/;

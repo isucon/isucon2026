@@ -1,6 +1,7 @@
 import type pg from "pg";
 import { zipSync, strToU8, type Zippable } from "fflate";
-import { type C, cursor } from "./http.js";
+import type { C } from "./types/hono.js";
+import { cursor } from "./bind.js";
 import { fail, validDate, postResponse, page, type Post } from "./core.js";
 import { must, rows } from "./db.js";
 import {
