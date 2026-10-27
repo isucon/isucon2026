@@ -1,6 +1,6 @@
 import type pg from "pg";
 import { stream } from "hono/streaming";
-import { type C } from "./http.js";
+import type { C } from "./types/hono.js";
 import { first, scalar } from "./db.js";
 import { getUser } from "./models.js";
 interface Notification {

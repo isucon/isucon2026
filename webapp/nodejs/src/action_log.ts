@@ -1,7 +1,7 @@
 import { createMiddleware } from "hono/factory";
 import { matchedRoutes } from "hono/route";
 import { lookup, usernamePattern } from "./core.js";
-import type { Env } from "./http.js";
+import type { Env } from "./types/hono.js";
 import { extractClientIP } from "./ip_ban.js";
 
 const actionNames = {

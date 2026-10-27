@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type pg from "pg";
-import { readJSON, cursor, noContent, type C } from "./http.js";
+import { readJSON, cursor } from "./bind.js";
+import type { C } from "./types/hono.js";
 import {
   fail,
   validUserText,
@@ -8,6 +9,7 @@ import {
   signedImageURL,
   page,
   type User,
+  noContent,
 } from "./core.js";
 import { type DB, exec, first, must, one, rows, transaction } from "./db.js";
 import {
