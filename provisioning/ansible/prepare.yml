@@ -27,12 +27,25 @@
           - --exclude=rust/isureal
           - --exclude=rust/target
           - --exclude=rust/tests
+          - --exclude=python/.venv
+          - --exclude=python/tests
+          - --exclude=__pycache__
+          - --exclude=.*_cache
+          - --exclude=php/vendor
+          - --exclude=php/tests
+          - --exclude=php/.phpunit.cache
+          - --exclude=perl/local
+          - --exclude=perl/t
+          - --exclude=perl/hypnotoad.pid
           - --exclude=nodejs/node_modules
           - --exclude=nodejs/test
           - --exclude=sql/002-seed.sql
           - go
           - ruby
           - rust
+          - python
+          - php
+          - perl
           - nodejs
           - sql
       changed_when: true

@@ -1,0 +1,50 @@
+---
+# uv を /home/isucon/local/uv に置き、uv で Python を入れる（webapp/python 用）
+- name: Read installed uv version
+  ansible.builtin.command:
+    argv: [/home/isucon/local/uv/uv, --version]
+  register: uv_installed
+  changed_when: false
+  failed_when: false
+
+- name: Install uv
+  when: uv_installed.rc != 0 or not uv_installed.stdout.startswith('uv ' ~ uv_version ~ ' ')
+  block:
+    - name: Remove old uv
+      ansible.builtin.file:
+        path: /home/isucon/local/uv
+        state: absent
+
+    - name: Create uv directory
+      ansible.builtin.file:
+        path: /home/isucon/local/uv
+        state: directory
+        owner: isucon
+        group: isucon
+        mode: "0755"
+
+    - name: Download and extract uv
+      ansible.builtin.unarchive:
+        src: "https://github.com/astral-sh/uv/releases/download/{{ uv_version }}/uv-x86_64-unknown-linux-gnu.tar.gz"
+        dest: /home/isucon/local/uv
+        remote_src: true
+        extra_opts: [--strip-components=1]
+        owner: isucon
+        group: isucon
+
+# isucon ユーザーの uv の既定の場所（~/.local/share/uv/python）に入れる
+- name: Install Python
+  ansible.builtin.command:
+    argv: [/home/isucon/local/uv/uv, python, install, "{{ python_version }}"]
+  become_user: isucon
+  register: python_install
+  changed_when: "'Installed' in python_install.stderr"
+
+- name: Add uv to PATH
+  ansible.builtin.lineinfile:
+    path: /home/isucon/.profile
+    line: 'export PATH=$HOME/local/uv:$PATH'
+    create: true
+    owner: isucon
+    group: isucon
+    mode: "0644"

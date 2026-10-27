@@ -29,20 +29,33 @@ ISURealは、日常の写真を共有するソーシャルネットワーキン�
 
 ### 参考実装
 
-参考実装は次の 4 つです。初期状態では Go 実装が動いています。
+参考実装は次の 7 つです。初期状態では Go 実装が動いています。
 
 | 言語 | ソースコード | systemd unit |
 |---|---|---|
 | Go | `/home/isucon/webapp/go` | `isureal-go.service` |
 | Ruby | `/home/isucon/webapp/ruby` | `isureal-ruby.service` |
 | Rust | `/home/isucon/webapp/rust` | `isureal-rust.service` |
+| Python | `/home/isucon/webapp/python` | `isureal-python.service` |
+| PHP | `/home/isucon/webapp/php` | `isureal-php.service`（php-fpm） |
+| Perl | `/home/isucon/webapp/perl` | `isureal-perl.service` |
 | Node.js | `/home/isucon/webapp/nodejs` | `isureal-nodejs.service` |
 
-どれも `:8080` で待ち受けるので、同時に動かすことはできません。たとえば Ruby 実装に切り替えるには、各 app サーバーで次を実行します。Rust 実装と Node.js 実装に切り替えるときは `isureal-ruby.service` をそれぞれ `isureal-rust.service`、`isureal-nodejs.service` に読み替えてください。
+どれも `:8080` で待ち受けるので、同時に動かすことはできません。たとえば Ruby 実装に切り替えるには、各 app サーバーで次を実行します。Rust、Python、Perl、Node.js の実装に切り替えるときは、`isureal-ruby.service` をそれぞれ `isureal-rust.service`、`isureal-python.service`、`isureal-perl.service`、`isureal-nodejs.service` に読み替えてください。
 
 ```sh
 sudo systemctl disable --now isureal-go.service
 sudo systemctl enable --now isureal-ruby.service
+```
+
+PHP 実装では、nginx が `127.0.0.1:8080` で受けて FastCGI で php-fpm に渡します（`/etc/nginx/sites-available/isureal-php.conf`）。
+PHP 実装に切り替えるには、各 app サーバーで次を実行します。
+
+```sh
+sudo systemctl disable --now isureal-go.service
+sudo ln -s /etc/nginx/sites-available/isureal-php.conf /etc/nginx/sites-enabled/isureal-php.conf
+sudo systemctl reload nginx
+sudo systemctl enable --now isureal-php.service
 ```
 
 ### ルーター
