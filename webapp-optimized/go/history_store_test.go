@@ -45,14 +45,19 @@ func TestHistoryStoreMatchesDatabase(t *testing.T) {
 		exec(`INSERT INTO users(id,username,display_name,secret_key_hash,region) VALUES($1,$2,$3,'9caf06bb4436cdbfa20af9121a626bc1093c4f54b31c0fa937957856135345b6','asia')`,
 			u, "user"+string(rune('a'+i)), "User "+string(rune('A'+i)))
 	}
-	windows := map[string]string{"2026-08-15": id(), "2026-09-24": id(), "2026-09-25": id()}
+	dates := []string{"2026-08-15", "2026-09-24", "2026-09-25"}
+	windows := map[string]string{}
+	for _, date := range dates {
+		windows[date] = id()
+	}
 	for date, w := range windows {
 		exec(`INSERT INTO posting_windows(id,region,local_date,starts_at,on_time_deadline,ended_at)
           VALUES($1,'asia',$2,$2::date,$2::date+interval '2 minutes',$2::date+interval '1 day')`, w, date)
 	}
 	var posts []string
 	for _, author := range users[:2] {
-		for date, w := range windows {
+		for _, date := range dates {
+			w := windows[date]
 			p, image := id(), id()
 			posts = append(posts, p)
 			exec(`INSERT INTO image_objects(id,owner_user_id,data,media_type) VALUES($1,$2,'photo','image/jpeg')`, image, author)
