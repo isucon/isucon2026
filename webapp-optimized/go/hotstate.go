@@ -460,18 +460,39 @@ func (s *hotState) feed(viewerID, feed string, before *feedCursor) (posts []Post
 		}
 		return fof[id]
 	}
-	start := 0
-	if before != nil {
-		start, _ = slices.BinarySearchFunc(s.sorted, before, func(p *hotPost, c *feedCursor) int {
-			return cmp.Or(c.PostedAt.Compare(p.PostedAt), cmp.Compare(c.ID, p.ID))
-		})
-		// Skip the cursor post itself.
-		for start < len(s.sorted) && !s.sorted[start].PostedAt.Before(before.PostedAt) &&
-			!(s.sorted[start].PostedAt.Equal(before.PostedAt) && s.sorted[start].ID < before.ID) {
-			start++
+	var scan []*hotPost
+	if feed == "friends" || feed == "friends-of-friends" {
+		// Only the posts of the candidate authors, instead of every open post.
+		authors := friends
+		if feed == "friends-of-friends" {
+			inFOF("")
+			authors = fof
 		}
+		for id := range authors {
+			for _, p := range s.byAuthor[id] {
+				if before == nil || p.PostedAt.Before(before.PostedAt) || p.PostedAt.Equal(before.PostedAt) && p.ID < before.ID {
+					scan = append(scan, p)
+				}
+			}
+		}
+		slices.SortFunc(scan, func(a, b *hotPost) int {
+			return cmp.Or(b.PostedAt.Compare(a.PostedAt), cmp.Compare(b.ID, a.ID))
+		})
+	} else {
+		start := 0
+		if before != nil {
+			start, _ = slices.BinarySearchFunc(s.sorted, before, func(p *hotPost, c *feedCursor) int {
+				return cmp.Or(c.PostedAt.Compare(p.PostedAt), cmp.Compare(c.ID, p.ID))
+			})
+			// Skip the cursor post itself.
+			for start < len(s.sorted) && !s.sorted[start].PostedAt.Before(before.PostedAt) &&
+				!(s.sorted[start].PostedAt.Equal(before.PostedAt) && s.sorted[start].ID < before.ID) {
+				start++
+			}
+		}
+		scan = s.sorted[start:]
 	}
-	for _, p := range s.sorted[start:] {
+	for _, p := range scan {
 		w := openWindows[p.PostingWindowID]
 		if w == nil || p.Deleted || p.AuthorID == viewerID {
 			continue
