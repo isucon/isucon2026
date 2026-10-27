@@ -12,6 +12,7 @@ print(primary['host'])
 print(json.dumps({app['host']: app['region'] for app in apps if app['region'] != 'asia'}, separators=(',', ':')))
 print(','.join(app['host'] for app in apps if 'replicaName' in app) if runtime.get('writeFenceEnabled', False) else '')
 print(runtime.get('writeFenceMode', 'poll'))
+print('true' if runtime.get('regionalUploadCacheEnabled',False) else 'false')
 PY
 )
 enabled=${values[0]}
@@ -19,6 +20,7 @@ backend_host=${values[1]}
 ingress_json=${values[2]}
 write_fence_hosts=${values[3]}
 write_fence_mode=${values[4]}
+upload_cache=${values[5]}
 if [ "$role" = backend ]; then
     if [ "$enabled" = true ]; then
         # Public topology only; the existing env.sh provides DB credentials.
@@ -47,6 +49,7 @@ UNIT
         mkdir -p /etc/systemd/system/webapp-optmized-astra-writer.service.d
         printf '[Service]\nEnvironment=ISUREAL_WRITE_FENCE_HOSTS=%s\nEnvironment=ISUREAL_WRITE_FENCE_MODE=%s\n' "$write_fence_hosts" "$write_fence_mode" >/etc/systemd/system/webapp-optmized-astra-writer.service.d/writer.conf
         bash "$(dirname "$0")/image-store-runtime.sh" webapp-optmized-astra-writer
+        bash "$(dirname "$0")/upload-proxy-runtime.sh" webapp-optmized-astra-writer asia
         systemctl daemon-reload
         systemctl enable webapp-optmized-astra-writer
         systemctl restart webapp-optmized-astra-writer
@@ -58,20 +61,20 @@ UNIT
 elif [ "$role" = frontend ]; then
     # The frontend remains in its original region. Only write requests cross
     # the existing, shaped data-plane route to the private worker.
-    python3 - "$enabled" "$backend_host" > /etc/nginx/sites-available/isureal.conf.astra-new <<'PY'
+    python3 - "$enabled" "$backend_host" "$upload_cache" > /etc/nginx/sites-available/isureal.conf.astra-new <<'PY'
 import sys
-enabled, host = sys.argv[1:]
+enabled, host, upload_cache = sys.argv[1:]
 print('''upstream astra_local {
   server 127.0.0.1:8080;
   keepalive 64;
 }''')
 if enabled == 'true':
     print('upstream astra_writer {\n  server '+host+':8081;\n  keepalive 64;\n}')
-    print('''map $request_method $astra_upstream {
-  GET astra_local;
-  HEAD astra_local;
-  default astra_writer;
-}''')
+    print('map "$request_method:$uri" $astra_upstream {')
+    print('  ~^(GET|HEAD): astra_local;')
+    if upload_cache == 'true':
+        print('  "POST:/api/posts" astra_local;')
+    print('  default astra_writer;\n}')
 upstream = '$astra_upstream' if enabled == 'true' else 'astra_local'
 print('''server {
   listen 80 default_server;

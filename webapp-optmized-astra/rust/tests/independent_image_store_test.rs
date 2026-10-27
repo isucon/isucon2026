@@ -925,6 +925,63 @@ async fn independent_bytes_publish_atomically_and_preserve_visibility_export_and
     );
     assert_eq!(uncached_store.get(&shared_key).await.unwrap(), original);
     assert_eq!(uncached_store.get(&uncached_id).await.unwrap(), original);
+    // The regional ingress keeps already-uploaded bytes only after the actual
+    // writer has committed. Its first image read must work without an asset
+    // connection, while the fresh metadata/owner checks still apply.
+    next_window(&db, 2).await;
+    let upstream = app(
+        db.clone(),
+        Some(ImageStore::new(assets.clone(), true, None).with_cache_enabled(false)),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let proxy = isureal::upload_proxy::UploadProxy::new(listener.local_addr().unwrap());
+    let upstream_task = tokio::spawn(async move { axum::serve(listener, upstream).await.unwrap() });
+    let ingress = Router::new()
+        .fallback(|| async { StatusCode::IM_A_TEAPOT })
+        .layer(axum::middleware::from_fn_with_state(
+            proxy,
+            isureal::upload_proxy::upload_proxy_middleware,
+        ));
+    let (status, response) = request(ingress, upload(original)).await;
+    assert_eq!(
+        status,
+        StatusCode::CREATED,
+        "{}",
+        String::from_utf8_lossy(&response)
+    );
+    let response: Value = serde_json::from_slice(&response).unwrap();
+    let proxied_url = response["imageUrl"].as_str().unwrap();
+    let offline = PgPoolOptions::new()
+        .acquire_timeout(Duration::from_millis(100))
+        .connect_lazy("postgres://postgres@127.0.0.1:1/unreachable")
+        .unwrap();
+    let regional_reader = app(
+        db.clone(),
+        Some(ImageStore::new(offline, false, None).with_cache_enabled(false)),
+    );
+    assert_eq!(
+        request(
+            regional_reader.clone(),
+            Request::get(proxied_url).body(Body::empty()).unwrap()
+        )
+        .await,
+        (StatusCode::OK, original.to_vec())
+    );
+    sqlx::query("UPDATE posts SET deleted_at=now() WHERE id=$1")
+        .bind(response["id"].as_str().unwrap())
+        .execute(&db)
+        .await
+        .unwrap();
+    assert_eq!(
+        request(
+            regional_reader,
+            Request::get(proxied_url).body(Body::empty()).unwrap()
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    upstream_task.abort();
     drop(routed);
     drop(local);
     drop(store);

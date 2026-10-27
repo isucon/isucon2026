@@ -314,6 +314,17 @@ pub async fn new_server(config: Config) -> Router {
         )
         .with_state(handler_context);
 
+    let server = if let Some(proxy) =
+        crate::upload_proxy::UploadProxy::from_env(&read_context.config.region)
+    {
+        server.layer(from_fn_with_state(
+            proxy,
+            crate::upload_proxy::upload_proxy_middleware,
+        ))
+    } else {
+        server
+    };
+
     let ingress = WriteIngress::from_env();
     let server = if ingress.is_none() {
         if let Some(receiver) = crate::image_cache_push::receiver_from_env() {

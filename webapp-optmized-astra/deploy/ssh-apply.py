@@ -115,7 +115,7 @@ def application(app):
     copy(instance, ROOT / runtime["archivePath"], "/home/isucon/astra-release.tar.gz")
     read_host = "127.0.0.1" if runtime["replicaReads"] and "replicaName" in app else ""
     fenced = "1" if read_host and read_fence else "0"
-    remote(instance, "sudo bash /home/isucon/astra-deploy/application.sh /home/isucon/astra-release.tar.gz " + shlex.quote(read_host) + " " + fenced + " " + shlex.quote(write_fence_hosts) + " " + shlex.quote(write_fence_mode))
+    remote(instance, "sudo bash /home/isucon/astra-deploy/application.sh /home/isucon/astra-release.tar.gz " + shlex.quote(read_host) + " " + fenced + " " + shlex.quote(write_fence_hosts) + " " + shlex.quote(write_fence_mode) + " " + shlex.quote(app["region"]))
 
 
 def write_frontend(app):
