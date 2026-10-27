@@ -5,7 +5,7 @@ AWS 上に、Router 1 台、app 3 台（app1=asia、app2=europe、app3=america�
 
 | ディレクトリ | 内容 |
 |---|---|
-| `ansible/` | AMI の中身（webapp、PostgreSQL、nginx、Router、Envoy）。詳細は [ansible/README.md](ansible/README.md) |
+| `ansible/` | AMI の中身（webapp、PostgreSQL、nginx、Router、HAProxy）。詳細は [ansible/README.md](ansible/README.md) |
 | `packer/` | Ubuntu 24.04 の公式 AMI から、Ansible で `problem-server` と `router` の 2 種類の AMI を作る |
 | `aws/` | Pulumi。共有の VPC に、チームごとのサブネット、Router、EC2 を作り、user-data で各ノードの役割とアドレスを設定する |
 

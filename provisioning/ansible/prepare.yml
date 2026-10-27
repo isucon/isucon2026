@@ -133,21 +133,3 @@
         GOARCH: amd64
       changed_when: true
       when: "'router' in prepare_components"
-
-    - name: Extract Envoy binary from the official image
-      ansible.builtin.shell: |
-        set -eu
-        container="$(docker create --platform linux/amd64 {{ envoy_image }})"
-        trap 'docker rm -f "${container}" >/dev/null' EXIT
-        docker cp "${container}:/usr/local/bin/envoy" {{ build_dir }}/envoy
-      when: "'router' in prepare_components"
-
-    - name: Validate Envoy architecture for the Router AMI
-      ansible.builtin.command:
-        argv:
-          - python3
-          - "{{ playbook_dir }}/tests/test_envoy_artifact.py"
-      environment:
-        ENVOY_BINARY: "{{ build_dir }}/envoy"
-      changed_when: false
-      when: "'router' in prepare_components"
