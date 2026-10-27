@@ -77,6 +77,7 @@ RustのDB接続を伴うキャンセル検証と通知・並行登録・画像�
 - JPEGは成功した検証結果を最大4096件保持し、初回は圧縮データ全体を検査しながら画素展開量を減らす。
 - 画像配信は1回の問い合わせで現在の閲覧権限と署名鍵を確認する。画像データは最大128MiB・4096件まで保持し、DB行の`xmin`と作成時刻が変われば取得し直す。署名・期限・削除状態を毎回検証する。
 - SSE通知は地域内DBごとに100ミリ秒間隔で最大512接続ずつ一括確認する。接続ごとの通知時刻とユーザー状態は毎回確認する。
+- フィードは閲覧条件・友人関係・ブロック・投稿済み条件を1回の問い合わせで評価し、現在の投稿期間ごとに最大51件へ絞り、全地域の上位51件だけを取得する。従来のRustの判定との比較テストでページ送りと状態変更を検証する。
 - 新規登録はユーザー名の一意制約と単一INSERTで処理する。同名の並行登録は1件だけ成功し、別名の登録は互いをブロックしない。
 - エクスポートのZIP生成は最大2本のブロッキングワーカーで処理する。DBの行を4件までのチャネルで渡し、画像全件と完成ZIPを同時に保持する負荷を抑える。
 - europe/app2、america/app3へのPostgreSQL配置。同期レプリカと地域内読み取りを検証し、性能と整合性を比較する。
@@ -97,3 +98,4 @@ RustのDB接続を伴うキャンセル検証と通知・並行登録・画像�
 | 20261027T135518Z-team10 | distributed DB with bounded asynchronous export pipeline | PASS | 17,555 |
 | 20261027T140308Z-team10 | regional reads with HTTP write forwarding near primary DB | PASS | 45,790 |
 | 20261027T140625Z-team10 | repeat regional reads and HTTP write forwarding | PASS | 38,158 |
+| 20261027T142139Z-team10 | bounded regional feed queries with SQL visibility filtering | PASS | 42,375 |
