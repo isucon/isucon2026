@@ -9,6 +9,17 @@ DELETE FROM comments WHERE created_at > (SELECT created_at FROM initial_data_bou
 DELETE FROM realmojis WHERE created_at > (SELECT created_at FROM initial_data_boundary);
 DELETE FROM posts WHERE created_at > (SELECT created_at FROM initial_data_boundary);
 DELETE FROM posting_windows WHERE created_at > (SELECT created_at FROM initial_data_boundary);
+DO $$
+DECLARE partition_name text;
+BEGIN
+  FOR partition_name IN
+    SELECT c.relname FROM pg_inherits i JOIN pg_class c ON c.oid = i.inhrelid
+    WHERE i.inhparent = 'image_objects'::regclass
+      AND c.relname > 'image_objects_' || to_char((SELECT created_at FROM initial_data_boundary) AT TIME ZONE 'UTC', 'YYYYMM')
+  LOOP
+    EXECUTE format('TRUNCATE %I', partition_name);
+  END LOOP;
+END $$;
 DELETE FROM image_objects WHERE created_at > (SELECT created_at FROM initial_data_boundary);
 DELETE FROM users WHERE created_at > (SELECT created_at FROM initial_data_boundary);
 
