@@ -183,6 +183,7 @@ func (h *Handler) Router() http.Handler {
 	r.Get("/api/env_check_info", h.EnvCheckInfo)
 	r.Get("/api/ssh_public_keys", h.EnvCheckSSHPublicKeys)
 	r.Post("/api/env_checks", h.EnvCheckCreate)
+	r.Post("/api/instance_registrations", h.InstanceRegister)
 
 	if h.cfg.TestMode {
 		// RSpec ハーネス用（Phase 0 の HTTP 化 spec が使う）。本番では無効。

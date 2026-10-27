@@ -47,7 +47,9 @@ def build(task, service, config):
         raise ValueError("hardTimeout must be seconds")
     bench_images = config.get("benchImages")
     if bench_images is not None and not IMAGES.fullmatch(bench_images):
-        raise ValueError("benchImages must be an absolute path in the image or an HTTPS URL")
+        raise ValueError(
+            "benchImages must be an absolute path in the image or an HTTPS URL"
+        )
     bench_args = " --target-port 8080 --scale large"
     if bench_timeout is not None:
         bench_args += f" --timeout {bench_timeout}"
@@ -89,7 +91,11 @@ def build(task, service, config):
         env["ISUXBENCH_IMAGES"] = bench_images
     c["environment"] = [{"name": k, "value": v} for k, v in sorted(env.items())]
     script = (
-        'set -eu\ncase "$ISUXBENCH_TARGET" in\n'
+        # A registered Router arrives with a portal-generated Host as the first
+        # extra argument. Legacy app targets still use the static transfer table.
+        "set -eu\n"
+        + f'if [ "${{1:-}}" = "--host" ]; then exec /usr/local/bin/isureal-bench "$@"{bench_args}; fi\n'
+        + 'case "$ISUXBENCH_TARGET" in\n'
         + "\n".join(cases)
         + '\n  *) echo "Unexpected target" >&2; exit 2 ;;\nesac'
     )
@@ -142,21 +148,61 @@ def templates(config):
     region = "ap-northeast-1"
     task = json.loads(
         subprocess.run(
-            ["aws", "ecs", "describe-task-definition", "--region", region, "--task-definition", config["name"],
-             "--query", "taskDefinition", "--output", "json"],
-            check=True, capture_output=True, text=True,
+            [
+                "aws",
+                "ecs",
+                "describe-task-definition",
+                "--region",
+                region,
+                "--task-definition",
+                config["name"],
+                "--query",
+                "taskDefinition",
+                "--output",
+                "json",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
         ).stdout
     )
     cluster = subprocess.run(
-        ["aws", "ecs", "list-clusters", "--region", region, "--query", "clusterArns", "--output", "json"],
-        check=True, capture_output=True, text=True,
+        [
+            "aws",
+            "ecs",
+            "list-clusters",
+            "--region",
+            region,
+            "--query",
+            "clusterArns",
+            "--output",
+            "json",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
     ).stdout
     cluster = next(arn for arn in json.loads(cluster) if "/supervisor-cluster-" in arn)
     service = json.loads(
         subprocess.run(
-            ["aws", "ecs", "describe-services", "--region", region, "--cluster", cluster, "--services", config["name"],
-             "--query", "services[0]", "--output", "json"],
-            check=True, capture_output=True, text=True,
+            [
+                "aws",
+                "ecs",
+                "describe-services",
+                "--region",
+                region,
+                "--cluster",
+                cluster,
+                "--services",
+                config["name"],
+                "--query",
+                "services[0]",
+                "--output",
+                "json",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
         ).stdout
     )
     if not service or service.get("status") != "ACTIVE":
@@ -175,9 +221,14 @@ def main(argv):
         stack = argv[2] if len(argv) == 3 else "portal-dev"
         subprocess.run(
             ["pulumi", "config", "set", "--stack", stack, "--plaintext", "deployments"],
-            check=True, input=value, text=True, cwd=pathlib.Path(__file__).parent,
+            check=True,
+            input=value,
+            text=True,
+            cwd=pathlib.Path(__file__).parent,
         )
-        print(f"deployments of stack {stack} updated from {argv[1]} (task definition {task['family']}:{task['revision']})")
+        print(
+            f"deployments of stack {stack} updated from {argv[1]} (task definition {task['family']}:{task['revision']})"
+        )
     elif len(argv) == 1:
         export(json.load(sys.stdin)["deployments"], argv[0])
     else:
