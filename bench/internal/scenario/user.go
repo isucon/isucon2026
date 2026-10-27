@@ -274,7 +274,7 @@ func (r *Runner) listen(ctx context.Context, u *user, out chan notice, subscribe
 // 快適かどうかは、通知がすぐに届いていたら投稿を始めたはずの時刻（投稿期間を開いた時刻 +
 // 待ち）から数える。通知の遅れも、投稿とフィードの遅れと同じくユーザーを待たせる。
 func (r *Runner) enterWindow(ctx context.Context, u *user, windowID string, previous *client.Post, notified time.Time, notifications chan notice) (*session, *client.Post) {
-	if _, err := r.model.WaitForWindow(ctx, u.Region, windowID); err != nil {
+	if _, err := r.model.WaitForNotifiedWindow(ctx, u.Region, windowID, notified); err != nil {
 		// 開いた結果のわからなかった投稿期間（ErrMaybeWindow）の通知は正しいかもしれないが、
 		// bench はその投稿期間を知らないので投稿しない。
 		if errors.Is(err, model.ErrUnknownWindow) {
