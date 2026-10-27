@@ -515,8 +515,9 @@ BEGIN
    SELECT author_id INTO target FROM posts WHERE id=r.post_id;
    IF actor<>r.reactor_id AND actor<>target THEN PERFORM opt_fail(403,'interaction_forbidden'); END IF;
    UPDATE realmojis SET deleted_at=clock_timestamp() WHERE id=r.id;
+   RETURN jsonb_build_object('reaction',opt_reaction(r));
   END IF;
-  RETURN '{}'::jsonb;
+  RETURN jsonb_build_object('comment',opt_comment(c));
  ELSIF action='friend_transition' THEN
   SELECT * INTO req FROM friend_requests WHERE id=a->>'id';
   IF NOT FOUND THEN PERFORM opt_fail(404,'relationship_not_found'); END IF;

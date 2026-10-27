@@ -36,6 +36,7 @@ func NewServer(config *Config) *echo.Echo {
 	if !validRegion(config.Region) {
 		panic("invalid server region: " + config.Region)
 	}
+	homeRegion = config.Region
 	e := echo.New()
 	e.IPExtractor = extractClientIP
 
@@ -97,8 +98,19 @@ func NewServer(config *Config) *echo.Echo {
 	go func() {
 		for {
 			if err := hot.load(context.Background(), db); err == nil {
+				break
+			}
+			time.Sleep(time.Second)
+		}
+		if os.Getenv("ISUREAL_HOT_STATE") == "off" {
+			return
+		}
+		for {
+			err := history.load(context.Background(), db, config.Region)
+			if err == nil {
 				return
 			}
+			slog.Error("history store", "error", err)
 			time.Sleep(time.Second)
 		}
 	}()
