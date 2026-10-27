@@ -95,6 +95,14 @@ func createPostHandler(h *HandlerContext) echo.HandlerFunc {
 }
 
 func newPostResponse(post Post, user User) createPostResponse {
+	imageURL, ok := history.postImageURL(post.ID, post.ImageID)
+	if !ok {
+		imageURL = signedImageURL(user, post.ImageID)
+	}
+	return newPostResponseWithURL(post, user, imageURL)
+}
+
+func newPostResponseWithURL(post Post, user User, imageURL string) createPostResponse {
 	response := createPostResponse{
 		ID: post.ID,
 		Author: postAuthorResponse{
@@ -102,7 +110,7 @@ func newPostResponse(post Post, user User) createPostResponse {
 			ProfileImageURL: newGetMeResponse(user).ProfileImageURL,
 			Bio:             user.Bio, AccountType: user.AccountType,
 		},
-		PostingWindowID: post.PostingWindowID, ImageURL: signedImageURL(user, post.ImageID),
+		PostingWindowID: post.PostingWindowID, ImageURL: imageURL,
 		Caption: post.Caption, Visibility: post.Visibility, Location: post.PostLocation,
 		PostedAt: post.PostedAt, OnTime: !post.PostedAt.After(post.OnTimeDeadline),
 	}

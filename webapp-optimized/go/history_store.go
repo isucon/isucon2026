@@ -389,6 +389,27 @@ func (s *historyStore) known(id [16]byte) bool {
 	return ok
 }
 
+// postImageURL returns the image URL of a post of the store when its
+// signature for the current expiry is computed.
+func (s *historyStore) postImageURL(postID, imageID string) (string, bool) {
+	id, ok := parseImageID(postID)
+	if !ok {
+		return "", false
+	}
+	exp := imageURLExpiry(time.Now())
+	s.mu.RLock()
+	i, found := s.byID[id]
+	var p historyPost
+	if found {
+		p = s.posts[i]
+	}
+	s.mu.RUnlock()
+	if !found || p.sigExp != exp || uuid.UUID(p.image).String() != imageID {
+		return "", false
+	}
+	return imageURLWith(imageID, exp, p.sig), true
+}
+
 func (s *historyStore) touch(postID string) {
 	s.mu.Lock()
 	s.dirty[postID] = true
@@ -528,9 +549,11 @@ func (s *historyStore) memories(viewer User, start, end time.Time, beforeAt *tim
 			ended := fromMicros(p.endedAt)
 			post.WindowEndedAt = &ended
 		}
-		postResponse := newPostResponse(post, viewer)
+		var postResponse createPostResponse
 		if p.sigExp == exp {
-			postResponse.ImageURL = imageURLWith(post.ImageID, exp, p.sig)
+			postResponse = newPostResponseWithURL(post, viewer, imageURLWith(post.ImageID, exp, p.sig))
+		} else {
+			postResponse = newPostResponseWithURL(post, viewer, signedImageURL(viewer, post.ImageID))
 		}
 		item0 := memoryPostResponse{createPostResponse: postResponse,
 			Comments: make([]createCommentResponse, 0), RealMojis: make([]replaceRealMojiResponse, 0)}
