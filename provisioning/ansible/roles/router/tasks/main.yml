@@ -15,29 +15,40 @@
     mode: "{{ item.mode }}"
   loop:
     - {path: /opt/isucon/bin, group: root, mode: "0755"}
-    - {path: /etc/isucon/envoy, group: root, mode: "0755"}
-    - {path: /etc/isucon/envoy/tls, group: isureal-router, mode: "0750"}
+    - {path: /etc/isucon/haproxy, group: root, mode: "0755"}
+    - {path: /etc/isucon/haproxy/tls, group: isureal-router, mode: "0750"}
 
 - name: Install binaries
   ansible.builtin.copy:
     src: "{{ build_dir }}/{{ item }}"
     dest: /opt/isucon/bin/{{ item }}
     mode: "0755"
-  loop: [isureal-router, isureal-portal, envoy]
+  loop: [isureal-router, isureal-portal]
+
+# Ubuntu 24.04 の 2.8 LTS（Lua と帯域制限のフィルターが入っている）。設定は isureal-haproxy.service が起動のたびに作る
+- name: Install HAProxy
+  ansible.builtin.apt:
+    name: haproxy
+
+- name: Keep the packaged HAProxy service off
+  ansible.builtin.systemd_service:
+    name: haproxy
+    state: stopped
+    enabled: false
+    masked: true
 
 - name: Install systemd units
   ansible.builtin.copy:
     src: "{{ item }}"
     dest: /etc/systemd/system/{{ item }}
     mode: "0644"
-  loop: [isureal-router.service, isureal-envoy.service, isureal-portal.service]
+  loop: [isureal-router.service, isureal-haproxy.service, isureal-portal.service]
 
 - name: Forward packets between server subnets
   ansible.builtin.copy:
     src: 90-isucon-router.conf
     dest: /etc/sysctl.d/90-isucon-router.conf
     mode: "0644"
-
 
 - name: Batch ENA interrupts into NAPI polling
   ansible.builtin.copy:
