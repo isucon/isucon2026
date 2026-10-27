@@ -2,6 +2,7 @@ package scenario
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -10,6 +11,7 @@ import (
 	"net/http/httptest"
 	"net/netip"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -18,6 +20,7 @@ import (
 	"github.com/isucon/isucon2026/bench/internal/geo"
 	"github.com/isucon/isucon2026/bench/internal/metrics"
 	"github.com/isucon/isucon2026/bench/internal/model"
+	"github.com/isucon/isucon2026/bench/internal/photo"
 	"github.com/isucon/isucon2026/bench/internal/score"
 	"github.com/isucon/isucon2026/dataset"
 )
@@ -595,5 +598,43 @@ func TestBlockDuringDeletion(t *testing.T) {
 		if len(u.blocking) != 0 {
 			t.Fatalf("%s: blocked a user who had left: %v", state, u.blocking)
 		}
+	}
+}
+
+// TestAwaitPhotosAfterInitialize は、写真のアーカイブを初期化のあと、対象に写真を送る前に
+// 待ち、読めなかったときはベンチマーカー側の失敗として止めることを確かめる。
+func TestAwaitPhotosAfterInitialize(t *testing.T) {
+	var initialized, others atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if req.URL.Path == "/api/initialize" {
+			initialized.Add(1)
+			_, _ = w.Write([]byte(`{"language":"go"}`))
+			return
+		}
+		others.Add(1)
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	t.Cleanup(server.Close)
+	awaited := false
+	runner, err := NewRunner(Config{
+		Target: server.URL, Users: 1, Dataset: tinyDataset,
+		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+		AwaitPhotos: func(context.Context) (*photo.Set, error) {
+			awaited = true
+			if initialized.Load() != 1 {
+				t.Errorf("initialize calls before awaiting photos = %d, want 1", initialized.Load())
+			}
+			return nil, errors.New("archive unreachable")
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := runner.Run(t.Context())
+	if !awaited || result.Pass || !strings.Contains(result.Reason, "写真のアーカイブ") {
+		t.Fatalf("awaited=%v result=%+v", awaited, result)
+	}
+	if n := others.Load(); n != 0 {
+		t.Fatalf("requests other than initialize before the photos were ready = %d", n)
 	}
 }
