@@ -1,0 +1,97 @@
+#!/bin/bash
+set -euo pipefail
+role=${1:?backend or frontend required}
+config=/home/isucon/astra-deploy/runtime.json
+mapfile -t values < <(python3 - "$config" <<'PY'
+import json, sys
+runtime = json.load(open(sys.argv[1]))
+apps = runtime['applications']
+primary = next(app for app in apps if app['region'] == 'asia')
+print('true' if runtime.get('writeProxyEnabled', False) else 'false')
+print(primary['host'])
+print(json.dumps({app['host']: app['region'] for app in apps if app['region'] != 'asia'}, separators=(',', ':')))
+PY
+)
+enabled=${values[0]}
+backend_host=${values[1]}
+ingress_json=${values[2]}
+if [ "$role" = backend ]; then
+    if [ "$enabled" = true ]; then
+        # Public topology only; the existing env.sh provides DB credentials.
+        printf 'ISUREAL_LISTEN_ADDRESS=%s:8081\nISUREAL_DB_READ_HOST=\nISUREAL_WRITE_INGRESS_JSON=\047%s\047\n' "$backend_host" "$ingress_json" > /etc/astra-write-worker.env
+        chmod 644 /etc/astra-write-worker.env
+        cat > /etc/systemd/system/webapp-optmized-astra-writer.service <<'UNIT'
+[Unit]
+Description=webapp-optmized-astra private write worker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=isucon
+Group=isucon
+WorkingDirectory=/home/isucon/webapp-optmized-astra/rust
+EnvironmentFile=/home/isucon/env.sh
+EnvironmentFile=/etc/astra-write-worker.env
+ExecStart=/home/isucon/webapp-optmized-astra/rust/isureal
+Restart=on-failure
+RestartSec=1
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+        systemctl daemon-reload
+        systemctl enable webapp-optmized-astra-writer
+        systemctl restart webapp-optmized-astra-writer
+        sleep 2
+        systemctl is-active webapp-optmized-astra-writer
+    elif systemctl list-unit-files webapp-optmized-astra-writer.service --no-legend | grep -q webapp-optmized-astra-writer; then
+        systemctl disable --now webapp-optmized-astra-writer
+    fi
+elif [ "$role" = frontend ]; then
+    # The frontend remains in its original region. Only write requests cross
+    # the existing, shaped data-plane route to the private worker.
+    python3 - "$enabled" "$backend_host" > /etc/nginx/sites-available/isureal.conf.astra-new <<'PY'
+import sys
+enabled, host = sys.argv[1:]
+print('''upstream astra_local {
+  server 127.0.0.1:8080;
+  keepalive 64;
+}''')
+if enabled == 'true':
+    print('upstream astra_writer {\n  server '+host+':8081;\n  keepalive 64;\n}')
+    print('''map $request_method $astra_upstream {
+  GET astra_local;
+  HEAD astra_local;
+  default astra_writer;
+}''')
+upstream = '$astra_upstream' if enabled == 'true' else 'astra_local'
+print('''server {
+  listen 80 default_server;
+  server_name _;
+  client_max_body_size 32m;
+  root /home/isucon/webapp/public;
+
+  location /api/ {
+    proxy_http_version 1.1;
+    proxy_set_header Connection "";
+    proxy_set_header Host $host;
+    proxy_next_upstream off;
+    proxy_pass http://'''+upstream+''';
+  }
+  location / {
+    try_files $uri /index.html;
+  }
+}''')
+PY
+    cp -a /etc/nginx/sites-available/isureal.conf /etc/nginx/sites-available/isureal.conf.astra-previous
+    mv /etc/nginx/sites-available/isureal.conf.astra-new /etc/nginx/sites-available/isureal.conf
+    if ! nginx -t; then
+        mv /etc/nginx/sites-available/isureal.conf.astra-previous /etc/nginx/sites-available/isureal.conf
+        exit 1
+    fi
+    systemctl reload nginx
+else
+    echo 'Expected backend or frontend' >&2
+    exit 2
+fi

@@ -54,6 +54,7 @@ use crate::user_api::{
     get_me_handler, login_handler, logout_handler, register_handler, update_me_handler,
 };
 use crate::user_read_api::{get_user_handler, search_users_handler};
+use crate::write_ingress::{WriteIngress, write_ingress_middleware};
 
 pub struct HandlerContext {
     pub db: PgPool,
@@ -199,7 +200,10 @@ pub async fn new_server(config: Config) -> Router {
         )
         .with_state(handler_context);
 
-    server
+    match WriteIngress::from_env() {
+        Some(policy) => server.layer(from_fn_with_state(policy, write_ingress_middleware)),
+        None => server,
+    }
 }
 
 pub async fn start(server: Router, address: &str) -> io::Result<()> {

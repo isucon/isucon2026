@@ -21,6 +21,9 @@ ssh = str(DEPLOY / "ssh.sh")
 database = runtime["database"]["instanceId"]
 applications = runtime["applications"]
 replicas = [app for app in applications if "replicaName" in app]
+write_proxy = runtime.get("writeProxyEnabled", False)
+write_host = next(app for app in applications if app["region"] == "asia")["instanceId"]
+remote_apps = [app for app in applications if app["region"] != "asia"]
 
 
 def remote(instance, command):
@@ -39,6 +42,7 @@ def parallel(function, items):
 bundle = ROOT / "var/astra/configuration.tar.gz"
 bundle.parent.mkdir(parents=True, exist_ok=True)
 with tarfile.open(bundle, "w:gz") as tar:
+    tar.add(DEPLOY / "runtime.json", arcname="runtime.json")
     for path in sorted(DEPLOY.glob("*.sh")):
         tar.add(path, arcname=path.name)
     for path in sorted((ROOT / "webapp-optmized-astra/sql").glob("0??-*.sql")):
@@ -60,6 +64,15 @@ def application(app):
     copy(instance, ROOT / runtime["archivePath"], "/home/isucon/astra-release.tar.gz")
     read_host = "127.0.0.1" if runtime["replicaReads"] and "replicaName" in app else ""
     remote(instance, "sudo bash /home/isucon/astra-deploy/application.sh /home/isucon/astra-release.tar.gz " + shlex.quote(read_host))
+
+
+def write_frontend(app):
+    remote(app["instanceId"], "sudo bash /home/isucon/astra-deploy/write-routing.sh frontend")
+
+
+# Restore local writes before stopping or replacing the private worker.
+if mode in ("all", "application") and not write_proxy:
+    parallel(write_frontend, remote_apps)
 
 
 # Disable local reads before turning off synchronous replication on rollback.
@@ -93,5 +106,10 @@ if mode in ("all", "replication") and runtime["replicasEnabled"]:
 
 if mode in ("all", "application") and runtime["replicaReads"]:
     parallel(application, applications)
+
+if mode in ("all", "application"):
+    remote(write_host, "sudo bash /home/isucon/astra-deploy/write-routing.sh backend")
+    if write_proxy:
+        parallel(write_frontend, remote_apps)
 
 print(f"Applied {mode} configuration to existing Team 10 VMs", flush=True)
