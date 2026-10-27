@@ -10,7 +10,6 @@ import {
   canView,
   timestamp,
   addSeconds,
-  micros,
   validTimestamp,
 } from "../src/core.js";
 
@@ -105,9 +104,8 @@ test("database timestamps preserve microseconds for cursors and deadlines", () =
     "2026-10-04T03:00:01.123456Z",
   );
   assert.equal(
-    micros("2026-10-04T03:00:00.123457Z") -
-      micros("2026-10-04T03:00:00.123456Z"),
-    1,
+    addSeconds("2026-10-04T03:00:00.999999Z", -1),
+    "2026-10-04T02:59:59.999999Z",
   );
 });
 

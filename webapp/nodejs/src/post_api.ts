@@ -9,7 +9,6 @@ import {
   postResponse,
   canView,
   page,
-  micros,
   type Location,
   noContent,
 } from "./core.js";
@@ -96,11 +95,13 @@ export function postHandlers(db: pg.Pool) {
           userID,
           window.local_date,
         );
-        const postedAt = new Date().toISOString();
+        const postedAt = Temporal.Now.instant()
+          .round({ smallestUnit: "microsecond", roundingMode: "trunc" })
+          .toString();
         if (
           Number(counts.active) !== 0 ||
           Number(counts.deleted) >= 2 ||
-          micros(postedAt) < micros(window.starts_at)
+          Temporal.Instant.compare(postedAt, window.starts_at) < 0
         )
           fail(409, "post_slot_unavailable");
         const imageID = randomUUID();
@@ -244,7 +245,8 @@ export function postHandlers(db: pg.Pool) {
         canPost:
           Number(state.active) === 0 &&
           Number(state.deleted) < 2 &&
-          micros(new Date().toISOString()) >= micros(state.starts_at),
+          Temporal.Instant.compare(Temporal.Now.instant(), state.starts_at) >=
+            0,
         deletionCount: Number(state.deleted),
       });
     },
