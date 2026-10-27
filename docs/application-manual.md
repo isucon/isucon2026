@@ -29,7 +29,7 @@ ISURealは、日常の写真を共有するソーシャルネットワーキン�
 
 ### 参考実装
 
-参考実装は次の 5 つです。初期状態では Go 実装が動いています。
+参考実装は次の 6 つです。初期状態では Go 実装が動いています。
 
 | 言語 | ソースコード | systemd unit |
 |---|---|---|
@@ -38,8 +38,9 @@ ISURealは、日常の写真を共有するソーシャルネットワーキン�
 | Rust | `/home/isucon/webapp/rust` | `isureal-rust.service` |
 | Python | `/home/isucon/webapp/python` | `isureal-python.service` |
 | PHP | `/home/isucon/webapp/php` | `isureal-php.service`（php-fpm） |
+| Perl | `/home/isucon/webapp/perl` | `isureal-perl.service` |
 
-どれも `:8080` で待ち受けるので、同時に動かすことはできません。たとえば Ruby 実装に切り替えるには、各 app サーバーで次を実行します。Rust や Python の実装に切り替えるときは、`isureal-ruby.service` をそれぞれ `isureal-rust.service`、`isureal-python.service` に読み替えてください。
+どれも `:8080` で待ち受けるので、同時に動かすことはできません。たとえば Ruby 実装に切り替えるには、各 app サーバーで次を実行します。Rust、Python、Perl の実装に切り替えるときは、`isureal-ruby.service` をそれぞれ `isureal-rust.service`、`isureal-python.service`、`isureal-perl.service` に読み替えてください。
 
 ```sh
 sudo systemctl disable --now isureal-go.service
