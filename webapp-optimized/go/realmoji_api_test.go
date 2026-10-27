@@ -73,7 +73,7 @@ func TestRealMojiIntegration(t *testing.T) {
 			t.Fatalf("status=%d want=%d body=%s", rec.Code, status, rec.Body.String())
 		}
 	}
-	payload := []byte("unchanged image bytes\x00\xff")
+	payload := testJPEG(t)
 	makeBody := func(kind string, includeImage bool) ([]byte, string) {
 		var body bytes.Buffer
 		writer := multipart.NewWriter(&body)

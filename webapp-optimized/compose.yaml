@@ -42,3 +42,4 @@ services:
       net.ipv4.tcp_slow_start_after_idle: 0
     volumes:
       - ./webapp-optimized/sql/001-schema.sql:/docker-entrypoint-initdb.d/001-schema.sql:ro
+      - ./webapp-optimized/sql/003-initial-snapshot.sql:/docker-entrypoint-initdb.d/003-initial-snapshot.sql:ro
