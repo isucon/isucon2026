@@ -15,7 +15,7 @@ use crate::image_signature::signed_image_url;
 use crate::response::{json, no_content};
 use crate::server::HandlerContext;
 use crate::session::{Session, create_login_session_tx, invalidate_login_session};
-use crate::user::{USERNAME_PATTERN, User, get_user, valid_region, valid_user_text};
+use crate::user::{USER_COLUMNS, USERNAME_PATTERN, User, get_user, valid_region, valid_user_text};
 
 #[derive(Default, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
@@ -124,31 +124,24 @@ pub async fn register_handler(
     }
     let secret_key = Uuid::new_v4().to_string();
     let hash = Sha256::digest(secret_key.as_bytes());
-    let mut tx = h.db.begin().await?;
-    // ユーザー名が一意である必要があります。
-    sqlx::query("LOCK TABLE users IN SHARE ROW EXCLUSIVE MODE")
-        .execute(&mut *tx)
-        .await?;
-    let exists: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM users WHERE username = $1)")
-        .bind(&input.username)
-        .fetch_one(&mut *tx)
-        .await?;
-    if exists {
-        return Err(new_api_error(StatusCode::CONFLICT, "username_taken"));
-    }
     let user_id = Uuid::new_v4().to_string();
-    sqlx::query(
-        "INSERT INTO users (id, username, secret_key_hash, display_name, region) VALUES ($1, $2, $3, $4, $5)",
-    )
+    // Username uniqueness is enforced atomically by the unique index. Avoid a
+    // table-wide lock and multiple network round trips for each registration.
+    let user: Option<User> = sqlx::query_as(&format!(
+        "INSERT INTO users (id, username, secret_key_hash, display_name, region) \
+         VALUES ($1, $2, $3, $4, $5) ON CONFLICT (username) DO NOTHING RETURNING {}",
+        USER_COLUMNS.join(", ")
+    ))
     .bind(&user_id)
     .bind(&input.username)
     .bind(hex::encode(hash))
     .bind(&input.display_name)
     .bind(&input.region)
-    .execute(&mut *tx)
+    .fetch_optional(&h.db)
     .await?;
-    let user = get_user(&mut *tx, &user_id).await?;
-    tx.commit().await?;
+    let Some(user) = user else {
+        return Err(new_api_error(StatusCode::CONFLICT, "username_taken"));
+    };
     json(
         StatusCode::CREATED,
         RegisterResponse {
