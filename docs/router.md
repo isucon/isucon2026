@@ -87,6 +87,10 @@ HAProxy 2.8 の設定は、Router の環境変数（Host 名、サーバーの I
   header のない要求は、国を明示した要求とは別の bucket を使う。
 - タイムアウトは接続 2 秒、要求 header の受信 30 秒、上流の無応答 60 秒、要求中のクライアントの無通信 5 分、
   次の要求を待つ keep-alive 1 時間。上流への再試行はしない（接続できなければすぐ 503）。
+- `/api/notifications`（SSE）だけは `option http-no-delay` を付けた backend（`app1_stream` など）に送る。HAProxy は
+  終わっていない応答の header と途中のデータを MSG_MORE で送るので、これがないと購読のたびに header と各イベントが
+  約 200 ms 遅れる（手元の計測で 205〜210 ms。option を付けると 0〜1 ms）。defaults には付けない。帯域制限の下の
+  大きな応答で HAProxy の CPU が約 35% 増えるため。
 
 Envoy（2026-10-27 まで使っていた）との違いで、意図して受け入れたもの:
 
