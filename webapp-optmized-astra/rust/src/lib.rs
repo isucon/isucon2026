@@ -20,6 +20,7 @@ pub mod ip_ban;
 pub mod jpeg;
 pub mod logger;
 pub mod memory_api;
+pub mod native_write_fence;
 pub mod notification_api;
 pub mod post;
 pub mod post_api;
