@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"os"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -36,6 +37,9 @@ type hotState struct {
 	follows  map[[2]string]bool // follower, followee
 	versions map[relationKey]int64
 
+	// byName holds every user ordered by (username, id) for searches.
+	byName []*hotUser
+
 	windows map[string]*hotWindow // region -> open window
 	closed  map[string]bool       // windows seen to close
 	posts   map[string]*hotPost
@@ -49,6 +53,17 @@ type hotState struct {
 type hotUser struct {
 	User
 	Version int64
+	// nameKey and displayKey are the search forms of the names, computed once.
+	nameKey, displayKey string
+}
+
+func newHotUser(u User, version int64) *hotUser {
+	return &hotUser{User: u, Version: version, nameKey: normalizeSearchText(u.Username), displayKey: normalizeSearchText(u.DisplayName)}
+}
+
+// olderUser orders users like the search SQL: by username, then ID.
+func olderUser(a, b *hotUser) int {
+	return cmp.Or(cmp.Compare(a.Username, b.Username), cmp.Compare(a.ID, b.ID))
 }
 
 type hotSession struct {
@@ -105,6 +120,7 @@ func newHotState() *hotState {
 func (s *hotState) reset() {
 	s.loaded = false
 	s.users = map[string]*hotUser{}
+	s.byName = nil
 	s.sessions = map[string]hotSession{}
 	s.userSession = map[string]hotSession{}
 	s.friends = map[string]map[string]bool{}
@@ -228,8 +244,11 @@ func (s *hotState) load(ctx context.Context, db *sqlx.DB) error {
 		if err := u.setImageKey(); err != nil {
 			return err
 		}
-		s.users[u.ID] = &hotUser{User: u}
+		hu := newHotUser(u, 0)
+		s.users[u.ID] = hu
+		s.byName = append(s.byName, hu)
 	}
+	slices.SortFunc(s.byName, olderUser)
 	for _, f := range friendships {
 		s.setFriend(f.Low, f.High, true)
 	}
@@ -287,7 +306,7 @@ func (s *hotState) apply(events []stateEvent) {
 			u := e.User.user()
 			if current := s.users[u.ID]; current == nil || (e.Version > current.Version && current.Status != "deleted") {
 				if u.setImageKey() == nil {
-					s.users[u.ID] = &hotUser{User: u, Version: e.Version}
+					s.setUser(newHotUser(u, e.Version))
 					notifications.userChanged(u.ID, u.Region, u.Status == "active")
 				}
 			}
@@ -296,7 +315,7 @@ func (s *hotState) apply(events []stateEvent) {
 				deleted := *current
 				deleted.Status = "deleted"
 				deleted.Version = max(e.Version, current.Version)
-				s.users[e.A] = &deleted
+				s.setUser(&deleted)
 				notifications.userChanged(e.A, deleted.Region, false)
 			}
 		case "session":
@@ -492,6 +511,51 @@ func (s *hotState) imageLive(imageID string) (live bool, secretKeyHash string, k
 		return false, "", false
 	}
 	return !p.Deleted && author.Status == "active", author.SecretKeyHash, true
+}
+
+// setUser stores a user, keeping byName ordered (usernames never change).
+func (s *hotState) setUser(u *hotUser) {
+	i, found := slices.BinarySearchFunc(s.byName, u, olderUser)
+	if found {
+		s.byName[i] = u
+	} else {
+		s.byName = slices.Insert(s.byName, i, u)
+	}
+	s.users[u.ID] = u
+}
+
+// search lists users like searchUsersHandler's SQL and filter: active users
+// other than the viewer, not blocked either way, whose normalized username or
+// display name contains the normalized query, ordered by (username, id) after
+// the cursor, at most 51.
+func (s *hotState) search(viewerID, query, beforeUsername, beforeID string) (users []User, ok bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if !s.loaded {
+		return nil, false
+	}
+	start := 0
+	if beforeUsername != "" {
+		cursor := &hotUser{User: User{Username: beforeUsername, ID: beforeID}}
+		i, found := slices.BinarySearchFunc(s.byName, cursor, olderUser)
+		start = i
+		if found {
+			start++
+		}
+	}
+	for _, u := range s.byName[start:] {
+		if u.ID == viewerID || u.Status != "active" || s.blocks[[2]string{viewerID, u.ID}] || s.blocks[[2]string{u.ID, viewerID}] {
+			continue
+		}
+		if !strings.Contains(u.nameKey, query) && !strings.Contains(u.displayKey, query) {
+			continue
+		}
+		users = append(users, u.User)
+		if len(users) == 51 {
+			break
+		}
+	}
+	return users, true
 }
 
 // openWindow returns the open window with the ID, if any.
