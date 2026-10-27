@@ -20,6 +20,7 @@ type HandlerContext struct {
 	// standby, so a read that starts after a write's response observes the write.
 	ReadDB *sqlx.DB
 	Config *Config
+	IPBans *IPBanList
 }
 
 func NewServer(config *Config) *echo.Echo {
@@ -27,6 +28,7 @@ func NewServer(config *Config) *echo.Echo {
 		panic("invalid server region: " + config.Region)
 	}
 	e := echo.New()
+	e.IPExtractor = extractClientIP
 
 	// Logging every request costs CPU on the hot path; enable it to debug.
 	if os.Getenv("ISUREAL_ACCESS_LOG") != "" {
@@ -67,7 +69,12 @@ func NewServer(config *Config) *echo.Echo {
 		DB:     db,
 		ReadDB: readDB,
 		Config: config,
+		IPBans: &IPBanList{},
 	}
+	// Load once before serving so bans apply from the first request.
+	_ = handlerContext.IPBans.reload(context.Background(), readDB)
+	go handlerContext.IPBans.run(context.Background(), readDB)
+	e.Use(IPBanMiddleware(handlerContext))
 
 	registerSyncHandlers(e, handlerContext)
 	go func() {

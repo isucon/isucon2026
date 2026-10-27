@@ -1,5 +1,5 @@
 fn default_hard_timeout() -> u64 {
-    150
+    210
 }
 
 fn default_log_directory() -> String {
@@ -30,7 +30,7 @@ mod tests {
 
     #[test]
     fn default_budget_covers_benchmark_timeout() {
-        assert!(default_hard_timeout() > 120);
+        assert!(default_hard_timeout() > 190);
     }
 }
 
