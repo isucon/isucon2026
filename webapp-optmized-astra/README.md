@@ -171,3 +171,4 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261027T205643Z-team10 | reserve bounded write capacity for small mutations | PASS | 59,727 |
 | 20261027T210236Z-team10 | prune export image partitions using post timestamps with fallback | PASS | 58,813 |
 | 20261027T210922Z-team10 | reuse post timestamps as bounded cold image partition hints | PASS | 59,748 |
+| 20261027T211543Z-team10 | expand bounded image byte cache from 128 to 512 MiB | PASS | 59,774 |
