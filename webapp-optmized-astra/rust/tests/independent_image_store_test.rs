@@ -176,6 +176,10 @@ async fn independent_bytes_publish_atomically_and_preserve_visibility_export_and
         .execute(&db)
         .await
         .unwrap();
+    sqlx::raw_sql(include_str!("../../sql/013-atomic-post-reference.sql"))
+        .execute(&db)
+        .await
+        .unwrap();
     sqlx::raw_sql("CREATE TABLE astra_image_data(id varchar(36) PRIMARY KEY,data bytea NOT NULL,created_at timestamptz NOT NULL DEFAULT clock_timestamp()); ALTER TABLE astra_image_data ALTER COLUMN data SET STORAGE EXTERNAL")
         .execute(&assets).await.unwrap();
     let original = include_bytes!("fixtures/small.jpg").as_slice();
@@ -425,7 +429,7 @@ async fn independent_bytes_publish_atomically_and_preserve_visibility_export_and
 
     // Force failure after the function inserted its post. Both metadata rows roll back.
     next_window(&db, 1).await;
-    sqlx::raw_sql("CREATE FUNCTION fail_asset_publish() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'forced publication failure'; END $$; CREATE TRIGGER fail_asset_publish BEFORE UPDATE OF asset_key ON image_objects FOR EACH ROW EXECUTE FUNCTION fail_asset_publish()")
+    sqlx::raw_sql("CREATE FUNCTION fail_asset_publish() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'forced publication failure'; END $$; CREATE TRIGGER fail_asset_publish AFTER INSERT ON posts FOR EACH ROW EXECUTE FUNCTION fail_asset_publish()")
         .execute(&db).await.unwrap();
     assert_eq!(
         request(routed.clone(), upload(second)).await.0,
@@ -435,7 +439,7 @@ async fn independent_bytes_publish_atomically_and_preserve_visibility_export_and
     assert_eq!(count(&db, "image_objects").await, 2);
     assert_eq!(count(&assets, "astra_image_data").await, 2);
     sqlx::raw_sql(
-        "DROP TRIGGER fail_asset_publish ON image_objects; DROP FUNCTION fail_asset_publish()",
+        "DROP TRIGGER fail_asset_publish ON posts; DROP FUNCTION fail_asset_publish()",
     )
     .execute(&db)
     .await

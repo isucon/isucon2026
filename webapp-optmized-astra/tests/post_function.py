@@ -10,11 +10,13 @@ def query(sql, ok=True):
     if ok: assert p.returncode==0,p.stderr
     return p
 query("DROP FUNCTION IF EXISTS astra_create_post(text,text,text,bytea,text,text,text,numeric,numeric,text);")
+query("DROP FUNCTION IF EXISTS astra_create_post_asset(text,text,text,bytea,text,text,text,numeric,numeric,text,text);")
 query((ROOT / 'sql/001-schema.sql').read_text())
 query((ROOT / 'sql/005-create-post.sql').read_text())
+query((ROOT / 'sql/013-atomic-post-reference.sql').read_text())
 query("INSERT INTO users(id,username,secret_key_hash,display_name,region) SELECT 'u'||n,'u'||n,repeat('0',64),'u'||n,'asia' FROM generate_series(1,20)n; INSERT INTO posting_windows(id,region,local_date,starts_at,on_time_deadline) VALUES('w1','asia',current_date,now()-interval '1 minute',now()+interval '1 hour');")
 def post(user, ident, caption=''):
-    return query(f"SELECT (post_row).id || ':' || (window_row).id FROM astra_create_post('{user}','{ident}','im-{ident}',decode('ffd8ffd9','hex'),'{caption}','friends','none',NULL,NULL,NULL);",False)
+    return query(f"SELECT (post_row).id || ':' || (window_row).id FROM astra_create_post_asset('{user}','{ident}','im-{ident}',decode('ffd8ffd9','hex'),'{caption}','friends','none',NULL,NULL,NULL,NULL);",False)
 with concurrent.futures.ThreadPoolExecutor(8) as pool:
     result=list(pool.map(lambda n:post('u'+str(n),'p'+str(n)),range(1,9)))
 assert all(p.returncode==0 for p in result),[p.stderr for p in result]
@@ -23,7 +25,7 @@ with concurrent.futures.ThreadPoolExecutor(2) as pool:
 assert sorted(p.returncode for p in result)==[0,3]
 assert 'post_slot_unavailable' in next(p.stderr for p in result if p.returncode)
 assert query("SELECT count(*) FROM image_objects WHERE owner_user_id='u9';").stdout.strip()=='1'
-query("CREATE FUNCTION astra_injected_failure() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.caption='fail' THEN RAISE EXCEPTION 'injected'; END IF; RETURN NEW; END $$; CREATE TRIGGER astra_fail BEFORE INSERT ON posts FOR EACH ROW EXECUTE FUNCTION astra_injected_failure();")
+query("CREATE OR REPLACE FUNCTION astra_injected_failure() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.caption='fail' THEN RAISE EXCEPTION 'injected'; END IF; RETURN NEW; END $$; CREATE TRIGGER astra_fail BEFORE INSERT ON posts FOR EACH ROW EXECUTE FUNCTION astra_injected_failure();")
 assert post('u10','rollback','fail').returncode==3
 assert query("SELECT count(*) FROM image_objects WHERE owner_user_id='u10';").stdout.strip()=='0'
 query("DROP TRIGGER astra_fail ON posts;")
@@ -38,4 +40,6 @@ result=post('u11','window-race')
 assert result.returncode==0,result.stderr
 assert result.stdout.strip()=='window-race:w2',result.stdout
 assert locker.wait()==0
+query("SELECT * FROM astra_create_post_asset('u12','asset-post','asset-image',''::bytea,'','public','none',NULL,NULL,NULL,'europe:12345678-1234-1234-1234-123456789012');")
+assert query("SELECT asset_key || ':' || octet_length(data) FROM image_objects WHERE id='asset-image'").stdout.strip()=='europe:12345678-1234-1234-1234-123456789012:0'
 print(json.dumps({'parallel_posts':8,'same_user_duplicate':'one commit, one rejection','rollback':'no orphan image','concurrent_window_replacement':'new window selected','status':'PASS'}))
