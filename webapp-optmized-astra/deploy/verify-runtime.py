@@ -91,6 +91,8 @@ print(json.dumps(result))
     keepalive=app['region']!='asia' or runtime.get('asiaUpstreamKeepaliveEnabled',False)
     site=remote(app['instanceId'],'cat /etc/nginx/sites-available/isureal.conf')
     assert ('proxy_http_version 1.1;' in site)==keepalive
+    assert 'gzip '+('on' if runtime['nginxJsonGzipEnabled'] else 'off')+';' in site
+    assert 'gzip_types application/json;' in site and 'gzip_comp_level 1;' in site
     if 'nginxRequestBuffering' in runtime:
         nginx=remote(app['instanceId'],'cat /etc/nginx/nginx.conf')
         assert 'proxy_request_buffering '+('on' if runtime['nginxRequestBuffering'] else 'off')+'; # astra-managed' in nginx
