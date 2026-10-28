@@ -41,6 +41,13 @@ class WorkflowRoutingTest(unittest.TestCase):
                     self.assertEqual(workflow["on"]["push"]["branches"], ["main"])
                     self.assertIn("concurrency", workflow)
 
+    def test_portal_and_shared_ci_use_processor_runner(self):
+        all_workflows = workflows()
+        for name in ("ci.yml", "portal-ci.yml"):
+            for job_name, job in all_workflows[name]["jobs"].items():
+                with self.subTest(workflow=name, job=job_name):
+                    self.assertEqual(job["runs-on"], "actions-runner-processor")
+
     def test_component_routing(self):
         cases = {
             "backend/internal/service/auth.go": {"backend-ci.yml"},
