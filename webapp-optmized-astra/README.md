@@ -301,3 +301,4 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261028T091113Z-team10 | repeat indexed normalized search candidates with reduced logging | PASS | 172,644 |
 | 20261028T091523Z-team10 | indexed search and reduced logging; alternate seed 20261028 | PASS | 169,544 |
 | 20261028T092907Z-team10 | Asia async replica staged; Asia reads remain on primary; topology control | PASS | 152,282 |
+| 20261028T093243Z-team10 | repeat staged Asia standby control; primary Asia reads unchanged | PASS | 161,378 |
