@@ -339,3 +339,4 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261028T145843Z-team10 | repeat notification batches without restarting application caches | PASS | 187,187 |
 | 20261028T150625Z-team10 | stream uploads without nginx request temp files on regional file storage | PASS | 156,485 |
 | 20261028T151345Z-team10 | repeat unbuffered uploads with regional file storage | FAIL | 0 |
+| 20261028T151839Z-team10 | restore buffered uploads after unbuffered regression | PASS | 176,344 |
