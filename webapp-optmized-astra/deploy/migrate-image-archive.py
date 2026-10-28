@@ -23,9 +23,11 @@ deploy = root / 'webapp-optmized-astra/deploy'
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('partition')
 parser.add_argument('--restore')
+parser.add_argument('--reclaim')
 args = parser.parse_args()
 assert re.fullmatch(r'image_objects_202[4-7](0[1-9]|1[0-2])', args.partition)
-archive = args.restore or uuid.uuid4().hex
+assert not (args.restore and args.reclaim)
+archive = args.restore or args.reclaim or uuid.uuid4().hex
 assert re.fullmatch('[0-9a-f]{32}', archive)
 runtime = json.loads((deploy / 'runtime.json').read_text())
 assert runtime['fileImageStore']['enabled'] and runtime['fileImageStore']['archiveReadsEnabled']
@@ -113,8 +115,25 @@ while True:
     remote(database, 'python3 -c ' + shlex.quote(program))
 
 
+def await_cleanup_horizon():
+    # Replay acknowledgement alone does not refresh hot-standby feedback. A
+    # stale slot xmin would make VACUUM FULL retain the old image row versions.
+    barrier=sql('SELECT pg_current_xact_id()::text::xid')
+    assert barrier.isdigit()
+    program='barrier='+repr(barrier)+'\n'+'''import subprocess,time
+query="SELECT count(*)=2 AND bool_and(xmin IS NULL OR age(xmin)<=age('"+barrier+"'::xid)) FROM pg_replication_slots WHERE slot_name IN ('astra_europe','astra_america')"
+deadline=time.monotonic()+60
+while True:
+ ready=subprocess.check_output(['sudo','-u','postgres','psql','-XAt','-d','isureal','-c',query],text=True).strip()
+ if ready=='t':break
+ if time.monotonic()>deadline:raise RuntimeError('standby cleanup horizon has not advanced')
+ time.sleep(.5)
+'''
+    remote(database,'python3 -c '+shlex.quote(program))
+
+
 parallel(capture)
-if args.restore:
+if args.restore or args.reclaim:
     previous = json.loads(remote(asia, 'sudo cat ' + report_path))
     bytes_required = previous['bytes']
 else:
@@ -132,7 +151,7 @@ try:
         remote(app, 'sudo systemctl stop ' + units(app))
     sql(f'BEGIN; LOCK TABLE {args.partition} IN ACCESS EXCLUSIVE MODE; COMMIT;')
     verify_replay()
-    if not args.restore:
+    if not (args.restore or args.reclaim):
         reports = parallel(lambda app: invoke(app, 'build'))
         assert reports[0] == reports[1] == reports[2], 'Regional archives differ; metadata remains unchanged'
     reports = parallel(lambda app: invoke(app, 'verify'))
@@ -141,12 +160,20 @@ try:
     (output / 'report.json').write_text(json.dumps(report, indent=2) + '\n')
     # Asia can publish/restore over the normal connection to the primary;
     # the primary does not need a fourth copy of the immutable file.
-    invoke(asia, 'restore' if args.restore else 'apply')
+    if not args.reclaim:
+        invoke(asia, 'restore' if args.restore else 'apply')
     expected = 0 if args.restore else report['rows']
     assert int(sql(f"SELECT count(*) FROM {args.partition} WHERE asset_key LIKE 'pack:{archive}:%'")) == expected
     print('Reclaiming the old partition storage after publication', flush=True)
+    await_cleanup_horizon()
+    before=int(sql("SELECT pg_total_relation_size('"+args.partition+"')"))
     sql(f'VACUUM (FULL, ANALYZE) {args.partition}')
+    after=int(sql("SELECT pg_total_relation_size('"+args.partition+"')"))
+    print('partition_bytes',before,'->',after,flush=True)
+    sql('CHECKPOINT')
     verify_replay()
+    for app in apps:
+        if app['region']!='asia':remote(app,'sudo -u postgres psql -X -d isureal -c CHECKPOINT')
     if args.restore:
         reports = parallel(lambda app: invoke(app, 'verify-source'))
         assert reports[0] == reports[1] == reports[2]
@@ -157,8 +184,8 @@ finally:
 for app in apps:
     print(app['region'], remote(app, 'sudo python3 ' + helper + ' verify').strip(), flush=True)
 subprocess.run(['python3', str(deploy / 'verify-runtime.py')], cwd=root, env=env, check=True)
-evidence = root / 'webapp-optmized-astra/results' / ('archive-' + archive + ('-restore' if args.restore else ''))
+evidence = root / 'webapp-optmized-astra/results' / ('archive-' + archive + ('-restore' if args.restore else '-reclaim' if args.reclaim else ''))
 evidence.mkdir()
 (evidence / 'report.json').write_text(json.dumps(report, indent=2) + '\n')
 (evidence / 'validation.txt').write_text('All three archive and manifest hashes matched before SQL publication. Five public image hashes per region matched before/after migration and application restart. Runtime and both metadata replicas verified.\n')
-print('Completed', 'restore' if args.restore else 'migration', args.partition, archive, flush=True)
+print('Completed', 'restore' if args.restore else 'reclaim' if args.reclaim else 'migration', args.partition, archive, flush=True)
