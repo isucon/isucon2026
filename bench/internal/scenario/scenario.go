@@ -125,6 +125,8 @@ type Result struct {
 	Routes []metrics.RouteStats `json:"routes"`
 	// Friends は走行の終わりの、リージョンごとの友達の数と友達の友達の数。
 	Friends map[string]FriendStats `json:"friends"`
+	// Ranking は友達の友達フィードで確かめたおすすめの点数の記録。
+	Ranking model.RankingStats `json:"ranking"`
 }
 
 type Runner struct {
@@ -317,6 +319,7 @@ func (r *Runner) Run(ctx context.Context) Result {
 		Users:         r.populations(),
 		Reputation:    r.reputations(),
 		Friends:       r.friendStats(),
+		Ranking:       r.model.RankingStats(),
 		Seed:          r.seed,
 		Critical:      r.board.Critical(),
 		Errors:        r.board.Errors(),

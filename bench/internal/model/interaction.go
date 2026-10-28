@@ -18,6 +18,12 @@ type Comment struct {
 	exists    *timeline[bool]
 }
 
+// pendingComment は ID のわからないコメントの作成。書いた人はわかっている。
+type pendingComment struct {
+	authorID string
+	exists   *timeline[bool]
+}
+
 // CommentCreation は ID のわからないコメントの作成。
 type CommentCreation struct {
 	*Write
@@ -32,7 +38,7 @@ func (m *Model) BeginCreateComment(postID, authorID string) *CommentCreation {
 	w := m.newWrite()
 	exists := newTimeline(false)
 	begin(w, exists, true)
-	m.pendingComments[postID] = append(m.pendingComments[postID], exists)
+	m.pendingComments[postID] = append(m.pendingComments[postID], pendingComment{authorID: authorID, exists: exists})
 	c := &CommentCreation{Write: w, postID: postID, exists: exists}
 	// 拒否された作成は反映されていないので、ID の知らないコメントとして残さない。
 	w.after = func(o outcome) {
@@ -45,7 +51,7 @@ func (m *Model) BeginCreateComment(postID, authorID string) *CommentCreation {
 
 func (m *Model) removePendingComment(postID string, exists *timeline[bool]) {
 	list := m.pendingComments[postID]
-	if i := slices.Index(list, exists); i >= 0 {
+	if i := slices.IndexFunc(list, func(c pendingComment) bool { return c.exists == exists }); i >= 0 {
 		m.pendingComments[postID] = slices.Delete(list, i, i+1)
 	}
 }
@@ -93,7 +99,7 @@ func (m *Model) CheckComments(postID string, after *client.Comment, page client.
 		c := m.commentByID[item.ID]
 		switch {
 		case c == nil:
-			if !slices.ContainsFunc(m.pendingComments[postID], func(exists *timeline[bool]) bool { return boolTri(exists, r) != False }) {
+			if !slices.ContainsFunc(m.pendingComments[postID], func(c pendingComment) bool { return boolTri(c.exists, r) != False }) {
 				problems = append(problems, fmt.Sprintf("bench の知らないコメント %s が返りました", item.ID))
 			}
 		case c.PostID != postID:
