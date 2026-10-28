@@ -77,11 +77,7 @@ pub async fn new_server(config: Config) -> Router {
         Ok(options) => options.statement_cache_capacity(512),
         Err(err) => panic!("failed to open database: {err}"),
     };
-    let db = match PgPoolOptions::new()
-        .max_connections(30)
-        .connect_with(options)
-        .await
-    {
+    let db = match crate::db_pool::options(30).connect_with(options).await {
         Ok(db) => db,
         Err(err) => panic!("failed to ping database: {err}"),
     };
@@ -215,8 +211,7 @@ pub async fn new_server(config: Config) -> Router {
                 .expect("read database options")
                 .statement_cache_capacity(512)
                 .options([("default_transaction_read_only", "on")]);
-            let read_db = PgPoolOptions::new()
-                .max_connections(30)
+            let read_db = crate::db_pool::options(30)
                 .connect_with(options)
                 .await
                 .expect("connect local read database");
