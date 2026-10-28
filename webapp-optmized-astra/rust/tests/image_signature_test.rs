@@ -50,13 +50,21 @@ fn cached_signature_preserves_reference_and_isolates_inputs() {
     };
     for length in [0, 1, 32, 64, 65, 128] {
         let key = vec![7; length];
-        for image in ["id", "id2", "日本語/画像"] {
+        for image in [
+            "id",
+            "id2",
+            "日本語/画像",
+            "550e8400-e29b-41d4-a716-446655440000",
+        ] {
             for exp in [-1, 0, i64::MAX] {
                 let expected = reference(&key, image, exp);
                 let mut first = image_signature(&key, image, exp);
-                assert_eq!(first, expected);
+                assert_eq!(first.as_slice(), expected.as_slice());
                 first[0] ^= 1;
-                assert_eq!(image_signature(&key, image, exp), expected);
+                assert_eq!(
+                    image_signature(&key, image, exp).as_slice(),
+                    expected.as_slice()
+                );
             }
         }
     }
