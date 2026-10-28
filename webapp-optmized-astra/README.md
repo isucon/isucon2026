@@ -298,3 +298,4 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261028T085431Z-team10 | repeat reduced logging; info action logs and Nginx access off | FAIL | 0 |
 | 20261028T085903Z-team10 | recheck reduced logging after preparation registration timeout; configuration unchanged | PASS | 166,822 |
 | 20261028T090736Z-team10 | indexed normalized search candidates; transactional dirty fallback and bounded pages | PASS | 182,172 |
+| 20261028T091113Z-team10 | repeat indexed normalized search candidates with reduced logging | PASS | 172,644 |
