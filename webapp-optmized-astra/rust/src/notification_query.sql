@@ -6,20 +6,20 @@ WITH active_windows AS MATERIALIZED (
     SELECT s.slot,s.connected_at,u.id AS user_id,u.secret_key_hash
     FROM unnest($1::text[], $2::text[], $3::timestamptz[])
          WITH ORDINALITY AS s(user_id,region,connected_at,slot)
-    LEFT JOIN users u ON u.id=s.user_id AND u.status='active' AND u.region=s.region
+    -- Bound lookups to this batch; custom plans must not scan all users.
+    LEFT JOIN LATERAL (
+        SELECT id,secret_key_hash FROM users
+        WHERE id=s.user_id AND status='active' AND region=s.region OFFSET 0
+    ) u ON true
 ), legacy AS (
-    SELECT s.slot,n.id,n.posting_window_id,n.region,n.created_at
-    FROM recipients s
+    SELECT s.slot,n.id,n.posting_window_id,w.region,n.created_at
+    FROM active_windows w
+    JOIN recipients s ON NOT w.batched AND s.user_id IS NOT NULL
     CROSS JOIN LATERAL (
-        SELECT n.id,n.posting_window_id,w.region,n.created_at
-        FROM active_windows w
-        CROSS JOIN LATERAL (
-            SELECT n.id,n.posting_window_id,n.created_at
-            FROM notifications n
-            WHERE NOT w.batched AND n.posting_window_id=w.id AND n.user_id=s.user_id
-              AND n.created_at>s.connected_at
-            ORDER BY n.created_at,n.id LIMIT 1
-        ) n
+        SELECT n.id,n.posting_window_id,n.created_at
+        FROM notifications n
+        WHERE n.posting_window_id=w.id AND n.user_id=s.user_id
+          AND n.created_at>s.connected_at
         ORDER BY n.created_at,n.id LIMIT 1
     ) n
 ), cached AS (
