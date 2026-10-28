@@ -14,6 +14,7 @@ const WRITE_SLOTS: u32 = 64;
 const BYTES_PER_SLOT: u64 = 256 * 1024;
 const SMALL_BODY_BYTES: u64 = 64 * 1024;
 pub(crate) const SMALL_WRITE_SLOTS: usize = 128;
+pub(crate) const IMAGE_RESPONSE_SLOTS: usize = 256;
 
 #[derive(Default)]
 struct Pending {
@@ -29,6 +30,7 @@ struct Inner {
     mutations: Semaphore,
     small_mutations: Semaphore,
     control_mutations: Semaphore,
+    image_responses: Semaphore,
 }
 
 #[derive(Clone)]
@@ -44,12 +46,20 @@ impl NativeWriteFence {
             mutations: Semaphore::new(WRITE_SLOTS as usize),
             small_mutations: Semaphore::new(SMALL_WRITE_SLOTS),
             control_mutations: Semaphore::new(4),
+            image_responses: Semaphore::new(IMAGE_RESPONSE_SLOTS),
         }))
     }
 
-    /// Keep admission until the response barrier has applied on both replicas.
-    /// Local commits release SQL locks immediately, but cannot build an
-    /// unbounded queue of large image writes ahead of regional replay.
+    /// Bound image requests awaiting processing or global visibility separately
+    /// from the bytes being processed. Keep this permit until the response.
+    pub async fn admit_image_response(&self) -> SemaphorePermit<'_> {
+        self.0.image_responses.acquire().await
+            .expect("image response admission stays open")
+    }
+
+    /// Bound bytes during image processing and metadata writes until visibility.
+    /// Image handlers release this permit after processing; their separate
+    /// response permit still bounds the number waiting for replica replay.
     pub async fn admit(
         &self,
         body_bytes: Option<u64>,
