@@ -1,4 +1,5 @@
-declare var self: ServiceWorkerGlobalScope; export { };
+declare var self: ServiceWorkerGlobalScope;
+export {};
 
 import { clientsClaim } from "workbox-core";
 import { openDB } from "idb";
@@ -10,27 +11,22 @@ clientsClaim();
 
 console.log("SW!");
 
-const openDb = () => openDB("isuxportal-swKnownNotifications", 3, {
-  upgrade(db) {
-    db.createObjectStore('kv2', { keyPath: 'id' });
-  }
-});
+const openDb = () =>
+  openDB("isuxportal-swKnownNotifications", 3, {
+    upgrade(db) {
+      db.createObjectStore("kv2", { keyPath: "id" });
+    },
+  });
 
-
-self.addEventListener('activate', (e) => {
+self.addEventListener("activate", (e) => {
   console.log("SW! activate");
-  if (new Date().getTime() > 1735657200000) { // 2025/1/1 00:00:00 JST
-    self.registration.unregister();
-    return;
-  }
-
   const idbInitPromise = openDb();
   e.waitUntil(idbInitPromise);
 });
 
 const openUrl = (event: ExtendableEvent, path: string) => {
   const url = new URL(path, self.location.origin).href;
-  const promise = self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+  const promise = self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
     const windowClients = clients as WindowClient[];
     const match = windowClients.find((c) => c.url === url);
     if (match) {
@@ -40,7 +36,7 @@ const openUrl = (event: ExtendableEvent, path: string) => {
     }
   });
   event.waitUntil(promise);
-}
+};
 
 const showNotification = async (n: Notification) => {
   const tag = `isuxportal-pushtag-${n.id}`;
@@ -49,8 +45,8 @@ const showNotification = async (n: Notification) => {
   const wasKnown = await (async () => {
     const obj = { id: n.id!.toString(), known: true };
     const db = await openDb();
-    const txn = await db.transaction('kv2', 'readwrite');
-    const store = await txn.objectStore('kv2');
+    const txn = await db.transaction("kv2", "readwrite");
+    const store = await txn.objectStore("kv2");
 
     const known = (await store.get(obj.id))?.known;
     if (!known) {
@@ -67,16 +63,17 @@ const showNotification = async (n: Notification) => {
   let promise: Promise<void> | null = null;
 
   if (n.content.case === "contentTest") {
-    promise = self.registration.showNotification("isuxportal test notification", { body: `test ${n.content.value.something} ${n.id}`, tag, data: `/contestant` });
+    promise = self.registration.showNotification("isuxportal test notification", {
+      body: `test ${n.content.value.something} ${n.id}`,
+      tag,
+      data: `/contestant`,
+    });
   } else if (n.content.case === "contentBenchmarkJob") {
-    promise = self.registration.showNotification(
-      `Benchmark Job Completed`,
-      {
-        body: `Benchmark Job #${n.content.value.benchmarkJobId!} has finished.`,
-        data: `/contestant/benchmark_jobs/${n.content.value.benchmarkJobId!}`,
-        tag,
-      },
-    );
+    promise = self.registration.showNotification(`Benchmark Job Completed`, {
+      body: `Benchmark Job #${n.content.value.benchmarkJobId!} has finished.`,
+      data: `/contestant/benchmark_jobs/${n.content.value.benchmarkJobId!}`,
+      tag,
+    });
   } else if (n.content.case === "contentClarification") {
     const c = n.content.value;
     let title = "Clarification updated";
@@ -98,21 +95,18 @@ const showNotification = async (n: Notification) => {
       title = "運営からのメッセージが更新されました";
     }
 
-    promise = self.registration.showNotification(
-      title,
-      {
-        body: `Clarification #${c.clarificationId!}`,
-        data: `/contestant/clarifications`,
-        tag,
-      },
-    );
+    promise = self.registration.showNotification(title, {
+      body: `Clarification #${c.clarificationId!}`,
+      data: `/contestant/clarifications`,
+      tag,
+    });
   }
   await promise;
-}
+};
 
 interface LocalNotificationMessage {
   kind: "localNotification";
-  notifications: Notification[],
+  notifications: Notification[];
 }
 
 const handleLocalNotifications = async (data: LocalNotificationMessage) => {
@@ -121,7 +115,7 @@ const handleLocalNotifications = async (data: LocalNotificationMessage) => {
   for (const v of data.notifications) await showNotification(v);
 };
 
-self.addEventListener('message', (e) => {
+self.addEventListener("message", (e) => {
   console.log("SW message", e);
   const data = e.data;
   switch (data.kind) {
@@ -134,12 +128,12 @@ self.addEventListener('message', (e) => {
   }
 });
 
-self.addEventListener('push', (e) => {
+self.addEventListener("push", (e) => {
   console.log("SW push", e);
   if (!e.data) return;
   let notification: Notification | null = null;
   try {
-    const wire = Uint8Array.from(atob(e.data.text()), c => c.charCodeAt(0));
+    const wire = Uint8Array.from(atob(e.data.text()), (c) => c.charCodeAt(0));
     notification = fromBinary(NotificationSchema, wire);
   } catch (e) {
     console.error("SW push error while decoding", e);
@@ -150,6 +144,6 @@ self.addEventListener('push', (e) => {
   }
 });
 
-self.addEventListener('notificationclick', (e) => {
+self.addEventListener("notificationclick", (e) => {
   if (e.notification.data && e.notification.data !== "") openUrl(e, e.notification.data);
 });
