@@ -15,6 +15,7 @@ print(runtime.get('writeFenceMode', 'poll'))
 print('true' if runtime.get('regionalUploadCacheEnabled',False) else 'false')
 print('true' if runtime.get('regionalReactionCacheEnabled',True) else 'false')
 print('true' if runtime.get('asiaUpstreamKeepaliveEnabled',False) else 'false')
+print('true' if runtime['nginxJsonGzipEnabled'] else 'false')
 PY
 )
 enabled=${values[0]}
@@ -25,6 +26,7 @@ write_fence_mode=${values[4]}
 upload_cache=${values[5]}
 reaction_cache=${values[6]}
 asia_keepalive=${values[7]}
+json_gzip=${values[8]}
 if [ "$role" = backend ]; then
     if [ "$enabled" = true ]; then
         # Public topology only; the existing env.sh provides DB credentials.
@@ -71,9 +73,9 @@ elif [ "$role" = frontend ]; then
     [ "$region" != asia ] || enabled=false
     # The frontend remains in its original region. Only write requests cross
     # the existing, shaped data-plane route to the private worker.
-    python3 - "$enabled" "$backend_host" "$upload_cache" "$reaction_cache" "$region" "$asia_keepalive" > /etc/nginx/sites-available/isureal.conf.astra-new <<'PY'
+    python3 - "$enabled" "$backend_host" "$upload_cache" "$reaction_cache" "$region" "$asia_keepalive" "$json_gzip" > /etc/nginx/sites-available/isureal.conf.astra-new <<'PY'
 import sys
-enabled, host, upload_cache, reaction_cache, region, asia_keepalive = sys.argv[1:]
+enabled, host, upload_cache, reaction_cache, region, asia_keepalive, json_gzip = sys.argv[1:]
 keepalive=region!='asia' or asia_keepalive=='true'
 http_version='1.1' if keepalive else '1.0'
 connection='""' if keepalive else 'close'
@@ -98,6 +100,12 @@ print('''server {
   root /home/isucon/webapp/public;
 
   location /api/ {
+    gzip '''+('on' if json_gzip=='true' else 'off')+''';
+    gzip_types application/json;
+    gzip_min_length 1024;
+    gzip_comp_level 1;
+    gzip_proxied any;
+    gzip_vary on;
     proxy_http_version '''+http_version+''';
     proxy_set_header Connection '''+connection+''';
     proxy_set_header Host $host;
