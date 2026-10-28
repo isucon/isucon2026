@@ -295,3 +295,4 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261028T081730Z-team10 | repeat all initial image archives before additional application changes | PASS | 162,724 |
 | 20261028T082244Z-team10 | coalesce concurrent image reads and use consistent reaction image timestamp hints | PASS | 163,428 |
 | 20261028T085118Z-team10 | info action logs and Nginx access logging off; login guard preserved | PASS | 161,266 |
+| 20261028T085431Z-team10 | repeat reduced logging; info action logs and Nginx access off | FAIL | 0 |
