@@ -20,12 +20,14 @@ func ContestPB(t config.Timing, now time.Time) *pbresources.Contest {
 	}
 
 	c := &pbresources.Contest{
-		RegistrationOpensAt:  tsOrNil(t.RegistrationOpen),
-		RegistrationClosesAt: tsOrNil(t.RegistrationClose),
-		StartsAt:             autoTime(0),
-		FreezesAt:            autoTime(7),
-		EndsAt:               autoTime(8),
-		Frozen:               ContestFrozen(t, now),
+		RegistrationOpensAt:            tsOrNil(t.RegistrationOpen),
+		RegistrationClosesAt:           tsOrNil(t.RegistrationClose),
+		RegistrationInvitationClosesAt: tsOrNil(t.RegistrationInvitationClose),
+		RegistrationUpdateClosesAt:     tsOrNil(t.RegistrationUpdateClose),
+		StartsAt:                       autoTime(0),
+		FreezesAt:                      autoTime(7),
+		EndsAt:                         autoTime(8),
+		Frozen:                         ContestFrozen(t, now),
 	}
 	if t.ContestStart != nil {
 		c.StartsAt = timestamppb.New(*t.ContestStart)
