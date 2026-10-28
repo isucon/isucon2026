@@ -136,3 +136,7 @@ export const signatureFileSha256 = runtime.signatureFileCacheEnabled
 if (!Number.isInteger(runtime.imageCacheMiB) || runtime.imageCacheMiB < 64 || runtime.imageCacheMiB > 1024) {
     throw new Error("Invalid image byte cache capacity");
 }
+
+if (!Number.isInteger(runtime.metadataPoolConnections) || runtime.metadataPoolConnections < 4 || runtime.metadataPoolConnections > 64) {
+    throw new Error("Invalid metadata connection pool capacity");
+}
