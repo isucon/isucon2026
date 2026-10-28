@@ -73,6 +73,14 @@ async fn ordered_notification_batches_preserve_recipients_conflicts_and_atomicit
         .execute(&db)
         .await
         .unwrap();
+    sqlx::raw_sql(include_str!("../../sql/016-notification-region-locks.sql"))
+        .execute(&db)
+        .await
+        .unwrap();
+    sqlx::query("ALTER TABLE users ADD COLUMN bio text")
+        .execute(&db)
+        .await
+        .unwrap();
     let h = Arc::new(HandlerContext {
         db: db.clone(),
         config: config_from_env(),
@@ -192,6 +200,10 @@ async fn ordered_notification_batches_preserve_recipients_conflicts_and_atomicit
         .unwrap(),
         0
     );
+    sqlx::query("UPDATE users SET region='europe' WHERE id='foreign'")
+        .execute(&db)
+        .await
+        .unwrap();
     // Hold Asia inside its insert after it freezes user eligibility. Europe
     // must still finish, while a new user must wait until Asia has committed.
     sqlx::raw_sql(r#"
@@ -228,13 +240,56 @@ async fn ordered_notification_batches_preserve_recipients_conflicts_and_atomicit
     assert!(timeout(Duration::from_millis(50), &mut asia).await.is_err());
     let insert_db = db.clone();
     let mut registered = tokio::spawn(async move {
-        sqlx::query("INSERT INTO users VALUES ('after_asia','asia','active')")
+        sqlx::query("INSERT INTO users(id,region,status) VALUES ('after_asia','asia','active')")
             .execute(&insert_db)
             .await
             .unwrap();
     });
     assert!(
         timeout(Duration::from_millis(100), &mut registered)
+            .await
+            .is_err()
+    );
+    // Updates unrelated to eligibility and other-region registrations must
+    // complete even while Asia is held inside its window transaction.
+    timeout(
+        Duration::from_secs(1),
+        sqlx::query("UPDATE users SET bio='edited' WHERE id='user00003'").execute(&db),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    timeout(
+        Duration::from_secs(1),
+        sqlx::query(
+            "INSERT INTO users(id,region,status) VALUES ('during_europe','europe','active')",
+        )
+        .execute(&db),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    let move_db = db.clone();
+    let mut moved = tokio::spawn(async move {
+        sqlx::query("UPDATE users SET region='asia' WHERE id='foreign'")
+            .execute(&move_db)
+            .await
+            .unwrap();
+    });
+    let status_db = db.clone();
+    let mut activated = tokio::spawn(async move {
+        sqlx::query("UPDATE users SET status='active' WHERE id='inactive'")
+            .execute(&status_db)
+            .await
+            .unwrap();
+    });
+    assert!(
+        timeout(Duration::from_millis(50), &mut moved)
+            .await
+            .is_err()
+    );
+    assert!(
+        timeout(Duration::from_millis(50), &mut activated)
             .await
             .is_err()
     );
@@ -258,6 +313,16 @@ async fn ordered_notification_batches_preserve_recipients_conflicts_and_atomicit
         .unwrap(),
         0
     );
+    timeout(Duration::from_secs(2), moved)
+        .await
+        .unwrap()
+        .unwrap();
+    timeout(Duration::from_secs(2), activated)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(sqlx::query_scalar::<_, i64>("SELECT count(*) FROM notifications WHERE posting_window_id=$1 AND user_id IN ('foreign','inactive','during_europe')")
+        .bind(asia_window["id"].as_str().unwrap()).fetch_one(&db).await.unwrap(), 0);
     let (status, next_window) = open(&h, "asia", "2026-10-05").await;
     assert_eq!(status, StatusCode::CREATED);
     assert_eq!(
