@@ -353,3 +353,4 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261028T164045Z-team10 | db1 archive copies prepared with local Asia reads control | PASS | 188,226 |
 | 20261028T164517Z-team10 | Asia initial archive reads from existing db1 peer | PASS | 174,918 |
 | 20261028T164832Z-team10 | repeat Asia archive reads from db1 peer without restart | FAIL | 0 |
+| 20261028T165446Z-team10 | db1 archive peer with threaded Nginx file reads after GC | PASS | 179,400 |
