@@ -37,3 +37,7 @@ zip = { version = "9", default-features = false, features = ["deflate-flate2-zli
 http-body-util = "0.1"
 tower = { version = "0.5", features = ["util"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "test-util"] }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
