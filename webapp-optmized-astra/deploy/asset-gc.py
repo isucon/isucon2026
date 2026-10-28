@@ -72,13 +72,22 @@ SELECT count(*) AS retained_assets,pg_database_size(current_database()) AS datab
 """
 
 
-def split_references(keys, regions, file_regions=()):
+def split_references(keys, regions, file_regions=(), archive_reads=False):
     """Validate every published key before deleting from any configured store."""
     grouped = {region: [] for region in regions}
     grouped.update({"fs:"+region: [] for region in file_regions})
+    if archive_reads:
+        assert len(file_regions)==3, 'Archives need all three local readers'
+        grouped['pack']=[]
     if len(keys) != len(set(keys)):
         raise ValueError("Duplicate reference snapshot")
     for key in keys:
+        if key.startswith("pack:"):
+            match=re.fullmatch(r"pack:([0-9a-f]{32}):(0|[1-9][0-9]*):([1-9][0-9]*)",key)
+            if not archive_reads or not match or not 0<int(match[3])<=32*1024**2 or int(match[2])+int(match[3])>8*1024**3:
+                raise ValueError("Unknown or invalid archive reference")
+            grouped['pack'].append(key)
+            continue
         if key.startswith("fs:"):
             kind, region, raw = key.split(":")
             region = kind+":"+region
@@ -124,18 +133,19 @@ def main():
                        stdout=output)
             grouped = split_references(snapshot_path.read_text().splitlines(),
                                        [app["region"] for app in stores],
-                                       [app["region"] for app in apps] if runtime.get("fileImageStore",{}).get("enabled") else [])
+                                       [app["region"] for app in apps] if runtime.get("fileImageStore",{}).get("enabled") else [],
+                                       runtime.get("fileImageStore",{}).get("archiveReadsEnabled",False))
             file_stores = apps if runtime.get("fileImageStore",{}).get("enabled") else []
 
             def file_command(app, mode):
-                count = len(grouped["fs:"+app["region"]])
+                count = len(grouped["fs:"+app["region"]])+len(grouped.get("pack",[]))
                 return f"sudo python3 {incoming}/file-gc.py {mode} {remote_dir}/file-refs {count}"
 
             # Validate every published file before any store begins deleting.
             for app in file_stores:
                 region, instance = app["region"], app["instanceId"]
                 refs = Path(directory) / ("file-refs-"+region)
-                refs.write_text("".join(key+"\n" for key in grouped["fs:"+region]))
+                refs.write_text("".join(key+"\n" for key in grouped["fs:"+region]+grouped.get("pack",[])))
                 refs.chmod(0o600)
                 remote(instance, "mkdir -p -m700 " + shlex.quote(incoming))
                 subprocess.run([SSH,instance,"--copy",str(refs),incoming+"/file-refs"],check=True)

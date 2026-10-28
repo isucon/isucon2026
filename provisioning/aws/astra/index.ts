@@ -86,6 +86,7 @@ if (!Number.isInteger(runtime.nginxAccessLogBufferBytes) || ![0, 16384, 32768, 6
 if (runtime.fileImageStore) {
     const files = runtime.fileImageStore;
     if (typeof files.enabled !== "boolean" || typeof files.writesEnabled !== "boolean"
+        || typeof files.archiveReadsEnabled !== "boolean" || (files.archiveReadsEnabled && !files.enabled)
         || files.root !== "/var/lib/astra-images" || files.port !== 8082
         || (files.enabled && !runtime.regionalImageStoresEnabled)
         || (files.writesEnabled && (!files.enabled || !runtime.regionalImageWritesEnabled || !runtime.imageStore?.writesEnabled))) {
