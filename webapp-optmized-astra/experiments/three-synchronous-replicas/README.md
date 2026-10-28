@@ -37,7 +37,7 @@ db1の既存画像パックを読むと、全読み取り構成のAsia I/O待ち
 
 選択的読み取りを追加した後も、3台同期で検索が新しい主DBのWALを待たないことと、非同期構成で検索待機・ログアウト反映を維持する実APIテストを各1件実行した。Python経路設定5件、Clippy全target、TypeScript型検査、変更したシェルとPythonの構文確認も成功した。
 
-3台同期・選択的読み取り・地域内画像の構成でGCと再起動を行い、3地域の計18画像の本文とJPEG型が一致した。Asiaの空き容量は8.7GiBへ戻り、全レプリカの未反映WALは0だった。[検証ログ](gc-restart-validation.txt)を保存した。切り戻し後もFIRST 2、Asiaの読み取り前確認、実プロセスの配布物・設定を照合した。
+3台同期・選択的読み取り・地域内画像の構成でGCと再起動を行い、3地域の計18画像の本文とJPEG型が一致した。Asiaの空き容量は8.7GiBへ戻り、全レプリカの未反映WALは0だった。[検証ログ](gc-restart-validation.txt)を保存した。切り戻し後もGCと再起動を行い、計18画像が一致した。FIRST 2、Asiaの読み取り前確認、実プロセスの配布物・設定も照合した。[切り戻し後の検証ログ](restored-gc-restart-validation.txt)を保存した。
 
 ローカルfixtureはPostgreSQL 16の既存主DBと3レプリカ。application_nameをastra_europe、astra_america、astra_asiaとし、3台目はポート26215、物理スロットastra_asiaで作成した。追加の環境変数は`ISUREAL_FENCE_REPLICA3_DSN=postgres://postgres@127.0.0.1:26215/postgres`と`ISUREAL_THIRD_REPLICA_HOST`。既存のFENCE/SELECTIVE用変数も設定する。
 
