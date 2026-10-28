@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::convert::Infallible;
+use std::num::IntErrorKind;
 
 use axum::extract::{FromRequest, FromRequestParts, Path, Request};
 use axum::http::request::Parts;
@@ -51,6 +52,22 @@ pub trait FromParam: Sized {
 impl FromParam for String {
     fn from_param(value: &str) -> Result<Self, String> {
         Ok(value.to_owned())
+    }
+}
+
+impl FromParam for i64 {
+    fn from_param(value: &str) -> Result<Self, String> {
+        if value.is_empty() {
+            return Ok(0);
+        }
+        value
+            .parse()
+            .map_err(|err: std::num::ParseIntError| match err.kind() {
+                IntErrorKind::PosOverflow | IntErrorKind::NegOverflow => {
+                    format!("strconv.ParseInt: parsing {value:?}: value out of range")
+                }
+                _ => format!("strconv.ParseInt: parsing {value:?}: invalid syntax"),
+            })
     }
 }
 

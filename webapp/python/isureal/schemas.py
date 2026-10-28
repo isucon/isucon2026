@@ -160,6 +160,10 @@ class PostResponse(Schema):
         )
 
 
+class FeedPostResponse(PostResponse):
+    score: int | None = Field(default=None, exclude_if=_is_none)
+
+
 class ExportPostResponse(PostResponse):
     image_path: str
 

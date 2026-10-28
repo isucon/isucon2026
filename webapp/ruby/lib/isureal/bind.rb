@@ -6,6 +6,7 @@ require 'json'
 module Isureal
   module Bind
     FLOAT_PATTERN = /\A[+-]?(?:(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?|inf(?:inity)?|nan)\z/i
+    INT_PATTERN = /\A[+-]?\d+\z/
     RFC3339_PATTERN = /\A(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:[.,](\d+))?(?:(Z)|([+-])(\d{2}):(\d{2}))\z/
     QUERY_METHODS = %w[GET DELETE HEAD].freeze
 
@@ -79,10 +80,21 @@ module Isureal
       result
     end
 
+    def parse_int(value)
+      return 0 if value.empty?
+      raise ArgumentError, "strconv.ParseInt: parsing #{value.inspect}: invalid syntax" unless INT_PATTERN.match?(value)
+
+      result = Integer(value, 10)
+      raise ArgumentError, "strconv.ParseInt: parsing #{value.inspect}: value out of range" unless result.bit_length < 64
+
+      result
+    end
+
     def convert(value, type)
       case type
       when :time then parse_time(value)
       when :float then parse_float(value)
+      when :int then parse_int(value)
       else value
       end
     end
