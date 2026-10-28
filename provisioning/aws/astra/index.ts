@@ -77,3 +77,8 @@ if (!["debug", "info"].includes(runtime.applicationLogLevel)) {
 if (typeof runtime.nginxRequestBuffering !== "boolean") {
     throw new Error("Nginx request buffering must be explicitly configured");
 }
+
+if (!Number.isInteger(runtime.nginxAccessLogBufferBytes) || ![0, 16384, 32768, 65536].includes(runtime.nginxAccessLogBufferBytes)
+    || !Number.isInteger(runtime.nginxAccessLogFlushSeconds) || runtime.nginxAccessLogFlushSeconds < 1 || runtime.nginxAccessLogFlushSeconds > 5) {
+    throw new Error("Invalid bounded Nginx access log buffering");
+}
