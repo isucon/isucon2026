@@ -172,15 +172,18 @@ export class RegistrationForm extends React.Component<Props, State> {
     );
   }
 
-  uploadAvatar(url: string, data: Blob) {
+  async uploadAvatar(url: string, data: Blob) {
     // url に対して PUT リクエストを送信する
-    return fetch(url, {
+    const response = await fetch(url, {
       method: "PUT",
       body: data,
       headers: {
         "Content-Type": "image/png",
       },
     });
+    if (!response.ok) {
+      throw new Error("アイコンのアップロードに失敗しました。時間をおいて再度保存してください。");
+    }
   }
 
   isEditing() {
