@@ -37,6 +37,11 @@ async fn open(h: &Arc<HandlerContext>, region: &str, date: &str) -> (StatusCode,
 
 #[tokio::test]
 async fn ordered_notification_batches_preserve_recipients_conflicts_and_atomicity() {
+    verify_creation(false).await;
+    verify_creation(true).await;
+}
+
+async fn verify_creation(batch_writes: bool) {
     let Ok(dsn) = std::env::var("ISUREAL_SESSION_TEST_DSN") else {
         return;
     };
@@ -81,11 +86,18 @@ async fn ordered_notification_batches_preserve_recipients_conflicts_and_atomicit
         .execute(&db)
         .await
         .unwrap();
+    sqlx::raw_sql(include_str!("../../sql/017-notification-batches.sql"))
+        .execute(&db)
+        .await
+        .unwrap();
+    sqlx::raw_sql("CREATE VIEW observed_notifications AS SELECT * FROM notifications UNION ALL SELECT n.id,n.user_id,b.posting_window_id,b.created_at FROM astra_notification_batches b CROSS JOIN LATERAL unnest(b.notification_ids,b.user_ids) AS n(id,user_id)")
+        .execute(&db).await.unwrap();
     let h = Arc::new(HandlerContext {
         db: db.clone(),
         config: config_from_env(),
         ip_bans: Default::default(),
         notifications: Default::default(),
+        notification_batch_writes: batch_writes,
         read_fence: None,
         image_store: None,
     });
@@ -96,7 +108,7 @@ async fn ordered_notification_batches_preserve_recipients_conflicts_and_atomicit
     let deadline: DateTime<Utc> = first["onTimeDeadline"].as_str().unwrap().parse().unwrap();
     assert_eq!((deadline - starts).num_seconds(), 120);
     let notices: Vec<(String, String, DateTime<Utc>)> = sqlx::query_as(
-        "SELECT id,user_id,created_at FROM notifications WHERE posting_window_id=$1 ORDER BY user_id"
+        "SELECT id,user_id,created_at FROM observed_notifications WHERE posting_window_id=$1 ORDER BY user_id"
     ).bind(first_id).fetch_all(&db).await.unwrap();
     assert_eq!(notices.len(), 5000);
     for (i, (id, user, created)) in notices.iter().enumerate() {
@@ -125,7 +137,7 @@ async fn ordered_notification_batches_preserve_recipients_conflicts_and_atomicit
     let second = if a.0 == StatusCode::CREATED { a.1 } else { b.1 };
     let second_id = second["id"].as_str().unwrap();
     let actual: Vec<String> = sqlx::query_scalar(
-        "SELECT user_id FROM notifications WHERE posting_window_id=$1 ORDER BY user_id",
+        "SELECT user_id FROM observed_notifications WHERE posting_window_id=$1 ORDER BY user_id",
     )
     .bind(second_id)
     .fetch_all(&db)
@@ -148,14 +160,22 @@ async fn ordered_notification_batches_preserve_recipients_conflicts_and_atomicit
     assert_eq!(ended, second_start);
     // Failure partway through the bulk insert must roll back the new window,
     // all new notices, and the previous window's ended_at update together.
-    sqlx::raw_sql(r#"
+    let (target, condition) = if batch_writes {
+        (
+            "astra_notification_batches",
+            "NEW.user_ids @> ARRAY['user00010']::text[]",
+        )
+    } else {
+        ("notifications", "NEW.user_id='user00010'")
+    };
+    sqlx::raw_sql(&format!(r#"
       CREATE FUNCTION reject_notice() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
-        IF NEW.user_id='user00010' THEN RAISE EXCEPTION 'injected notification failure'; END IF;
+        IF {condition} THEN RAISE EXCEPTION 'injected notification failure'; END IF;
         RETURN NEW;
       END $$;
-      CREATE TRIGGER reject_notice BEFORE INSERT ON notifications FOR EACH ROW EXECUTE FUNCTION reject_notice();
-    "#).execute(&db).await.unwrap();
-    let before: i64 = sqlx::query_scalar("SELECT count(*) FROM notifications")
+      CREATE TRIGGER reject_notice BEFORE INSERT ON {target} FOR EACH ROW EXECUTE FUNCTION reject_notice();
+    "#)).execute(&db).await.unwrap();
+    let before: i64 = sqlx::query_scalar("SELECT count(*) FROM observed_notifications")
         .fetch_one(&db)
         .await
         .unwrap();
@@ -164,7 +184,7 @@ async fn ordered_notification_batches_preserve_recipients_conflicts_and_atomicit
         StatusCode::INTERNAL_SERVER_ERROR
     );
     assert_eq!(
-        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM notifications")
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM observed_notifications")
             .fetch_one(&db)
             .await
             .unwrap(),
@@ -184,7 +204,7 @@ async fn ordered_notification_batches_preserve_recipients_conflicts_and_atomicit
             .await
             .unwrap()
     );
-    sqlx::query("DROP TRIGGER reject_notice ON notifications")
+    sqlx::query(&format!("DROP TRIGGER reject_notice ON {target}"))
         .execute(&db)
         .await
         .unwrap();
@@ -192,7 +212,7 @@ async fn ordered_notification_batches_preserve_recipients_conflicts_and_atomicit
     assert_eq!(status, StatusCode::CREATED);
     assert_eq!(
         sqlx::query_scalar::<_, i64>(
-            "SELECT count(*) FROM notifications WHERE posting_window_id=$1"
+            "SELECT count(*) FROM observed_notifications WHERE posting_window_id=$1"
         )
         .bind(empty["id"].as_str().unwrap())
         .fetch_one(&db)
@@ -305,7 +325,7 @@ async fn ordered_notification_batches_preserve_recipients_conflicts_and_atomicit
         .unwrap();
     assert_eq!(
         sqlx::query_scalar::<_, i64>(
-            "SELECT count(*) FROM notifications WHERE user_id='after_asia' AND posting_window_id=$1"
+            "SELECT count(*) FROM observed_notifications WHERE user_id='after_asia' AND posting_window_id=$1"
         )
         .bind(asia_window["id"].as_str().unwrap())
         .fetch_one(&db)
@@ -321,13 +341,13 @@ async fn ordered_notification_batches_preserve_recipients_conflicts_and_atomicit
         .await
         .unwrap()
         .unwrap();
-    assert_eq!(sqlx::query_scalar::<_, i64>("SELECT count(*) FROM notifications WHERE posting_window_id=$1 AND user_id IN ('foreign','inactive','during_europe')")
+    assert_eq!(sqlx::query_scalar::<_, i64>("SELECT count(*) FROM observed_notifications WHERE posting_window_id=$1 AND user_id IN ('foreign','inactive','during_europe')")
         .bind(asia_window["id"].as_str().unwrap()).fetch_one(&db).await.unwrap(), 0);
     let (status, next_window) = open(&h, "asia", "2026-10-05").await;
     assert_eq!(status, StatusCode::CREATED);
     assert_eq!(
         sqlx::query_scalar::<_, i64>(
-            "SELECT count(*) FROM notifications WHERE user_id='after_asia' AND posting_window_id=$1"
+            "SELECT count(*) FROM observed_notifications WHERE user_id='after_asia' AND posting_window_id=$1"
         )
         .bind(next_window["id"].as_str().unwrap())
         .fetch_one(&db)

@@ -78,6 +78,7 @@ async fn login_replacement_stays_atomic_and_serializes_with_account_changes() {
             config: config_from_env(),
             ip_bans: Default::default(),
             notifications: Default::default(),
+            notification_batch_writes: false,
             read_fence: None,
             image_store: None,
         }));

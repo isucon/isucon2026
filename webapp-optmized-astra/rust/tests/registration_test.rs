@@ -78,6 +78,7 @@ async fn registration_is_unique_and_independent_users_do_not_serialize() {
         config: config_from_env(),
         ip_bans: Default::default(),
         notifications: Default::default(),
+        notification_batch_writes: false,
         read_fence: None,
         image_store: None,
     });

@@ -64,3 +64,5 @@ pub mod db_pool;
 pub mod file_store;
 
 pub mod archive_store;
+
+mod notification_batches;

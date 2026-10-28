@@ -68,6 +68,41 @@ struct NotificationRow {
     created_at: Option<DateTime<Utc>>,
 }
 
+async fn notification_rows(
+    db: &PgPool,
+    batch: &[Recipient],
+    snapshots: &crate::notification_batches::Batches,
+) -> Result<Vec<NotificationRow>, sqlx::Error> {
+    // Cached snapshots supply candidates only. The SQL below
+    // rechecks current user state and open windows together.
+    let mut slots = Vec::new();
+    let mut ids = Vec::new();
+    let mut windows = Vec::new();
+    let mut created = Vec::new();
+    for (index, recipient) in batch.iter().enumerate() {
+        for (window, snapshot) in &snapshots.0 {
+            if snapshot.created_at > recipient.connected_at
+                && let Some(id) = snapshot.notifications.get(&recipient.user_id)
+            {
+                slots.push(index as i64 + 1);
+                ids.push(id.as_str());
+                windows.push(window.as_str());
+                created.push(snapshot.created_at);
+            }
+        }
+    }
+    sqlx::query_as::<_, NotificationRow>(include_str!("notification_query.sql"))
+        .bind(batch.iter().map(|r| r.user_id.as_str()).collect::<Vec<_>>())
+        .bind(batch.iter().map(|r| r.region.as_str()).collect::<Vec<_>>())
+        .bind(batch.iter().map(|r| r.connected_at).collect::<Vec<_>>())
+        .bind(slots)
+        .bind(ids)
+        .bind(windows)
+        .bind(created)
+        .fetch_all(db)
+        .await
+}
+
 impl NotificationHub {
     fn subscribe(
         &self,
@@ -102,6 +137,7 @@ impl NotificationHub {
     }
 
     async fn poll(self, db: PgPool, fence: Option<ReadFence>) {
+        let mut snapshots = crate::notification_batches::Batches::default();
         let mut ticker = interval(Duration::from_millis(100));
         ticker.set_missed_tick_behavior(MissedTickBehavior::Skip);
         loop {
@@ -129,42 +165,18 @@ impl NotificationHub {
                 }
                 continue;
             }
+            if let Err(err) = snapshots.refresh(&db).await {
+                logger::error("failed to load notification snapshots", &err);
+                let mut state = self.0.lock().unwrap();
+                for recipient in &recipients {
+                    state.entries.remove(&recipient.id);
+                }
+                continue;
+            }
             // Chunking bounds the query and lets other database work interleave
             // when thousands of clients are waiting for a notification.
             for batch in recipients.chunks(512) {
-                // Probe each open window's (window, user) index, then choose
-                // the earliest candidate. The inner limit prevents a scan of
-                // each user's historical notifications and preserves tie order.
-                let rows = sqlx::query_as::<_, NotificationRow>(
-                    r#"
-                    WITH active_windows AS MATERIALIZED (
-                        SELECT id, region FROM posting_windows WHERE ended_at IS NULL
-                    )
-                    SELECT s.slot, u.secret_key_hash,
-                           n.id, n.posting_window_id, n.region, n.created_at
-                    FROM unnest($1::text[], $2::text[], $3::timestamptz[])
-                         WITH ORDINALITY AS s(user_id, region, connected_at, slot)
-                    LEFT JOIN users u ON u.id = s.user_id
-                         AND u.status = 'active' AND u.region = s.region
-                    LEFT JOIN LATERAL (
-                        SELECT n.id, n.posting_window_id, w.region, n.created_at
-                        FROM active_windows w
-                        CROSS JOIN LATERAL (
-                            SELECT n.id, n.posting_window_id, n.created_at
-                            FROM notifications n
-                            WHERE n.posting_window_id = w.id AND n.user_id = u.id
-                              AND n.created_at > s.connected_at
-                            ORDER BY n.created_at, n.id LIMIT 1
-                        ) n
-                        ORDER BY n.created_at, n.id LIMIT 1
-                    ) n ON true
-                "#,
-                )
-                .bind(batch.iter().map(|r| r.user_id.as_str()).collect::<Vec<_>>())
-                .bind(batch.iter().map(|r| r.region.as_str()).collect::<Vec<_>>())
-                .bind(batch.iter().map(|r| r.connected_at).collect::<Vec<_>>())
-                .fetch_all(&db)
-                .await;
+                let rows = notification_rows(&db, batch, &snapshots).await;
                 match rows {
                     Ok(rows) => {
                         for row in rows {
@@ -271,6 +283,16 @@ mod tests {
             CREATE TABLE users (id text PRIMARY KEY, region text, status text, secret_key_hash text);
             CREATE TABLE posting_windows (id text PRIMARY KEY, region text, ended_at timestamptz);
             CREATE TABLE notifications (id text PRIMARY KEY, user_id text, posting_window_id text, created_at timestamptz);
+-- One immutable recipient snapshot is published with its posting window.
+-- Readers retain support for the original notifications table.
+CREATE TABLE IF NOT EXISTS astra_notification_batches (
+    posting_window_id varchar(36) PRIMARY KEY REFERENCES posting_windows(id) ON DELETE RESTRICT,
+    user_ids text[] NOT NULL,
+    notification_ids text[] NOT NULL,
+    created_at timestamptz NOT NULL,
+    CHECK (cardinality(user_ids)=cardinality(notification_ids))
+);
+
             INSERT INTO users SELECT id, 'asia', 'active', repeat('ab',32) FROM unnest(ARRAY['a','b','c','d','bad']) id;
             UPDATE users SET secret_key_hash = 'invalid' WHERE id = 'bad';
             INSERT INTO posting_windows VALUES ('active', 'asia', NULL), ('ended', 'asia', now());
@@ -386,6 +408,11 @@ mod tests {
 
     #[tokio::test]
     async fn fenced_poll_does_not_deliver_to_a_deleted_recipient_on_lagging_replica() {
+        verify_fenced_poll(false).await;
+        verify_fenced_poll(true).await;
+    }
+
+    async fn verify_fenced_poll(batch_writes: bool) {
         use futures_util::FutureExt;
         use std::panic::AssertUnwindSafe;
         let (Ok(primary_dsn), Ok(replica_dsn)) = (
@@ -426,12 +453,26 @@ mod tests {
                 CREATE TABLE users (id text PRIMARY KEY, region text, status text, secret_key_hash text);
                 CREATE TABLE posting_windows (id text PRIMARY KEY, region text, ended_at timestamptz);
                 CREATE TABLE notifications (id text PRIMARY KEY, user_id text, posting_window_id text, created_at timestamptz);
+-- One immutable recipient snapshot is published with its posting window.
+-- Readers retain support for the original notifications table.
+CREATE TABLE IF NOT EXISTS astra_notification_batches (
+    posting_window_id varchar(36) PRIMARY KEY REFERENCES posting_windows(id) ON DELETE RESTRICT,
+    user_ids text[] NOT NULL,
+    notification_ids text[] NOT NULL,
+    created_at timestamptz NOT NULL,
+    CHECK (cardinality(user_ids)=cardinality(notification_ids))
+);
+
                 INSERT INTO users VALUES ('recipient','asia','active',repeat('ab',32));
                 INSERT INTO posting_windows VALUES ('window','asia',NULL);
                 INSERT INTO notifications VALUES ('notice','recipient','window',clock_timestamp());
             "#).execute(&db).await.unwrap();
             let connected: DateTime<Utc> = sqlx::query_scalar("SELECT created_at - interval '1 second' FROM notifications")
                 .fetch_one(&db).await.unwrap();
+            if batch_writes {
+                sqlx::raw_sql("INSERT INTO astra_notification_batches SELECT posting_window_id,array_agg(user_id),array_agg(id),min(created_at) FROM notifications GROUP BY posting_window_id; DELETE FROM notifications;")
+                    .execute(&db).await.unwrap();
+            }
             fence.wait().await.unwrap();
             sqlx::query("SELECT pg_wal_replay_pause()").execute(&replica_admin).await.unwrap();
             timeout(Duration::from_secs(2), async {
@@ -466,5 +507,127 @@ mod tests {
         if let Err(panic) = result {
             std::panic::resume_unwind(panic);
         }
+    }
+    #[tokio::test]
+    async fn snapshot_candidates_recheck_live_state_and_preserve_mixed_order() {
+        let Ok(dsn) = std::env::var("ISUREAL_SESSION_TEST_DSN") else {
+            return;
+        };
+        let schema = format!("astra_batch_reader_{}", uuid::Uuid::new_v4().simple());
+        let admin = PgPool::connect(&dsn).await.unwrap();
+        sqlx::query(&format!("CREATE SCHEMA {schema}"))
+            .execute(&admin)
+            .await
+            .unwrap();
+        let db = PgPoolOptions::new()
+            .max_connections(3)
+            .connect_with(
+                PgConnectOptions::from_str(&dsn)
+                    .unwrap()
+                    .options([("search_path", schema.as_str())]),
+            )
+            .await
+            .unwrap();
+        sqlx::raw_sql(r#"
+          CREATE TABLE users(id text PRIMARY KEY,region text,status text,secret_key_hash text);
+          CREATE TABLE posting_windows(id text PRIMARY KEY,region text,ended_at timestamptz);
+          CREATE TABLE notifications(id text PRIMARY KEY,user_id text,posting_window_id text,created_at timestamptz);
+          INSERT INTO users SELECT id,'asia','active',repeat('ab',32) FROM unnest(ARRAY['a','b','c','d']) id;
+          INSERT INTO posting_windows VALUES ('legacy','asia',NULL),('batch','asia',NULL);
+        "#).execute(&db).await.unwrap();
+        sqlx::raw_sql(include_str!("../../sql/017-notification-batches.sql"))
+            .execute(&db)
+            .await
+            .unwrap();
+        let connected: DateTime<Utc> = sqlx::query_scalar("SELECT clock_timestamp()")
+            .fetch_one(&db)
+            .await
+            .unwrap();
+        let created = connected + chrono::Duration::seconds(1);
+        sqlx::query("INSERT INTO notifications VALUES ('z_legacy','a','legacy',$1)")
+            .bind(created)
+            .execute(&db)
+            .await
+            .unwrap();
+        sqlx::query("INSERT INTO astra_notification_batches VALUES ('batch',ARRAY['a','b','c','d'],ARRAY['a_batch','b_batch','c_batch','d_batch'],$1)")
+            .bind(created).execute(&db).await.unwrap();
+        let recipients: Vec<_> = ["a", "b", "c", "d", "a"]
+            .into_iter()
+            .enumerate()
+            .map(|(id, user)| Recipient {
+                id: id as u64,
+                user_id: user.into(),
+                region: "asia".into(),
+                connected_at: if id == 4 { created } else { connected },
+            })
+            .collect();
+        let mut snapshots = crate::notification_batches::Batches::default();
+        snapshots.refresh(&db).await.unwrap();
+        assert_eq!(snapshots.0.len(), 1);
+        let mut rows = notification_rows(&db, &recipients, &snapshots)
+            .await
+            .unwrap();
+        rows.sort_by_key(|row| row.slot);
+        assert_eq!(rows[0].id.as_deref(), Some("a_batch")); // Equal timestamps: ID order across both stores.
+        assert_eq!(rows[1].id.as_deref(), Some("b_batch"));
+        assert!(rows[4].id.is_none()); // Notification at connection time is not newer.
+        // Cached entries cannot bypass changes made after refresh.
+        sqlx::raw_sql("UPDATE users SET region='europe' WHERE id='c'; UPDATE users SET status='deleted' WHERE id='d'; UPDATE users SET secret_key_hash='invalid' WHERE id='b';")
+            .execute(&db).await.unwrap();
+        let mut rows = notification_rows(&db, &recipients, &snapshots)
+            .await
+            .unwrap();
+        rows.sort_by_key(|row| row.slot);
+        assert!(image_signing_key(rows[1].secret_key_hash.as_deref().unwrap()).is_err());
+        assert!(rows[2].id.is_none() && rows[2].secret_key_hash.is_none());
+        assert!(rows[3].id.is_none() && rows[3].secret_key_hash.is_none());
+        sqlx::query("UPDATE posting_windows SET ended_at=clock_timestamp() WHERE id='batch'")
+            .execute(&db)
+            .await
+            .unwrap();
+        let rows = notification_rows(&db, &recipients, &snapshots)
+            .await
+            .unwrap();
+        assert_eq!(
+            rows.iter().find(|row| row.slot == 1).unwrap().id.as_deref(),
+            Some("z_legacy")
+        );
+        assert!(
+            rows.iter()
+                .filter(|row| row.slot != 1)
+                .all(|row| row.id.is_none())
+        );
+        snapshots.refresh(&db).await.unwrap();
+        assert!(snapshots.0.is_empty());
+        // A reset removes the old snapshot and the next window gets new IDs.
+        sqlx::raw_sql("TRUNCATE astra_notification_batches,notifications,posting_windows; INSERT INTO posting_windows VALUES ('after_reset','asia',NULL);")
+            .execute(&db).await.unwrap();
+        sqlx::query("INSERT INTO astra_notification_batches VALUES ('after_reset',ARRAY['a'],ARRAY['after_reset_notice'],$1)")
+            .bind(created).execute(&db).await.unwrap();
+        snapshots.refresh(&db).await.unwrap();
+        let rows = notification_rows(&db, &recipients, &snapshots)
+            .await
+            .unwrap();
+        assert_eq!(
+            rows.iter().find(|row| row.slot == 1).unwrap().id.as_deref(),
+            Some("after_reset_notice")
+        );
+        // A new hub reloads the persisted snapshot and sends the same event.
+        let hub = NotificationHub::default();
+        let receiver = hub.subscribe(db.clone(), None, "a".into(), "asia".into(), connected);
+        assert!(
+            timeout(Duration::from_secs(2), receiver)
+                .await
+                .unwrap()
+                .unwrap()
+                .contains("after_reset_notice")
+        );
+        sleep(Duration::from_millis(150)).await;
+        db.close().await;
+        sqlx::query(&format!("DROP SCHEMA {schema} CASCADE"))
+            .execute(&admin)
+            .await
+            .unwrap();
+        admin.close().await;
     }
 }
