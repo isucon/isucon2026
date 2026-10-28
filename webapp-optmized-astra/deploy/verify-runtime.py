@@ -7,7 +7,7 @@ from pathlib import Path
 import shlex
 import subprocess
 import tarfile
-from runtime_topology import metadata_replicas, read_settings
+from runtime_topology import metadata_replicas, read_settings, read_scope
 
 root=Path.cwd()
 runtime=json.loads((root/'webapp-optmized-astra/deploy/runtime.json').read_text())
@@ -39,6 +39,7 @@ def inspect(app):
             'ISUREAL_LOG_LEVEL':runtime.get('applicationLogLevel','debug'),
             'ISUREAL_WRITE_FENCE_MODE':runtime['writeFenceMode'],
             'ISUREAL_DB_READ_HOST':read_host,
+            'ISUREAL_DB_READ_SCOPE':read_scope(runtime,app,writer=service.endswith('-writer')),
             'ISUREAL_READ_FENCE':str(int(fenced)) if not service.endswith('-writer') else '',
             'ISUREAL_UPLOAD_PROXY_TARGET':'192.168.145.10:8081' if regional and runtime['regionalUploadCacheEnabled'] else '',
         }

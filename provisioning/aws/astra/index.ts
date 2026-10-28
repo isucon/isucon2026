@@ -26,6 +26,9 @@ if (typeof runtime.asiaReplicaEnabled !== "boolean" || typeof runtime.asiaReplic
     || (runtime.asiaReplicaReads && (!runtime.asiaReplicaEnabled || !runtime.replicaReads))) {
     throw new Error("Asia replica reads require the existing Asia standby and enabled replica reads");
 }
+if (!["all", "feed_search"].includes(runtime.asiaReplicaReadScope)) {
+    throw new Error("Unknown Asia replica read scope");
+}
 export const artifactSha256 = createHash("sha256")
 	.update(readFileSync("../../../" + runtime.archivePath))
 	.digest("hex");

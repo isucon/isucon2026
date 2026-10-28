@@ -3,7 +3,7 @@ import copy
 import json
 from pathlib import Path
 import unittest
-from runtime_topology import metadata_replicas, read_settings
+from runtime_topology import metadata_replicas, read_settings, read_scope
 
 
 class ReplicaRoutingTest(unittest.TestCase):
@@ -30,6 +30,18 @@ class ReplicaRoutingTest(unittest.TestCase):
         runtime['asiaReplicaReads'] = False
         self.assertEqual(read_settings(runtime, self.asia), ('', False))
         self.assertEqual(len(metadata_replicas(runtime)), 3)
+
+    def test_selective_scope_is_limited_to_enabled_asia_reader(self):
+        self.runtime.update(asiaReplicaEnabled=True, asiaReplicaReads=True,
+                            asiaReplicaReadScope='feed_search')
+        self.assertEqual(read_scope(self.runtime, self.asia), 'feed_search')
+        self.assertEqual(read_settings(self.runtime, self.asia), ('127.0.0.1', True))
+        self.assertEqual(read_scope(self.runtime, self.asia, writer=True), 'all')
+        for app in self.runtime['applications']:
+            if app['region'] != 'asia':
+                self.assertEqual(read_scope(self.runtime, app), 'all')
+        self.runtime['asiaReplicaReads'] = False
+        self.assertEqual(read_scope(self.runtime, self.asia), 'all')
 
     def test_reads_cannot_be_enabled_before_standby(self):
         self.runtime.update(asiaReplicaEnabled=False, asiaReplicaReads=True)

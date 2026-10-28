@@ -22,3 +22,12 @@ def read_settings(runtime, app, *, writer=False):
         # Capture/replay a fresh primary WAL position before every Asia read.
         return "127.0.0.1", True
     return "127.0.0.1", runtime.get("readFenceEnabled", False)
+
+
+def read_scope(runtime, app, *, writer=False):
+    scope = runtime.get("asiaReplicaReadScope", "all")
+    assert scope in ("all", "feed_search")
+    if writer or app["region"] != "asia" or not runtime.get("asiaReplicaReads", False):
+        return "all"
+    assert runtime.get("asiaReplicaEnabled", False) and runtime["replicaReads"]
+    return scope

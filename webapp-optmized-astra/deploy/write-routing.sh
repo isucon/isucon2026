@@ -28,7 +28,7 @@ asia_keepalive=${values[7]}
 if [ "$role" = backend ]; then
     if [ "$enabled" = true ]; then
         # Public topology only; the existing env.sh provides DB credentials.
-        printf 'ISUREAL_LISTEN_ADDRESS=%s:8081\nISUREAL_DB_READ_HOST=\nISUREAL_WRITE_INGRESS_JSON=\047%s\047\n' "$backend_host" "$ingress_json" > /etc/astra-write-worker.env
+        printf 'ISUREAL_LISTEN_ADDRESS=%s:8081\nISUREAL_DB_READ_HOST=\nISUREAL_DB_READ_SCOPE=all\nISUREAL_WRITE_INGRESS_JSON=\047%s\047\n' "$backend_host" "$ingress_json" > /etc/astra-write-worker.env
         chmod 644 /etc/astra-write-worker.env
         cat > /etc/systemd/system/webapp-optmized-astra-writer.service <<'UNIT'
 [Unit]
