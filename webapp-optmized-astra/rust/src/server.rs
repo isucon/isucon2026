@@ -309,7 +309,7 @@ pub async fn new_server(config: Config) -> Router {
         )
         .with_state(handler_context.clone());
 
-    let server = if let Some(proxy) = crate::upload_proxy::UploadProxy::from_env(&handler_context) {
+    let server = if let Some(proxy) = crate::upload_proxy::UploadProxy::from_env(&read_context) {
         server.layer(from_fn_with_state(
             proxy,
             crate::upload_proxy::upload_proxy_middleware,
