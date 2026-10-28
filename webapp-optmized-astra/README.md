@@ -317,3 +317,4 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261028T104946Z-team10 | gzip JSON responses at level one; image and SSE formats unchanged | PASS | 160,343 |
 | 20261028T110140Z-team10 | regional notification eligibility locks; unrelated user writes remain concurrent | PASS | 161,596 |
 | 20261028T110815Z-team10 | repeat regional notification eligibility locks and issued URL caching | PASS | 161,074 |
+| 20261028T113246Z-team10 | precomputed image signatures from actual current DB owners | PASS | 163,334 |
