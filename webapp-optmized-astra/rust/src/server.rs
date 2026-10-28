@@ -77,7 +77,7 @@ pub async fn new_server(config: Config) -> Router {
         Ok(options) => options.statement_cache_capacity(512),
         Err(err) => panic!("failed to open database: {err}"),
     };
-    let db = match crate::db_pool::options(30).connect_with(options).await {
+    let db = match crate::db_pool::options(30).connect_with(options.clone()).await {
         Ok(db) => db,
         Err(err) => panic!("failed to ping database: {err}"),
     };
@@ -139,8 +139,17 @@ pub async fn new_server(config: Config) -> Router {
                 .await
                 .expect("check barrier table");
                 assert!(table_exists, "install visibility barrier migration first");
+                // Replica acknowledgements can take a regional RTT. Keep their
+                // bounded connections separate from application transactions so
+                // queued mutations cannot delay the barrier that releases them.
+                let fence_db = crate::db_pool::options(
+                    crate::native_write_fence::VISIBILITY_BATCHES as u32,
+                )
+                .connect_with(options.clone().application_name("astra_visibility"))
+                .await
+                .expect("connect dedicated visibility pool");
                 Some(WriteFence::Native(NativeWriteFence::new(
-                    handler_context.db.clone(),
+                    fence_db,
                     std::time::Duration::from_secs(30),
                 )))
             } else {
