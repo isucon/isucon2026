@@ -2,7 +2,7 @@ SET session_replication_role = replica;
 
 BEGIN;
 
-TRUNCATE astra_user_search, ip_bans, login_sessions, administrator_sessions, friendships, friend_requests, follows, block_relations;
+TRUNCATE astra_search_dirty, astra_user_search, ip_bans, login_sessions, administrator_sessions, friendships, friend_requests, follows, block_relations;
 
 DELETE FROM notifications WHERE created_at > (SELECT created_at FROM initial_data_boundary);
 DELETE FROM comments WHERE created_at > (SELECT created_at FROM initial_data_boundary);
@@ -39,5 +39,9 @@ INSERT INTO follows (id, follower_id, followee_id, created_at, updated_at)
 SELECT id, follower_id, followee_id, created_at, updated_at FROM initial_follows;
 INSERT INTO block_relations (id, blocker_id, blocked_id, created_at)
 SELECT id, blocker_id, blocked_id, created_at FROM initial_block_relations;
+
+-- Triggers are disabled during reset; retain complete search coverage while
+-- Rust refreshes the derived normalization after this transaction commits.
+INSERT INTO astra_search_dirty SELECT id FROM users;
 
 COMMIT;

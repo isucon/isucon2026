@@ -123,6 +123,10 @@ async fn search_preserves_unicode_pagination_and_fresh_account_visibility() {
         .execute(&db)
         .await
         .unwrap();
+    sqlx::raw_sql(include_str!("../../sql/015-search-candidates.sql"))
+        .execute(&db)
+        .await
+        .unwrap();
     let h = Arc::new(HandlerContext {
         db: db.clone(),
         config: config_from_env(),
@@ -142,7 +146,7 @@ async fn search_preserves_unicode_pagination_and_fresh_account_visibility() {
             token_hash: String::new(),
             created_at: Utc::now(),
         }));
-    for stage in 0..6 {
+    for stage in 0..11 {
         match stage {
             1 => {
                 isureal::search_index::refresh(&db).await.unwrap();
@@ -165,6 +169,39 @@ async fn search_preserves_unicode_pagination_and_fresh_account_visibility() {
                     .execute(&db)
                     .await
                     .unwrap();
+            }
+            6 => {
+                sqlx::query("TRUNCATE astra_user_search")
+                    .execute(&db)
+                    .await
+                    .unwrap();
+            }
+            7 => {
+                isureal::search_index::refresh(&db).await.unwrap();
+                let dirty: i64 = sqlx::query_scalar("SELECT count(*) FROM astra_search_dirty")
+                    .fetch_one(&db)
+                    .await
+                    .unwrap();
+                assert_eq!(dirty, 0);
+                sqlx::query("UPDATE astra_user_search SET source_display_name='stale',normalized_display_name='not-a-match' WHERE user_id='user-0003'").execute(&db).await.unwrap();
+            }
+            8 => {
+                isureal::search_index::refresh(&db).await.unwrap();
+                sqlx::query("DELETE FROM users WHERE id='ascii-1'")
+                    .execute(&db)
+                    .await
+                    .unwrap();
+                let dangling: i64 = sqlx::query_scalar("SELECT (SELECT count(*) FROM astra_user_search WHERE user_id='ascii-1') + (SELECT count(*) FROM astra_search_dirty WHERE user_id='ascii-1')").fetch_one(&db).await.unwrap();
+                assert_eq!(dangling, 0);
+            }
+            9 => {
+                sqlx::query("UPDATE users SET id='renamed-ascii-id' WHERE id='ascii-2'")
+                    .execute(&db)
+                    .await
+                    .unwrap();
+            }
+            10 => {
+                sqlx::query("UPDATE astra_user_search SET user_id='moved-derived-id' WHERE user_id='ascii-3'").execute(&db).await.unwrap();
             }
             _ => {}
         }
