@@ -168,3 +168,7 @@ const clientBodyBufferKiB = runtime.nginxClientBodyBufferKiB ?? 8;
 if (!Number.isInteger(clientBodyBufferKiB) || clientBodyBufferKiB < 8 || clientBodyBufferKiB > 1024) {
     throw new Error("Invalid Nginx client body buffer capacity");
 }
+
+if (![0, 64, 128, 256, 512].includes(runtime.nginxMallocThresholdKiB ?? 0)) {
+    throw new Error("Invalid Nginx allocator threshold");
+}
