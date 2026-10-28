@@ -16,6 +16,7 @@ import re
 import shlex
 import subprocess
 import tarfile
+import time
 import uuid
 
 root = Path(__file__).resolve().parents[2]
@@ -24,10 +25,11 @@ parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('partition')
 parser.add_argument('--restore')
 parser.add_argument('--reclaim')
+parser.add_argument('--resume', help='Publish an already built but unpublished archive after verification')
 args = parser.parse_args()
 assert re.fullmatch(r'image_objects_202[4-7](0[1-9]|1[0-2])', args.partition)
-assert not (args.restore and args.reclaim)
-archive = args.restore or args.reclaim or uuid.uuid4().hex
+assert sum(bool(mode) for mode in (args.restore, args.reclaim, args.resume)) <= 1
+archive = args.restore or args.reclaim or args.resume or uuid.uuid4().hex
 assert re.fullmatch('[0-9a-f]{32}', archive)
 runtime = json.loads((deploy / 'runtime.json').read_text())
 assert runtime['fileImageStore']['enabled'] and runtime['fileImageStore']['archiveReadsEnabled']
@@ -73,7 +75,18 @@ def units(app):
 def invoke(app, mode):
     host = database['host'] if app['region'] == 'asia' else '127.0.0.1'
     command = f'set -a; . /home/isucon/env.sh; set +a; export ISUREAL_DB_HOST={host}; {binary} {mode} {args.partition} {archive}'
-    result = json.loads(remote(app, 'sudo bash -c ' + shlex.quote(command)))
+    for attempt in range(3):
+        try:
+            result = json.loads(remote(app, 'sudo bash -c ' + shlex.quote(command)))
+            break
+        except subprocess.CalledProcessError as error:
+            # An EICE/SSH connection can expire during a long migration. Only
+            # pure verification is retried; publication has an ambiguous
+            # outcome on disconnect and must be inspected before resuming.
+            if mode not in ('verify', 'verify-source') or error.returncode != 255 or attempt == 2:
+                raise
+            print(app['region'], mode, 'SSH disconnected; retrying read-only verification', flush=True)
+            time.sleep(1)
     print(app['region'], mode, json.dumps(result), flush=True)
     return result
 
@@ -133,7 +146,7 @@ while True:
 
 
 parallel(capture)
-if args.restore or args.reclaim:
+if args.restore or args.reclaim or args.resume:
     previous = json.loads(remote(asia, 'sudo cat ' + report_path))
     bytes_required = previous['bytes']
 else:
@@ -151,7 +164,7 @@ try:
         remote(app, 'sudo systemctl stop ' + units(app))
     sql(f'BEGIN; LOCK TABLE {args.partition} IN ACCESS EXCLUSIVE MODE; COMMIT;')
     verify_replay()
-    if not (args.restore or args.reclaim):
+    if not (args.restore or args.reclaim or args.resume):
         reports = parallel(lambda app: invoke(app, 'build'))
         assert reports[0] == reports[1] == reports[2], 'Regional archives differ; metadata remains unchanged'
     reports = parallel(lambda app: invoke(app, 'verify'))
@@ -160,6 +173,8 @@ try:
     (output / 'report.json').write_text(json.dumps(report, indent=2) + '\n')
     # Asia can publish/restore over the normal connection to the primary;
     # the primary does not need a fourth copy of the immutable file.
+    if args.resume:
+        assert int(sql(f"SELECT count(*) FROM {args.partition} WHERE asset_key LIKE 'pack:{archive}:%'")) == 0, 'Archive already published; use --reclaim after inspecting the previous operation'
     if not args.reclaim:
         invoke(asia, 'restore' if args.restore else 'apply')
     expected = 0 if args.restore else report['rows']
