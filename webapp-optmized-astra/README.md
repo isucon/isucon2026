@@ -296,3 +296,4 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261028T082244Z-team10 | coalesce concurrent image reads and use consistent reaction image timestamp hints | PASS | 163,428 |
 | 20261028T085118Z-team10 | info action logs and Nginx access logging off; login guard preserved | PASS | 161,266 |
 | 20261028T085431Z-team10 | repeat reduced logging; info action logs and Nginx access off | FAIL | 0 |
+| 20261028T085903Z-team10 | recheck reduced logging after preparation registration timeout; configuration unchanged | PASS | 166,822 |
