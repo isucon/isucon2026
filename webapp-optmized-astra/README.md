@@ -382,3 +382,4 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261028T191154Z-team10 | repeat image body and response admission separation without restart | FAIL | 0 |
 | 20261028T191756Z-team10 | bound overlapping image processing and replay responses to 64 requests | PASS | 185,395 |
 | 20261028T192319Z-team10 | repeat 64 bounded image requests without restart | PASS | 184,915 |
+| 20261028T194609Z-team10 | use three synchronous replicas and all local Asia reads | PASS | 151,126 |
