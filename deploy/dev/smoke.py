@@ -28,6 +28,35 @@ def request(host, country, path, method="GET", body=None, token=None):
     return data, int(status), float(duration)
 
 
+def download(path, headers=()):
+    """Fetch path as asia/JP; return the response headers (lower-case names) and the body size."""
+    args = ["exec", "-T", "app-asia", "curl", "-sS", "--max-time", "45", "-o", "/dev/null", "-D", "-",
+            "-w", "%{size_download}", "-H", "Host: app.127.0.0.1.nip.io", "-H", "X-Country-Code: JP"]
+    for header in headers:
+        args += ["-H", header]
+    output = run(*args, "http://172.29.1.2:8080" + path)
+    head, size = output.rsplit("\n", 1)
+    fields = dict(line.split(": ", 1) for line in head.strip().splitlines()[1:] if ": " in line)
+    return {name.lower(): value.strip() for name, value in fields.items()}, int(size)
+
+
+def check_digest(token):
+    """The benchmark's image downloads come back from isureal-digest as XXH3 digests."""
+    image = (ROOT / "frontend" / "tests" / "fixtures" / "isureal-logo.jpg").read_bytes()
+    subprocess.check_output(COMPOSE + ["exec", "-T", "app-asia", "curl", "-sS", "--fail", "-X", "PUT",
+                                       "-H", "Host: app.127.0.0.1.nip.io", "-H", "X-Country-Code: JP",
+                                       "-H", "Authorization: Bearer " + token, "-H", "Content-Type: image/jpeg",
+                                       "--data-binary", "@-", "http://172.29.1.2:8080/api/me/profile-image"],
+                            input=image)
+    data, status, _ = request("app.127.0.0.1.nip.io", "JP", "/api/me", token=token)
+    url = json.loads(data)["profileImageUrl"]
+    headers, size = download(url, ["X-Benchmark-Request-Id: 12345"])
+    assert size == 0 and headers.get("x-body-length") == str(len(image)) and len(headers.get("x-body-xxh3", "")) == 16, headers
+    headers, size = download(url)
+    assert size == len(image) and "x-body-xxh3" not in headers, (size, headers)
+    print("asia: benchmark image download answered by isureal-digest PASS", flush=True)
+
+
 ready = run("exec", "-T", "router", "wget", "-qO-", "http://127.0.0.1:18081/readyz")
 print("router ready:", ready.strip())
 for index, region, country in [(1, "asia", "JP"), (2, "europe", "DE"), (3, "america", "US")]:
@@ -47,6 +76,8 @@ for index, region, country in [(1, "asia", "JP"), (2, "europe", "DE"), (3, "amer
     wrong = "europe.127.0.0.1.nip.io" if region == "asia" else "asia.127.0.0.1.nip.io"
     data, status, _ = request(wrong, country, "/api/me", token=token)
     assert status == 403 and json.loads(data)["error"] == "region_mismatch", (region, status, data)
+    if region == "asia":
+        check_digest(token)
     data, status, _ = request("app.127.0.0.1.nip.io", country, "/api/auth/logout", "POST", token=token)
     assert status == 204, (region, status, data)
     print(region + ": frontend, register, login, region gate, logout PASS", flush=True)
