@@ -18,7 +18,7 @@ ROOT = Path(__file__).resolve().parents[2]
 DEPLOY = ROOT / "webapp-optmized-astra/deploy"
 runtime = json.loads((DEPLOY / "runtime.json").read_text())
 mode = sys.argv[1] if len(sys.argv) > 1 else "all"
-assert mode in ("all", "application", "database", "replication", "image-store", "image-gc")
+assert mode in ("all", "application", "database", "replication", "image-store", "image-gc", "upgrade")
 read_fence = runtime.get("readFenceEnabled", False)
 write_fence = runtime.get("writeFenceEnabled", False)
 write_fence_mode = runtime.get("writeFenceMode", "poll")
@@ -141,7 +141,7 @@ if mode in ("all", "image-store") and image_store.get("enabled", False):
     parallel(provision_store, stores)
 
 
-if mode in ("all", "application") and regional_writes:
+if mode in ("all", "application", "upgrade") and regional_writes:
     secret_file = ROOT / runtime["regionalUploadEnvPath"]
     secret_file.parent.mkdir(parents=True, exist_ok=True)
     if not secret_file.exists():
@@ -167,13 +167,26 @@ def write_frontend(app):
     remote(app["instanceId"], "sudo bash /home/isucon/astra-deploy/write-routing.sh frontend " + shlex.quote(app["region"]))
 
 
+# Coordinated schema/application upgrades keep the existing compatibility
+# checks above while all writers are running, then stop requests for migration.
+if mode == "upgrade":
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("asset_gc", DEPLOY / "asset-gc.py")
+    gc = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(gc)
+    gc.ensure_idle()
+    def stop_for_upgrade(app):
+        units = "webapp-optmized-astra webapp-optmized-astra-writer" if app["region"] == "asia" else "webapp-optmized-astra"
+        remote(app["instanceId"], "sudo systemctl stop " + units)
+    parallel(stop_for_upgrade, applications)
+
 # Restore local writes before stopping or replacing the private worker.
-if mode in ("all", "application") and not write_proxy:
+if mode in ("all", "application", "upgrade") and not write_proxy:
     parallel(write_frontend, remote_apps)
 
 
 # Disable local reads before turning off synchronous replication on rollback.
-if mode in ("all", "application") and not runtime["replicaReads"]:
+if mode in ("all", "application", "upgrade") and not runtime["replicaReads"]:
     parallel(application, applications)
 
 # In a combined deployment, readers must gain fences before sync commits stop.
@@ -181,7 +194,7 @@ early_fenced_apps = mode == "all" and runtime["replicaReads"] and read_fence and
 if early_fenced_apps:
     parallel(application, applications)
 
-if mode in ("all", "database"):
+if mode in ("all", "database", "upgrade"):
     remote(database, "sudo bash /home/isucon/astra-deploy/database.sh")
 
 if mode in ("all", "replication") and runtime["replicasEnabled"]:
@@ -211,10 +224,10 @@ if mode in ("all", "replication") and runtime["replicasEnabled"]:
 
     parallel(standby, replicas)
 
-if mode in ("all", "application") and runtime["replicaReads"] and not early_fenced_apps:
+if mode in ("all", "application", "upgrade") and runtime["replicaReads"] and not early_fenced_apps:
     parallel(application, applications)
 
-if mode in ("all", "application"):
+if mode in ("all", "application", "upgrade"):
     remote(write_host, "sudo bash /home/isucon/astra-deploy/write-routing.sh backend")
     parallel(write_frontend, applications)
 
