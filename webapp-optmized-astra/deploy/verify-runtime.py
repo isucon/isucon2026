@@ -39,6 +39,7 @@ def inspect(app):
             'ISUREAL_LOG_LEVEL':runtime.get('applicationLogLevel','debug'),
             'ISUREAL_SIGNATURE_COALESCE':str(int(runtime['signatureCacheCoalescing'])),
             'ISUREAL_SIGNATURE_METRICS':str(int(runtime['signatureCacheMetrics'])),
+            'ISUREAL_ISSUED_URL_CACHE':str(int(runtime['issuedImageUrlCacheEnabled'])),
             'ISUREAL_WRITE_FENCE_MODE':runtime['writeFenceMode'],
             'ISUREAL_DB_READ_HOST':read_host,
             'ISUREAL_DB_READ_SCOPE':read_scope(runtime,app,writer=service.endswith('-writer')),

@@ -8,7 +8,7 @@ runtime=json.load(open(sys.argv[1]))
 level=runtime['applicationLogLevel']
 assert level in ('debug','info'), 'Failed-login info logs are required by the existing guard'
 print('ISUREAL_LOG_LEVEL='+level)
-for key,env in [('signatureCacheCoalescing','ISUREAL_SIGNATURE_COALESCE'),('signatureCacheMetrics','ISUREAL_SIGNATURE_METRICS')]:
+for key,env in [('signatureCacheCoalescing','ISUREAL_SIGNATURE_COALESCE'),('signatureCacheMetrics','ISUREAL_SIGNATURE_METRICS'),('issuedImageUrlCacheEnabled','ISUREAL_ISSUED_URL_CACHE')]:
     assert type(runtime[key]) is bool
     print(env+'='+str(int(runtime[key])))
 PY_CONFIG
