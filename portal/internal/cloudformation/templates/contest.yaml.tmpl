@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: 2010-09-09
 Description: >-
-  AWS CloudFormation for ISUCON14
+  AWS CloudFormation for ISUCON2026 Contest
 Resources:
   GetAvailabilityZoneFunctionExecutionRole:
     Type: AWS::IAM::Role
@@ -32,15 +32,13 @@ Resources:
           import cfnresponse
           import boto3
           def handler(event, context):
-            if event['RequestType'] == "Create":
+            if event['RequestType'] in ("Create", "Update"):
               ec2 = boto3.client('ec2')
               response = ec2.describe_availability_zones(
                 ZoneIds = ['{{.ZoneID}}']
               )
               ZoneName = response['AvailabilityZones'][0]['ZoneName']
               cfnresponse.send(event, context, cfnresponse.SUCCESS, {"ZoneName" : ZoneName})
-            elif event['RequestType'] == "Update":
-              cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
             elif event['RequestType'] == "Delete":
               cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
       Handler: index.handler
@@ -66,220 +64,385 @@ Resources:
     Properties:
       InternetGatewayId: !Ref InternetGateway
       VpcId: !Ref VPC
-  Subnet:
+  ServiceLaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateData:
+        BlockDeviceMappings:
+          - DeviceName: /dev/sda1
+            Ebs:
+              VolumeType: gp3
+              DeleteOnTermination: true
+  DatabaseLaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateData:
+        BlockDeviceMappings:
+          - DeviceName: /dev/sda1
+            Ebs:
+              VolumeType: gp3
+              Iops: 6000
+              Throughput: 200
+              DeleteOnTermination: true
+  RouterPublicSubnet:
     Type: AWS::EC2::Subnet
     Properties:
-      AvailabilityZone: !GetAtt GetAvailabilityZone.ZoneName
-      CidrBlock: "192.168.0.0/24"
       VpcId: !Ref VPC
-      MapPublicIpOnLaunch: False
-  RouteTable:
+      AvailabilityZone: !GetAtt GetAvailabilityZone.ZoneName
+      CidrBlock: 192.168.11.0/24
+  RouterDataSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !GetAtt GetAvailabilityZone.ZoneName
+      CidrBlock: 192.168.10.0/24
+  PublicRoutes:
     Type: AWS::EC2::RouteTable
     Properties:
       VpcId: !Ref VPC
-  Route:
+  PublicDefaultRoute:
     Type: AWS::EC2::Route
+    DependsOn: InternetGatewayAttachment
     Properties:
-      RouteTableId: !Ref RouteTable
-      DestinationCidrBlock: "0.0.0.0/0"
+      RouteTableId: !Ref PublicRoutes
+      DestinationCidrBlock: 0.0.0.0/0
       GatewayId: !Ref InternetGateway
-  SubnetRouteTableAssociation:
+  RouterPublicRoutes:
     Type: AWS::EC2::SubnetRouteTableAssociation
     Properties:
-      SubnetId: !Ref Subnet
-      RouteTableId: !Ref RouteTable
-    DependsOn:
-      - Subnet
-      - RouteTable
-  SecurityGroup:
+      SubnetId: !Ref RouterPublicSubnet
+      RouteTableId: !Ref PublicRoutes
+  RouterPublicSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
       VpcId: !Ref VPC
-      GroupDescription: Security Group for ISUCON14
+      GroupDescription: Benchmark ingress to the Router
       SecurityGroupIngress:
         - IpProtocol: tcp
-          FromPort: "22"
-          ToPort: "22"
-          CidrIp: "0.0.0.0/0"
+          FromPort: 8080
+          ToPort: 8080
+          CidrIp: 0.0.0.0/0
         - IpProtocol: tcp
-          FromPort: "443"
-          ToPort: "443"
-          CidrIp: "0.0.0.0/0"
-        - IpProtocol: -1
-          CidrIp: "192.168.0.0/24"
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+  RouterDataSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref VPC
+      GroupDescription: Forward traffic between contest servers
+      SecurityGroupIngress:
+{{range .ContestServers}}
+        - IpProtocol: '-1'
+          CidrIp: 192.168.{{.Number}}.0/24
+{{end}}
+  RouterPublicInterface:
+    Type: AWS::EC2::NetworkInterface
+    Properties:
+      SubnetId: !Ref RouterPublicSubnet
+      PrivateIpAddress: 192.168.11.10
+      GroupSet: [!Ref RouterPublicSecurityGroup]
+  RouterDataInterface:
+    Type: AWS::EC2::NetworkInterface
+    Properties:
+      SubnetId: !Ref RouterDataSubnet
+      PrivateIpAddress: 192.168.10.10
+      SourceDestCheck: false
+      GroupSet: [!Ref RouterDataSecurityGroup]
 
-  InstanceRole:
-    Type: AWS::IAM::Role
+{{range .ContestServers}}
+  {{.ID}}Subnet:
+    Type: AWS::EC2::Subnet
     Properties:
-      AssumeRolePolicyDocument:
-        Version: 2012-10-17
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service:
-                - ec2.amazonaws.com
-            Action:
-              - sts:AssumeRole
-      Path: "/"
-      ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
-      Policies:
-        - PolicyName: IsuconEC2InstancePolicy
-          PolicyDocument:
-            Version: 2012-10-17
-            Statement:
-              - Effect: Allow
-                Action:
-                  - ec2:DescribeInstances
-                  - ec2:DescribeVolumes
-                  - ec2:DescribeNetworkInterfaces
-                  - ec2:DescribeSecurityGroups
-                  - ec2:DescribeAvailabilityZones
-                Resource: "*"
-  InstanceProfile:
-    Type: AWS::IAM::InstanceProfile
+      VpcId: !Ref VPC
+      AvailabilityZone: !GetAtt GetAvailabilityZone.ZoneName
+      CidrBlock: 192.168.{{.Number}}.0/24
+  {{.ID}}Routes:
+    Type: AWS::EC2::RouteTable
     Properties:
-      Path: "/"
-      Roles:
-        - !Ref InstanceRole
-
-  Instance1:
+      VpcId: !Ref VPC
+  {{.ID}}RouteAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref {{.ID}}Subnet
+      RouteTableId: !Ref {{.ID}}Routes
+  {{.ID}}DefaultRoute:
+    Type: AWS::EC2::Route
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      RouteTableId: !Ref {{.ID}}Routes
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+{{$server := .}}{{range $.ContestServers}}{{if ne .Number $server.Number}}
+  {{$server.ID}}To{{.ID}}:
+    Type: AWS::EC2::Route
+    DependsOn: [{{.ID}}Subnet, Router]
+    Properties:
+      RouteTableId: !Ref {{$server.ID}}Routes
+      DestinationCidrBlock: 192.168.{{.Number}}.0/24
+      NetworkInterfaceId: !Ref RouterDataInterface
+{{end}}{{end}}
+  {{.ID}}SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref VPC
+      GroupDescription: Contest server SSH and routed traffic
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: '-1'
+          CidrIp: 192.168.10.10/32
+{{range $.ContestServers}}{{if ne .Number $server.Number}}
+        - IpProtocol: '-1'
+          CidrIp: 192.168.{{.Number}}.0/24
+{{end}}{{end}}
+  {{.ID}}:
     Type: AWS::EC2::Instance
+    DependsOn: [{{.ID}}DefaultRoute, {{.ID}}RouteAssociation{{range $.ContestServers}}{{if ne .Number $server.Number}}, {{$server.ID}}To{{.ID}}{{end}}{{end}}]
     Properties:
-      ImageId: {{.AMIID}}
-      InstanceType: c5.large
-      SecurityGroupIds:
-        - !Ref SecurityGroup
-      SubnetId: !Ref Subnet
-      PrivateIpAddress: "192.168.0.11"
-      IamInstanceProfile:
-        !Ref InstanceProfile
-      BlockDeviceMappings:
-        - DeviceName: /dev/sda1
-          Ebs:
-            VolumeSize: 20
-            VolumeType: gp3
+      ImageId: {{$.AMIID}}
+      InstanceType: {{.InstanceType}}
+      SubnetId: !Ref {{.ID}}Subnet
+      PrivateIpAddress: 192.168.{{.Number}}.10
+      SecurityGroupIds: [!Ref {{.ID}}SecurityGroup]
+      MetadataOptions:
+        HttpTokens: required
+      LaunchTemplate:
+        LaunchTemplateId: !Ref {{if .Region}}Service{{else}}Database{{end}}LaunchTemplate
+        Version: !GetAtt {{if .Region}}Service{{else}}Database{{end}}LaunchTemplate.LatestVersionNumber
       Tags:
         - Key: Name
-          Value: isucon14-contest-1
+          Value: isucon2026-contest-{{.Number}}
+        - Key: IsuconTeamID
+          Value: '{{$.TeamID}}'
+        - Key: IsuconInstanceNum
+          Value: '{{.Number}}'
       UserData:
         Fn::Base64: |
           #cloud-config
           write_files:
           - path: /opt/isucon-env-checker/portal_credentials.json
-            owner: root:root
-            permissions: '0644'
+            permissions: '0600'
             encoding: b64
-            content: '{{.PortalCredentials}}'
+            content: '{{$.PortalCredentials}}'
+          - path: /etc/isucon/registration.json
+            permissions: '0600'
+            encoding: b64
+            content: '{{$.Registration .Number}}'
+          - path: /opt/isucon-registration/register.py
+            permissions: '0700'
+            encoding: b64
+            content: '{{$.RegistrationScript}}'
+{{template "contest_registration_service" $}}
           runcmd:
-{{template "ssh_public_keys" .}}
-  InstanceIP1:
+{{template "ssh_public_keys" $}}
+{{if .Region}}
+            - sed -i -e 's/^ISUREAL_REGION=.*/ISUREAL_REGION={{.Region}}/' -e 's/^ISUREAL_DB_HOST=.*/ISUREAL_DB_HOST=192.168.4.10/' /home/isucon/env.sh
+            - systemctl enable --now isureal-go nginx
+{{else}}
+            - systemctl enable --now postgresql
+{{end}}
+            - systemctl daemon-reload
+            - systemctl enable --now --no-block isucon-register.service
+  {{.ID}}IP:
     Type: AWS::EC2::EIP
+    DependsOn: InternetGatewayAttachment
     Properties:
       Domain: vpc
-      InstanceId: !Ref Instance1
-  Instance2:
-    Type: AWS::EC2::Instance
+      InstanceId: !Ref {{.ID}}
+{{end}}
+  ServerACL:
+    Type: AWS::EC2::NetworkAcl
     Properties:
-      ImageId: {{.AMIID}}
-      InstanceType: c5.large
-      SecurityGroupIds:
-        - !Ref SecurityGroup
-      SubnetId: !Ref Subnet
-      PrivateIpAddress: "192.168.0.12"
-      IamInstanceProfile:
-        !Ref InstanceProfile
+      VpcId: !Ref VPC
+  ServerACLIngress:
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+      NetworkAclId: !Ref ServerACL
+      RuleNumber: 1000
+      Protocol: -1
+      RuleAction: allow
+      Egress: false
+      CidrBlock: 0.0.0.0/0
+  ServerACLBlockRouterPublicIP:
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+      NetworkAclId: !Ref ServerACL
+      RuleNumber: 100
+      Protocol: -1
+      RuleAction: deny
+      Egress: true
+      CidrBlock: !Sub '${RouterIP}/32'
+  ServerACLBlockRouterPublicSubnet:
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+      NetworkAclId: !Ref ServerACL
+      RuleNumber: 110
+      Protocol: -1
+      RuleAction: deny
+      Egress: true
+      CidrBlock: 192.168.11.0/24
+  ServerACLEgress:
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+      NetworkAclId: !Ref ServerACL
+      RuleNumber: 1000
+      Protocol: -1
+      RuleAction: allow
+      Egress: true
+      CidrBlock: 0.0.0.0/0
+{{range .ContestServers}}
+  {{.ID}}ACLAssociation:
+    Type: AWS::EC2::SubnetNetworkAclAssociation
+    Properties:
+      SubnetId: !Ref {{.ID}}Subnet
+      NetworkAclId: !Ref ServerACL
+{{end}}
+  Router:
+    Type: AWS::EC2::Instance
+    DependsOn: [PublicDefaultRoute, RouterPublicRoutes]
+    Properties:
+      ImageId: {{$.RouterAMIID}}
+      InstanceType: c6in.large
+      NetworkInterfaces:
+        - DeviceIndex: '0'
+          NetworkInterfaceId: !Ref RouterPublicInterface
+        - DeviceIndex: '1'
+          NetworkInterfaceId: !Ref RouterDataInterface
+      MetadataOptions:
+        HttpTokens: required
       BlockDeviceMappings:
         - DeviceName: /dev/sda1
           Ebs:
-            VolumeSize: 20
             VolumeType: gp3
+            DeleteOnTermination: true
       Tags:
         - Key: Name
-          Value: isucon14-contest-2
+          Value: isucon2026-contest-router
+        - Key: IsuconTeamID
+          Value: '{{.TeamID}}'
+        - Key: IsuconInstanceNum
+          Value: '5'
       UserData:
         Fn::Base64: |
           #cloud-config
           write_files:
-          - path: /opt/isucon-env-checker/portal_credentials.json
-            owner: root:root
-            permissions: '0644'
+          - path: /etc/isucon/registration.json
+            permissions: '0600'
             encoding: b64
-            content: '{{.PortalCredentials}}'
+            content: '{{.Registration 5}}'
+          - path: /opt/isucon-registration/register.py
+            permissions: '0700'
+            encoding: b64
+            content: '{{.RegistrationScript}}'
+          - path: /opt/isucon-registration/router-bootstrap.py
+            permissions: '0700'
+            encoding: b64
+            content: '{{.RouterBootstrap}}'
+          - path: /etc/isucon/router.env
+            owner: root:isureal-router
+            permissions: '0640'
+            content: |
+              ROUTER_PORTAL_ENDPOINT=http://127.0.0.1:18082
+              ROUTER_TEAM_NUMBER={{.TeamID}}
+              ROUTER_STATUS_LISTEN_ADDRESS=192.168.11.10:18081
+              ROUTER_HTTP_LISTEN_ADDRESS=0.0.0.0:8080
+              ROUTER_HTTPS_LISTEN_ADDRESS=0.0.0.0:443
+              ROUTER_TLS_CERTIFICATE=/etc/isucon/haproxy/tls/server.pem
+              ROUTER_UPSTREAM_PORT=80
+              ROUTER_APP_HOST={{.AppHost}}
+{{range .ContestServers}}
+              ROUTER_{{if .Region}}APP{{.Number}}{{else}}DB1{{end}}_SUBNET=192.168.{{.Number}}.0/24
+              ROUTER_{{if .Region}}APP{{.Number}}{{else}}DB1{{end}}_REGION_LOCAL_IP=192.168.10.10
+              ROUTER_{{if .Region}}APP{{.Number}}{{else}}DB1{{end}}_IP=192.168.{{.Number}}.10
+{{if .Region}}
+              ROUTER_APP{{.Number}}_HOST=app{{.Number}}.team{{$.TeamID}}-aws.127.0.0.1.nip.io
+{{end}}{{end}}
+          - path: /etc/isucon/portal.env
+            owner: root:isureal-router
+            permissions: '0640'
+            content: |
+              PORTAL_TEAM_NUMBER={{.TeamID}}
+              PORTAL_TEAM_HASH=aws
+              PORTAL_DOMAIN_SUFFIX=127.0.0.1.nip.io
+              PORTAL_ROUTER_MODE=external-router
+              PORTAL_LISTEN_ADDRESS=127.0.0.1:18082
+              PORTAL_WEB_DIR=
+          - path: /etc/systemd/system/isucon-register.service.d/router.conf
+            permissions: '0644'
+            content: |
+              [Unit]
+              Wants=isucon-router-bootstrap.service
+              After=isucon-router-bootstrap.service
+              [Service]
+              ExecStartPre=/usr/bin/systemctl is-active isucon-router-bootstrap.service
+          - path: /etc/systemd/system/isucon-router-bootstrap.service
+            permissions: '0644'
+            content: |
+              [Unit]
+              Description=Configure ISUCON2026 Router network on every boot
+              Wants=network-online.target
+              After=network-online.target cloud-final.service
+              StartLimitIntervalSec=0
+              [Service]
+              Type=oneshot
+              ExecStart=/usr/bin/python3 /opt/isucon-registration/router-bootstrap.py
+              ExecStart=/usr/bin/systemctl start isureal-portal isureal-router isureal-haproxy
+              Restart=on-failure
+              RestartSec=10s
+              RemainAfterExit=yes
+              [Install]
+              WantedBy=cloud-init.target
+{{template "contest_registration_service" .}}
           runcmd:
-{{template "ssh_public_keys" .}}
-  InstanceIP2:
+            - |
+              set -eu
+              umask 077
+              cd /etc/isucon/haproxy/tls
+              openssl req -x509 -newkey rsa:2048 -nodes -days 365 -subj '/CN={{.AppHost}}' -keyout server.key -out server.crt
+              cat server.crt server.key > server.pem
+              chown root:isureal-router server.pem
+              chmod 0640 server.pem
+              rm server.key server.crt
+            - systemctl daemon-reload
+            - systemctl enable --now --no-block isucon-router-bootstrap.service
+            - systemctl enable --now --no-block isucon-register.service
+  RouterIP:
     Type: AWS::EC2::EIP
+    DependsOn: InternetGatewayAttachment
     Properties:
       Domain: vpc
-      InstanceId: !Ref Instance2
-  Instance3:
-    Type: AWS::EC2::Instance
+  RouterIPAssociation:
+    Type: AWS::EC2::EIPAssociation
     Properties:
-      ImageId: {{.AMIID}}
-      InstanceType: c5.large
-      SecurityGroupIds:
-        - !Ref SecurityGroup
-      SubnetId: !Ref Subnet
-      PrivateIpAddress: "192.168.0.13"
-      IamInstanceProfile:
-        !Ref InstanceProfile
-      BlockDeviceMappings:
-        - DeviceName: /dev/sda1
-          Ebs:
-            VolumeSize: 20
-            VolumeType: gp3
-      Tags:
-        - Key: Name
-          Value: isucon14-contest-3
-      UserData:
-        Fn::Base64: |
-          #cloud-config
-          write_files:
-          - path: /opt/isucon-env-checker/portal_credentials.json
-            owner: root:root
+      AllocationId: !GetAtt RouterIP.AllocationId
+      NetworkInterfaceId: !Ref RouterPublicInterface
+Outputs:
+{{range .ContestServers}}
+  {{.ID}}PublicIP:
+    Value: !Ref {{.ID}}IP
+{{end}}
+  RouterPublicIP:
+    Value: !Ref RouterIP
+  BenchmarkHost:
+    Value: '{{.AppHost}}'
+{{define "contest_registration_service"}}
+          - path: /etc/systemd/system/isucon-register.service
             permissions: '0644'
-            encoding: b64
-            content: '{{.PortalCredentials}}'
-          runcmd:
-{{template "ssh_public_keys" .}}
-  InstanceIP3:
-    Type: AWS::EC2::EIP
-    Properties:
-      Domain: vpc
-      InstanceId: !Ref Instance3
-  Instance4:
-    Type: AWS::EC2::Instance
-    Properties:
-      ImageId: {{.AMIID}}
-      InstanceType: c5.large
-      SecurityGroupIds:
-        - !Ref SecurityGroup
-      SubnetId: !Ref Subnet
-      PrivateIpAddress: "192.168.0.14"
-      IamInstanceProfile:
-        !Ref InstanceProfile
-      BlockDeviceMappings:
-        - DeviceName: /dev/sda1
-          Ebs:
-            VolumeSize: 20
-            VolumeType: gp3
-      Tags:
-        - Key: Name
-          Value: isucon14-contest-4
-      UserData:
-        Fn::Base64: |
-          #cloud-config
-          write_files:
-          - path: /opt/isucon-env-checker/portal_credentials.json
-            owner: root:root
-            permissions: '0644'
-            encoding: b64
-            content: '{{.PortalCredentials}}'
-          runcmd:
-{{template "ssh_public_keys" .}}
-  InstanceIP4:
-    Type: AWS::EC2::EIP
-    Properties:
-      Domain: vpc
-      InstanceId: !Ref Instance4
+            content: |
+              [Unit]
+              Description=Register the contest instance with the portal on every boot
+              Wants=network-online.target
+              After=network-online.target cloud-final.service
+              StartLimitIntervalSec=0
+              [Service]
+              Type=oneshot
+              ExecStart=/usr/bin/python3 /opt/isucon-registration/register.py
+              Restart=on-failure
+              RestartSec=20s
+              RemainAfterExit=yes
+              [Install]
+              WantedBy=cloud-init.target
+{{end}}

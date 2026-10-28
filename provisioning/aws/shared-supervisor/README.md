@@ -8,7 +8,7 @@ cluster、実行 role、ネットワーク、ECR、log group は [試し解き�
 
 | 管理 | 対象 |
 |---|---|
-| `pool.json` | 定義の元。接続先、イメージ、タスク数、ベンチの上限時間、Supervisor の上限時間、写真のアーカイブの場所、登録済みの app の公開 IP から Router への転送表 |
+| `pool.json` | 定義の元。接続先、イメージ、タスク数、ベンチの上限時間、Supervisor の上限時間、写真のアーカイブの場所 |
 | Pulumi（project `isucon2026-shared-supervisor`、stack `portal-dev`） | `render.py` が作った配備の定義（タスク定義、サービス定義、ecspresso の設定）を stack の設定 `deployments` に保持して出力する。リソースは作らない |
 | ecspresso（`generated/`、Git 管理外） | stack の出力から書いた JSON でサービスとタスク定義を配備する |
 
@@ -36,6 +36,19 @@ private の `deployments` には退役したチーム別 service 7 件（`desire
 `desiredCount: 0` のまま管理しているので、二重管理を避けるためにここには入れていません。
 `isucon2026-practice-supervisor-30001` も private の `ops/practice-supervisor` の管理のままで、ここでは扱いません。
 
+## CloudFormation instance registration
+
+New ISUCON2026 contest stacks register their Router with the portal. Jobs from
+these environments contain the Router IP and a portal-generated `--host` as the
+first extra argument. The Supervisor uses that target directly, so recreation
+does not require updating `pool.json`. Existing Pulumi environments also register
+Router endpoints and their physical team hostnames through the
+[instance sync](../../../../portal/deploy/ecspresso/INSTANCE_SYNC.md).
+The static `routes` table and fallback have been removed. Jobs without a Host
+are rejected with `Router registration required`; register the environment
+before running benchmarks. See the [contest template and registration
+workflow](../../../../portal/internal/cloudformation/README.md).
+
 ## 更新の手順
 
 リポジトリルートで実行します。AWS の認証は `provisioning/aws-sdk.config` を通します
@@ -43,8 +56,8 @@ private の `deployments` には退役したチーム別 service 7 件（`desire
 
 1. 新しいベンチのイメージを作って push する（[Supervisor 構築手順](../supervisor/README.md) の `make supervisor-image`）。
    写真のアーカイブを同梱したイメージなら、`benchImages` に同梱した場所（`/opt/isucon/photos/merged.zip`）を指定します。
-2. `pool.json` を更新する。`image` は digest で固定します。app の公開 IP や Router の公開 IP が変わったときや
-   チームを足すときは `routes` を更新します（登録されていない IP のジョブは起動前に `exit 2` で拒否されます）。
+2. `pool.json` のイメージや共通設定を更新する。`image` は digest で固定します。
+   IP の変更やチーム追加はポータルのインスタンス登録・同期で反映し、固定IPの転送表は管理しません。
 3. 配備の定義を作って stack の設定に書き、適用する。雛形には稼働中のタスク定義（family の最新の ACTIVE）と
    サービスを AWS から取り、CPU、メモリ、実行 role、ログ、secrets、ulimit、ネットワーク設定を写します。
 
