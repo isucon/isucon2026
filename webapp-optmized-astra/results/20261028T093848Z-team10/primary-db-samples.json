@@ -1,0 +1,210 @@
+{
+  "samples": 201,
+  "interval_seconds": 0.5,
+  "queries": [
+    {
+      "wait": "IPC",
+      "query": "COMMIT",
+      "active_connection_samples": 873,
+      "max_observed_age_seconds": 0.20938
+    },
+    {
+      "wait": "Lock",
+      "query": "SELECT id FROM users WHERE id=$1 AND status=? FOR NO KEY UPDATE",
+      "active_connection_samples": 65,
+      "max_observed_age_seconds": 0.145752
+    },
+    {
+      "wait": "LWLock",
+      "query": "COMMIT",
+      "active_connection_samples": 31,
+      "max_observed_age_seconds": 0.005769
+    },
+    {
+      "wait": "IO",
+      "query": "COMMIT",
+      "active_connection_samples": 25,
+      "max_observed_age_seconds": 0.005849
+    },
+    {
+      "wait": "IO",
+      "query": "SELECT p.id, p.author_id, p.posting_window_id, p.image_id, p.caption, p.visibility,\n  p.location_kind, p.latitude, p.longitude, p.locality, p.posted_at,\n  w.on_time_deadline, w.ended_at AS window_ended_at, (r.author).id AS \"author.id\", (r.author).username AS \"author.username\", (r.author).secret_key_hash AS \"author.secret_key_hash\", (r.author).display_name AS \"author.display_name\", (r.author).bio AS \"author.bio\", (r.author).profile_image_id AS \"author.profile_image_id\", (r.author).region AS \"author.region\", (r.author).account_type AS \"author.account_type\", (r.author).status AS \"author.status\" FROM astra_create_post_asset($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) r CROSS JOIN LATERAL (SELECT (r.post_row).*) p CROSS JOIN LATERAL (SELECT (r.window_row).*) w",
+      "active_connection_samples": 24,
+      "max_observed_age_seconds": 0.022619
+    },
+    {
+      "wait": "Lock",
+      "query": "SELECT id FROM users WHERE id=$1 FOR NO KEY UPDATE",
+      "active_connection_samples": 13,
+      "max_observed_age_seconds": 0.124742
+    },
+    {
+      "wait": "IO",
+      "query": "INSERT INTO realmojis(id,post_id,reactor_id,image_id,reaction_type,created_at) VALUES($1,$2,$3,$4,$5,$6)",
+      "active_connection_samples": 6,
+      "max_observed_age_seconds": 0.002541
+    },
+    {
+      "wait": "Client",
+      "query": "COMMIT",
+      "active_connection_samples": 5,
+      "max_observed_age_seconds": 0.002342
+    },
+    {
+      "wait": "Client",
+      "query": "\n  UPDATE login_sessions\n  SET active = false, invalidated_at = clock_timestamp(), reason = ?\n  WHERE user_id = $1 AND active = true\n ",
+      "active_connection_samples": 5,
+      "max_observed_age_seconds": 0.001243
+    },
+    {
+      "wait": "LWLock",
+      "query": "SELECT p.id, p.author_id, p.posting_window_id, p.image_id, p.caption, p.visibility,\n  p.location_kind, p.latitude, p.longitude, p.locality, p.posted_at,\n  w.on_time_deadline, w.ended_at AS window_ended_at, (r.author).id AS \"author.id\", (r.author).username AS \"author.username\", (r.author).secret_key_hash AS \"author.secret_key_hash\", (r.author).display_name AS \"author.display_name\", (r.author).bio AS \"author.bio\", (r.author).profile_image_id AS \"author.profile_image_id\", (r.author).region AS \"author.region\", (r.author).account_type AS \"author.account_type\", (r.author).status AS \"author.status\" FROM astra_create_post_asset($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) r CROSS JOIN LATERAL (SELECT (r.post_row).*) p CROSS JOIN LATERAL (SELECT (r.window_row).*) w",
+      "active_connection_samples": 5,
+      "max_observed_age_seconds": 0.006148
+    },
+    {
+      "wait": "CPU",
+      "query": "\nWITH viewer AS (\n  SELECT id, region FROM users WHERE id = $1 AND status = ?\n), target AS MATERIALIZED (\n  SELECT p.id, p.author_id, p.visibility, w.ended_at\n  FROM posts p\n  JOIN posting_windows w ON w.id = p.posting_window_id\n  JOIN users author ON author.id = p.author_id AND author.status = ?\n  WHERE p.id = $2 AND p.deleted_at IS NULL\n), friends AS (\n  SELECT user_high_id AS id FROM friendships WHERE user_low_id = $1\n  UNION\n  SELECT user_low_id AS id FROM friendships WHERE user_high_id = $1\n), facts AS (\n  SELECT p.*, p.author_id = v.id AS own,\n    EXISTS (\n      SELECT 1 FROM posts own_post\n      JOIN posting_windows posted ON posted.id = own_post.posting_window_id\n      JOIN posting_windows current ON current.region = v.region\n        AND current.ended_at IS NULL AND current.local_date = posted.local_date\n      WHERE own_post.author_id = v.id AND own_post.deleted_at IS NULL\n    ) AS has_posted,\n    EXISTS (\n      SELECT 1 FROM block_relations b\n      WHERE (b.blocker_id = v.id AND b.bloc",
+      "active_connection_samples": 4,
+      "max_observed_age_seconds": 0.005672
+    },
+    {
+      "wait": "LWLock",
+      "query": "WITH inserted AS (INSERT INTO users (id, username, secret_key_hash, display_name, region) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (username) DO NOTHING RETURNING id, username, secret_key_hash, display_name, bio, profile_image_id, region, account_type, status), indexed AS (INSERT INTO astra_user_search SELECT id,username,display_name,$6,$7 FROM inserted) SELECT * FROM inserted",
+      "active_connection_samples": 4,
+      "max_observed_age_seconds": 0.003571
+    },
+    {
+      "wait": "IO",
+      "query": "WITH inserted AS (INSERT INTO users (id, username, secret_key_hash, display_name, region) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (username) DO NOTHING RETURNING id, username, secret_key_hash, display_name, bio, profile_image_id, region, account_type, status), indexed AS (INSERT INTO astra_user_search SELECT id,username,display_name,$6,$7 FROM inserted) SELECT * FROM inserted",
+      "active_connection_samples": 3,
+      "max_observed_age_seconds": 0.002372
+    },
+    {
+      "wait": "CPU",
+      "query": "SELECT p.id, p.author_id, p.posting_window_id, p.image_id, p.caption, p.visibility,\n  p.location_kind, p.latitude, p.longitude, p.locality, p.posted_at,\n  w.on_time_deadline, w.ended_at AS window_ended_at, (r.author).id AS \"author.id\", (r.author).username AS \"author.username\", (r.author).secret_key_hash AS \"author.secret_key_hash\", (r.author).display_name AS \"author.display_name\", (r.author).bio AS \"author.bio\", (r.author).profile_image_id AS \"author.profile_image_id\", (r.author).region AS \"author.region\", (r.author).account_type AS \"author.account_type\", (r.author).status AS \"author.status\" FROM astra_create_post_asset($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) r CROSS JOIN LATERAL (SELECT (r.post_row).*) p CROSS JOIN LATERAL (SELECT (r.window_row).*) w",
+      "active_connection_samples": 3,
+      "max_observed_age_seconds": 0.002577
+    },
+    {
+      "wait": "CPU",
+      "query": "WITH inserted AS (INSERT INTO users (id, username, secret_key_hash, display_name, region) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (username) DO NOTHING RETURNING id, username, secret_key_hash, display_name, bio, profile_image_id, region, account_type, status), indexed AS (INSERT INTO astra_user_search SELECT id,username,display_name,$6,$7 FROM inserted) SELECT * FROM inserted",
+      "active_connection_samples": 3,
+      "max_observed_age_seconds": 0.00254
+    },
+    {
+      "wait": "Client",
+      "query": "\n\t\tSELECT s.user_id, s.token_hash, s.created_at, u.region\n\t\tFROM login_sessions s JOIN users u ON u.id = s.user_id\n\t\tWHERE s.token_hash = $1\n\t\t  AND s.active = true AND u.status = ?\n\t",
+      "active_connection_samples": 2,
+      "max_observed_age_seconds": 0.000395
+    },
+    {
+      "wait": "IO",
+      "query": "INSERT INTO comments(id,post_id,author_id,body,created_at) VALUES($1,$2,$3,$4,clock_timestamp())",
+      "active_connection_samples": 2,
+      "max_observed_age_seconds": 0.000751
+    },
+    {
+      "wait": "Client",
+      "query": "\n  INSERT INTO login_sessions (id, user_id, token_hash)\n  VALUES ($1, $2, $3)\n  RETURNING user_id, token_hash, created_at\n ",
+      "active_connection_samples": 2,
+      "max_observed_age_seconds": 0.001539
+    },
+    {
+      "wait": "Lock",
+      "query": "WITH inserted AS (INSERT INTO users (id, username, secret_key_hash, display_name, region) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (username) DO NOTHING RETURNING id, username, secret_key_hash, display_name, bio, profile_image_id, region, account_type, status), indexed AS (INSERT INTO astra_user_search SELECT id,username,display_name,$6,$7 FROM inserted) SELECT * FROM inserted",
+      "active_connection_samples": 2,
+      "max_observed_age_seconds": 0.043412
+    },
+    {
+      "wait": "Lock",
+      "query": "SELECT p.id, p.author_id, p.posting_window_id, p.image_id, p.caption, p.visibility,\n  p.location_kind, p.latitude, p.longitude, p.locality, p.posted_at,\n  w.on_time_deadline, w.ended_at AS window_ended_at, (r.author).id AS \"author.id\", (r.author).username AS \"author.username\", (r.author).secret_key_hash AS \"author.secret_key_hash\", (r.author).display_name AS \"author.display_name\", (r.author).bio AS \"author.bio\", (r.author).profile_image_id AS \"author.profile_image_id\", (r.author).region AS \"author.region\", (r.author).account_type AS \"author.account_type\", (r.author).status AS \"author.status\" FROM astra_create_post_asset($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) r CROSS JOIN LATERAL (SELECT (r.post_row).*) p CROSS JOIN LATERAL (SELECT (r.window_row).*) w",
+      "active_connection_samples": 2,
+      "max_observed_age_seconds": 0.06525
+    },
+    {
+      "wait": "Client",
+      "query": "\nWITH viewer AS (\n  SELECT id, region FROM users WHERE id = $1 AND status = ?\n), target AS MATERIALIZED (\n  SELECT p.id, p.author_id, p.visibility, w.ended_at\n  FROM posts p\n  JOIN posting_windows w ON w.id = p.posting_window_id\n  JOIN users author ON author.id = p.author_id AND author.status = ?\n  WHERE p.id = $2 AND p.deleted_at IS NULL\n), friends AS (\n  SELECT user_high_id AS id FROM friendships WHERE user_low_id = $1\n  UNION\n  SELECT user_low_id AS id FROM friendships WHERE user_high_id = $1\n), facts AS (\n  SELECT p.*, p.author_id = v.id AS own,\n    EXISTS (\n      SELECT 1 FROM posts own_post\n      JOIN posting_windows posted ON posted.id = own_post.posting_window_id\n      JOIN posting_windows current ON current.region = v.region\n        AND current.ended_at IS NULL AND current.local_date = posted.local_date\n      WHERE own_post.author_id = v.id AND own_post.deleted_at IS NULL\n    ) AS has_posted,\n    EXISTS (\n      SELECT 1 FROM block_relations b\n      WHERE (b.blocker_id = v.id AND b.bloc",
+      "active_connection_samples": 2,
+      "max_observed_age_seconds": 0.000489
+    },
+    {
+      "wait": "Client",
+      "query": "INSERT INTO realmojis(id,post_id,reactor_id,image_id,reaction_type,created_at) VALUES($1,$2,$3,$4,$5,$6)",
+      "active_connection_samples": 2,
+      "max_observed_age_seconds": 0.002065
+    },
+    {
+      "wait": "Client",
+      "query": "SELECT id FROM users WHERE id=$1 AND status=? FOR NO KEY UPDATE",
+      "active_connection_samples": 1,
+      "max_observed_age_seconds": 0.000874
+    },
+    {
+      "wait": "CPU",
+      "query": "\n   INSERT INTO notifications (id, user_id, posting_window_id, created_at)\n   SELECT n.id, n.user_id, $3, $4\n   FROM unnest($1::text[], $2::text[]) WITH ORDINALITY AS n(id, user_id, position)\n   ORDER BY n.position\n  ",
+      "active_connection_samples": 1,
+      "max_observed_age_seconds": 0.081843
+    },
+    {
+      "wait": "Client",
+      "query": "WITH inserted AS (INSERT INTO users (id, username, secret_key_hash, display_name, region) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (username) DO NOTHING RETURNING id, username, secret_key_hash, display_name, bio, profile_image_id, region, account_type, status), indexed AS (INSERT INTO astra_user_search SELECT id,username,display_name,$6,$7 FROM inserted) SELECT * FROM inserted",
+      "active_connection_samples": 1,
+      "max_observed_age_seconds": 0.000588
+    },
+    {
+      "wait": "Client",
+      "query": "INSERT INTO astra_visibility_barriers (id) VALUES ($1)",
+      "active_connection_samples": 1,
+      "max_observed_age_seconds": 0.003057
+    },
+    {
+      "wait": "CPU",
+      "query": "\n\t\tSELECT s.user_id, s.token_hash, s.created_at, u.region\n\t\tFROM login_sessions s JOIN users u ON u.id = s.user_id\n\t\tWHERE s.token_hash = $1\n\t\t  AND s.active = true AND u.status = ?\n\t",
+      "active_connection_samples": 1,
+      "max_observed_age_seconds": 0.000445
+    },
+    {
+      "wait": "Client",
+      "query": "SELECT id FROM users WHERE region = $1 AND status = ? ORDER BY id",
+      "active_connection_samples": 1,
+      "max_observed_age_seconds": 0.005743
+    },
+    {
+      "wait": "Client",
+      "query": "SELECT p.id, p.author_id, p.posting_window_id, p.image_id, p.caption, p.visibility,\n  p.location_kind, p.latitude, p.longitude, p.locality, p.posted_at,\n  w.on_time_deadline, w.ended_at AS window_ended_at, (r.author).id AS \"author.id\", (r.author).username AS \"author.username\", (r.author).secret_key_hash AS \"author.secret_key_hash\", (r.author).display_name AS \"author.display_name\", (r.author).bio AS \"author.bio\", (r.author).profile_image_id AS \"author.profile_image_id\", (r.author).region AS \"author.region\", (r.author).account_type AS \"author.account_type\", (r.author).status AS \"author.status\" FROM astra_create_post_asset($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) r CROSS JOIN LATERAL (SELECT (r.post_row).*) p CROSS JOIN LATERAL (SELECT (r.window_row).*) w",
+      "active_connection_samples": 1,
+      "max_observed_age_seconds": 0.003072
+    },
+    {
+      "wait": "Client",
+      "query": "INSERT INTO friendships (id, user_low_id, user_high_id, source_request_id) VALUES ($1,$2,$3,$4)",
+      "active_connection_samples": 1,
+      "max_observed_age_seconds": 0.000549
+    },
+    {
+      "wait": "CPU",
+      "query": "SELECT id FROM users WHERE id=$1 FOR NO KEY UPDATE",
+      "active_connection_samples": 1,
+      "max_observed_age_seconds": 0.000781
+    },
+    {
+      "wait": "Client",
+      "query": "INSERT INTO friend_requests (id, requester_id, recipient_id, status, created_at, updated_at) VALUES ($1,$2,$3,?,clock_timestamp(),clock_timestamp())",
+      "active_connection_samples": 1,
+      "max_observed_age_seconds": 0.000768
+    },
+    {
+      "wait": "CPU",
+      "query": "\n  INSERT INTO login_sessions (id, user_id, token_hash)\n  VALUES ($1, $2, $3)\n  RETURNING user_id, token_hash, created_at\n ",
+      "active_connection_samples": 1,
+      "max_observed_age_seconds": 0.001574
+    },
+    {
+      "wait": "CPU",
+      "query": "COMMIT",
+      "active_connection_samples": 1,
+      "max_observed_age_seconds": 0.107302
+    }
+  ]
+}
