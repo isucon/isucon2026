@@ -8,7 +8,12 @@ require (
 	google.golang.org/protobuf v1.36.11
 )
 
-require github.com/goccy/go-json v0.11.2
+require (
+	github.com/goccy/go-json v0.11.2
+	github.com/zeebo/xxh3 v1.0.2
+)
+
+require github.com/klauspost/cpuid/v2 v2.0.9 // indirect
 
 replace (
 	github.com/isucon/isucon2026/dataset => ../dataset

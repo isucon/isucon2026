@@ -1,0 +1,7 @@
+# Routers are c6in (Ice Lake); x86-64-v3 (AVX2) speeds up XXH3 and still runs on
+# any x86 machine from the last decade that builds the development stack.
+[target.x86_64-unknown-linux-musl]
+rustflags = ["-C", "target-cpu=x86-64-v3"]
+
+[target.x86_64-unknown-linux-gnu]
+rustflags = ["-C", "target-cpu=x86-64-v3"]

@@ -182,6 +182,29 @@ services:
     init: true
     cpus: ${ISUREAL_CONTROL_CPUS:-1.0}
     mem_limit: ${ISUREAL_CONTROL_MEMORY:-512m}
+  # Answers the benchmark's image and export downloads with digests next to HAProxy.
+  digest:
+    build:
+      context: .
+      dockerfile: router/Dockerfile
+      target: digest
+    network_mode: service:router
+    environment: *router-environment
+    ulimits:
+      nofile:
+        soft: 1048576
+        hard: 1048576
+    depends_on:
+      router:
+        condition: service_healthy
+    cap_drop:
+    - ALL
+    security_opt:
+    - no-new-privileges:true
+    read_only: true
+    init: true
+    cpus: ${ISUREAL_CONTROL_CPUS:-1.0}
+    mem_limit: ${ISUREAL_CONTROL_MEMORY:-512m}
   app-asia:
     <<: *app
     environment:
