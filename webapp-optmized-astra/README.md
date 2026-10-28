@@ -333,3 +333,4 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261028T141650Z-team10 | repeat 128 upload admission slots | PASS | 172,721 |
 | 20261028T142236Z-team10 | restore 64 upload slots after paired wider admission comparison | PASS | 181,962 |
 | 20261028T143942Z-team10 | notification snapshot readers with legacy writes control | PASS | 185,418 |
+| 20261028T144408Z-team10 | immutable notification batches with cached recipients and current-state checks | PASS | 169,421 |
