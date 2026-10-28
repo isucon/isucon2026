@@ -57,7 +57,7 @@ def inspect(app):
             'ISUREAL_UPLOAD_PROXY_TARGET':'192.168.145.10:8081' if regional and runtime['regionalUploadCacheEnabled'] else '',
         }
     regions={a['region']:a['host'] for a in runtime['applications'] if a['region']!='asia'} if runtime.get('regionalImageStoresEnabled') else {}
-    program='expected='+repr(expected)+'\nbinary='+repr(expected_binary)+'\nregions='+repr(regions)+'\n'+'''
+    program='expected='+repr(expected)+'\nbinary='+repr(expected_binary)+'\nregions='+repr(regions)+'\nnginx_malloc='+repr(runtime.get('nginxMallocThresholdKiB',0)*1024)+'\n'+'''
 import hashlib,json,os,subprocess
 result={}
 for service,values in expected.items():
@@ -77,6 +77,11 @@ for service in ['nginx','isureal-guard']:
     assert subprocess.check_output(['systemctl','is-active',service],text=True).strip()=='active'
     assert subprocess.check_output(['systemctl','is-enabled',service],text=True).strip()=='enabled'
     result[service]='active, enabled'
+import shlex
+allocator_environment=dict(entry.split('=',1) for entry in shlex.split(subprocess.check_output(['systemctl','show','nginx','-p','Environment','--value'],text=True)) if '=' in entry)
+for key in ['MALLOC_MMAP_THRESHOLD_','MALLOC_TRIM_THRESHOLD_']:
+    assert allocator_environment.get(key,'')==(str(nginx_malloc) if nginx_malloc else ''), 'Nginx allocator setting mismatch: '+key
+result['nginx_malloc_threshold_kib']=nginx_malloc//1024
 print(json.dumps(result))
 '''
     result=json.loads(remote(app['instanceId'],'sudo python3 -c '+shlex.quote(program)))
@@ -111,6 +116,8 @@ print(json.dumps(result))
         nginx=remote(app['instanceId'],'cat /etc/nginx/nginx.conf')
         assert 'proxy_request_buffering '+('on' if runtime['nginxRequestBuffering'] else 'off')+'; # astra-managed' in nginx
         assert 'client_body_buffer_size '+str(runtime.get('nginxClientBodyBufferKiB',8))+'k; # astra-managed' in nginx
+        for key in ['MALLOC_MMAP_THRESHOLD_','MALLOC_TRIM_THRESHOLD_']:
+            assert ('env '+key+'; # astra-managed' in nginx)==bool(runtime.get('nginxMallocThresholdKiB',0))
         log_bytes=runtime.get('nginxAccessLogBufferBytes',0)
         if not runtime.get('nginxAccessLogEnabled',True):
             assert 'access_log off; # astra-managed' in nginx
