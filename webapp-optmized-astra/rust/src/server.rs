@@ -280,8 +280,9 @@ pub async fn new_server(config: Config) -> Router {
     let selective = scope == "feed_search";
     assert!(
         !selective
-            || (handler_context.config.region == "asia" && read_context.read_fence.is_some()),
-        "selective Asia reads require a fenced local standby"
+            || (handler_context.config.region == "asia"
+                && !Arc::ptr_eq(&read_context, &handler_context)),
+        "selective Asia reads require a local standby protected by read or write fences"
     );
     let general_reads = if selective {
         handler_context.clone()
