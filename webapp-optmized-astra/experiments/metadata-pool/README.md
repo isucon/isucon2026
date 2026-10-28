@@ -5,3 +5,5 @@
 `metadataPoolConnections` は4〜64で、既定の比較元は30。`ISUREAL_METADATA_POOL_CONNECTIONS` を通常のプライマリ・読み取り用プールに反映する。応答前の複製反映確認に使う別プールと、その8バッチは変えない。
 
 16接続で既存の実DB・レプリカを使うHTTPルーター結合テストが成功した。Clippy、TypeScript、シェル/Pythonの構文確認も成功。実機はこれから比較する。
+
+16接続の固定seedは[173,249点](../../results/20261028T122920Z-team10/result.json)と[183,359点](../../results/20261028T140619Z-team10/result.json)でPASS。30接続と初期化VACUUMの対照は170,756点と176,341点だった。後者の16接続走行ではdb1のCPU平均47.3%、p95 83%、I/O待ち12%。反復差があるため接続数だけの改善幅は確定せず、16を継続評価する。
