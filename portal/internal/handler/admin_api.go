@@ -254,6 +254,10 @@ func (h *Handler) AdminTeamsUpdate(w http.ResponseWriter, r *http.Request) error
 	if err := tx.Commit(); err != nil {
 		return err
 	}
+	if team.Name != req.Team.Name {
+		// Always rebuild each visibility separately, even if the queue crosses the freeze time.
+		h.jobs.Enqueue(ctx, "update_contestant_dashboard", job.UpdateDashboardArgs{TeamID: id, Frozen: true})
+	}
 	renderPB(w, http.StatusOK, &pbadmin.UpdateTeamResponse{})
 	return nil
 }
