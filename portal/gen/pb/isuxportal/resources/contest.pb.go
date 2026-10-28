@@ -75,16 +75,18 @@ func (Contest_Status) EnumDescriptor() ([]byte, []int) {
 }
 
 type Contest struct {
-	state                protoimpl.MessageState `protogen:"open.v1"`
-	RegistrationOpensAt  *timestamppb.Timestamp `protobuf:"bytes,1,opt,name=registration_opens_at,json=registrationOpensAt,proto3" json:"registration_opens_at,omitempty"`
-	RegistrationClosesAt *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=registration_closes_at,json=registrationClosesAt,proto3" json:"registration_closes_at,omitempty"`
-	StartsAt             *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=starts_at,json=startsAt,proto3" json:"starts_at,omitempty"`
-	FreezesAt            *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=freezes_at,json=freezesAt,proto3" json:"freezes_at,omitempty"`
-	EndsAt               *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=ends_at,json=endsAt,proto3" json:"ends_at,omitempty"`
-	Status               Contest_Status         `protobuf:"varint,6,opt,name=status,proto3,enum=isuxportal.proto.resources.Contest_Status" json:"status,omitempty"`
-	Frozen               bool                   `protobuf:"varint,7,opt,name=frozen,proto3" json:"frozen,omitempty"`
-	unknownFields        protoimpl.UnknownFields
-	sizeCache            protoimpl.SizeCache
+	state                          protoimpl.MessageState `protogen:"open.v1"`
+	RegistrationOpensAt            *timestamppb.Timestamp `protobuf:"bytes,1,opt,name=registration_opens_at,json=registrationOpensAt,proto3" json:"registration_opens_at,omitempty"`
+	RegistrationClosesAt           *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=registration_closes_at,json=registrationClosesAt,proto3" json:"registration_closes_at,omitempty"`
+	StartsAt                       *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=starts_at,json=startsAt,proto3" json:"starts_at,omitempty"`
+	FreezesAt                      *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=freezes_at,json=freezesAt,proto3" json:"freezes_at,omitempty"`
+	EndsAt                         *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=ends_at,json=endsAt,proto3" json:"ends_at,omitempty"`
+	Status                         Contest_Status         `protobuf:"varint,6,opt,name=status,proto3,enum=isuxportal.proto.resources.Contest_Status" json:"status,omitempty"`
+	Frozen                         bool                   `protobuf:"varint,7,opt,name=frozen,proto3" json:"frozen,omitempty"`
+	RegistrationInvitationClosesAt *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=registration_invitation_closes_at,json=registrationInvitationClosesAt,proto3" json:"registration_invitation_closes_at,omitempty"`
+	RegistrationUpdateClosesAt     *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=registration_update_closes_at,json=registrationUpdateClosesAt,proto3" json:"registration_update_closes_at,omitempty"`
+	unknownFields                  protoimpl.UnknownFields
+	sizeCache                      protoimpl.SizeCache
 }
 
 func (x *Contest) Reset() {
@@ -166,11 +168,25 @@ func (x *Contest) GetFrozen() bool {
 	return false
 }
 
+func (x *Contest) GetRegistrationInvitationClosesAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.RegistrationInvitationClosesAt
+	}
+	return nil
+}
+
+func (x *Contest) GetRegistrationUpdateClosesAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.RegistrationUpdateClosesAt
+	}
+	return nil
+}
+
 var File_isuxportal_resources_contest_proto protoreflect.FileDescriptor
 
 const file_isuxportal_resources_contest_proto_rawDesc = "" +
 	"\n" +
-	"\"isuxportal/resources/contest.proto\x12\x1aisuxportal.proto.resources\x1a\x1fgoogle/protobuf/timestamp.proto\"\xf4\x03\n" +
+	"\"isuxportal/resources/contest.proto\x12\x1aisuxportal.proto.resources\x1a\x1fgoogle/protobuf/timestamp.proto\"\xba\x05\n" +
 	"\aContest\x12N\n" +
 	"\x15registration_opens_at\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\x13registrationOpensAt\x12P\n" +
 	"\x16registration_closes_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\x14registrationClosesAt\x127\n" +
@@ -179,7 +195,9 @@ const file_isuxportal_resources_contest_proto_rawDesc = "" +
 	"freezes_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\tfreezesAt\x123\n" +
 	"\aends_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\x06endsAt\x12B\n" +
 	"\x06status\x18\x06 \x01(\x0e2*.isuxportal.proto.resources.Contest.StatusR\x06status\x12\x16\n" +
-	"\x06frozen\x18\a \x01(\bR\x06frozen\"B\n" +
+	"\x06frozen\x18\a \x01(\bR\x06frozen\x12e\n" +
+	"!registration_invitation_closes_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\x1eregistrationInvitationClosesAt\x12]\n" +
+	"\x1dregistration_update_closes_at\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\x1aregistrationUpdateClosesAt\"B\n" +
 	"\x06Status\x12\v\n" +
 	"\aSTANDBY\x10\x00\x12\x10\n" +
 	"\fREGISTRATION\x10\x01\x12\v\n" +
@@ -213,11 +231,13 @@ var file_isuxportal_resources_contest_proto_depIdxs = []int32{
 	2, // 3: isuxportal.proto.resources.Contest.freezes_at:type_name -> google.protobuf.Timestamp
 	2, // 4: isuxportal.proto.resources.Contest.ends_at:type_name -> google.protobuf.Timestamp
 	0, // 5: isuxportal.proto.resources.Contest.status:type_name -> isuxportal.proto.resources.Contest.Status
-	6, // [6:6] is the sub-list for method output_type
-	6, // [6:6] is the sub-list for method input_type
-	6, // [6:6] is the sub-list for extension type_name
-	6, // [6:6] is the sub-list for extension extendee
-	0, // [0:6] is the sub-list for field type_name
+	2, // 6: isuxportal.proto.resources.Contest.registration_invitation_closes_at:type_name -> google.protobuf.Timestamp
+	2, // 7: isuxportal.proto.resources.Contest.registration_update_closes_at:type_name -> google.protobuf.Timestamp
+	8, // [8:8] is the sub-list for method output_type
+	8, // [8:8] is the sub-list for method input_type
+	8, // [8:8] is the sub-list for extension type_name
+	8, // [8:8] is the sub-list for extension extendee
+	0, // [0:8] is the sub-list for field type_name
 }
 
 func init() { file_isuxportal_resources_contest_proto_init() }
