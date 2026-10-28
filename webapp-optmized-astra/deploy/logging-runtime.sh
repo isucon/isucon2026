@@ -12,6 +12,9 @@ print('ISUREAL_LOG_LEVEL='+level)
 for key,env in [('signatureCacheCoalescing','ISUREAL_SIGNATURE_COALESCE'),('signatureCacheMetrics','ISUREAL_SIGNATURE_METRICS'),('issuedImageUrlCacheEnabled','ISUREAL_ISSUED_URL_CACHE')]:
     assert type(runtime[key]) is bool
     print(env+'='+str(int(runtime[key])))
+auth_timing=runtime.get('authTimingEnabled',False)
+assert type(auth_timing) is bool
+print('ISUREAL_AUTH_TIMING='+str(int(auth_timing)))
 entries=runtime['issuedImageUrlCacheEntries']
 assert type(entries) is int and 16 <= entries <= 262144 and entries % 16 == 0
 print('ISUREAL_ISSUED_URL_CACHE_ENTRIES='+str(entries))

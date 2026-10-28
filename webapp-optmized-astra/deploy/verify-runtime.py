@@ -32,6 +32,7 @@ def inspect(app):
         regional=service=='webapp-optmized-astra' and app['region']!='asia'
         read_host, fenced=read_settings(runtime,app,writer=service.endswith('-writer'))
         expected[service]={
+            'ISUREAL_AUTH_TIMING':str(int(runtime.get('authTimingEnabled',False))),
             'MALLOC_MMAP_THRESHOLD_':str(runtime.get('applicationMallocThresholdKiB',0)*1024) if runtime.get('applicationMallocThresholdKiB',0) else '',
             'MALLOC_TRIM_THRESHOLD_':str(runtime.get('applicationMallocThresholdKiB',0)*1024) if runtime.get('applicationMallocThresholdKiB',0) else '',
             'ISUREAL_LISTEN_BACKLOG':str(runtime['listenBacklog']),
