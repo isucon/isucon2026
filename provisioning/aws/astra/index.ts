@@ -176,3 +176,7 @@ if (![0, 64, 128, 256, 512].includes(runtime.nginxMallocThresholdKiB ?? 0)) {
 if (![0, 64, 128, 256, 512].includes(runtime.applicationMallocThresholdKiB ?? 0)) {
     throw new Error("Invalid application allocator threshold");
 }
+
+if (runtime.authTimingEnabled !== undefined && typeof runtime.authTimingEnabled !== "boolean") {
+    throw new Error("Invalid auth timing flag");
+}
