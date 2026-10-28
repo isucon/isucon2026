@@ -1,7 +1,7 @@
 Selected application validation (2026-10-28 UTC)
 
 cargo +1.99.1 test --offline --locked --manifest-path webapp-optmized-astra/rust/Cargo.toml
-All five PostgreSQL test DSNs enabled: metadata, Asia image store, regional image store, two physical replicas.
+All six test DSNs enabled across five PostgreSQL clusters: metadata/session and fence primary, Asia image store, regional image store, two physical replicas.
 36 passed; 0 failed; 1 ignored (explicit local CPU comparison).
 
 test image_api::cache_tests::eviction_retains_recently_used_images_and_preserves_byte_accounting ... ok
@@ -46,3 +46,8 @@ cargo +1.99.1 clippy --offline --locked --manifest-path webapp-optmized-astra/ru
 Private upload and replication secret values are absent from tracked files.
 Restart verification: storage-restart-verification.txt
 Release archive SHA-256: 45827fd8bd2f5462cc45299308d37de0ba3b27e946d92ee2563dab969bef4857
+
+Post-restart idle verification: final-runtime-verification.txt
+Local release archive and Rust/SQL sources match the 133279-point run.
+All 68 recorded benchmark results are tracked, with matching scores and pass/fail values.
+README and architecture document links resolve.
