@@ -4,6 +4,7 @@ No AWS infrastructure resources are created. Transfer files with scp and execute
 configuration scripts over SSH through the existing Instance Connect Endpoint.
 """
 from concurrent.futures import ThreadPoolExecutor
+import hashlib
 import json
 import os
 import secrets
@@ -18,7 +19,7 @@ ROOT = Path(__file__).resolve().parents[2]
 DEPLOY = ROOT / "webapp-optmized-astra/deploy"
 runtime = json.loads((DEPLOY / "runtime.json").read_text())
 mode = sys.argv[1] if len(sys.argv) > 1 else "all"
-assert mode in ("all", "application", "database", "replication", "image-store", "image-gc")
+assert mode in ("all", "application", "database", "replication", "image-store", "image-gc", "upgrade")
 read_fence = runtime.get("readFenceEnabled", False)
 write_fence = runtime.get("writeFenceEnabled", False)
 write_fence_mode = runtime.get("writeFenceMode", "poll")
@@ -141,7 +142,7 @@ if mode in ("all", "image-store") and image_store.get("enabled", False):
     parallel(provision_store, stores)
 
 
-if mode in ("all", "application") and regional_writes:
+if mode in ("all", "application", "upgrade") and regional_writes:
     secret_file = ROOT / runtime["regionalUploadEnvPath"]
     secret_file.parent.mkdir(parents=True, exist_ok=True)
     if not secret_file.exists():
@@ -158,6 +159,18 @@ if mode in ("all", "application") and regional_writes:
 def application(app):
     instance = app["instanceId"]
     copy(instance, ROOT / runtime["archivePath"], "/home/isucon/astra-release.tar.gz")
+    if runtime['signatureFileCacheEnabled']:
+        source = ROOT / runtime['signatureFileCachePath']
+        assert source.stat().st_mode & 0o077 == 0, 'Signature cache must remain private'
+        with source.open('rb') as file:
+            digest = hashlib.file_digest(file, 'sha256').hexdigest()
+        existing = subprocess.check_output([ssh, instance,
+            'if test -f /home/isucon/.astra-signatures.bin; then sha256sum /home/isucon/.astra-signatures.bin; fi'], text=True).split()
+        if not existing or existing[0] != digest:
+            remote(instance, 'umask 077; : > /home/isucon/.astra-signatures.next')
+            copy(instance, source, '/home/isucon/.astra-signatures.next')
+            remote(instance, 'chmod 600 /home/isucon/.astra-signatures.next && mv /home/isucon/.astra-signatures.next /home/isucon/.astra-signatures.bin')
+        remote(instance, 'chmod 600 /home/isucon/.astra-signatures.bin')
     read_host, fenced = read_settings(runtime, app)
     fenced = str(int(fenced))
     remote(instance, "sudo bash /home/isucon/astra-deploy/application.sh /home/isucon/astra-release.tar.gz " + shlex.quote(read_host) + " " + fenced + " " + shlex.quote(write_fence_hosts) + " " + shlex.quote(write_fence_mode) + " " + shlex.quote(app["region"]) + " " + shlex.quote(read_scope(runtime, app)))
@@ -167,13 +180,26 @@ def write_frontend(app):
     remote(app["instanceId"], "sudo bash /home/isucon/astra-deploy/write-routing.sh frontend " + shlex.quote(app["region"]))
 
 
+# Coordinated schema/application upgrades keep the existing compatibility
+# checks above while all writers are running, then stop requests for migration.
+if mode == "upgrade":
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("asset_gc", DEPLOY / "asset-gc.py")
+    gc = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(gc)
+    gc.ensure_idle()
+    def stop_for_upgrade(app):
+        units = "webapp-optmized-astra webapp-optmized-astra-writer" if app["region"] == "asia" else "webapp-optmized-astra"
+        remote(app["instanceId"], "sudo systemctl stop " + units)
+    parallel(stop_for_upgrade, applications)
+
 # Restore local writes before stopping or replacing the private worker.
-if mode in ("all", "application") and not write_proxy:
+if mode in ("all", "application", "upgrade") and not write_proxy:
     parallel(write_frontend, remote_apps)
 
 
 # Disable local reads before turning off synchronous replication on rollback.
-if mode in ("all", "application") and not runtime["replicaReads"]:
+if mode in ("all", "application", "upgrade") and not runtime["replicaReads"]:
     parallel(application, applications)
 
 # In a combined deployment, readers must gain fences before sync commits stop.
@@ -181,7 +207,7 @@ early_fenced_apps = mode == "all" and runtime["replicaReads"] and read_fence and
 if early_fenced_apps:
     parallel(application, applications)
 
-if mode in ("all", "database"):
+if mode in ("all", "database", "upgrade"):
     remote(database, "sudo bash /home/isucon/astra-deploy/database.sh")
 
 if mode in ("all", "replication") and runtime["replicasEnabled"]:
@@ -211,10 +237,10 @@ if mode in ("all", "replication") and runtime["replicasEnabled"]:
 
     parallel(standby, replicas)
 
-if mode in ("all", "application") and runtime["replicaReads"] and not early_fenced_apps:
+if mode in ("all", "application", "upgrade") and runtime["replicaReads"] and not early_fenced_apps:
     parallel(application, applications)
 
-if mode in ("all", "application"):
+if mode in ("all", "application", "upgrade"):
     remote(write_host, "sudo bash /home/isucon/astra-deploy/write-routing.sh backend")
     parallel(write_frontend, applications)
 
