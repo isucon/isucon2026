@@ -59,6 +59,17 @@ func (r *Runner) browse(ctx context.Context, u *user, s *session) {
 		return
 	}
 	post := r.pickPost(u, candidates)
+	// 友達の友達フィード（まれに公開フィード）で見た人に、ときどき友達申請を送る。
+	discover := 0.0
+	switch feed {
+	case "friends-of-friends":
+		discover = u.persona.discover
+	case "public":
+		discover = u.persona.discover / 3
+	}
+	if s.discovered < discoveriesPerDay && u.rng.Float64() < discover {
+		r.discover(ctx, u, s, post.Author.ID)
+	}
 	if u.rng.Float64() < u.persona.detail {
 		r.openPost(ctx, u, s, post)
 	}

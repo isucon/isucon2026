@@ -270,6 +270,19 @@ func (m *Model) Friend(a, b string, r Read) Tri {
 	return m.friendTri(a, b, r)
 }
 
+// FriendsOf は r の間ずっと id の友達だった人。
+func (m *Model) FriendsOf(id string, r Read) []string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	var out []string
+	for other := range m.friendCandidates[id] {
+		if m.friendTri(id, other, r) == True {
+			out = append(out, other)
+		}
+	}
+	return out
+}
+
 // Blocked は a と b のどちらかがもう一方をブロックしているか。
 func (m *Model) Blocked(a, b string, r Read) Tri {
 	m.mu.RLock()

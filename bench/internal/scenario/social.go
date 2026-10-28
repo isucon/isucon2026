@@ -15,9 +15,6 @@ import (
 	"github.com/isucon/isucon2026/dataset"
 )
 
-// friendRequestsPerNewcomer は友達つながりで来たユーザーが送る友達申請の数。
-const friendRequestsPerNewcomer = 3
-
 // social は友達まわりの操作を 1 つ行う。検索して申請する、届いた申請を断る、送った申請を
 // 取り下げる、関係の一覧を見る、まれに友達を解除する。
 func (r *Runner) social(ctx context.Context, u *user, s *session) {
@@ -39,6 +36,48 @@ func (r *Runner) social(ctx context.Context, u *user, s *session) {
 			r.listRelationships(ctx, u)
 		}
 	}
+}
+
+// reachOutOnRegister と reachOutPerDay は、登録したときと毎日の投稿のあとで送る友達申請の
+// 数の上限。顔の広い人も一度に送りすぎず、最初の投稿に間に合うようにする。
+// discoveriesPerDay は、フィードで見た人に送る友達申請の 1 日の上限。
+const (
+	reachOutOnRegister = 5
+	reachOutPerDay     = 3
+	discoveriesPerDay  = 2
+)
+
+// reachOut は、登録したあとでまだ送っていない友達申請を n 件まで送る。
+func (r *Runner) reachOut(ctx context.Context, u *user, n int) {
+	n = min(n, u.circleLeft)
+	if n <= 0 || u.stopped.Load() {
+		return
+	}
+	u.circleLeft -= n
+	for _, target := range r.chooseFriends(u, n) {
+		r.requestFriend(ctx, u, target, u.rng.IntN(2) == 0)
+	}
+}
+
+// discover は、フィードで見た投稿の投稿者に友達申請を送る（知り合いかもしれない人）。
+// 投稿者が bench の知っている、止まっていないユーザーで、まだ友達でもブロックの関係でも
+// ないときだけ送る。
+func (r *Runner) discover(ctx context.Context, u *user, s *session, authorID string) {
+	r.mu.Lock()
+	target := r.byID[authorID]
+	r.mu.Unlock()
+	if target == nil || target == u || target.stopped.Load() {
+		return
+	}
+	now := r.model.Now()
+	if r.model.Friend(u.ID, target.ID, now) != model.False || r.model.Blocked(u.ID, target.ID, now) != model.False {
+		return
+	}
+	s.discovered++
+	r.mu.Lock()
+	r.discoveries[u.Region]++
+	r.mu.Unlock()
+	r.requestFriend(ctx, u, target, false)
 }
 
 // chooseFriends は u が友達申請を送る相手を n 人まで選ぶ。相手は友達の多い人ほど選ばれ
@@ -64,7 +103,7 @@ func (r *Runner) chooseFriends(u *user, n int) []*user {
 		}
 	}
 	var targets []*user
-	for attempts := 0; len(targets) < n && attempts < 20; attempts++ {
+	for attempts := 0; len(targets) < n && attempts < 4*n+10; attempts++ {
 		pool := home
 		x := u.rng.Float64()
 		switch {
@@ -495,4 +534,98 @@ func (r *Runner) toggleBlock(ctx context.Context, u *user) {
 	default:
 		r.requestError(ctx, u, "%s: ブロックできません: %v", u.Username, err)
 	}
+}
+
+// FriendStats は、あるリージョンの止まっていない負荷ユーザーの友達の数（Friends）と、友達の
+// 友達のうち止まっていない負荷ユーザーの数（FoF）。友達の友達フィードの候補になりうる人の
+// 数の目安。
+type FriendStats struct {
+	Users      int     `json:"users"`
+	FriendsAvg float64 `json:"friendsAvg"`
+	FriendsP50 int     `json:"friendsP50"`
+	FriendsP90 int     `json:"friendsP90"`
+	FriendsMax int     `json:"friendsMax"`
+	FoFAvg     float64 `json:"fofAvg"`
+	FoFP90     int     `json:"fofP90"`
+	FoFMax     int     `json:"fofMax"`
+	// Discoveries はフィードで見た人に送った友達申請の数。
+	Discoveries int `json:"discoveries"`
+}
+
+// friendStats は走行の終わりの友達の数を、リージョンごとに数える。
+func (r *Runner) friendStats() map[string]FriendStats {
+	now := r.model.Now()
+	byRegion := r.usersByRegion()
+	active := map[string]bool{}
+	for _, list := range byRegion {
+		for _, u := range list {
+			if !u.stopped.Load() {
+				active[u.ID] = true
+			}
+		}
+	}
+	cache := map[string][]string{}
+	friendsOf := func(id string) []string {
+		if friends, ok := cache[id]; ok {
+			return friends
+		}
+		friends := r.model.FriendsOf(id, now)
+		cache[id] = friends
+		return friends
+	}
+	out := map[string]FriendStats{}
+	for region, list := range byRegion {
+		var friends, fofs []int
+		for _, u := range list {
+			if !active[u.ID] {
+				continue
+			}
+			direct := friendsOf(u.ID)
+			seen := map[string]bool{u.ID: true}
+			for _, f := range direct {
+				seen[f] = true
+			}
+			fof := 0
+			for _, f := range direct {
+				for _, g := range friendsOf(f) {
+					if !seen[g] {
+						seen[g] = true
+						if active[g] {
+							fof++
+						}
+					}
+				}
+			}
+			friends = append(friends, len(direct))
+			fofs = append(fofs, fof)
+		}
+		if len(friends) == 0 {
+			continue
+		}
+		slices.Sort(friends)
+		slices.Sort(fofs)
+		stats := FriendStats{
+			Users:      len(friends),
+			FriendsAvg: float64(sum(friends)) / float64(len(friends)),
+			FriendsP50: percentileOf(friends, 0.5),
+			FriendsP90: percentileOf(friends, 0.9),
+			FriendsMax: friends[len(friends)-1],
+			FoFAvg:     float64(sum(fofs)) / float64(len(fofs)),
+			FoFP90:     percentileOf(fofs, 0.9),
+			FoFMax:     fofs[len(fofs)-1],
+		}
+		r.mu.Lock()
+		stats.Discoveries = r.discoveries[region]
+		r.mu.Unlock()
+		out[region] = stats
+	}
+	return out
+}
+
+func sum(xs []int) int {
+	total := 0
+	for _, x := range xs {
+		total += x
+	}
+	return total
 }

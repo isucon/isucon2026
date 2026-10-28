@@ -84,6 +84,8 @@ type user struct {
 	// stranded は所属リージョンの変更の結果を確かめられず、止まったユーザー。BAN と同じく、
 	// 使えなかった人として成長に数え続ける（変更をエラーにして人を減らすことはできない）。
 	stranded atomic.Bool
+	// circleLeft は、登録したあとでまだ送っていない友達申請の数。u のゴルーチンだけが使う。
+	circleLeft int
 	// returning は思い出を見返すユーザー（成長の判定に数えない）。
 	returning bool
 	// leaveOn はこの日に投稿したあとで退会する（0 なら退会しない）。
@@ -118,6 +120,9 @@ type session struct {
 	realMojis, comments                     int
 	myReactions                             []string
 	myComments                              []string
+
+	// discovered は友達の友達フィードなどで見た人に送った友達申請の数。
+	discovered int
 }
 
 // dailyBudget は過ごし方ごとの 1 日の閲覧の回数。
@@ -358,6 +363,7 @@ func (r *Runner) enterWindow(ctx context.Context, u *user, windowID string, prev
 		// 投稿だけするユーザーも、ときどき届いた友達申請を見る。
 		r.acceptRequests(ctx, u)
 	}
+	r.reachOut(ctx, u, reachOutPerDay)
 	if u.leaveOn == day {
 		r.deleteAccount(ctx, u)
 	}

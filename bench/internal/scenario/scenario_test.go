@@ -752,3 +752,27 @@ func TestRejectedRetryAfterAppliedMove(t *testing.T) {
 		t.Fatalf("stranded users = %d, want 1", stranded)
 	}
 }
+
+// TestUsersMakeFriendsOverRun は、登録したあとも毎日の投稿のあとやフィードで見た人に友達申請を
+// 送り、走行の終わりの友達の数を数えられることを確かめる。
+func TestUsersMakeFriendsOverRun(t *testing.T) {
+	runner, _ := newTestRunner(t, 4, metrics.SLO{FailRate: 1000, MinOps: 1})
+	if reason := runner.load(t.Context()); reason != "" || runner.board.ErrorCount() != 0 || runner.board.CriticalCount() != 0 {
+		t.Fatalf("reason=%q errors=%v critical=%v", reason, runner.board.Errors(), runner.board.Critical())
+	}
+	stats := runner.friendStats()
+	if len(stats) == 0 {
+		t.Fatal("no friend stats")
+	}
+	discoveries := 0
+	for region, s := range stats {
+		t.Logf("%s: %+v", region, s)
+		if s.FriendsMax <= 2 || s.FoFAvg == 0 {
+			t.Errorf("%s: %+v", region, s)
+		}
+		discoveries += s.Discoveries
+	}
+	if discoveries == 0 {
+		t.Error("no friend request from feeds")
+	}
+}
