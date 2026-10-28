@@ -102,6 +102,38 @@ def split_references(keys, regions, file_regions=(), archive_reads=False):
     return grouped
 
 
+def snapshot_sql():
+    # Every published range is validated while writers are stopped. For GC,
+    # one real reference reaching the furthest byte in each immutable archive
+    # proves the file covers all its live ranges and keeps the whole archive.
+    # This avoids transferring millions of equivalent retention references.
+    return r"""BEGIN;
+LOCK TABLE image_objects IN ACCESS EXCLUSIVE MODE;
+DO $$ BEGIN
+    IF EXISTS (
+        SELECT 1 FROM image_objects WHERE asset_key LIKE 'pack:%' AND
+        CASE WHEN asset_key ~ '^pack:[0-9a-f]{32}:(0|[1-9][0-9]{0,9}):[1-9][0-9]{0,7}$'
+             THEN split_part(asset_key,':',4)::bigint > 33554432
+               OR split_part(asset_key,':',3)::bigint + split_part(asset_key,':',4)::bigint > 8589934592
+             ELSE true END
+    ) THEN RAISE EXCEPTION 'Invalid published archive range; abort cleanup'; END IF;
+END $$;
+COPY (
+    WITH archives AS (
+        SELECT DISTINCT ON (split_part(asset_key,':',2)) asset_key
+        FROM image_objects WHERE asset_key LIKE 'pack:%'
+        ORDER BY split_part(asset_key,':',2),
+                 split_part(asset_key,':',3)::bigint + split_part(asset_key,':',4)::bigint DESC,
+                 asset_key
+    )
+    SELECT asset_key FROM archives
+    UNION
+    SELECT asset_key FROM image_objects WHERE asset_key IS NOT NULL AND asset_key NOT LIKE 'pack:%'
+    ORDER BY asset_key
+) TO STDOUT;
+COMMIT;"""
+
+
 def main():
     runtime = json.loads((DEPLOY / "runtime.json").read_text())
     store = runtime["imageStore"]
@@ -126,7 +158,7 @@ def main():
         with tempfile.TemporaryDirectory(prefix="astra-asset-gc-") as directory:
             snapshot_path = Path(directory) / "snapshot"
             fd = os.open(snapshot_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-            snapshot = "BEGIN; LOCK TABLE image_objects IN ACCESS EXCLUSIVE MODE; COPY (SELECT DISTINCT asset_key FROM image_objects WHERE asset_key IS NOT NULL ORDER BY asset_key) TO STDOUT; COMMIT;"
+            snapshot = snapshot_sql()
             with os.fdopen(fd, "wb") as output:
                 remote(runtime["database"]["instanceId"],
                        "sudo -u postgres psql -XqAt -v ON_ERROR_STOP=1 -d isureal -c " + shlex.quote(snapshot),
