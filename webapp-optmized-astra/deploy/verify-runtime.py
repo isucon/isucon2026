@@ -117,6 +117,9 @@ print(json.dumps(result))
     assert ('proxy_http_version 1.1;' in site)==keepalive
     assert 'gzip '+('on' if runtime['nginxJsonGzipEnabled'] else 'off')+';' in site
     assert 'gzip_types application/json;' in site and 'gzip_comp_level 1;' in site
+    auth_ingress = runtime.get('authTimingEnabled', False)
+    assert ('log_format astra_auth escape=json' in site) == auth_ingress
+    assert ('access_log /var/log/nginx/astra-auth-timing.log astra_auth buffer=32k flush=1s if=$astra_auth_action;' in site) == auth_ingress
     if 'nginxRequestBuffering' in runtime:
         nginx=remote(app['instanceId'],'cat /etc/nginx/nginx.conf')
         assert 'proxy_request_buffering '+('on' if runtime['nginxRequestBuffering'] else 'off')+'; # astra-managed' in nginx
