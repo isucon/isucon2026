@@ -21,6 +21,7 @@ pub struct FileStore {
     targets: Arc<HashMap<String, String>>,
     pub writes_enabled: bool,
     archives_enabled: bool,
+    archive_peer: Option<std::net::SocketAddr>,
     writers: Arc<Semaphore>,
     client: Client<HttpConnector, Body>,
 }
@@ -70,6 +71,7 @@ impl FileStore {
             targets: Arc::new(targets),
             writes_enabled,
             archives_enabled: false,
+            archive_peer: None,
             writers: Arc::new(Semaphore::new(16)),
             client: Client::builder().pool_max_idle_per_host(8).build(connector),
         }
@@ -77,6 +79,11 @@ impl FileStore {
 
     pub fn with_archives(mut self, enabled: bool) -> Self {
         self.archives_enabled = enabled;
+        self
+    }
+
+    pub fn with_archive_peer(mut self, peer: Option<std::net::SocketAddr>) -> Self {
+        self.archive_peer = peer;
         self
     }
 
@@ -122,8 +129,18 @@ impl FileStore {
         }
         let archives = std::env::var("ISUREAL_FILE_IMAGE_ARCHIVES").unwrap_or_else(|_| "0".into());
         assert!(matches!(archives.as_str(), "0" | "1"));
+        let peer = std::env::var("ISUREAL_ARCHIVE_PEER").unwrap_or_default();
+        let peer = if peer.is_empty() {
+            None
+        } else {
+            assert_eq!(region, "asia");
+            assert_eq!(peer, "192.168.148.10:8082");
+            assert_eq!(archives, "1");
+            Some(peer.parse().expect("private archive peer address"))
+        };
         let store = Self::new(root.into(), region.into(), targets, writes == "1")
-            .with_archives(archives == "1");
+            .with_archives(archives == "1")
+            .with_archive_peer(peer);
         store
             .prepare()
             .await
@@ -183,6 +200,9 @@ impl FileStore {
             }
             let reference = crate::archive_store::ArchiveReference::parse(key)
                 .ok_or_else(|| failure("invalid image archive reference"))?;
+            if let Some(peer) = self.archive_peer {
+                return crate::archive_peer::read(&self.client, peer, &reference).await;
+            }
             let directory = self.root.join("packs");
             return tokio::task::spawn_blocking(move || reference.read(&directory))
                 .await
