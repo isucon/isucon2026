@@ -187,5 +187,5 @@ subprocess.run(['python3', str(deploy / 'verify-runtime.py')], cwd=root, env=env
 evidence = root / 'webapp-optmized-astra/results' / ('archive-' + archive + ('-restore' if args.restore else '-reclaim' if args.reclaim else ''))
 evidence.mkdir()
 (evidence / 'report.json').write_text(json.dumps(report, indent=2) + '\n')
-(evidence / 'validation.txt').write_text('All three archive and manifest hashes matched before SQL publication. Five public image hashes per region matched before/after migration and application restart. Runtime and both metadata replicas verified.\n')
+(evidence / 'validation.txt').write_text('All three archive and manifest hashes matched before SQL publication. Available public images (up to five per region) matched before/after migration and application restart. Runtime and both metadata replicas verified.\n')
 print('Completed', 'restore' if args.restore else 'reclaim' if args.reclaim else 'migration', args.partition, archive, flush=True)
