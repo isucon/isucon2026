@@ -214,9 +214,10 @@ async fn feed_sql_matches_original_graph_and_filters_before_pagination() {
         .execute(&admin)
         .await
         .unwrap();
-    let options = PgConnectOptions::from_str(&dsn)
-        .unwrap()
-        .options([("search_path", schema.as_str())]);
+    let options = PgConnectOptions::from_str(&dsn).unwrap().options([
+        ("search_path", schema.as_str()),
+        ("plan_cache_mode", "force_generic_plan"),
+    ]);
     let db = PgPoolOptions::new()
         .max_connections(3)
         .connect_with(options)
@@ -277,6 +278,14 @@ async fn feed_sql_matches_original_graph_and_filters_before_pagination() {
         .execute(&db).await.unwrap();
     assert_eq!(reference(&db, "public", None, "").await.len(), 66);
     compare(&h, "visible gate and mixed graph").await;
+    sqlx::raw_sql("INSERT INTO friendships SELECT 'author000', 'author'||lpad(i::text,3,'0') FROM generate_series(5,199) i; UPDATE posts SET visibility='friends_of_friends' WHERE id>='post110' AND id<='post199';")
+        .execute(&db).await.unwrap();
+    assert!(reference(&db, "friends-of-friends", None, "").await.len() > 50);
+    compare(&h, "dense graph and multiple pages").await;
+    sqlx::raw_sql("DELETE FROM friendships WHERE user_low_id='author000'; UPDATE posts SET visibility='friends' WHERE id>='post110' AND id<='post199';")
+        .execute(&db).await.unwrap();
+    compare(&h, "sparse graph restored").await;
+
     sqlx::raw_sql("INSERT INTO block_relations VALUES ('author065','viewer'); INSERT INTO friendships VALUES ('viewer','author120'); DELETE FROM friendships WHERE user_low_id='viewer' AND user_high_id='author070';")
         .execute(&db).await.unwrap();
     compare(&h, "fresh block and friendship mutations").await;
