@@ -124,7 +124,7 @@ describe("API", { skip: !enabled && "ISUREAL_TEST_DATABASE=1 のときだけ実�
     }
     const viewer = await login("viewer");
     await db.query(`INSERT INTO posting_windows (id, region, local_date, starts_at, on_time_deadline, ended_at) VALUES ('w', 'asia', '2026-09-23', '2026-09-23T00:00:00Z', '2026-09-23T00:02:00Z', NULL)`);
-    for (const [i, author] of ["viewer", "a1", "a2", "x"].entries()) {
+    for (const [i, author] of ["viewer", "a1", "a2", "x", "f1"].entries()) {
       await db.query(`INSERT INTO image_objects (id, owner_user_id, data, media_type) VALUES ($1, $2, $3, 'image/jpeg')`, [`${author}-image`, author, Buffer.from("image")]);
       await db.query(
         `INSERT INTO posts (id, author_id, posting_window_id, image_id, caption, visibility, location_kind, posted_at) VALUES ($1, $2, 'w', $3, 'caption', 'friends_of_friends', 'none', $4)`,
@@ -163,9 +163,10 @@ describe("API", { skip: !enabled && "ISUREAL_TEST_DATABASE=1 のときだけ実�
 
     const friends = await request("GET", "/api/feeds/friends", { token: viewer });
     assert.equal(friends.status, 200, friends.text);
-    for (const item of friends.json().items) {
-      assert.ok(!Object.hasOwn(item, "score"), `friends feed returned a score for ${item.id}`);
-    }
+    const items = friends.json().items;
+    assert.deepEqual(items.map((item: { id: string }) => item.id), ["f1"]);
+    assert.ok(!Object.hasOwn(items[0], "score"), "friends feed returned a score for f1");
+    assert.equal((await request("GET", "/api/feeds/friends?beforeScore=abc", { token: viewer })).status, 400);
   });
 
   it("通知はヘッダを先に返し、投稿期間が始まると 1 件送って閉じる", async () => {
