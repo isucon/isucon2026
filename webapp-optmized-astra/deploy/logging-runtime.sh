@@ -11,6 +11,9 @@ print('ISUREAL_LOG_LEVEL='+level)
 for key,env in [('signatureCacheCoalescing','ISUREAL_SIGNATURE_COALESCE'),('signatureCacheMetrics','ISUREAL_SIGNATURE_METRICS'),('issuedImageUrlCacheEnabled','ISUREAL_ISSUED_URL_CACHE')]:
     assert type(runtime[key]) is bool
     print(env+'='+str(int(runtime[key])))
+entries=runtime['issuedImageUrlCacheEntries']
+assert type(entries) is int and 16 <= entries <= 262144 and entries % 16 == 0
+print('ISUREAL_ISSUED_URL_CACHE_ENTRIES='+str(entries))
 PY_CONFIG
 chmod 644 /etc/astra-application-log.env
 mkdir -p "/etc/systemd/system/$service.service.d"
