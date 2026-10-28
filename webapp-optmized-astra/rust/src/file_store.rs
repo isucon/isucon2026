@@ -20,6 +20,7 @@ pub struct FileStore {
     region: String,
     targets: Arc<HashMap<String, String>>,
     pub writes_enabled: bool,
+    archives_enabled: bool,
     writers: Arc<Semaphore>,
     client: Client<HttpConnector, Body>,
 }
@@ -68,9 +69,15 @@ impl FileStore {
             region,
             targets: Arc::new(targets),
             writes_enabled,
+            archives_enabled: false,
             writers: Arc::new(Semaphore::new(16)),
             client: Client::builder().pool_max_idle_per_host(8).build(connector),
         }
+    }
+
+    pub fn with_archives(mut self, enabled: bool) -> Self {
+        self.archives_enabled = enabled;
+        self
     }
 
     pub async fn prepare(&self) -> io::Result<()> {
@@ -80,6 +87,7 @@ impl FileStore {
             for bucket in 0..256 {
                 fs::create_dir_all(root.join(format!("{bucket:02x}")))?;
             }
+            fs::create_dir_all(root.join("packs"))?;
             File::open(root.as_ref())?.sync_all()?;
             if let Some(parent) = root.parent() {
                 File::open(parent)?.sync_all()?;
@@ -112,7 +120,10 @@ impl FileStore {
                     | ("america", "192.168.147.10:8082")
             ));
         }
-        let store = Self::new(root.into(), region.into(), targets, writes == "1");
+        let archives = std::env::var("ISUREAL_FILE_IMAGE_ARCHIVES").unwrap_or_else(|_| "0".into());
+        assert!(matches!(archives.as_str(), "0" | "1"));
+        let store = Self::new(root.into(), region.into(), targets, writes == "1")
+            .with_archives(archives == "1");
         store
             .prepare()
             .await
@@ -166,6 +177,18 @@ impl FileStore {
     }
 
     pub async fn get(&self, key: &str) -> Result<Vec<u8>, sqlx::Error> {
+        if key.starts_with("pack:") {
+            if !self.archives_enabled {
+                return Err(failure("archive image readers disabled"));
+            }
+            let reference = crate::archive_store::ArchiveReference::parse(key)
+                .ok_or_else(|| failure("invalid image archive reference"))?;
+            let directory = self.root.join("packs");
+            return tokio::task::spawn_blocking(move || reference.read(&directory))
+                .await
+                .map_err(|error| sqlx::Error::Io(io::Error::other(error)))?
+                .map_err(io_failure);
+        }
         let Some((region, id)) = key.strip_prefix("fs:").and_then(|key| key.split_once(':')) else {
             return Err(failure("invalid file image reference"));
         };
