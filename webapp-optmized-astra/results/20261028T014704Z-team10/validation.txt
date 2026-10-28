@@ -1,0 +1,48 @@
+Selected application validation (2026-10-28 UTC)
+
+cargo +1.99.1 test --offline --locked --manifest-path webapp-optmized-astra/rust/Cargo.toml
+All five PostgreSQL test DSNs enabled: metadata, Asia image store, regional image store, two physical replicas.
+36 passed; 0 failed; 1 ignored (explicit local CPU comparison).
+
+test image_api::cache_tests::eviction_retains_recently_used_images_and_preserves_byte_accounting ... ok
+test image_store::tests::asset_cache_checks_bytes_and_bounds_memory_and_entries ... ok
+test search_text::tests::search_text_cpu_comparison ... ignored, local CPU comparison, run with --release --ignored --nocapture
+test image_cache_push::tests::receiver_requires_actual_writer_socket_and_valid_payload ... ok
+test upload_proxy::tests::only_exact_upload_routes_are_intercepted ... ok
+test image_cache_push::tests::asynchronous_push_delivers_exact_immutable_bytes ... ok
+test search_text::tests::search_matches_preserve_unicode_and_literal_semantics ... ok
+test export_api::tests::export_rejects_partial_database_results_and_supports_empty_history ... ok
+test write_ingress::tests::only_socket_peer_selects_original_ingress_region ... ok
+test export_api::tests::streamed_export_preserves_images_order_and_manifest ... ok
+test write_ingress::region_tests::forwarding_preserves_ingress_region_and_public_server_stays_asia ... ok
+test upload_proxy::tests::forwards_exact_body_credentials_and_status_without_retries ... ok
+test stored_upload::tests::proof_requires_exact_body_headers_path_expiry_region_and_actual_peer ... ok
+test image_cache_push::tests::slow_or_failed_deliveries_have_a_bounded_pending_budget ... ok
+test native_write_fence::admission_tests::tiny_images_cannot_consume_account_or_control_admission ... ok
+test export_api::tests::partition_hint_matches_full_export_and_falls_back_for_moved_images ... ok
+test read_fence::tests::physical_replica_barrier_waits_for_new_commits_and_fails_closed ... ok
+test notification_api::tests::batched_notifications_preserve_connection_and_recipient_rules ... ok
+test write_fence::tests::responses_wait_for_both_replicas_after_releasing_write_locks ... ok
+test notification_api::tests::fenced_poll_does_not_deliver_to_a_deleted_recipient_on_lagging_replica ... ok
+test write_fence::tests::native_commit_waits_for_both_replicas_without_application_locks ... ok
+test action_log_middleware_entries ... ok
+test idle_dead_connections_are_replaced_and_transactions_remain_fresh ... ok
+test feed_sql_matches_original_graph_and_filters_before_pagination ... ok
+test cached_image_checks_current_content_visibility_and_credentials ... ok
+test image_signature_vector ... ok
+test signed_image_url_lifetime ... ok
+test image_rejects_malformed_and_expired_url ... ok
+test cached_signature_preserves_reference_and_isolates_inputs ... ok
+test independent_bytes_publish_atomically_and_preserve_visibility_export_and_reset ... ok
+test validation_preserves_original_dimensions_and_endpoint_limits ... ok
+test baseline_progressive_and_malformed_frame_headers ... ok
+test validation_follows_documented_header_and_dimension_contract ... ok
+test ordered_notification_batches_preserve_recipients_conflicts_and_atomicity ... ok
+test registration_is_unique_and_independent_users_do_not_serialize ... ok
+test cancelled_request_leaves_no_open_transaction ... ok
+test search_preserves_unicode_pagination_and_fresh_account_visibility ... ok
+
+cargo +1.99.1 clippy --offline --locked --manifest-path webapp-optmized-astra/rust/Cargo.toml --all-targets -- -D warnings: PASS
+Private upload and replication secret values are absent from tracked files.
+Restart verification: storage-restart-verification.txt
+Release archive SHA-256: 45827fd8bd2f5462cc45299308d37de0ba3b27e946d92ee2563dab969bef4857
