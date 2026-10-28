@@ -55,6 +55,7 @@ pub struct ReplaceRealMojiResponse {
 }
 
 pub fn new_real_moji_response(reaction: &RealMoji, user: &User) -> ReplaceRealMojiResponse {
+    crate::image_api::remember_image_timestamp(&reaction.image_id, reaction.created_at);
     ReplaceRealMojiResponse {
         id: reaction.id.clone(),
         reactor: new_relationship_user_response(user),
@@ -121,22 +122,23 @@ pub async fn replace_real_moji_handler(
         .bind(actor)
         .execute(&mut *tx)
         .await?;
-    sqlx::query(
-        "INSERT INTO image_objects(id,owner_user_id,data,media_type,asset_key) VALUES($1,$2,$3,'image/jpeg',$4)",
+    let image_created_at: DateTime<Utc> = sqlx::query_scalar(
+        "INSERT INTO image_objects(id,owner_user_id,data,media_type,asset_key) VALUES($1,$2,$3,'image/jpeg',$4) RETURNING created_at",
     )
     .bind(&image_id)
     .bind(actor)
     .bind(if asset_key.is_some() { &[][..] } else { &data[..] })
     .bind(&asset_key)
-    .execute(&mut *tx)
+    .fetch_one(&mut *tx)
     .await?;
     let id = Uuid::new_v4().to_string();
-    sqlx::query("INSERT INTO realmojis(id,post_id,reactor_id,image_id,reaction_type,created_at) VALUES($1,$2,$3,$4,$5,clock_timestamp())")
+    sqlx::query("INSERT INTO realmojis(id,post_id,reactor_id,image_id,reaction_type,created_at) VALUES($1,$2,$3,$4,$5,$6)")
         .bind(&id)
         .bind(&post.id)
         .bind(actor)
         .bind(&image_id)
         .bind(&input.reaction_type)
+        .bind(image_created_at)
         .execute(&mut *tx)
         .await?;
     let reaction = get_real_moji(&mut *tx, &id).await?;
