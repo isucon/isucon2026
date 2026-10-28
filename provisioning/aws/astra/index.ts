@@ -172,3 +172,7 @@ if (!Number.isInteger(clientBodyBufferKiB) || clientBodyBufferKiB < 8 || clientB
 if (![0, 64, 128, 256, 512].includes(runtime.nginxMallocThresholdKiB ?? 0)) {
     throw new Error("Invalid Nginx allocator threshold");
 }
+
+if (![0, 64, 128, 256, 512].includes(runtime.applicationMallocThresholdKiB ?? 0)) {
+    throw new Error("Invalid application allocator threshold");
+}

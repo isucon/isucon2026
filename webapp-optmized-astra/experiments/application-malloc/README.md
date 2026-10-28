@@ -1,0 +1,9 @@
+# アプリの大きな割り当てを解放しやすくする候補
+
+Nginxのmalloc閾値固定で反復時のメモリ保持が減った一方、Asiaのアプリ群の平均RSS合計は初回約543MiB・反復約1251MiBだった。画像キャッシュの実使用増加も含むため、すべてを解放可能なメモリとは扱わない。
+
+候補は3地域のアプリとAsiaのwriterにMALLOC_MMAP_THRESHOLD_とMALLOC_TRIM_THRESHOLD_を131072で設定する。画像キャッシュ容量や公開判定は変えない。[glibcの公式仕様](https://sourceware.org/glibc/manual/latest/html_node/Memory-Allocation-Tunables.html)に従い、大きな割り当てを解放したときにOSへ返しやすくする。applicationMallocThresholdKiBで管理し、0なら両変数をUnsetEnvironmentで除去して既定動作へ戻せる。
+
+実機未適用。画像のファイル作成方式を比較した後、同一アプリのまま容量・I/O・スコアを比較する。設定値だけでなく実プロセスの環境変数も照合する。
+
+Bash/Python構文とPulumi型検査は成功。通常アプリ・writerそれぞれで128KiB設定と0への復帰を生成し、Environment/UnsetEnvironmentの内容を照合した。
