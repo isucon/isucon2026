@@ -1,5 +1,6 @@
 use std::str::FromStr;
 use std::sync::Arc;
+use std::time::Duration;
 
 use axum::{extract::State, http::StatusCode, response::IntoResponse};
 use chrono::{DateTime, Utc};
@@ -15,6 +16,7 @@ use sqlx::{
     PgPool,
     postgres::{PgConnectOptions, PgPoolOptions},
 };
+use tokio::time::{sleep, timeout};
 use uuid::Uuid;
 
 async fn open(h: &Arc<HandlerContext>, region: &str, date: &str) -> (StatusCode, Value) {
@@ -45,7 +47,7 @@ async fn ordered_notification_batches_preserve_recipients_conflicts_and_atomicit
         .await
         .unwrap();
     let db = PgPoolOptions::new()
-        .max_connections(4)
+        .max_connections(8)
         .connect_with(
             PgConnectOptions::from_str(&dsn)
                 .unwrap()
@@ -189,6 +191,84 @@ async fn ordered_notification_batches_preserve_recipients_conflicts_and_atomicit
         .await
         .unwrap(),
         0
+    );
+    // Hold Asia inside its insert after it freezes user eligibility. Europe
+    // must still finish, while a new user must wait until Asia has committed.
+    sqlx::raw_sql(r#"
+      CREATE FUNCTION hold_asia_window() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
+        IF NEW.region='asia' AND NEW.local_date='2026-10-04'::date THEN
+          PERFORM pg_advisory_xact_lock(700001);
+        END IF;
+        RETURN NEW;
+      END $$;
+      CREATE TRIGGER hold_asia BEFORE INSERT ON posting_windows FOR EACH ROW EXECUTE FUNCTION hold_asia_window();
+    "#).execute(&db).await.unwrap();
+    let mut held = db.begin().await.unwrap();
+    sqlx::query("SELECT pg_advisory_xact_lock(700001)")
+        .execute(&mut *held)
+        .await
+        .unwrap();
+    let asia = h.clone();
+    let mut asia = tokio::spawn(async move { open(&asia, "asia", "2026-10-04").await });
+    timeout(Duration::from_secs(2), async {
+        loop {
+            let waiting: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM pg_locks WHERE locktype='advisory' AND objid=700001 AND NOT granted)")
+                .fetch_one(&db).await.unwrap();
+            if waiting { break; }
+            sleep(Duration::from_millis(5)).await;
+        }
+    }).await.unwrap();
+    assert_eq!(
+        timeout(Duration::from_secs(2), open(&h, "europe", "2026-10-04"))
+            .await
+            .unwrap()
+            .0,
+        StatusCode::CREATED
+    );
+    assert!(timeout(Duration::from_millis(50), &mut asia).await.is_err());
+    let insert_db = db.clone();
+    let mut registered = tokio::spawn(async move {
+        sqlx::query("INSERT INTO users VALUES ('after_asia','asia','active')")
+            .execute(&insert_db)
+            .await
+            .unwrap();
+    });
+    assert!(
+        timeout(Duration::from_millis(100), &mut registered)
+            .await
+            .is_err()
+    );
+    held.commit().await.unwrap();
+    let (status, asia_window) = timeout(Duration::from_secs(3), asia)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(status, StatusCode::CREATED);
+    timeout(Duration::from_secs(2), registered)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>(
+            "SELECT count(*) FROM notifications WHERE user_id='after_asia' AND posting_window_id=$1"
+        )
+        .bind(asia_window["id"].as_str().unwrap())
+        .fetch_one(&db)
+        .await
+        .unwrap(),
+        0
+    );
+    let (status, next_window) = open(&h, "asia", "2026-10-05").await;
+    assert_eq!(status, StatusCode::CREATED);
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>(
+            "SELECT count(*) FROM notifications WHERE user_id='after_asia' AND posting_window_id=$1"
+        )
+        .bind(next_window["id"].as_str().unwrap())
+        .fetch_one(&db)
+        .await
+        .unwrap(),
+        1
     );
     db.close().await;
     sqlx::query(&format!("DROP SCHEMA {schema} CASCADE"))
