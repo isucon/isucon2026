@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use crate::stored_upload::StoredUpload;
 use axum::Extension;
 use axum::extract::State;
 use axum::http::StatusCode;
@@ -84,6 +85,7 @@ pub struct CreatePostResponse {
 pub async fn create_post_handler(
     State(h): State<Arc<HandlerContext>>,
     Extension(session): Extension<Session>,
+    stored: Option<Extension<StoredUpload>>,
     Bind(input): Bind<CreatePostRequest>,
 ) -> Result<Response, Error> {
     let Some(image) = &input.image else {
@@ -107,7 +109,15 @@ pub async fn create_post_handler(
     }
     let image_data = image.open();
     // [作問] 画像のバリデーションを全データを読んでから行なっている(改善するべき)
-    let img = match jpeg::decode(image_data.clone(), 4096).await {
+    let stored = stored.map(|Extension(image)| image);
+    let img = match if let Some(image) = &stored {
+        Ok(jpeg::Image {
+            width: image.width,
+            height: image.height,
+        })
+    } else {
+        jpeg::decode(image_data.clone(), 4096).await
+    } {
         Ok(img) => img,
         Err(_) => return Err(new_api_error(StatusCode::BAD_REQUEST, "invalid_post")),
     };
@@ -123,7 +133,16 @@ pub async fn create_post_handler(
         .collect::<Vec<_>>()
         .join(", ");
     let store = h.image_store.as_ref().filter(|store| store.writes_enabled);
-    let asset_key = if let Some(store) = store {
+    let asset_key = if let Some(image) = &stored {
+        let (region, _) = image
+            .asset_key
+            .split_once(':')
+            .ok_or_else(|| anyhow::anyhow!("invalid stored image reference"))?;
+        if !store.is_some_and(|store| store.has_region(region)) {
+            return Err(anyhow::anyhow!("regional image readers unavailable").into());
+        }
+        Some(image.asset_key.clone())
+    } else if let Some(store) = store {
         Some(store.put(&image_id, &image_data).await?)
     } else {
         None

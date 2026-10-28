@@ -15,6 +15,7 @@ pub struct ImageStore {
     pub writes_enabled: bool,
     pub cache_peers: Option<crate::image_cache_push::CachePeers>,
     cache: Option<Arc<Mutex<AssetCache>>>,
+    regional: HashMap<String, PgPool>,
 }
 
 impl ImageStore {
@@ -28,7 +29,37 @@ impl ImageStore {
             writes_enabled,
             cache_peers,
             cache: Some(Arc::new(Mutex::new(AssetCache::default()))),
+            regional: HashMap::new(),
         }
+    }
+
+    pub fn with_regional_pools(mut self, pools: HashMap<String, PgPool>) -> Self {
+        assert!(
+            pools
+                .keys()
+                .all(|region| matches!(region.as_str(), "europe" | "america"))
+        );
+        self.regional = pools;
+        self
+    }
+
+    pub fn has_region(&self, region: &str) -> bool {
+        self.regional.contains_key(region)
+    }
+
+    pub async fn put_regional(
+        &self,
+        region: &str,
+        id: &str,
+        data: &Bytes,
+    ) -> Result<String, sqlx::Error> {
+        let db = self.regional.get(region).ok_or(sqlx::Error::RowNotFound)?;
+        sqlx::query("INSERT INTO astra_image_data (id,data) VALUES ($1,$2)")
+            .bind(id)
+            .bind(&data[..])
+            .execute(db)
+            .await?;
+        Ok(format!("{region}:{id}"))
     }
 
     pub fn with_cache_enabled(mut self, enabled: bool) -> Self {
@@ -100,13 +131,40 @@ impl ImageStore {
             matches!(cache.as_str(), "0" | "1"),
             "invalid asset cache flag"
         );
+        let mapping: HashMap<String, String> = serde_json::from_str(
+            &std::env::var("ISUREAL_REGIONAL_IMAGE_HOSTS_JSON").unwrap_or_else(|_| "{}".into()),
+        )
+        .expect("valid regional image DB mapping");
+        let mut regional = HashMap::new();
+        for (region, host) in mapping {
+            assert!(matches!(
+                (region.as_str(), host.as_str()),
+                ("europe", "192.168.146.10") | ("america", "192.168.147.10")
+            ));
+            let options = PgConnectOptions::new()
+                .host(&host)
+                .port(5433)
+                .username(&config.db_user)
+                .password(&config.db_password)
+                .database("isureal_assets");
+            let pool = PgPoolOptions::new()
+                .max_connections(16)
+                .connect_with(options)
+                .await
+                .expect("regional immutable image database is available");
+            let safe: bool = sqlx::query_scalar("SELECT NOT pg_is_in_recovery() AND current_setting('synchronous_commit')='on' AND current_setting('fsync')='on' AND current_setting('full_page_writes')='on' AND to_regclass('astra_image_data') IS NOT NULL")
+                .fetch_one(&pool).await.expect("regional image durability check");
+            assert!(safe, "regional images require durable primary storage");
+            regional.insert(region, pool);
+        }
         Some(
             Self::new(
                 db,
                 writes == "1",
                 crate::image_cache_push::CachePeers::from_env(),
             )
-            .with_cache_enabled(cache == "1"),
+            .with_cache_enabled(cache == "1")
+            .with_regional_pools(regional),
         )
     }
 
@@ -141,9 +199,15 @@ impl ImageStore {
         if let Some(data) = cached {
             return Ok(data.to_vec());
         }
+        let (db, stored_id) = if let Some((region, stored_id)) = id.split_once(':') {
+            let db = self.regional.get(region).ok_or(sqlx::Error::RowNotFound)?;
+            (db, stored_id)
+        } else {
+            (&self.db, id)
+        };
         let data: Vec<u8> = sqlx::query_scalar("SELECT data FROM astra_image_data WHERE id=$1")
-            .bind(id)
-            .fetch_one(&self.db)
+            .bind(stored_id)
+            .fetch_one(db)
             .await?;
         if let Some(cache) = &self.cache {
             let data = Bytes::from(data);
