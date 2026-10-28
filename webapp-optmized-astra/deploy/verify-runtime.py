@@ -128,6 +128,7 @@ peer=runtime.get('archivePeer',{'enabled':False,'readsEnabled':False})
 peer_config=remote(runtime['database']['instanceId'], 'sudo cat /etc/nginx/conf.d/astra-archive-peer.conf 2>/dev/null || true')
 if peer['enabled']:
     assert 'listen 192.168.148.10:8082;' in peer_config and 'deny all;' in peer_config and 'gzip off;' in peer_config
+    assert 'aio '+('threads' if peer.get('aioThreads',False) else 'off')+';' in peer_config
     for app in runtime['applications']:
         assert 'allow '+app['host']+';' in peer_config
         app_config=remote(app['instanceId'], 'sudo cat /etc/nginx/conf.d/astra-files.conf')
