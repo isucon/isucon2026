@@ -10,7 +10,6 @@
 """
 
 import copy
-import ipaddress
 import json
 import pathlib
 import re
@@ -28,7 +27,7 @@ def build(task, service, config):
     """雛形のタスク定義 task とサービス service に config（pool.json）を当てて、ecspresso 用の定義を返す。
 
     雛形からは CPU、メモリ、実行 role、コンテナ定義（ログ、secrets、ulimit など）とネットワーク設定を写し、
-    イメージ、環境変数、ベンチの起動コマンド（転送表）を config から作る。雛形は変更しない。
+    イメージ、環境変数、ベンチの起動コマンドを config から作る。雛形は変更しない。
     """
     if not IMAGE.fullmatch(config["image"]):
         raise ValueError("image must be pinned")
@@ -53,17 +52,6 @@ def build(task, service, config):
     bench_args = " --target-port 8080 --scale large"
     if bench_timeout is not None:
         bench_args += f" --timeout {bench_timeout}"
-    cases = []
-    for ip, route in sorted(config["routes"].items()):
-        ip = str(ipaddress.IPv4Address(ip))
-        target = str(ipaddress.IPv4Address(route["target"]))
-        if not re.fullmatch(r"[A-Za-z0-9.-]+", route["host"]):
-            raise ValueError("invalid host")
-        cases.append(
-            f"  '{ip}') exec /usr/local/bin/isureal-bench \"$@\" --target '{target}' --host '{route['host']}'{bench_args} ;;"
-        )
-    if not cases:
-        raise ValueError("routes must not be empty")
     keys = [
         "cpu",
         "memory",
@@ -91,13 +79,10 @@ def build(task, service, config):
         env["ISUXBENCH_IMAGES"] = bench_images
     c["environment"] = [{"name": k, "value": v} for k, v in sorted(env.items())]
     script = (
-        # A registered Router arrives with a portal-generated Host as the first
-        # extra argument. Legacy app targets still use the static transfer table.
+        # Router IP and Host come from the portal registration, never a static map.
         "set -eu\n"
-        + f'if [ "${{1:-}}" = "--host" ]; then exec /usr/local/bin/isureal-bench "$@"{bench_args}; fi\n'
-        + 'case "$ISUXBENCH_TARGET" in\n'
-        + "\n".join(cases)
-        + '\n  *) echo "Unexpected target" >&2; exit 2 ;;\nesac'
+        + 'if [ "${1:-}" != "--host" ] || [ -z "${2:-}" ]; then echo "Router registration required" >&2; exit 2; fi\n'
+        + f'exec /usr/local/bin/isureal-bench "$@"{bench_args}\n'
     )
     c["command"] = ["/bin/sh", "-c", script, "bench-proxy"]
     return {

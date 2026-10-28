@@ -2,7 +2,7 @@ package external
 
 import (
 	"context"
-	"fmt"
+	"strconv"
 	"time"
 
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
@@ -51,15 +51,17 @@ type EC2Instance struct {
 	Number           int64
 	PrivateIPAddress string
 	PublicIPAddress  string
+	State            string
+	BenchmarkHost    string
 }
 
-// ListContestantInstances はタグ Project / Role=contestant のインスタンスを列挙する。
+// ListContestantInstances はタグ Project / Role=contestant/router のインスタンスを列挙する。
 func (a *AWS) ListContestantInstances(ctx context.Context, project string) ([]EC2Instance, error) {
 	var out []EC2Instance
 	paginator := ec2.NewDescribeInstancesPaginator(a.ec2Client, &ec2.DescribeInstancesInput{
 		Filters: []ec2types.Filter{
 			{Name: strPtr("tag:Project"), Values: []string{project}},
-			{Name: strPtr("tag:Role"), Values: []string{"contestant"}},
+			{Name: strPtr("tag:Role"), Values: []string{"contestant", "router"}},
 		},
 	})
 	for paginator.HasMorePages() {
@@ -73,6 +75,9 @@ func (a *AWS) ListContestantInstances(ctx context.Context, project string) ([]EC
 					continue
 				}
 				inst := EC2Instance{}
+				if i.State != nil {
+					inst.State = string(i.State.Name)
+				}
 				if i.InstanceId != nil {
 					inst.InstanceID = *i.InstanceId
 				}
@@ -88,12 +93,14 @@ func (a *AWS) ListContestantInstances(ctx context.Context, project string) ([]EC
 					}
 					switch *tag.Key {
 					case "IsuconTeamID":
-						fmt.Sscan(*tag.Value, &inst.TeamID)
+						inst.TeamID, _ = strconv.ParseInt(*tag.Value, 10, 64)
 					case "IsuconInstanceNum":
-						fmt.Sscan(*tag.Value, &inst.Number)
+						inst.Number, _ = strconv.ParseInt(*tag.Value, 10, 64)
+					case "IsuconBenchmarkHost":
+						inst.BenchmarkHost = *tag.Value
 					}
 				}
-				if inst.TeamID <= 0 || inst.Number <= 0 {
+				if inst.TeamID <= 0 || inst.Number <= 0 || inst.Number > 5 {
 					continue
 				}
 				out = append(out, inst)

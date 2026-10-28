@@ -93,7 +93,11 @@ func (h *Handler) BenchReceive(w http.ResponseWriter, r *http.Request) error {
 		extraArgs := []string{}
 		if router != nil && router.PublicIP.Valid {
 			targetIP = router.PublicIP.String
-			extraArgs = append(extraArgs, "--host", fmt.Sprintf("app.team%d-aws.127.0.0.1.nip.io", jobRow.TeamID))
+			host := fmt.Sprintf("app.team%d-aws.127.0.0.1.nip.io", jobRow.TeamID)
+			if router.BenchmarkHost.Valid {
+				host = router.BenchmarkHost.String
+			}
+			extraArgs = append(extraArgs, "--host", host)
 		}
 		if jobRow.PostValidation {
 			extraArgs = append(extraArgs, "--only-post-validation")
