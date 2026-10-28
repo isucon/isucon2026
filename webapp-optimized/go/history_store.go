@@ -20,8 +20,9 @@ import (
 // comments and RealMojis as of the load. Users are read from the hot state, so
 // names, pictures and deletions are current. A post that a write touched
 // since the load (a comment, a RealMoji, an edit or a deletion) is dirty, and
-// a page with a dirty post, or a period with a window opened after the initial
-// data, is read from the database. Writes mark posts dirty in every region
+// a page with a dirty post, or, for a user who has posted since the load, a
+// period with a window opened after the initial data, is read from the
+// database. Writes mark posts dirty in every region
 // before they respond (see eventsFor).
 //
 // The records hold no pointers (IDs as UUID bytes, times as microseconds,
@@ -562,8 +563,10 @@ type historyItem struct {
 }
 
 // page selects up to 51 posts like memoriesSQL. hot.apply takes the locks in
-// the other order, so the records are copied out before users are read.
-func (s *historyStore) page(userID string, start, end time.Time, beforeAt *time.Time, beforeID string) ([]historyItem, historyText, bool) {
+// the other order, so the records are copied out before users are read. A
+// user who has posted since the load may have posts in the windows opened
+// since (posted), so a period with one of them is left to the database.
+func (s *historyStore) page(userID string, start, end time.Time, beforeAt *time.Time, beforeID string, posted bool) ([]historyItem, historyText, bool) {
 	var before [16]byte
 	if beforeAt != nil {
 		u, err := uuid.Parse(beforeID)
@@ -582,7 +585,7 @@ func (s *historyStore) page(userID string, start, end time.Time, beforeAt *time.
 		return nil, nil, false
 	}
 	for d := range s.runDates {
-		if !d.Before(start) && d.Before(end) {
+		if posted && !d.Before(start) && d.Before(end) {
 			return nil, nil, false
 		}
 	}
@@ -612,6 +615,47 @@ func (s *historyStore) page(userID string, start, end time.Time, beforeAt *time.
 		page[k].reactions = slices.Clone(s.reactions[p.firstReaction : p.firstReaction+p.reactions])
 	}
 	return page, s.text, true
+}
+
+// post is the Post of a record, whose texts are in text.
+func (p *historyPost) post(text historyText, authorID string) Post {
+	post := Post{ID: uuid.UUID(p.id).String(), AuthorID: authorID, PostingWindowID: uuid.UUID(p.window).String(),
+		ImageID: uuid.UUID(p.image).String(), Caption: text.str(p.caption), Visibility: text.str(p.visibility),
+		PostLocation: PostLocation{Kind: text.str(p.kind), Locality: text.nullable(p.locality)},
+		PostedAt:     fromMicros(p.postedAt), OnTimeDeadline: fromMicros(p.deadline)}
+	if p.flags&hasLatitude != 0 {
+		post.Latitude = &p.latitude
+	}
+	if p.flags&hasLongitude != 0 {
+		post.Longitude = &p.longitude
+	}
+	if p.flags&hasEnded != 0 {
+		ended := fromMicros(p.endedAt)
+		post.WindowEndedAt = &ended
+	}
+	return post
+}
+
+// exportPosts lists the user's posts oldest first, like exportPostsHandler's
+// SQL, for a user who has not posted since the load (see
+// hotState.postedSinceLoad). ok is false when the store does not hold the
+// user or a write touched one of the posts.
+func (s *historyStore) exportPosts(userID string) ([]Post, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	indexes, known := s.authors[userID]
+	if !s.loaded || !known {
+		return nil, false
+	}
+	posts := make([]Post, 0, len(indexes))
+	for k := len(indexes) - 1; k >= 0; k-- {
+		p := &s.posts[indexes[k]]
+		if s.dirty[uuid.UUID(p.id).String()] {
+			return nil, false
+		}
+		posts = append(posts, p.post(s.text, userID))
+	}
+	return posts, true
 }
 
 // usersOf returns the current authors of the items' comments and RealMojis,
@@ -650,7 +694,8 @@ func (s *historyStore) memories(viewer User, start, end time.Time, beforeAt *tim
 	if (beforeAt == nil) != (beforeID == "") {
 		return response, false
 	}
-	page, text, ok := s.page(viewer.ID, start, end, beforeAt, beforeID)
+	posted, loaded := hot.postedSinceLoad(viewer.ID)
+	page, text, ok := s.page(viewer.ID, start, end, beforeAt, beforeID, posted || !loaded)
 	if !ok {
 		return response, false
 	}
@@ -666,20 +711,7 @@ func (s *historyStore) memories(viewer User, start, end time.Time, beforeAt *tim
 	response.Items = make([]memoryPostResponse, 0, len(page))
 	for _, item := range page {
 		p := item.post
-		post := Post{ID: uuid.UUID(p.id).String(), AuthorID: viewer.ID, PostingWindowID: uuid.UUID(p.window).String(),
-			ImageID: uuid.UUID(p.image).String(), Caption: text.str(p.caption), Visibility: text.str(p.visibility),
-			PostLocation: PostLocation{Kind: text.str(p.kind), Locality: text.nullable(p.locality)},
-			PostedAt:     fromMicros(p.postedAt), OnTimeDeadline: fromMicros(p.deadline)}
-		if p.flags&hasLatitude != 0 {
-			post.Latitude = &p.latitude
-		}
-		if p.flags&hasLongitude != 0 {
-			post.Longitude = &p.longitude
-		}
-		if p.flags&hasEnded != 0 {
-			ended := fromMicros(p.endedAt)
-			post.WindowEndedAt = &ended
-		}
+		post := p.post(text, viewer.ID)
 		var postResponse createPostResponse
 		if sig, ok := p.sigs.get(exp); ok {
 			postResponse = newPostResponseWithURL(post, viewer, imageURLWith(post.ImageID, exp, sig))

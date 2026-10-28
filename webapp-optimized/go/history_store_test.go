@@ -119,17 +119,47 @@ func TestHistoryStoreMatchesDatabase(t *testing.T) {
 			t.Fatalf("store differs from the database:\n%s\n%s", a, b)
 		}
 	}
+	// The export lists the same posts as exportPostsHandler's SQL.
+	compareExport := func(viewer string, wantStore bool) {
+		t.Helper()
+		fromDB := []Post{}
+		if err := db.SelectContext(ctx, &fromDB, `SELECT `+postColumns+` FROM posts p
+      JOIN posting_windows w ON w.id = p.posting_window_id
+      WHERE p.author_id = $1 AND p.deleted_at IS NULL ORDER BY p.posted_at, p.id`, viewer); err != nil {
+			t.Fatal(err)
+		}
+		fromStore, ok := history.exportPosts(viewer)
+		posted, loaded := hot.postedSinceLoad(viewer)
+		if ok = ok && loaded && !posted; ok != wantStore {
+			t.Fatalf("export answered from the store: %v, want %v", ok, wantStore)
+		}
+		if !ok {
+			return
+		}
+		a, _ := json.Marshal(fromDB)
+		b, _ := json.Marshal(fromStore)
+		if string(a) != string(b) {
+			t.Fatalf("export differs from the database:\n%s\n%s", a, b)
+		}
+	}
 	september := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
 	for _, viewer := range users[:3] {
 		compare(viewer, september, september.AddDate(0, 1, 0), true)
 		compare(viewer, september.AddDate(0, -1, 0), september, true)
 		compare(viewer, time.Date(2026, 9, 24, 0, 0, 0, 0, time.UTC), time.Date(2026, 9, 25, 0, 0, 0, 0, time.UTC), true)
+		compareExport(viewer, true)
 	}
+	// A new post leaves the user's export to the database.
+	hot.apply([]stateEvent{{Version: 1, Kind: "post", Post: &Post{ID: id(), AuthorID: users[1], PostingWindowID: id()}}})
+	compareExport(users[1], false)
 	// A write to a post leaves its pages to the database.
 	history.touch(posts[1])
 	compare(users[0], september, september.AddDate(0, 1, 0), false)
 	compare(users[0], september.AddDate(0, -1, 0), september, true)
+	compareExport(users[0], false)
 	// So does a window opened after the initial data.
 	history.windowOpened(time.Date(2026, 8, 20, 0, 0, 0, 0, time.UTC))
 	compare(users[1], september.AddDate(0, -1, 0), september, false)
+	// Unless the user has not posted since the load.
+	compare(users[0], september.AddDate(0, -1, 0), september, true)
 }
