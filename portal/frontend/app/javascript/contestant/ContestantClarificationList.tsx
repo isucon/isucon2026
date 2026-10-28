@@ -36,7 +36,7 @@ const ClarForm: React.FC<FormProps> = (props: FormProps) => {
     },
   });
 
-  const onSubmit = handleSubmit(async (data, e) => {
+  const onSubmit = handleSubmit(async (data) => {
     try {
       setRequesting(true);
       const resp = await props.client.requestClarification(
@@ -45,7 +45,7 @@ const ClarForm: React.FC<FormProps> = (props: FormProps) => {
         }),
       );
       props.onSubmit(resp.clarification!);
-      e!.target.reset();
+      reset();
       setRequesting(false);
     } catch (e) {
       setError(e);
