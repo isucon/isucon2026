@@ -55,7 +55,7 @@ function newSessionUserResponse(user: User): SessionUserResponse {
 
 export function newGetMeResponse(user: User): GetMeResponse {
   const response: GetMeResponse = { ...newSessionUserResponse(user), profileImageUrl: null };
-  if (user.profileImageID !== null) {
+  if (user.profileImageID) {
     response.profileImageUrl = signedImageURL(user, user.profileImageID);
   }
   return response;
@@ -103,7 +103,7 @@ export function loginHandler(h: HandlerContext): Handler<Env> {
       `SELECT id, username, secret_key_hash, display_name, bio, profile_image_id, region, account_type, status FROM users WHERE username = $1 FOR NO KEY UPDATE`,
       input.username,
     );
-    if (row === undefined) {
+    if (!row) {
       throw new APIError(401, "invalid_credentials");
     }
     const user = userFromRow(row);
@@ -119,7 +119,7 @@ export function loginHandler(h: HandlerContext): Handler<Env> {
 export function logoutHandler(h: HandlerContext): Handler<Env> {
   return async (c) => {
     const session = getSession(c);
-    if (session === null) {
+    if (!session) {
       throw new APIError(401, "invalid_session");
     }
     await invalidateLoginSession(h.db, session.userID, session.tokenHash);
@@ -130,11 +130,11 @@ export function logoutHandler(h: HandlerContext): Handler<Env> {
 export function getMeHandler(h: HandlerContext): Handler<Env> {
   return async (c) => {
     const session = getSession(c);
-    if (session === null) {
+    if (!session) {
       throw new APIError(401, "invalid_session");
     }
     const user = await getUser(h.db, session.userID);
-    if (user === undefined) {
+    if (!user) {
       throw new APIError(404, "account_not_found");
     }
     return jsonResponse(c, 200, newGetMeResponse(user));
@@ -144,7 +144,7 @@ export function getMeHandler(h: HandlerContext): Handler<Env> {
 export function updateMeHandler(h: HandlerContext): Handler<Env> {
   return async (c) => {
     const session = getSession(c);
-    if (session === null) {
+    if (!session) {
       throw new APIError(401, "invalid_session");
     }
     const input = await bind(c, updateMeRequest);
@@ -168,7 +168,7 @@ export function updateMeHandler(h: HandlerContext): Handler<Env> {
       await tx.exec(`UPDATE users SET region = $2, updated_at = clock_timestamp() WHERE id = $1`, session.userID, input.region);
     }
     const user = await getUser(tx, session.userID);
-    if (user === undefined) {
+    if (!user) {
       throw new APIError(404, "account_not_found");
     }
     await tx.commit();

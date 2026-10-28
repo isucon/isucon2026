@@ -32,7 +32,7 @@ export function validRegion(region: string): boolean {
   }
 }
 
-export const userColumns = ["id", "username", "secret_key_hash", "display_name", "bio", "profile_image_id", "region", "account_type", "status"];
+export const userColumns = ["id", "username", "secret_key_hash", "display_name", "bio", "profile_image_id", "region", "account_type", "status"] as const;
 
 export function userColumnsAs(alias: string, prefix: string): string {
   return userColumns.map((column) => `${alias}.${column} AS "${prefix}.${column}"`).join(", ");
@@ -60,7 +60,7 @@ export function setImageKey(user: User): void {
 
 export async function getUser(db: Queryer, userID: string): Promise<User | undefined> {
   const row = await db.get(`SELECT ${userColumns.join(", ")} FROM users WHERE id = $1 AND status = 'active'`, userID);
-  if (row === undefined) {
+  if (!row) {
     return undefined;
   }
   const user = userFromRow(row);

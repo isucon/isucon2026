@@ -11,7 +11,7 @@ import { newRealMojiResponse, type RealMojiResponse } from "./realmoji_api.ts";
 import { jsonResponse } from "./response.ts";
 import type { Env, HandlerContext } from "./server.ts";
 import { getSession } from "./session.ts";
-import { formatDate, validDate, type Timestamp } from "./time.ts";
+import { validDate } from "./time.ts";
 
 const getMemoriesRequest = {
   month: { query: "month" },
@@ -42,12 +42,12 @@ export function getMemoriesHandler(h: HandlerContext): Handler<Env> {
     if (match === null || !validDate(Number(match[1]), Number(match[2]), 1)) {
       throw new APIError(400, "invalid_memory_period");
     }
-    const [year, month] = [Number(match[1]), Number(match[2])];
+    const start = Temporal.PlainDate.from({ year: Number(match[1]), month: Number(match[2]), day: 1 });
     const response = await listMemories(
       h.db,
       getSession(c)!.userID,
-      formatDate(year, month, 1),
-      formatDate(year, month + 1, 1),
+      start.toString(),
+      start.add({ months: 1 }).toString(),
       input.beforePostedAt,
       input.beforeId,
     );
@@ -62,12 +62,12 @@ export function getMemoriesByDateHandler(h: HandlerContext): Handler<Env> {
     if (match === null || !validDate(Number(match[1]), Number(match[2]), Number(match[3]))) {
       throw new APIError(400, "invalid_memory_period");
     }
-    const [year, month, day] = [Number(match[1]), Number(match[2]), Number(match[3])];
+    const start = Temporal.PlainDate.from({ year: Number(match[1]), month: Number(match[2]), day: Number(match[3]) });
     const response = await listMemories(
       h.db,
       getSession(c)!.userID,
-      formatDate(year, month, day),
-      formatDate(year, month, day + 1),
+      start.toString(),
+      start.add({ days: 1 }).toString(),
       input.beforePostedAt,
       input.beforeId,
     );
@@ -80,7 +80,7 @@ async function listMemories(
   userID: string,
   start: string,
   end: string,
-  beforeAt: Timestamp | null,
+  beforeAt: Temporal.Instant | null,
   beforeID: string,
 ): Promise<GetMemoriesResponse> {
   if ((beforeAt === null) !== (beforeID === "")) {

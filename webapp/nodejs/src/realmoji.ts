@@ -1,5 +1,4 @@
 import type { Queryer, Row } from "./db.ts";
-import type { Timestamp } from "./time.ts";
 import { setImageKey, userColumnsAs, userFromRow, type User } from "./user.ts";
 
 export type RealMoji = {
@@ -8,9 +7,9 @@ export type RealMoji = {
   reactorID: string;
   imageID: string;
   reactionType: string;
-  createdAt: Timestamp;
-  replacedAt: Timestamp | null;
-  deletedAt: Timestamp | null;
+  createdAt: Temporal.Instant;
+  replacedAt: Temporal.Instant | null;
+  deletedAt: Temporal.Instant | null;
 };
 
 function realMojiFromRow(row: Row): RealMoji {

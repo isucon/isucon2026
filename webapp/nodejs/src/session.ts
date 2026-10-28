@@ -4,14 +4,13 @@ import { APIError } from "./api_error.ts";
 import { must, type DB, type Queryer, type Tx } from "./db.ts";
 import { logWarn } from "./response.ts";
 import type { Env, HandlerContext } from "./server.ts";
-import type { Timestamp } from "./time.ts";
 
 export type Session = {
   region: string;
   token: string;
   userID: string;
   tokenHash: string;
-  createdAt: Timestamp;
+  createdAt: Temporal.Instant;
 };
 
 export function getSession(c: Context<Env>): Session | null {
@@ -44,7 +43,7 @@ async function getSessionFromHeader(c: Context<Env>, db: DB): Promise<Session | 
 	`,
     tokenHash,
   );
-  if (row === undefined) {
+  if (!row) {
     return null;
   }
   return { region: row.region, token: "", userID: row.user_id, tokenHash: row.token_hash, createdAt: row.created_at };
@@ -115,6 +114,11 @@ export async function createLoginSessionTx(tx: Tx, userID: string): Promise<Sess
 }
 
 async function getLoginSession(db: Queryer, sessionID: string): Promise<Session> {
-  const row = must(await db.get(`SELECT user_id, token_hash, created_at FROM login_sessions WHERE id = $1`, sessionID));
+  const row = must(
+    await db.get<{ user_id: string; token_hash: string; created_at: Temporal.Instant }>(
+      `SELECT user_id, token_hash, created_at FROM login_sessions WHERE id = $1`,
+      sessionID,
+    ),
+  );
   return { region: "", token: "", userID: row.user_id, tokenHash: row.token_hash, createdAt: row.created_at };
 }
