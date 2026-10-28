@@ -1,7 +1,7 @@
 # webapp-optmized-astra
 
 Team 10向けのRust最適化実装。`webapp/rust`と`webapp/sql`を2335d5fから複製した。
-作業期限は2026年10月28日15:00 JST。各ベンチ結果をこのディレクトリに記録し、コミットしてpushする。
+作業期限は2026年10月28日23:00 JST。各ベンチ結果をこのディレクトリに記録し、コミットしてpushする。
 
 <!-- astra-final-summary-start -->
 ## 採用構成と最終確認
