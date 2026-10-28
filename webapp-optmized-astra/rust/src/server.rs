@@ -257,7 +257,31 @@ pub async fn new_server(config: Config) -> Router {
         }
         _ => handler_context.clone(),
     };
+    let scope = std::env::var("ISUREAL_DB_READ_SCOPE").unwrap_or_else(|_| "all".into());
+    assert!(
+        matches!(scope.as_str(), "all" | "feed_search"),
+        "unknown read scope"
+    );
+    let selective = scope == "feed_search";
+    assert!(
+        !selective
+            || (handler_context.config.region == "asia" && read_context.read_fence.is_some()),
+        "selective Asia reads require a fenced local standby"
+    );
+    let general_reads = if selective {
+        handler_context.clone()
+    } else {
+        read_context.clone()
+    };
+    let graph_fence = if selective {
+        read_context.read_fence.clone()
+    } else {
+        None
+    };
     let read_session = |auth_required| {
+        from_fn_with_state((general_reads.clone(), auth_required), session_middleware)
+    };
+    let graph_session = |auth_required| {
         from_fn_with_state((read_context.clone(), auth_required), session_middleware)
     };
     let session = |auth_required| {
@@ -277,34 +301,34 @@ pub async fn new_server(config: Config) -> Router {
         .route("/api/auth/register", post(register_handler))
         .route("/api/auth/login", post(login_handler))
         .route("/api/auth/logout", post(logout_handler).route_layer(session(true)))
-        .route("/api/users", get(search_users_handler).route_layer(region()).route_layer(read_session(true)).with_state(read_context.clone()))
-        .route("/api/users/{userId}", get(get_user_handler).route_layer(region()).route_layer(read_session(true)).with_state(read_context.clone()))
-        .route("/api/me/export", get(export_posts_handler).route_layer(region()).route_layer(read_session(true)).with_state(read_context.clone()))
-        .route("/api/me", get(get_me_handler).route_layer(region()).route_layer(read_session(true)).with_state(read_context.clone()))
+        .route("/api/users", get(search_users_handler).route_layer(region()).route_layer(graph_session(true)).route_layer(from_fn_with_state(graph_fence.clone(), read_fence_middleware)).with_state(read_context.clone()))
+        .route("/api/users/{userId}", get(get_user_handler).route_layer(region()).route_layer(read_session(true)).with_state(general_reads.clone()))
+        .route("/api/me/export", get(export_posts_handler).route_layer(region()).route_layer(read_session(true)).with_state(general_reads.clone()))
+        .route("/api/me", get(get_me_handler).route_layer(region()).route_layer(read_session(true)).with_state(general_reads.clone()))
         .route("/api/me", patch(update_me_handler).route_layer(session(true)))
         .route("/api/me/profile-image", put(put_profile_image_handler).route_layer(session(true)))
         .route("/api/me/profile-image", delete(delete_profile_image_handler).route_layer(session(true)))
         .route("/api/me/account-deletion", post(delete_account_handler).route_layer(region()).route_layer(session(true)))
         .route("/api/posts", post(create_post_handler).route_layer(region()).route_layer(session(true)))
-        .route("/api/posting-window/current", get(get_current_posting_window_handler).route_layer(region()).route_layer(read_session(true)).with_state(read_context.clone()))
-        .route("/api/posts/me/current", get(get_my_current_post_handler).route_layer(region()).route_layer(read_session(true)).with_state(read_context.clone()))
-        .route("/api/posts/{postId}", get(get_post_handler).route_layer(region()).route_layer(read_session(true)).with_state(read_context.clone()))
+        .route("/api/posting-window/current", get(get_current_posting_window_handler).route_layer(region()).route_layer(read_session(true)).with_state(general_reads.clone()))
+        .route("/api/posts/me/current", get(get_my_current_post_handler).route_layer(region()).route_layer(read_session(true)).with_state(general_reads.clone()))
+        .route("/api/posts/{postId}", get(get_post_handler).route_layer(region()).route_layer(read_session(true)).with_state(general_reads.clone()))
         .route("/api/posts/{postId}", patch(update_post_handler).route_layer(region()).route_layer(session(true)))
         .route("/api/posts/{postId}", delete(delete_post_handler).route_layer(region()).route_layer(session(true)))
-        .route("/api/feeds/{feed}", get(get_feed_handler).route_layer(region()).route_layer(read_session(true)).with_state(read_context.clone()))
-        .route("/api/memories", get(get_memories_handler).route_layer(region()).route_layer(read_session(true)).with_state(read_context.clone()))
-        .route("/api/memories/{date}", get(get_memories_by_date_handler).route_layer(region()).route_layer(read_session(true)).with_state(read_context.clone()))
+        .route("/api/feeds/{feed}", get(get_feed_handler).route_layer(region()).route_layer(graph_session(true)).route_layer(from_fn_with_state(graph_fence.clone(), read_fence_middleware)).with_state(read_context.clone()))
+        .route("/api/memories", get(get_memories_handler).route_layer(region()).route_layer(read_session(true)).with_state(general_reads.clone()))
+        .route("/api/memories/{date}", get(get_memories_by_date_handler).route_layer(region()).route_layer(read_session(true)).with_state(general_reads.clone()))
         .route("/api/posts/{postId}/comments", post(create_comment_handler).route_layer(region()).route_layer(session(true)))
-        .route("/api/posts/{postId}/comments", get(get_comments_handler).route_layer(region()).route_layer(read_session(true)).with_state(read_context.clone()))
+        .route("/api/posts/{postId}/comments", get(get_comments_handler).route_layer(region()).route_layer(read_session(true)).with_state(general_reads.clone()))
         .route("/api/comments/{commentId}", delete(delete_comment_handler).route_layer(region()).route_layer(session(true)))
         .route("/api/posts/{postId}/realmojis", post(replace_real_moji_handler).route_layer(region()).route_layer(session(true)))
-        .route("/api/posts/{postId}/realmojis", get(get_real_mojis_handler).route_layer(region()).route_layer(read_session(true)).with_state(read_context.clone()))
+        .route("/api/posts/{postId}/realmojis", get(get_real_mojis_handler).route_layer(region()).route_layer(read_session(true)).with_state(general_reads.clone()))
         .route("/api/realmojis/{realMojiId}", delete(delete_real_moji_handler).route_layer(region()).route_layer(session(true)))
-        .route("/api/images/{imageId}", get(get_image_handler).with_state(read_context.clone()))
-        .route("/api/notifications", get(get_notifications_handler).route_layer(region()).route_layer(read_session(true)).with_state(read_context.clone()))
+        .route("/api/images/{imageId}", get(get_image_handler).with_state(general_reads.clone()))
+        .route("/api/notifications", get(get_notifications_handler).route_layer(region()).route_layer(read_session(true)).with_state(general_reads.clone()))
         .route("/api/friend-requests", post(create_friend_request_handler).route_layer(region()).route_layer(session(true)))
         .route("/api/friend-requests/{requestId}/{action}", post(transition_friend_request_handler).route_layer(region()).route_layer(session(true)))
-        .route("/api/relationships/{kind}", get(get_relationships_handler).route_layer(region()).route_layer(read_session(true)).with_state(read_context.clone()))
+        .route("/api/relationships/{kind}", get(get_relationships_handler).route_layer(region()).route_layer(read_session(true)).with_state(general_reads.clone()))
         .route("/api/friendships/{userId}", delete(delete_friendship_handler).route_layer(region()).route_layer(session(true)))
         .route("/api/follows/{userId}", put(follow_handler).route_layer(region()).route_layer(session(true)))
         .route("/api/follows/{userId}", delete(unfollow_handler).route_layer(region()).route_layer(session(true)))
@@ -323,12 +347,12 @@ pub async fn new_server(config: Config) -> Router {
                 .layer(from_fn_with_state(action_log, action_log_middleware))
                 .layer(from_fn_with_state(write_fence, write_fence_middleware))
                 .layer(CatchPanicLayer::custom(recover))
-                .layer(from_fn_with_state(read_context.read_fence.clone(), read_fence_middleware))
-                .layer(from_fn_with_state(read_context.clone(), ip_ban_middleware)),
+                .layer(from_fn_with_state(general_reads.read_fence.clone(), read_fence_middleware))
+                .layer(from_fn_with_state(general_reads.clone(), ip_ban_middleware)),
         )
         .with_state(handler_context.clone());
 
-    let server = if let Some(proxy) = crate::upload_proxy::UploadProxy::from_env(&read_context) {
+    let server = if let Some(proxy) = crate::upload_proxy::UploadProxy::from_env(&general_reads) {
         server.layer(from_fn_with_state(
             proxy,
             crate::upload_proxy::upload_proxy_middleware,

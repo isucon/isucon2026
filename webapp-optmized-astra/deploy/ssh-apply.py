@@ -12,7 +12,7 @@ import shlex
 import subprocess
 import sys
 import tarfile
-from runtime_topology import metadata_replicas, read_settings
+from runtime_topology import metadata_replicas, read_settings, read_scope
 
 ROOT = Path(__file__).resolve().parents[2]
 DEPLOY = ROOT / "webapp-optmized-astra/deploy"
@@ -160,7 +160,7 @@ def application(app):
     copy(instance, ROOT / runtime["archivePath"], "/home/isucon/astra-release.tar.gz")
     read_host, fenced = read_settings(runtime, app)
     fenced = str(int(fenced))
-    remote(instance, "sudo bash /home/isucon/astra-deploy/application.sh /home/isucon/astra-release.tar.gz " + shlex.quote(read_host) + " " + fenced + " " + shlex.quote(write_fence_hosts) + " " + shlex.quote(write_fence_mode) + " " + shlex.quote(app["region"]))
+    remote(instance, "sudo bash /home/isucon/astra-deploy/application.sh /home/isucon/astra-release.tar.gz " + shlex.quote(read_host) + " " + fenced + " " + shlex.quote(write_fence_hosts) + " " + shlex.quote(write_fence_mode) + " " + shlex.quote(app["region"]) + " " + shlex.quote(read_scope(runtime, app)))
 
 
 def write_frontend(app):

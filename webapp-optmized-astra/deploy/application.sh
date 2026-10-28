@@ -6,6 +6,8 @@ read_fence=${3:-0}
 write_fence_hosts=${4:-}
 write_fence_mode=${5:-poll}
 region=${6:?region required}
+read_scope=${7:-all}
+case "$read_scope" in all|feed_search) ;; *) exit 2 ;; esac
 case "$write_fence_mode" in poll|native) ;; *) exit 2 ;; esac
 case "$write_fence_hosts" in ''|192.168.146.10,192.168.147.10) ;; *) exit 2 ;; esac
 case "$read_fence" in 0|1) ;; *) exit 2 ;; esac
@@ -34,7 +36,7 @@ LimitNOFILE=65536
 WantedBy=multi-user.target
 UNIT
 mkdir -p /etc/systemd/system/webapp-optmized-astra.service.d
-printf '[Service]\nEnvironment=ISUREAL_DB_READ_HOST=%s\nEnvironment=ISUREAL_READ_FENCE=%s\n' "$read_host" "$read_fence" >/etc/systemd/system/webapp-optmized-astra.service.d/reader.conf
+printf '[Service]\nEnvironment=ISUREAL_DB_READ_HOST=%s\nEnvironment=ISUREAL_READ_FENCE=%s\nEnvironment=ISUREAL_DB_READ_SCOPE=%s\n' "$read_host" "$read_fence" "$read_scope" >/etc/systemd/system/webapp-optmized-astra.service.d/reader.conf
 printf '[Service]\nEnvironment=ISUREAL_WRITE_FENCE_HOSTS=%s\nEnvironment=ISUREAL_WRITE_FENCE_MODE=%s\n' "$write_fence_hosts" "$write_fence_mode" >/etc/systemd/system/webapp-optmized-astra.service.d/writer.conf
 systemctl stop isureal-go isureal-rust
 systemctl disable isureal-go isureal-rust
