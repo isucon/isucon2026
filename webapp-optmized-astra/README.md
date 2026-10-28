@@ -305,3 +305,4 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261028T092907Z-team10 | Asia async replica staged; Asia reads remain on primary; topology control | PASS | 152,282 |
 | 20261028T093243Z-team10 | repeat staged Asia standby control; primary Asia reads unchanged | PASS | 161,378 |
 | 20261028T093848Z-team10 | Asia local metadata reads with fresh per-request WAL barriers | PASS | 141,182 |
+| 20261028T100354Z-team10 | selective Asia replica reads for feed and search; image metadata and ZIP stay on primary | PASS | 176,813 |
