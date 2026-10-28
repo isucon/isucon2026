@@ -49,12 +49,15 @@ type hotState struct {
 	sorted   []*hotPost
 	byAuthor map[string][]*hotPost
 
-	// engaged counts, per post of an open window, each user's live RealMoji
-	// (at most one) and live comments, for the recommendation score.
-	// reactions and comments hold the versioned state behind it.
-	engaged   map[string]map[string]int
-	reactions map[[2]string]hotMark // post, reactor
-	comments  map[string]hotComment
+	// The comments and RealMojis of the posts of open windows: reactions
+	// holds each reactor's latest RealMoji on a post (one is live at most),
+	// postComments and postReactors index them by post, and engaged counts
+	// each user's live ones per post for the recommendation score.
+	reactions    map[[2]string]hotReaction // post, reactor
+	comments     map[string]hotComment
+	postComments map[string][]string
+	postReactors map[string][]string
+	engaged      map[string]map[string]int
 }
 
 type hotMark struct {
@@ -63,7 +66,12 @@ type hotMark struct {
 }
 
 type hotComment struct {
-	PostID, AuthorID string
+	Comment
+	hotMark
+}
+
+type hotReaction struct {
+	RealMoji
 	hotMark
 }
 
@@ -155,9 +163,33 @@ func (s *hotState) reset() {
 	s.byImage = map[string]string{}
 	s.sorted = nil
 	s.byAuthor = map[string][]*hotPost{}
-	s.engaged = map[string]map[string]int{}
-	s.reactions = map[[2]string]hotMark{}
+	s.reactions = map[[2]string]hotReaction{}
 	s.comments = map[string]hotComment{}
+	s.postComments = map[string][]string{}
+	s.postReactors = map[string][]string{}
+	s.engaged = map[string]map[string]int{}
+}
+
+// setComment stores a comment of a post of an open window at a version.
+func (s *hotState) setComment(c Comment, live bool, version int64) {
+	current, known := s.comments[c.ID]
+	if !known {
+		s.postComments[c.PostID] = append(s.postComments[c.PostID], c.ID)
+	}
+	s.comments[c.ID] = hotComment{Comment: c, hotMark: hotMark{Live: live, Version: version}}
+	s.engage(c.PostID, c.AuthorID, current.Live, live)
+}
+
+// setReaction stores a reactor's latest RealMoji on a post of an open window
+// at a version.
+func (s *hotState) setReaction(r RealMoji, live bool, version int64) {
+	key := [2]string{r.PostID, r.ReactorID}
+	current, known := s.reactions[key]
+	if !known {
+		s.postReactors[r.PostID] = append(s.postReactors[r.PostID], r.ReactorID)
+	}
+	s.reactions[key] = hotReaction{RealMoji: r, hotMark: hotMark{Live: live, Version: version}}
+	s.engage(r.PostID, r.ReactorID, current.Live, live)
 }
 
 // engage moves a user's engagement count on a post when one of the user's
@@ -198,20 +230,18 @@ func (s *hotState) dropClosedPosts() {
 		if s.closed[p.PostingWindowID] {
 			delete(s.posts, p.ID)
 			delete(s.byImage, p.ImageID)
+			for _, id := range s.postComments[p.ID] {
+				delete(s.comments, id)
+			}
+			for _, reactor := range s.postReactors[p.ID] {
+				delete(s.reactions, [2]string{p.ID, reactor})
+			}
+			delete(s.postComments, p.ID)
+			delete(s.postReactors, p.ID)
 			delete(s.engaged, p.ID)
 			continue
 		}
 		keep = append(keep, p)
-	}
-	for key := range s.reactions {
-		if s.posts[key[0]] == nil {
-			delete(s.reactions, key)
-		}
-	}
-	for id, c := range s.comments {
-		if s.posts[c.PostID] == nil {
-			delete(s.comments, id)
-		}
 	}
 	clear(s.sorted[len(keep):])
 	s.sorted = keep
@@ -290,22 +320,15 @@ func (s *hotState) load(ctx context.Context, db *sqlx.DB) error {
       FROM posts p JOIN posting_windows w ON w.id = p.posting_window_id WHERE w.ended_at IS NULL`); err != nil {
 		return err
 	}
-	var reactions []struct {
-		PostID    string `db:"post_id"`
-		ReactorID string `db:"reactor_id"`
-	}
-	if err := tx.SelectContext(ctx, &reactions, `SELECT r.post_id, r.reactor_id FROM realmojis r
-      JOIN posts p ON p.id = r.post_id JOIN posting_windows w ON w.id = p.posting_window_id
+	var reactions []RealMoji
+	if err := tx.SelectContext(ctx, &reactions, `SELECT r.id, r.post_id, r.reactor_id, r.image_id, r.reaction_type, r.created_at
+      FROM realmojis r JOIN posts p ON p.id = r.post_id JOIN posting_windows w ON w.id = p.posting_window_id
       WHERE w.ended_at IS NULL AND r.replaced_at IS NULL AND r.deleted_at IS NULL`); err != nil {
 		return err
 	}
-	var comments []struct {
-		ID       string `db:"id"`
-		PostID   string `db:"post_id"`
-		AuthorID string `db:"author_id"`
-	}
-	if err := tx.SelectContext(ctx, &comments, `SELECT c.id, c.post_id, c.author_id FROM comments c
-      JOIN posts p ON p.id = c.post_id JOIN posting_windows w ON w.id = p.posting_window_id
+	var comments []Comment
+	if err := tx.SelectContext(ctx, &comments, `SELECT c.id, c.post_id, c.author_id, c.body, c.created_at
+      FROM comments c JOIN posts p ON p.id = c.post_id JOIN posting_windows w ON w.id = p.posting_window_id
       WHERE w.ended_at IS NULL AND c.deleted_at IS NULL`); err != nil {
 		return err
 	}
@@ -344,12 +367,10 @@ func (s *hotState) load(ctx context.Context, db *sqlx.DB) error {
 		s.addPost(&hotPost{Post: p.Post, Deleted: p.Deleted})
 	}
 	for _, r := range reactions {
-		s.reactions[[2]string{r.PostID, r.ReactorID}] = hotMark{Live: true}
-		s.engage(r.PostID, r.ReactorID, false, true)
+		s.setReaction(r, true, 0)
 	}
 	for _, c := range comments {
-		s.comments[c.ID] = hotComment{PostID: c.PostID, AuthorID: c.AuthorID, hotMark: hotMark{Live: true}}
-		s.engage(c.PostID, c.AuthorID, false, true)
+		s.setComment(c, true, 0)
 	}
 	s.loaded = true
 	return nil
@@ -464,19 +485,15 @@ func (s *hotState) apply(events []stateEvent) {
 				current.Version = max(e.Version, current.Version)
 			}
 		case "reaction":
-			// A post, B reactor: whether the reactor has a live RealMoji on it.
-			key := [2]string{e.A, e.B}
-			current := s.reactions[key]
-			if s.posts[e.A] != nil && e.Version > current.Version {
-				s.reactions[key] = hotMark{Live: e.Exists, Version: e.Version}
-				s.engage(e.A, e.B, current.Live, e.Exists)
+			// The reactor's latest RealMoji on the post, live or not.
+			r := e.Reaction
+			if s.posts[r.PostID] != nil && e.Version > s.reactions[[2]string{r.PostID, r.ReactorID}].Version {
+				s.setReaction(*r, e.Exists, e.Version)
 			}
 		case "comment":
-			// A comment, B post, C author.
-			current := s.comments[e.A]
-			if s.posts[e.B] != nil && e.Version > current.Version {
-				s.comments[e.A] = hotComment{PostID: e.B, AuthorID: e.C, hotMark: hotMark{Live: e.Exists, Version: e.Version}}
-				s.engage(e.B, e.C, current.Live, e.Exists)
+			c := e.Comment
+			if s.posts[c.PostID] != nil && e.Version > s.comments[c.ID].Version {
+				s.setComment(*c, e.Exists, e.Version)
 			}
 		}
 	}
@@ -714,6 +731,65 @@ func rankedAfter(score int64, postedAt time.Time, id string, cursor *feedCursor)
 func (s *hotState) interactionAllowed(viewerID, postID string, comments bool) (allowed, ok bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	return s.interactionAllowedLocked(viewerID, postID, comments)
+}
+
+// interactions lists the comments (oldest first, after the cursor) or the
+// RealMojis (newest first, before the cursor) of a post of an open window,
+// like readInteractions' SQL, at most 51, with their authors. ok is false
+// when the state cannot answer.
+func (s *hotState) interactions(viewerID, postID string, comments bool, at *time.Time, id string) (records []writeResult, allowed, ok bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if allowed, ok = s.interactionAllowedLocked(viewerID, postID, comments); !ok || !allowed {
+		return nil, allowed, ok
+	}
+	type record struct {
+		createdAt time.Time
+		id        string
+		result    writeResult
+	}
+	var list []record
+	if comments {
+		for _, commentID := range s.postComments[postID] {
+			c := s.comments[commentID]
+			author := s.users[c.AuthorID]
+			if !c.Live || author == nil || author.Status != "active" {
+				continue
+			}
+			if at != nil && cmp.Or(c.CreatedAt.Compare(*at), cmp.Compare(c.ID, id)) <= 0 {
+				continue
+			}
+			list = append(list, record{c.CreatedAt, c.ID, writeResult{User: author.User, Comment: c.Comment}})
+		}
+	} else {
+		for _, reactor := range s.postReactors[postID] {
+			r := s.reactions[[2]string{postID, reactor}]
+			author := s.users[reactor]
+			if !r.Live || author == nil || author.Status != "active" {
+				continue
+			}
+			if at != nil && cmp.Or(r.CreatedAt.Compare(*at), cmp.Compare(r.ID, id)) >= 0 {
+				continue
+			}
+			list = append(list, record{r.CreatedAt, r.ID, writeResult{User: author.User, Reaction: r.RealMoji}})
+		}
+	}
+	slices.SortFunc(list, func(a, b record) int {
+		order := cmp.Or(a.createdAt.Compare(b.createdAt), cmp.Compare(a.id, b.id))
+		if !comments {
+			order = -order
+		}
+		return order
+	})
+	records = make([]writeResult, 0, min(len(list), 51))
+	for _, r := range list[:min(len(list), 51)] {
+		records = append(records, r.result)
+	}
+	return records, true, true
+}
+
+func (s *hotState) interactionAllowedLocked(viewerID, postID string, comments bool) (allowed, ok bool) {
 	viewer := s.users[viewerID]
 	p := s.posts[postID]
 	if !s.loaded || viewer == nil || p == nil {

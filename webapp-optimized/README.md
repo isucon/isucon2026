@@ -82,16 +82,22 @@ team 11 の seed 1 で 171,674 点から 297,384 点になった変更です。�
   投稿者も）が有効かを hot state で確かめるだけで返します。エクスポートの zip は応答へ直接書き出します。
 - hot state のセッションは本拠地の利用者の分だけを信用し、他地域の利用者は DB で確かめます。そのため
   ログインとログアウトは本拠地の app にだけ同期で反映し、他地域へは非同期で送ります。
-- friends と friends-of-friends のフィードは対象の人の投稿だけを集めて並べます。コメントと RealMoji の一覧は、
-  開いている投稿期間の投稿なら閲覧の可否を hot state で決め、DB からは一覧だけを読みます。
-- friends-of-friends のおすすめ順の点数は hot state で計算します。共通の友達の数と 3 歩の道の数は友達関係から、
-  反応した友達の数は、開いている投稿期間の投稿に付いた有効な RealMoji とコメントを hot state に持って数えます。
+- friends と friends-of-friends のフィードは対象の人の投稿だけを集めて並べます。
+- 開いている投稿期間の投稿のコメントと RealMoji は hot state に持ち、一覧も閲覧の可否も DB を使わずに返します。
   そのため、それらの投稿へのコメントと RealMoji の作成・削除も、ほかの書き込みと同じく全 app に同期で送ります。
+- friends-of-friends のおすすめ順の点数は hot state で計算します。共通の友達の数と 3 歩の道の数は友達関係から、
+  反応した友達の数は hot state に持つ有効な RealMoji とコメントから数えます。
+- 海外の app は db1 の PgBouncer（`deploy/pgbouncer/`、トランザクション単位のプール、6432 番）を通します。
+  海外からは 1 回の問い合わせごとに往復を待つので app 側に 96 本の接続が要りますが、db1 の backend は
+  トランザクションの間しか要りません。直接つなぐと約 230 本の backend が db1 の 4 GB のうち約 2.6 GB を使い、
+  投稿・コメント・RealMoji の索引がページキャッシュに残らず、書き込みが読み込みを待っていました。
+  `plan_cache_mode` は PgBouncer を通らないので、`ALTER ROLE isureal SET plan_cache_mode = 'force_generic_plan'` を
+  一度実行します。
 - nginx を外し、app が 80 番を直接受けます（`ISUREAL_PUBLIC_LISTEN=:80`、フロントエンドは
   `ISUREAL_PUBLIC_DIR`）。80 番を開くための systemd の drop-in が `deploy/isureal-go.service.d/public.conf` です。
 
 team 11 で使った環境変数の追加分: `ISUREAL_PUBLIC_LISTEN=:80`、`ISUREAL_PUBLIC_DIR=/home/isucon/webapp/public`、
-`GOMEMLIMIT=1500MiB`、`GOGC=50`（パックのページキャッシュを残す）。履歴ストアと署名の計算は起動後に
+`GOMEMLIMIT=1500MiB`、`GOGC=50`（パックのページキャッシュを残す）、海外の app だけ `ISUREAL_DB_PORT=6432`。履歴ストアと署名の計算は起動後に
 app1 で約 2 分半かかるので、計測はジャーナルに `history signatures` が出てから始めます。
 
 この状態での律速は app ではありません。5 日目の終盤にルーターの CPU が 100% になり、グランプリは HAProxy から

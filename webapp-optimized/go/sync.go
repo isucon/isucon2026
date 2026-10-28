@@ -21,15 +21,16 @@ import (
 // stateEvent is a versioned change to the hot state. It carries the new state
 // of one key, never a delta, so applying events in any order converges.
 type stateEvent struct {
-	Version int64      `json:"v"`
-	Kind    string     `json:"k"`
-	A       string     `json:"a,omitempty"`
-	B       string     `json:"b,omitempty"`
-	C       string     `json:"c,omitempty"`
-	Exists  bool       `json:"e,omitempty"`
-	User    *eventUser `json:"u,omitempty"`
-	Post    *Post      `json:"p,omitempty"`
-	Window  *hotWindow `json:"w,omitempty"`
+	Version  int64      `json:"v"`
+	Kind     string     `json:"k"`
+	A        string     `json:"a,omitempty"`
+	B        string     `json:"b,omitempty"`
+	Exists   bool       `json:"e,omitempty"`
+	User     *eventUser `json:"u,omitempty"`
+	Post     *Post      `json:"p,omitempty"`
+	Window   *hotWindow `json:"w,omitempty"`
+	Comment  *Comment   `json:"c,omitempty"`
+	Reaction *RealMoji  `json:"r,omitempty"`
 }
 
 // eventUser is User with the fields User hides from API responses.
@@ -222,7 +223,7 @@ func eventsFor(ctx context.Context, db *sqlx.DB, action, actor string, args any,
 			return []stateEvent{{Version: version, Kind: "history_dirty", A: comment.PostID}}
 		}
 		if hot.tracksPost(comment.PostID) {
-			return []stateEvent{{Version: version, Kind: "comment", A: comment.ID, B: comment.PostID, C: comment.AuthorID, Exists: action == "comment_create"}}
+			return []stateEvent{{Version: version, Kind: "comment", Comment: &comment, Exists: action == "comment_create"}}
 		}
 	case "reaction_create", "reaction_delete":
 		reaction := result.Reaction
@@ -232,7 +233,7 @@ func eventsFor(ctx context.Context, db *sqlx.DB, action, actor string, args any,
 		// Deleting a RealMoji that was already replaced leaves the reactor's
 		// live one in place.
 		if hot.tracksPost(reaction.PostID) && (action == "reaction_create" || reaction.ReplacedAt == nil) {
-			return []stateEvent{{Version: version, Kind: "reaction", A: reaction.PostID, B: reaction.ReactorID, Exists: action == "reaction_create"}}
+			return []stateEvent{{Version: version, Kind: "reaction", Reaction: &reaction, Exists: action == "reaction_create"}}
 		}
 	case "friend_create", "friend_transition":
 		if r := result.Request; r.Status == "accepted" {

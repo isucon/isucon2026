@@ -166,6 +166,7 @@ func TestOptimizedVisibilityMatchesOriginal(t *testing.T) {
 				if viewer.canView(post.Post) != targeted.canView(actual.Post) {
 					t.Fatalf("visibility mismatch viewer=%s post=%s", viewerID, post.ID)
 				}
+				checkInteractionLists(t, ctx, db, viewerID, post)
 			}
 			var followeeIDs []string
 			if err := db.Select(&followeeIDs, `SELECT followee_id FROM follows WHERE follower_id=$1::text`, viewerID); err != nil {
@@ -271,6 +272,58 @@ func TestOptimizedVisibilityMatchesOriginal(t *testing.T) {
 						cursor.Score = hotScores[49]
 					}
 				}
+			}
+		}
+	}
+}
+
+// checkInteractionLists compares the hot state's comment and RealMoji pages of
+// a post of an open window with the database's.
+func checkInteractionLists(t *testing.T, ctx context.Context, db *sqlx.DB, viewerID string, post PostWithAuthor) {
+	t.Helper()
+	for _, comments := range []bool{true, false} {
+		var at *time.Time
+		var id string
+		for {
+			hotRecords, hotAllowed, ok := hot.interactions(viewerID, post.ID, comments, at, id)
+			if !ok {
+				if post.WindowEndedAt == nil && os.Getenv("ISUREAL_HOT_STATE") != "off" {
+					t.Fatalf("viewer=%s post=%s: the hot state cannot answer", viewerID, post.ID)
+				}
+				return
+			}
+			query := reactionsPageSQL
+			if comments {
+				query = commentsPageSQL
+			}
+			var page struct {
+				Allowed bool   `db:"allowed"`
+				Items   []byte `db:"items"`
+			}
+			if err := db.GetContext(ctx, &page, query, viewerID, post.ID, at, id); err != nil {
+				t.Fatal(err)
+			}
+			records, err := decodeRecords(page.Items)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if page.Allowed != hotAllowed || len(records) != len(hotRecords) {
+				t.Fatalf("viewer=%s post=%s comments=%v: allowed %v/%v, %d/%d records", viewerID, post.ID, comments, hotAllowed, page.Allowed, len(hotRecords), len(records))
+			}
+			for i := range records {
+				want, got := records[i], hotRecords[i]
+				if !reflect.DeepEqual(newCommentResponse(want.Comment, want.User), newCommentResponse(got.Comment, got.User)) ||
+					!reflect.DeepEqual(newRealMojiResponse(want.Reaction, want.User), newRealMojiResponse(got.Reaction, got.User)) {
+					t.Fatalf("viewer=%s post=%s comments=%v record %d: %+v, want %+v", viewerID, post.ID, comments, i, got, want)
+				}
+			}
+			if len(records) <= 50 {
+				return
+			}
+			last := records[49]
+			at, id = &last.Comment.CreatedAt, last.Comment.ID
+			if !comments {
+				at, id = &last.Reaction.CreatedAt, last.Reaction.ID
 			}
 		}
 	}
