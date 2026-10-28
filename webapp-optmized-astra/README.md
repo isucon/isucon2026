@@ -335,3 +335,4 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261028T143942Z-team10 | notification snapshot readers with legacy writes control | PASS | 185,418 |
 | 20261028T144408Z-team10 | immutable notification batches with cached recipients and current-state checks | PASS | 169,421 |
 | 20261028T144755Z-team10 | repeat immutable notification batches | FAIL | 0 |
+| 20261028T145429Z-team10 | notification batches recheck after preparation registration timeout and cleanup | PASS | 174,707 |
