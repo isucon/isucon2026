@@ -32,7 +32,8 @@ module Isureal
     end
   end
 
-  ViewerContext = Struct.new(:user, :has_posted_today, :friends, :friends_of_friends, :blocked, keyword_init: true) do
+  ViewerContext = Struct.new(:user, :has_posted_today, :friends, :friends_of_friends, :mutual_friends, :blocked,
+                             keyword_init: true) do
     def id = user.id
 
     def region = user.region
@@ -89,7 +90,7 @@ module Isureal
       user = get_user(db, viewer_id)
       return nil if user.nil?
 
-      viewer = ViewerContext.new(user:, friends: {}, friends_of_friends: {})
+      viewer = ViewerContext.new(user:, friends: {}, friends_of_friends: {}, mutual_friends: Hash.new(0))
       viewer.has_posted_today = db.get_value!(<<~SQL, viewer.id, viewer.region)
         SELECT EXISTS(
           SELECT 1 FROM posts p
@@ -109,8 +110,16 @@ module Isureal
         *friends, *friends
       )
       friendships.each do |friendship|
-        viewer.friends_of_friends[friendship[:user_high_id]] = true if viewer.friends[friendship[:user_low_id]]
-        viewer.friends_of_friends[friendship[:user_low_id]] = true if viewer.friends[friendship[:user_high_id]]
+        low = friendship[:user_low_id]
+        high = friendship[:user_high_id]
+        if viewer.friends[low]
+          viewer.friends_of_friends[high] = true
+          viewer.mutual_friends[high] += 1 if high != viewer.id
+        end
+        if viewer.friends[high]
+          viewer.friends_of_friends[low] = true
+          viewer.mutual_friends[low] += 1 if low != viewer.id
+        end
       end
       viewer
     end

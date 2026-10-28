@@ -80,7 +80,7 @@ final readonly class PostRepository
         $blocked = $this->blockedUserIds($user->id);
         $friendIds = $this->friendIds($user->id);
         if ($friendIds === []) {
-            return new ViewerContext($user, $hasPostedToday, [], [], $blocked);
+            return new ViewerContext($user, $hasPostedToday, [], [], [], $blocked);
         }
         $friends = array_fill_keys($friendIds, true);
         [$in, $params] = Database::inClause('friend', $friendIds);
@@ -89,15 +89,22 @@ final readonly class PostRepository
             $params,
         );
         $friendsOfFriends = [];
+        $mutualFriends = [];
         foreach ($friendships as ['user_low_id' => $low, 'user_high_id' => $high]) {
             if (isset($friends[$low])) {
                 $friendsOfFriends[$high] = true;
+                if ($high !== $user->id) {
+                    $mutualFriends[$high] = ($mutualFriends[$high] ?? 0) + 1;
+                }
             }
             if (isset($friends[$high])) {
                 $friendsOfFriends[$low] = true;
+                if ($low !== $user->id) {
+                    $mutualFriends[$low] = ($mutualFriends[$low] ?? 0) + 1;
+                }
             }
         }
-        return new ViewerContext($user, $hasPostedToday, $friends, $friendsOfFriends, $blocked);
+        return new ViewerContext($user, $hasPostedToday, $friends, $friendsOfFriends, $mutualFriends, $blocked);
     }
 
     public function canView(string $viewerId, string $postId): bool

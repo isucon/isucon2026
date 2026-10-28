@@ -12,6 +12,7 @@ final readonly class ViewerContext
     /**
      * @param array<string, true> $friends
      * @param array<string, true> $friendsOfFriends
+     * @param array<string, int> $mutualFriends
      * @param array<string, true> $blocked
      */
     public function __construct(
@@ -19,6 +20,7 @@ final readonly class ViewerContext
         public bool $hasPostedToday,
         public array $friends,
         public array $friendsOfFriends,
+        public array $mutualFriends,
         public array $blocked,
     ) {
     }
