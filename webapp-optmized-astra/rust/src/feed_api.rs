@@ -92,23 +92,38 @@ pub async fn get_feed_handler(
     } else {
         args![&session.user_id]
     };
-    conditions.push_str(" ORDER BY p.posted_at DESC, p.id DESC LIMIT 51");
-    // The global top 51 must be within each active window's top 51. The
-    // lateral limit keeps the plan on the window index even with few new posts,
-    // rather than scanning old public history to try to fill the page.
+    let order = " ORDER BY p.posted_at DESC, p.id DESC LIMIT 51";
+    let select = format!(
+        "SELECT {POST_COLUMNS}, {} FROM posts p \
+         JOIN users u ON u.id=p.author_id AND u.status='active' \
+         WHERE p.posting_window_id=w.id AND p.deleted_at IS NULL {conditions}",
+        user_columns_as("u", "author")
+    );
+    let candidates = if input.feed == "friends-of-friends" {
+        // A generic plan estimates a small graph and probes the author index
+        // once per friend-of-friend and window. Dense graphs need a hashed
+        // membership filter over the current window instead. The branches are
+        // mutually exclusive within this statement's snapshot.
+        let membership = "p.author_id IN (SELECT id FROM friends_of_friends)";
+        let dense = select.replace(membership, &format!("({membership}) IS TRUE"));
+        format!(
+            "({select} AND (SELECT count(*) FROM friends_of_friends)<=128 {order}) \
+             UNION ALL \
+             ({dense} AND (SELECT count(*) FROM friends_of_friends)>128 {order})"
+        )
+    } else {
+        format!("{select}{order}")
+    };
+    // Each active window contributes at most 51 already-authorized rows. Its
+    // top 51 contains every possible member of the globally ordered top 51.
     let query = format!(
         r#"
         {VIEWER_RELATIONS}
         SELECT candidate.* FROM posting_windows w
-        CROSS JOIN LATERAL (
-          SELECT {POST_COLUMNS}, {}
-          FROM posts p JOIN users u ON u.id = p.author_id AND u.status = 'active'
-          WHERE p.posting_window_id = w.id AND p.deleted_at IS NULL {conditions}
-        ) candidate
+        CROSS JOIN LATERAL ({candidates}) candidate
         WHERE w.ended_at IS NULL
         ORDER BY candidate.posted_at DESC, candidate.id DESC LIMIT 51
-    "#,
-        user_columns_as("u", "author")
+    "#
     );
     let mut posts: Vec<PostWithAuthor> = sqlx::query_as_with(&query, args).fetch_all(&h.db).await?;
     let has_more = posts.len() > 50;
