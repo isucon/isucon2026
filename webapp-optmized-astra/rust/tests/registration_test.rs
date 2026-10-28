@@ -69,6 +69,10 @@ async fn registration_is_unique_and_independent_users_do_not_serialize() {
         .execute(&db)
         .await
         .unwrap();
+    sqlx::raw_sql(include_str!("../../sql/015-search-candidates.sql"))
+        .execute(&db)
+        .await
+        .unwrap();
     let context = Arc::new(HandlerContext {
         db: db.clone(),
         config: config_from_env(),
