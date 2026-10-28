@@ -78,8 +78,8 @@ if (typeof runtime.asiaUpstreamKeepaliveEnabled !== "boolean") {
     throw new Error("Asia upstream connection reuse must be explicitly configured");
 }
 
-if (!["debug", "info"].includes(runtime.applicationLogLevel)) {
-    throw new Error("Keep failed-login info logs for the existing abuse guard");
+if (!["debug", "info", "error"].includes(runtime.applicationLogLevel)) {
+    throw new Error("Invalid application log level; failed logins are emitted independently");
 }
 
 if (typeof runtime.nginxRequestBuffering !== "boolean") {
