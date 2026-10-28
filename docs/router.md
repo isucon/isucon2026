@@ -45,7 +45,8 @@ Portal と Router は固定値に一致しない設定を拒否する。変更�
 `app1_net`〜`app3_net` と `db1_net` は相互に L2 を共有しない。各 server は peer subnet への route の next hop を自身の
 segment にある Router IP とする。HAProxy は別 container だが `network_mode: service:router` で Router の network
 namespace を共有するため、固定 backend への通信も Router namespace から出る。AWS では同じホストの systemd service
-（`isureal-router`、`isureal-haproxy`）として動く。
+（`isureal-router`、`isureal-haproxy`）として動く。ベンチの画像のダウンロードを受ける `isureal-digest` も同じ
+namespace（Compose の `digest`、AWS の `isureal-digest.service`）で動く（「ベンチの画像のダウンロード」を参照）。
 
 Compose の interface 名には依存しない。Controller は `172.31.1.2` などの設定済み local IPv4 を持つ interface を
 実行時に検索し、重複または欠落を apply failure とする。
@@ -214,6 +215,50 @@ Envoy のときは上位帯の画像のアップロードでこの class が詰�
 最上位帯の 3 回では落ちていない）。いまの最上位帯ではゲート通過の時間は app1 の CPU で決まっており、上限を外しても
 変わらなかった（2026-10-26 の計測）。ただし、3 台に負荷を分ける実装では、参加者から見えないこの上限が先に効く。宛先のアプリごとに class を分ける（地域ごとに 1 Gbps）か、
 HTTP の帯域は HAProxy の route に任せて default class の上限を外すのがよい。
+
+### ベンチの画像のダウンロード（isureal-digest）
+
+最上位帯（webapp-optimized v3、約 29 万点）では、各地域の day 5 が重なる時間帯に Router の CPU が 100% に
+張り付いた。86 回の走行の回帰では、Router の CPU 時間はおよそ 2.6 秒 × HAProxy を通る GB ＋ 0.108 ms × 要求数で、
+ベンチへのダウンロード（約 10.8 GB）の 95% が画像（`GET /api/images/:imageId`）とエクスポート
+（`GET /api/me/export`）だった。
+
+ベンチはこの 2 つの要求に `X-Benchmark-Request-Id`（乱数の uint64）を付ける。HAProxy はそれを
+`isureal-digest`（`router/digest`、Rust）に送り、isureal-digest がアプリの応答を読み切って、本体の代わりに
+`X-Body-Xxh3`（要求 ID を種にした XXH3-64）と `X-Body-Length` を返す。エクスポートは ZIP の JSON 以外の項目を
+ダイジェストに置き換える。ベンチは期待する画像から同じ値を計算して比べる。アプリには元の要求が届くので、
+アプリから見た負荷と意味は変わらない。
+
+- 対象は `GET` で、ヘッダーがあり、パスが `/api/images/` で始まるか `/api/me/export` の要求だけ。ブラウザの要求は
+  これまでどおりアプリへ送る。200 以外の応答はそのまま返す。
+- アプリのアドレス（`X-Isureal-Upstream`）、帯域制限の route（`X-Isureal-Route`、bwlim と同じ Host と国の組）、
+  上限（`X-Isureal-Limit`、bytes/s）は HAProxy が付け、isureal-digest がアプリへ送る前に消す。
+- 帯域制限は isureal-digest がアプリからの読み込みで行う。route ごとに 1 秒分まで溜まる共有の bucket を持ち、
+  HAProxy の bwlim の表（`show table bandwidth`）を 100 ms ごとに読んで、HAProxy 自身がその route で送っている分を
+  補充から引く。route の合計が上限に収まる（ただし上限の 1 割は画像に残す）。
+- 種は要求ごとに変わるので、アプリが画像を持たずにダイジェストだけを返すことはできない。CRC32 は線形で、
+  種を混ぜても同じ長さの別のデータで値を合わせられるので使わない。
+- isureal-digest が落ちると、HAProxy のヘルスチェック（1 秒ごと、2 回）で予備のサーバー（アプリ）に切り替える。
+  そのときは `X-Benchmark-Request-Id` を消して送るので、アプリはベンチの要求と区別できず、ベンチはバイト列で比べる。
+- ルーターの設定は `ROUTER_DIGEST_ADDRESS`（既定 `127.0.0.1:18010`、空で無効）。AWS では
+  `isureal-digest.service` が `isureal-haproxy.service` と一緒に起動する。
+
+2026-10-28 に team 11（webapp-optimized v3）、seed 1 で比べた。
+
+| 構成 | 点数 | CPU p95 / 最大 | CPU 時間 | 内訳（コア） | 要求数 |
+|---|---:|---:|---:|---|---:|
+| HAProxy だけ（2 回） | 286,376〜286,597 | 98〜99% / 100% | 64 秒 | HAProxy 0.74 | 247k |
+| Go の中継と SHA-256（2 回） | 274,315〜294,441 | 95〜100% / 100% | 85〜99 秒 | 中継 0.71〜0.95 | 236k〜253k |
+| isureal-digest、帯域制限なし（2 回） | 307,592〜313,716 | 72〜73% / 89〜96% | 58〜60 秒 | HAProxy 0.45〜0.49、中継 0.19 | 264k〜275k |
+| isureal-digest、帯域制限あり | 306,474 | 68% / 91% | 60 秒 | HAProxy 0.51、中継 0.21 | 266k |
+
+減るのはベンチへ送る側だけで、アプリから受け取る分と中継の 1 段は残る。中継の費用がゼロでも削減は全体の
+約 3 分の 1 である。Go の net/http と SHA-256（1 コア 1.33 GB/s）では中継の CPU がこれを上回った。
+isureal-digest は tokio と自前の HTTP/1.1 の解析、使い回す 256 KB の読み込みバッファ、アプリへの接続の
+プール、XXH3 で 0.2 コアに収まる。ベンチの CPU も約 6 割から約 4 割に下がった。ベンチの HTTP は
+同じ地域の route（国ごとに 1 Gbps）だけを使い、走行中の国ごとの HAProxy の送出は数 MB/s だったので、
+帯域制限はほとんど効いていない。点数が伸びたのは Router の余裕が戻ったためである。
+アップロード（約 3.2 GB）はアプリが本物の画像を受け取る必要があるので対象にしていない。
 
 ## Reconciliation と rollback
 
