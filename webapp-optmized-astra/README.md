@@ -227,3 +227,4 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261028T011841Z-team10 | 262144 signatures with inline cache keys; request buffering restored | PASS | 126,761 |
 | 20261028T012306Z-team10 | ASCII search prefilter with full Unicode and literal semantics | PASS | 133,279 |
 | 20261028T012958Z-team10 | repeat full candidate after application and independent image DB restarts | PASS | 128,427 |
+| 20261028T013453Z-team10 | repeat 129521-point application paths; same regional storage and HTTP settings | PASS | 128,375 |
