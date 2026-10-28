@@ -59,25 +59,31 @@ pub async fn write_fence_middleware(
         None
     };
     let mutation = !matches!(*req.method(), Method::GET | Method::HEAD);
-    let _admission = if mutation && let Some(WriteFence::Native(native)) = &fence {
-        Some(
-            native
-                .admit(
-                    req.body().size_hint().exact(),
-                    req.uri().path() == "/api/admin/posting-window",
-                    (req.method() == Method::POST
-                        && crate::upload_proxy::is_upload_path(req.uri().path()))
-                        || (req.method() == Method::PUT
-                            && req.uri().path() == "/api/me/profile-image"),
-                )
-                .await,
-        )
+    let image_upload = (req.method() == Method::POST
+        && crate::upload_proxy::is_upload_path(req.uri().path()))
+        || (req.method() == Method::PUT && req.uri().path() == "/api/me/profile-image");
+    let _image_response = if image_upload && let Some(WriteFence::Native(native)) = &fence {
+        Some(native.admit_image_response().await)
+    } else {
+        None
+    };
+    let mut admission = if mutation && let Some(WriteFence::Native(native)) = &fence {
+        Some(native.admit(
+            req.body().size_hint().exact(),
+            req.uri().path() == "/api/admin/posting-window",
+            image_upload,
+        ).await)
     } else {
         None
     };
     let admitted = timing.as_ref().map(|_| Instant::now());
     let response = next.run(req).await;
     let handled = timing.as_ref().map(|_| Instant::now());
+    if image_upload {
+        // The handler has consumed the body and finished durable image/SQL work.
+        // A bounded response permit remains held through the replay barrier.
+        drop(admission.take());
+    }
     // Capture WAL only after the handler has completed its commits. Failed
     // responses are fenced as well, since a handler may have committed work.
     // The outer run_to_completion layer also finishes this after disconnects.
@@ -144,6 +150,7 @@ mod tests {
         });
         Router::new()
             .route("/write", mutation.clone())
+            .route("/api/posts", mutation.clone())
             .route("/api/admin/posting-window", mutation)
             .route("/read", get(|| async { StatusCode::OK }))
             .layer(from_fn_with_state(Some(fence), write_fence_middleware))
@@ -507,6 +514,45 @@ mod tests {
                 assert_eq!(value(&replica, &table).await, 9 + admitted);
                 assert_eq!(value(&replica2, &table).await, 9 + admitted);
 
+                // Image body processing can continue while an earlier image
+                // waits for replay, but pending image responses stay bounded.
+                sqlx::query("SELECT pg_wal_replay_pause()").execute(&replica2).await.unwrap();
+                timeout(Duration::from_secs(2), async {
+                    while !sqlx::query_scalar::<_, bool>("SELECT pg_get_wal_replay_pause_state()='paused'")
+                        .fetch_one(&replica2).await.unwrap() {
+                        sleep(Duration::from_millis(5)).await;
+                    }
+                }).await.unwrap();
+                let before_images = 9 + admitted;
+                let mut images = Vec::new();
+                for i in 1..=2 {
+                    images.push(tokio::spawn(app.clone().oneshot(
+                        HttpRequest::post("/api/posts")
+                            .body(Body::from(vec![0u8; 16 * 1024 * 1024])).unwrap(),
+                    )));
+                    wait_value(&primary, &table, before_images + i).await;
+                }
+                let response_slots = crate::native_write_fence::IMAGE_RESPONSE_SLOTS as i32;
+                for _ in 2..response_slots {
+                    images.push(tokio::spawn(app.clone().oneshot(
+                        HttpRequest::post("/api/posts").body(Body::empty()).unwrap(),
+                    )));
+                }
+                wait_value(&primary, &table, before_images + response_slots).await;
+                assert!(images.iter().all(|request| !request.is_finished()));
+                let mut queued_image = tokio::spawn(app.clone().oneshot(
+                    HttpRequest::post("/api/posts").body(Body::empty()).unwrap(),
+                ));
+                assert!(timeout(Duration::from_millis(100), &mut queued_image).await.is_err());
+                assert_eq!(value(&primary, &table).await, before_images + response_slots);
+                assert_eq!(value(&replica2, &table).await, before_images);
+                sqlx::query("SELECT pg_wal_replay_resume()").execute(&replica2).await.unwrap();
+                images.push(queued_image);
+                for request in images {
+                    assert_eq!(timeout(Duration::from_secs(3), request).await.unwrap().unwrap().unwrap().status(), StatusCode::NO_CONTENT);
+                }
+                assert_eq!(value(&replica, &table).await, before_images + response_slots + 1);
+                assert_eq!(value(&replica2, &table).await, before_images + response_slots + 1);
             }
         })
         .catch_unwind()
