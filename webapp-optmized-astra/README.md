@@ -6,13 +6,13 @@ Team 10向けのRust最適化実装。`webapp/rust`と`webapp/sql`を2335d5fか�
 <!-- astra-final-summary-start -->
 ## 現在の構成と検証状況
 
-2026年10月28日23:00 JSTまで比較を継続中。ファイル保存版の同一seed再計測は[163,405点・PASS](results/20261028T062953Z-team10/result.json)、別seedは[164,533点・PASS](results/20261028T063417Z-team10/result.json)。直前のSQL保存は[144,909点・PASS](results/20261028T061211Z-team10/result.json)。同じseedでもスコアの振れがあるため、単発の差だけで各変更の効果とは判断しない。全走行のソース、配布物SHA-256、ベンチイメージを各`experiment.json`に保存している。
+2026年10月28日23:00 JSTまで比較を継続中。全画像をファイル保存に移した現行版は同一seedで[163,428点・PASS](results/20261028T082244Z-team10/result.json)、別seedは[164,533点・PASS](results/20261028T063417Z-team10/result.json)。直前のSQL保存は[144,909点・PASS](results/20261028T061211Z-team10/result.json)。同じseedでもスコアの振れがあるため、単発の差だけで各変更の効果とは判断しない。全走行のソース、配布物SHA-256、ベンチイメージを各`experiment.json`に保存している。
 
-メタデータはAsiaのプライマリから欧州・米州へ複製し、新規の投稿画像は受信地域のファイルシステムへ永続化する。既存VMだけを利用し、AWSリソースは追加しない。秘密情報は非公開envをscpで共有する。SQLには画像の所有者・公開状態・保存先を残し、従来のSQL画像も引き続き取得できる。
+メタデータはAsiaのプライマリから欧州・米州へ複製し、新規の投稿画像は受信地域のファイルシステムへ永続化する。既存VMだけを利用し、AWSリソースは追加しない。秘密情報は非公開envをscpで共有する。SQLには画像の所有者・公開状態・保存先を残し、初期画像1,826,950枚・14,054,519,155バイトも25個の不変ファイルにまとめ、3地域へ配置済み。初期画像のSQL内の本体はゼロになった。従来のSQL画像を読む互換処理も残す。
 
 Unicode検索の候補絞り込み、ZIP出力での検証済み画像キャッシュ再利用、登録・ログインの待ち行列、アクションログの割り当てを改善して比較している。現在は更新反映待ち8バッチ、小さな更新128件、反映待ち専用の接続プール。地域別の投稿期間開始では、地域単位の排他とユーザーのSHAREロックを併用し、通知対象を固定したまま異なる地域を並行処理する。
 
-[Rustの全体検証は39件成功・失敗0件、Clippy成功](results/20261028T061211Z-team10/filesystem-validation.txt)。その後、地域間アップロードの結合テストをSQL・ファイル両方式へ拡張した。[ファイルGCと全アプリ・Nginx・画像DBの再起動後、18画像の完全一致を確認](results/20261028T062146Z-team10/filesystem-validation.txt)。画像キャッシュは1GiB・16,384件、署名キャッシュは262,144件、Tokioは2スレッド。ログは`debug`、Nginxのリクエストバッファリングは有効。公開状態・現在の鍵・署名期限の検証と、更新成功応答前の両レプリカへの反映確認を維持する。
+[Rustの全体検証は43件成功・失敗0件、Clippy成功](results/20261028T082244Z-team10/validation.txt)。同じ画像への20件の同時アクセスを1回のファイル読み込みに集約し、最初の読み込みが失敗した場合の再試行も検証した。[ファイルGCと全アプリ・Nginx・画像DBの再起動後、18画像の完全一致を確認](results/20261028T062146Z-team10/filesystem-validation.txt)。画像キャッシュは1GiB・16,384件、署名キャッシュは262,144件、Tokioは2スレッド。ログは`debug`、Nginxのリクエストバッファリングは有効。公開状態・現在の鍵・署名期限の検証と、更新成功応答前の両レプリカへの反映確認を維持する。
 
 地域別画像DBのGCでは公開画像4,675件を保持して孤立画像93,622件を削除し、領域の詰め直し前後の18画像が一致した。Asiaの空き容量は3.7GiBから28.1GiBへ回復した。継続計測で再び増えるため、容量を確認して整理する。別seedの過去の初回実行には登録タイムアウトによるFAILが1件あり、同条件再実行は120,515点・PASS。原因は未確定。
 
@@ -54,7 +54,27 @@ SQLには所有者と公開状態、保存先を残す。画像APIは毎回、�
 
 `verify-file-peers.py`は3地域間の画像一致とアクセス制限を確認する。`apply.sh image-gc`は全アプリ停止中の参照一覧を検証し、SQLとファイル両方の孤立画像を整理する。参照先の欠落や不明なファイルがあれば処理を中止する。
 
+## 初期画像のアーカイブ
+
+初期画像は`pack:<archive UUID>:<offset>:<length>`で参照し、各VMの`/var/lib/astra-images/packs/`から必要な範囲を読む。APIとZIPは現在のSQLメタデータで閲覧権限を確認する。[全件の件数・容量](results/archive-complete/coverage.json)と区画ごとの移行記録を`results/archive-*/`に保存した。各ベンチの`experiment.json`には、実際に参照中のアーカイブIDとハッシュも記録する。
+
+`migrate-image-archive.py`は全アプリを止め、3地域のファイルと参照一覧のハッシュを照合してからSQLを切り替える。元の行バージョンが変わっていれば切り替えは失敗する。移行後はレプリカの反映と古い行を回収できる状態を待ってSQL領域を縮小し、アプリを再起動して公開画像を照合する。
+
+```sh
+python3 webapp-optmized-astra/deploy/migrate-image-archive.py image_objects_202609
+# ファイル作成後、SQL公開前に接続が切れた場合
+python3 webapp-optmized-astra/deploy/migrate-image-archive.py image_objects_202609 --resume ARCHIVE_UUID_HEX
+# SQL公開済みで領域整理だけを再開する場合
+python3 webapp-optmized-astra/deploy/migrate-image-archive.py image_objects_202609 --reclaim ARCHIVE_UUID_HEX
+# SQL本体へ復帰する場合。公開中のアーカイブを手動削除しない
+python3 webapp-optmized-astra/deploy/migrate-image-archive.py image_objects_202609 --restore ARCHIVE_UUID_HEX
+```
+
+小さい区画でSQLへの復帰と全バイト一致を実機確認した。移行時にSSH接続が切れた区画も、作成済みファイルを再検証して復帰できた。GCは公開参照を残し、未参照のアーカイブだけをファイル単位で削除する。
+
 ## 地域別の独立画像DB
+
+以下はファイル保存導入前の構成と、SQL画像への復帰に備えた互換設定。現在の新規画像は前節のファイルへ保存する。
 
 `regionalImageStoresEnabled`で欧州・米州の既存アプリVMにもポート5433の独立PostgreSQLを用意する。既存5432のメタデータレプリカは維持する。`apply.sh image-store`でクラスタを作成し、`apply.sh database`で画像参照列を64文字へ広げ、書き込み無効のまま`apply.sh application`で全プロセスへ読み取り対応を配置する。
 
@@ -70,7 +90,7 @@ SQLには所有者と公開状態、保存先を残す。画像APIは毎回、�
 
 ## 検証
 
-採用版は[36件成功・失敗0件](results/20261028T014704Z-team10/validation.txt)、Clippyも成功。[再起動確認の記録](results/20261028T014704Z-team10/storage-restart-verification.txt)には18件の画像一致、実行中バイナリと設定、レプリカの追従、ディスク容量を残した。
+現行版は[Rust 43件成功・失敗0件、Clippy成功](results/20261028T082244Z-team10/validation.txt)。[再起動確認の記録](results/20261028T014704Z-team10/storage-restart-verification.txt)には18件の画像一致、実行中バイナリと設定、レプリカの追従、ディスク容量を残した。
 
 リポジトリのルートから`python3 webapp-optmized-astra/deploy/verify-runtime.py`で稼働設定を照合できる。ベンチ停止中に`python3 webapp-optmized-astra/deploy/verify-regional-restart.py`を実行すると、18件の画像を取得してから3地域のアプリと画像DBを再起動し、内容の一致と稼働設定を確認する。署名付きURLはVM上のroot専用ファイルに一時保存し、確認後に削除する。
 
