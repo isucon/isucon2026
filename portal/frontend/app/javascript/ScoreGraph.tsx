@@ -12,14 +12,6 @@ interface Props {
   teamId?: bigint;
 }
 
-const usePrevious = <T extends unknown>(value: T) => {
-  const ref = React.useRef<T | undefined>();
-  React.useEffect(() => {
-    ref.current = value;
-  }, [value]);
-  return ref.current;
-};
-
 const calculateGraphCacheKey = (teams: LeaderboardItem[]) => {
   let numTeams = teams.length;
   let numScores = teams.map((item) => (item.scoreHistory?.scores || []).length).reduce((a, b) => a + b, 0);
@@ -43,7 +35,7 @@ export const ScoreGraph: React.FC<Props> = ({ teams, contest, width, teamId }) =
   const [scoreFilter, setScoreFilter] = React.useState<number | null>(null);
 
   const elem = React.useRef<HTMLDivElement>(null);
-  const [chart, setChart] = React.useState<uPlot | null>(null);
+  const chart = React.useRef<uPlot | null>(null);
 
   const targetTeams = React.useMemo(() => {
     let t = teams;
@@ -124,31 +116,20 @@ export const ScoreGraph: React.FC<Props> = ({ teams, contest, width, teamId }) =
     return d;
   }, [targetTeams]);
 
-  const prevValues = usePrevious({ setChart, elemCurrent: elem.current, uplotOpts, data });
   React.useEffect(() => {
     if (!elem.current) return;
 
-    if (
-      !prevValues ||
-      prevValues.setChart !== setChart ||
-      prevValues.elemCurrent !== elem.current ||
-      prevValues.uplotOpts !== uplotOpts
-    ) {
-      console.log("ScoreGraph: setChart");
-      chart?.destroy();
-      const newChart = new uPlot(uplotOpts, data, elem.current);
-      setChart(newChart);
-    } else if (prevValues.data !== data) {
-      console.log("ScoreGraph: setData");
-      chart?.setData(data);
-    }
-  }, [setChart, elem.current, uplotOpts, data]);
+    const newChart = new uPlot(uplotOpts, undefined, elem.current);
+    chart.current = newChart;
+    return () => {
+      newChart.destroy();
+      chart.current = null;
+    };
+  }, [uplotOpts]);
 
   React.useEffect(() => {
-    return () => {
-      chart?.destroy();
-    };
-  }, []);
+    chart.current?.setData(data);
+  }, [uplotOpts, data]);
 
   const classNames = ["isux-scoregraph", "isux-scoregraph-pinnedonly"]; // XXX: unify 2 classes to one
 
