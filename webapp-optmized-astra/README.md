@@ -325,3 +325,4 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261028T115839Z-team10 | primary Asia reads with optional third metadata standby stopped | PASS | 164,094 |
 | 20261028T120334Z-team10 | repeat primary Asia reads with the third metadata standby stopped | PASS | 149,467 |
 | 20261028T121106Z-team10 | restore selective Asia reads and verify restart after topology comparison | PASS | 173,705 |
+| 20261028T121807Z-team10 | vacuum deleted metadata and refresh statistics during initialization | PASS | 170,756 |
