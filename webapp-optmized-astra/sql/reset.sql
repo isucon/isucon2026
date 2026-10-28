@@ -45,3 +45,7 @@ SELECT id, blocker_id, blocked_id, created_at FROM initial_block_relations;
 INSERT INTO astra_search_dirty SELECT id FROM users;
 
 COMMIT;
+
+-- Reclaim deleted versions before the load phase and refresh planner statistics.
+VACUUM (ANALYZE) posts, realmojis, comments, notifications;
+ANALYZE users, friendships, friend_requests, follows, block_relations, posting_windows, login_sessions;
