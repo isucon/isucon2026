@@ -41,7 +41,7 @@ export const ScoreGraph: React.FC<Props> = ({ teams, contest, width, teamId }) =
     let t = teams;
     if (scoreFilter) t = t.filter((item) => (item.bestScore?.score ?? 0) >= scoreFilter);
     return t;
-  }, [calculateGraphCacheKey(teams), teamId, scoreFilter]);
+  }, [calculateGraphCacheKey(teams), calculateTargetTeamLegendCacheKey(teams), teamId, scoreFilter]);
 
   const uplotOpts = React.useMemo(
     (): uPlot.Options => ({
