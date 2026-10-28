@@ -4,6 +4,7 @@ No AWS infrastructure resources are created. Transfer files with scp and execute
 configuration scripts over SSH through the existing Instance Connect Endpoint.
 """
 from concurrent.futures import ThreadPoolExecutor
+import hashlib
 import json
 import os
 import secrets
@@ -161,9 +162,15 @@ def application(app):
     if runtime['signatureFileCacheEnabled']:
         source = ROOT / runtime['signatureFileCachePath']
         assert source.stat().st_mode & 0o077 == 0, 'Signature cache must remain private'
-        remote(instance, 'umask 077; : > /home/isucon/.astra-signatures.next')
-        copy(instance, source, '/home/isucon/.astra-signatures.next')
-        remote(instance, 'chmod 600 /home/isucon/.astra-signatures.next && mv /home/isucon/.astra-signatures.next /home/isucon/.astra-signatures.bin')
+        with source.open('rb') as file:
+            digest = hashlib.file_digest(file, 'sha256').hexdigest()
+        existing = subprocess.check_output([ssh, instance,
+            'if test -f /home/isucon/.astra-signatures.bin; then sha256sum /home/isucon/.astra-signatures.bin; fi'], text=True).split()
+        if not existing or existing[0] != digest:
+            remote(instance, 'umask 077; : > /home/isucon/.astra-signatures.next')
+            copy(instance, source, '/home/isucon/.astra-signatures.next')
+            remote(instance, 'chmod 600 /home/isucon/.astra-signatures.next && mv /home/isucon/.astra-signatures.next /home/isucon/.astra-signatures.bin')
+        remote(instance, 'chmod 600 /home/isucon/.astra-signatures.bin')
     read_host, fenced = read_settings(runtime, app)
     fenced = str(int(fenced))
     remote(instance, "sudo bash /home/isucon/astra-deploy/application.sh /home/isucon/astra-release.tar.gz " + shlex.quote(read_host) + " " + fenced + " " + shlex.quote(write_fence_hosts) + " " + shlex.quote(write_fence_mode) + " " + shlex.quote(app["region"]) + " " + shlex.quote(read_scope(runtime, app)))
