@@ -163,3 +163,8 @@ if (runtime.archivePeer) {
 }
 export const archivePeerManifestSha256 = runtime.archivePeer?.enabled
     ? createHash("sha256").update(readFileSync("../../../webapp-optmized-astra/deploy/archive-peer-manifest.json")).digest("hex") : "";
+
+const clientBodyBufferKiB = runtime.nginxClientBodyBufferKiB ?? 8;
+if (!Number.isInteger(clientBodyBufferKiB) || clientBodyBufferKiB < 8 || clientBodyBufferKiB > 1024) {
+    throw new Error("Invalid Nginx client body buffer capacity");
+}
