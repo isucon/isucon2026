@@ -1,4 +1,6 @@
 //! Wait for global write visibility after committing, outside the DB transaction.
+use std::{sync::LazyLock, time::Instant};
+
 use axum::body::HttpBody as _;
 use axum::extract::{Request, State};
 use axum::http::{Method, StatusCode};
@@ -9,6 +11,10 @@ use crate::api_error::new_api_error;
 use crate::logger;
 use crate::native_write_fence::NativeWriteFence;
 use crate::read_fence::ReadFence;
+
+static AUTH_TIMING: LazyLock<bool> = LazyLock::new(|| {
+    std::env::var("ISUREAL_AUTH_TIMING").is_ok_and(|value| value == "1")
+});
 
 #[derive(Clone)]
 pub enum WriteFence {
@@ -38,6 +44,15 @@ pub async fn write_fence_middleware(
     req: Request,
     next: Next,
 ) -> Response {
+    let timing = if *AUTH_TIMING && req.method() == Method::POST {
+        match req.uri().path() {
+            "/api/auth/register" => Some(("register", Instant::now())),
+            "/api/auth/login" => Some(("login", Instant::now())),
+            _ => None,
+        }
+    } else {
+        None
+    };
     let mutation = !matches!(*req.method(), Method::GET | Method::HEAD);
     let _admission = if mutation && let Some(WriteFence::Native(native)) = &fence {
         Some(
@@ -55,20 +70,37 @@ pub async fn write_fence_middleware(
     } else {
         None
     };
+    let admitted = timing.as_ref().map(|_| Instant::now());
     let response = next.run(req).await;
+    let handled = timing.as_ref().map(|_| Instant::now());
     // Capture WAL only after the handler has completed its commits. Failed
     // responses are fenced as well, since a handler may have committed work.
     // The outer run_to_completion layer also finishes this after disconnects.
-    if mutation
+    let response = if mutation
         && let Some(fence) = &fence
         && let Err(err) = fence.wait().await
     {
         logger::error("failed to make write visible on replicas", &err);
-        return new_api_error(
+        new_api_error(
             StatusCode::SERVICE_UNAVAILABLE,
             "replica_visibility_unavailable",
         )
-        .into_response();
+        .into_response()
+    } else {
+        response
+    };
+    if let Some((action, started)) = timing
+        && started.elapsed().as_millis() >= 250
+    {
+        let admitted = admitted.unwrap();
+        let handled = handled.unwrap();
+        // Temporary, opt-in timing only: no credentials, identity or body data.
+        eprintln!(
+            "{{\"metric\":\"slow_auth\",\"at_ms\":{},\"action\":\"{}\",\"status\":{},\"admission_us\":{},\"handler_us\":{},\"fence_us\":{}}}",
+            chrono::Utc::now().timestamp_millis(), action, response.status().as_u16(),
+            admitted.duration_since(started).as_micros(),
+            handled.duration_since(admitted).as_micros(), handled.elapsed().as_micros(),
+        );
     }
     response
 }
