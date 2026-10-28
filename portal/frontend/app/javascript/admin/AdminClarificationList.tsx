@@ -100,7 +100,7 @@ const ClarForm: React.FC<FormProps> = (props: FormProps) => {
     },
   });
 
-  const onSubmit = handleSubmit(async (data, e) => {
+  const onSubmit = handleSubmit(async (data) => {
     try {
       setRequesting(true);
       console.log(data);
@@ -109,7 +109,7 @@ const ClarForm: React.FC<FormProps> = (props: FormProps) => {
       let teamId: bigint;
       if (teamIdString === "") {
         if (!data.disclose) {
-          throw new Error( "teamIdが空のときはDiscloseがチェックされている必要があります");
+          throw new Error("teamIdが空のときはDiscloseがチェックされている必要があります");
         }
         teamId = 0n;
       } else if (/^\d+$/.test(teamIdString)) {
@@ -129,7 +129,7 @@ const ClarForm: React.FC<FormProps> = (props: FormProps) => {
         }),
       );
       props.onSubmit(resp.clarification!);
-      e!.target.reset();
+      reset();
       setError(null);
     } catch (e) {
       setError(e);
@@ -181,12 +181,7 @@ const ClarForm: React.FC<FormProps> = (props: FormProps) => {
               Team ID
             </label>
             <div className="control">
-              <input
-                className="input"
-                type="text"
-                id="AdminClarificationListForm-teamId"
-                {...register("teamId")}
-              />
+              <input className="input" type="text" id="AdminClarificationListForm-teamId" {...register("teamId")} />
             </div>
             <div className="control">
               <label className="checkbox">
