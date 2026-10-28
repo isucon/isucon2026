@@ -73,3 +73,7 @@ if (typeof runtime.asiaUpstreamKeepaliveEnabled !== "boolean") {
 if (!["debug", "info"].includes(runtime.applicationLogLevel)) {
     throw new Error("Keep failed-login info logs for the existing abuse guard");
 }
+
+if (typeof runtime.nginxRequestBuffering !== "boolean") {
+    throw new Error("Nginx request buffering must be explicitly configured");
+}
