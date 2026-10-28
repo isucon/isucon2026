@@ -6,7 +6,8 @@ python3 - "$(dirname "$0")/runtime.json" > /etc/astra-application-log.env <<'PY_
 import json,sys
 runtime=json.load(open(sys.argv[1]))
 level=runtime['applicationLogLevel']
-assert level in ('debug','info'), 'Failed-login info logs are required by the existing guard'
+assert level in ('debug','info','error'), 'Invalid application log level'
+# Failed-login action logs bypass this diagnostic threshold in the application.
 print('ISUREAL_LOG_LEVEL='+level)
 for key,env in [('signatureCacheCoalescing','ISUREAL_SIGNATURE_COALESCE'),('signatureCacheMetrics','ISUREAL_SIGNATURE_METRICS'),('issuedImageUrlCacheEnabled','ISUREAL_ISSUED_URL_CACHE')]:
     assert type(runtime[key]) is bool

@@ -162,7 +162,10 @@ pub async fn action_log_middleware(
     } else {
         "info"
     };
-    if log_level_rank(level) < action_log.min_level {
+    // The abuse guard consumes every failed login, independently of the
+    // diagnostic log level. Keep its existing JSON shape and immediate write.
+    let guard_event = action == Some("login") && status == 401;
+    if !guard_event && log_level_rank(level) < action_log.min_level {
         return response;
     }
 

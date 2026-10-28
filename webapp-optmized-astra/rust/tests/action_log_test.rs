@@ -154,3 +154,24 @@ async fn action_log_middleware_entries() {
     assert_eq!(lines[1]["status"], 401);
     assert_eq!(lines[1]["ip"], "203.0.113.7");
 }
+
+#[tokio::test]
+async fn error_level_retains_failed_logins_for_guard_and_server_errors() {
+    let (app, output) = new_server("error");
+    send(&app, "POST", "/api/posts", "{}").await;
+    send(&app, "GET", "/api/feeds/friends", "").await;
+    assert!(output.lines().is_empty());
+    for username in ["alice", "Not Valid"] {
+        let body = json!({"username": username, "secretKey": "wrong"}).to_string();
+        send(&app, "POST", "/api/auth/login", &body).await;
+    }
+    send(&app, "GET", "/api/users/someone", "").await;
+    assert_eq!(
+        output.lines(),
+        vec![
+            json!({"level": "info", "action": "login", "status": 401, "ip": "203.0.113.7", "user_id": null, "username": "alice"}),
+            json!({"level": "info", "action": "login", "status": 401, "ip": "203.0.113.7", "user_id": null, "username": null}),
+            json!({"level": "error", "action": "get_user", "status": 500, "ip": "203.0.113.7", "user_id": null}),
+        ]
+    );
+}
