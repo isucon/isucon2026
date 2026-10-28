@@ -59,3 +59,5 @@ pub mod regional_upload;
 pub mod stored_upload;
 
 pub mod db_pool;
+
+pub mod file_store;

@@ -96,6 +96,16 @@ if regional_writes:
         remote(instance, "systemctl show " + service + " -p Environment --value | grep -q 'ISUREAL_REGIONAL_IMAGE_HOSTS_JSON=.*europe.*america' || { echo 'Deploy regional image readers everywhere before enabling writes' >&2; exit 1; }")
 
 
+files = runtime.get("fileImageStore", {})
+if not files.get("enabled", False):
+    check = "SELECT 1 / (NOT EXISTS(SELECT 1 FROM image_objects WHERE asset_key LIKE 'fs:%'))::int"
+    remote(database, "sudo -u postgres psql -X -v ON_ERROR_STOP=1 -d isureal -c " + shlex.quote(check))
+if files.get("writesEnabled", False):
+    assert files.get("enabled", False) and regional_writes
+    for instance, service in services:
+        remote(instance, "systemctl is-active --quiet " + service + " && systemctl show " + service + " -p Environment --value | grep -q 'ISUREAL_FILE_IMAGE_ROOT=/var/lib/astra-images' || { echo 'Deploy file image readers everywhere before enabling writes' >&2; exit 1; }")
+
+
 bundle = ROOT / "var/astra/configuration.tar.gz"
 bundle.parent.mkdir(parents=True, exist_ok=True)
 with tarfile.open(bundle, "w:gz") as tar:

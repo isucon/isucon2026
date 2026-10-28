@@ -37,8 +37,9 @@ if sys.argv[1:] == ['capture']:
         JOIN image_objects i ON i.id=p.image_id AND i.created_at=p.posted_at
         JOIN users u ON u.id=p.author_id AND u.status='active'
         WHERE p.deleted_at IS NULL AND p.posted_at>=current_date
-          AND CASE WHEN stores.region='asia' THEN i.asset_key NOT LIKE '%:%'
-                   ELSE i.asset_key LIKE stores.region||':%' END
+          AND (i.asset_key LIKE 'fs:'||stores.region||':%' OR
+               CASE WHEN stores.region='asia' THEN i.asset_key NOT LIKE '%:%'
+                    ELSE i.asset_key LIKE stores.region||':%' END)
         ORDER BY p.posted_at DESC,p.id DESC LIMIT 2
       ) images
     ) sample"""

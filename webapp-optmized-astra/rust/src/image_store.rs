@@ -16,6 +16,7 @@ pub struct ImageStore {
     pub cache_peers: Option<crate::image_cache_push::CachePeers>,
     cache: Option<Arc<Mutex<AssetCache>>>,
     regional: HashMap<String, PgPool>,
+    files: Option<crate::file_store::FileStore>,
 }
 
 impl ImageStore {
@@ -30,6 +31,7 @@ impl ImageStore {
             cache_peers,
             cache: Some(Arc::new(Mutex::new(AssetCache::default()))),
             regional: HashMap::new(),
+            files: None,
         }
     }
 
@@ -43,6 +45,11 @@ impl ImageStore {
         self
     }
 
+    pub fn with_file_store(mut self, files: Option<crate::file_store::FileStore>) -> Self {
+        self.files = files;
+        self
+    }
+
     pub fn has_region(&self, region: &str) -> bool {
         self.regional.contains_key(region)
     }
@@ -53,6 +60,16 @@ impl ImageStore {
         id: &str,
         data: &Bytes,
     ) -> Result<String, sqlx::Error> {
+        if let Some(files) = &self.files
+            && files.writes_enabled
+        {
+            if !files.is_local(region) {
+                return Err(sqlx::Error::Protocol(
+                    "file writes must stay in the receiving region".into(),
+                ));
+            }
+            return files.put(id, data).await;
+        }
         let db = self.regional.get(region).ok_or(sqlx::Error::RowNotFound)?;
         sqlx::query("INSERT INTO astra_image_data (id,data) VALUES ($1,$2)")
             .bind(id)
@@ -162,11 +179,22 @@ impl ImageStore {
                 crate::image_cache_push::CachePeers::from_env(),
             )
             .with_cache_enabled(cache == "1")
-            .with_regional_pools(regional),
+            .with_regional_pools(regional)
+            .with_file_store(crate::file_store::FileStore::from_env(&config.region).await),
         )
     }
 
     pub async fn put(&self, id: &str, data: &Bytes) -> Result<String, sqlx::Error> {
+        if let Some(files) = &self.files
+            && files.writes_enabled
+        {
+            if !files.is_local("asia") {
+                return Err(sqlx::Error::Protocol(
+                    "unqualified file writes require the Asia writer".into(),
+                ));
+            }
+            return files.put(id, data).await;
+        }
         let hash: Option<[u8; 32]> = self.cache.as_ref().map(|_| Sha256::digest(data).into());
         if let (Some(cache), Some(hash)) = (&self.cache, &hash)
             && let Some(key) = cache.lock().unwrap().matching_key(hash, data)
@@ -190,6 +218,13 @@ impl ImageStore {
     }
 
     pub async fn get(&self, id: &str) -> Result<Vec<u8>, sqlx::Error> {
+        if id.starts_with("fs:") {
+            let files = self
+                .files
+                .as_ref()
+                .ok_or_else(|| sqlx::Error::Protocol("file image readers are required".into()))?;
+            return files.get(id).await;
+        }
         let cached = self
             .cache
             .as_ref()

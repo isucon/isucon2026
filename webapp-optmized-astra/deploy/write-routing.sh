@@ -55,6 +55,7 @@ UNIT
         bash "$(dirname "$0")/tokio-runtime.sh" webapp-optmized-astra-writer
         bash "$(dirname "$0")/logging-runtime.sh" webapp-optmized-astra-writer
         bash "$(dirname "$0")/image-store-runtime.sh" webapp-optmized-astra-writer
+        bash "$(dirname "$0")/file-store-runtime.sh" webapp-optmized-astra-writer asia
         bash "$(dirname "$0")/upload-proxy-runtime.sh" webapp-optmized-astra-writer asia
         systemctl daemon-reload
         systemctl enable webapp-optmized-astra-writer
