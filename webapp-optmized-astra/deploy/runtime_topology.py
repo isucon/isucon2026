@@ -6,9 +6,7 @@ def asia_synchronous(runtime):
     assert not enabled or (runtime.get("asiaReplicaEnabled", False)
                            and runtime["replicasEnabled"]
                            and runtime.get("writeFenceEnabled", False)
-                           and runtime.get("writeFenceMode") == "native"
-                           and (not runtime.get("asiaReplicaReads", False)
-                                or runtime.get("asiaReplicaReadScope") == "all"))
+                           and runtime.get("writeFenceMode") == "native")
     return enabled
 
 

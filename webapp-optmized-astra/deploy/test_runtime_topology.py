@@ -58,6 +58,9 @@ class ReplicaRoutingTest(unittest.TestCase):
         self.assertEqual(read_settings(self.runtime, self.asia), ('127.0.0.1', False))
         self.assertEqual(read_settings(self.runtime, self.asia, writer=True), ('', False))
         self.assertEqual(read_scope(self.runtime, self.asia), 'all')
+        self.runtime['asiaReplicaReadScope'] = 'feed_search'
+        self.assertEqual(read_scope(self.runtime, self.asia), 'feed_search')
+        self.assertEqual(read_settings(self.runtime, self.asia), ('127.0.0.1', False))
         self.runtime['asiaReplicaSynchronous'] = False
         self.assertEqual(read_settings(self.runtime, self.asia), ('127.0.0.1', True))
         self.assertEqual(synchronous_standby_names(self.runtime),
@@ -66,8 +69,7 @@ class ReplicaRoutingTest(unittest.TestCase):
     def test_polling_or_missing_standby_cannot_remove_asia_read_fence(self):
         self.runtime.update(asiaReplicaSynchronous=True, asiaReplicaReadScope='all')
         for changes in ({'writeFenceMode': 'poll'}, {'writeFenceEnabled': False},
-                        {'asiaReplicaEnabled': False}, {'replicasEnabled': False},
-                        {'asiaReplicaReadScope': 'feed_search'}):
+                        {'asiaReplicaEnabled': False}, {'replicasEnabled': False}):
             runtime = {**self.runtime, **changes}
             with self.assertRaises(AssertionError):
                 asia_synchronous(runtime)

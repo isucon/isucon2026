@@ -31,8 +31,7 @@ if (!["all", "feed_search"].includes(runtime.asiaReplicaReadScope)) {
 }
 if (typeof (runtime.asiaReplicaSynchronous ?? false) !== "boolean"
     || (runtime.asiaReplicaSynchronous && (!runtime.asiaReplicaEnabled || !runtime.replicasEnabled
-        || !runtime.writeFenceEnabled || runtime.writeFenceMode !== "native"
-        || (runtime.asiaReplicaReads && runtime.asiaReplicaReadScope !== "all")))) {
+        || !runtime.writeFenceEnabled || runtime.writeFenceMode !== "native"))) {
     throw new Error("Synchronous Asia reads require the existing standby and native write response fences");
 }
 export const artifactSha256 = createHash("sha256")
