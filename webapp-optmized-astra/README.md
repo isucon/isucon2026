@@ -269,3 +269,4 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261028T062146Z-team10 | filesystem image writes with corrected regional reference validation | PASS | 150,931 |
 | 20261028T062953Z-team10 | repeat filesystem images after GC and full process restart | PASS | 163,405 |
 | 20261028T063417Z-team10 | filesystem images with alternate seed 20261028 | PASS | 164,533 |
+| 20261028T065922Z-team10 | small initial-image archive with original 128-connection listen backlog | PASS | 157,618 |
