@@ -16,6 +16,8 @@ Unicode検索のGIN索引、JPEG検証、ZIP出力、接続再利用、通知の
 
 [画像保存のファイル操作削減](experiments/direct-image-files/README.md)は178,502点・181,905点でPASS。最終名を排他的に作成し、永続化が完了してからSQLに公開する。[アプリのmalloc閾値128KiB](experiments/application-malloc/README.md)は192,384点・164,303点でPASS。反復時のAsiaアプリ平均RSS合計は約1,203→886MiBへ減ったが、初回スコアは再現しなかった。メモリ削減として維持し、スコア改善とは扱わない。GC・再起動後の18画像と実行設定は一致した。
 
+[登録・ログインの段階別計測](experiments/auth-timing/README.md)では、Asiaの遅い要求で受付待ちが支配的だった。[認証枠を分ける比較](experiments/auth-admission/README.md)は128＋128枠で166,616点、64＋64枠で177,380点でPASSしたが、全体性能の改善を確認できず、元の共有128枠へ戻した。診断無効での復帰は179,960点・PASS。
+
 [db1に初期画像を複製する比較](experiments/db1-archive-peer/README.md)では、準備のみのローカル読み取りが188,226点、db1経由が174,918点、aio threads併用が179,400点・187,288点でPASS。Asiaのディスク読み取りは減ったが画像応答は遅くなり、改善を確認できなかったためローカル読み取りへ戻した。db1のコピーは保持し、private配信は無効にした。
 
 [releaseのRustテスト52件とコピー処理5件が成功](experiments/db1-archive-peer/validation.json)。性能測定用1件は除外。実PostgreSQLとレプリカを使い、画像API・ZIP本文、キャッシュ後の鍵変更・削除などを検証した。db1配信を含む再起動後の18画像と75範囲も一致した。準備時の登録・画像検証タイムアウト、負荷中の通知購読503は未解決で、失敗記録を残している。
