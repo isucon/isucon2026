@@ -42,6 +42,7 @@ pub mod search_index;
 mod search_text;
 pub mod server;
 pub mod session;
+pub mod signature_file;
 pub mod timefmt;
 pub mod user;
 pub mod user_api;
