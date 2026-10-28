@@ -147,18 +147,13 @@ pub async fn create_post_handler(
     } else {
         None
     };
-    let mut image_tx = if store.is_some() {
-        Some(h.db.begin().await?)
-    } else {
-        None
-    };
     let data = if store.is_some() {
         &[][..]
     } else {
         &image_data[..]
     };
     let statement = format!(
-        "SELECT {}, {user_columns} FROM astra_create_post($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) r \
+        "SELECT {}, {user_columns} FROM astra_create_post_asset($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) r \
          CROSS JOIN LATERAL (SELECT (r.post_row).*) p \
          CROSS JOIN LATERAL (SELECT (r.window_row).*) w",
         crate::post::POST_COLUMNS
@@ -173,12 +168,9 @@ pub async fn create_post_handler(
         .bind(&location.kind)
         .bind(f64_to_numeric(location.latitude))
         .bind(f64_to_numeric(location.longitude))
-        .bind(&location.locality);
-    let result = if let Some(tx) = image_tx.as_mut() {
-        query.fetch_one(&mut **tx).await
-    } else {
-        query.fetch_one(&h.db).await
-    };
+        .bind(&location.locality)
+        .bind(&asset_key);
+    let result = query.fetch_one(&h.db).await;
     let mut result = result.map_err(|err| {
         if let Some(database_error) = err.as_database_error()
             && database_error.code().as_deref() == Some("PZ001")
@@ -189,19 +181,6 @@ pub async fn create_post_handler(
             Error::from(err)
         }
     })?;
-    if let Some(mut tx) = image_tx {
-        let updated =
-            sqlx::query("UPDATE image_objects SET asset_key=$3 WHERE id=$1 AND created_at=$2")
-                .bind(&image_id)
-                .bind(result.post.posted_at)
-                .bind(&asset_key)
-                .execute(&mut *tx)
-                .await?;
-        if updated.rows_affected() != 1 {
-            return Err(anyhow::anyhow!("image metadata was not published").into());
-        }
-        tx.commit().await?;
-    }
     // The optional push protocol uses the public image UUID as the asset key.
     // Shared assets use the independent store's cache instead.
     if asset_key.as_deref() == Some(image_id.as_str())
