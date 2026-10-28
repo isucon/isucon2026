@@ -307,3 +307,4 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261028T093848Z-team10 | Asia local metadata reads with fresh per-request WAL barriers | PASS | 141,182 |
 | 20261028T100354Z-team10 | selective Asia replica reads for feed and search; image metadata and ZIP stay on primary | PASS | 176,813 |
 | 20261028T100711Z-team10 | repeat selective Asia feed and search replica reads | FAIL | 0 |
+| 20261028T101058Z-team10 | selective read recheck after isolated initial login timeout; unchanged runtime | PASS | 174,050 |
