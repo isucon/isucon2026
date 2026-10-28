@@ -1011,6 +1011,12 @@ async fn independent_bytes_publish_atomically_and_preserve_visibility_export_and
     );
     let reaction: Value = serde_json::from_slice(&reaction).unwrap();
     let reaction_url = reaction["imageUrl"].as_str().unwrap();
+    let same_timestamp: bool = sqlx::query_scalar("SELECT i.created_at=r.created_at FROM realmojis r JOIN image_objects i ON i.id=r.image_id WHERE r.id=$1")
+        .bind(reaction["id"].as_str().unwrap()).fetch_one(&db).await.unwrap();
+    assert!(
+        same_timestamp,
+        "reaction timestamps also locate their image partition"
+    );
     // Force a different metadata timestamp to exercise the immutable-key
     // fallback independently of clock precision in the upload response.
     sqlx::query("UPDATE image_objects SET created_at=created_at-interval '1 second' WHERE id=(SELECT image_id FROM realmojis WHERE id=$1)")
