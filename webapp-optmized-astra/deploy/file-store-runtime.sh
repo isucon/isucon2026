@@ -11,18 +11,18 @@ from pathlib import Path
 import sys
 runtime=json.loads(Path(sys.argv[1]).read_text());region=sys.argv[2];service=sys.argv[3]
 config=runtime.get('fileImageStore',{'enabled':False,'writesEnabled':False})
-enabled=config['enabled'];writes=config['writesEnabled'];assert not writes or enabled
+enabled=config['enabled'];writes=config['writesEnabled'];archives=config.get('archiveReadsEnabled',False);assert not (writes or archives) or enabled
 root=config.get('root','/var/lib/astra-images');port=config.get('port',8082)
 assert root=='/var/lib/astra-images' and port==8082
 apps=runtime['applications'];host=next(a['host'] for a in apps if a['region']==region)
 peers={a['region']:a['host']+':8082' for a in apps} if enabled else {}
-lines=['[Service]',f'Environment=ISUREAL_FILE_IMAGE_ROOT={root if enabled else ""}',f'Environment=ISUREAL_FILE_IMAGE_WRITES={int(writes)}',"Environment='ISUREAL_FILE_IMAGE_HOSTS_JSON="+json.dumps(peers,separators=(',',':'))+"'"]
+lines=['[Service]',f'Environment=ISUREAL_FILE_IMAGE_ROOT={root if enabled else ""}',f'Environment=ISUREAL_FILE_IMAGE_WRITES={int(writes)}',f'Environment=ISUREAL_FILE_IMAGE_ARCHIVES={int(archives)}',"Environment='ISUREAL_FILE_IMAGE_HOSTS_JSON="+json.dumps(peers,separators=(',',':'))+"'"]
 Path(f'/etc/systemd/system/{service}.service.d/file-store.conf').write_text('\n'.join(lines)+'\n')
 text='# File image readers disabled by the Pulumi runtime.\n'
 if enabled:
  import pwd
  owner=pwd.getpwnam('isucon')
- for folder in [Path(root)]+[Path(root)/f'{n:02x}' for n in range(256)]:
+ for folder in [Path(root),Path(root)/'packs']+[Path(root)/f'{n:02x}' for n in range(256)]:
   folder.mkdir(exist_ok=True);os.chown(folder,owner.pw_uid,owner.pw_gid);folder.chmod(0o755)
  for folder in (Path(root),Path(root).parent):
   fd=os.open(folder,os.O_RDONLY|os.O_DIRECTORY)

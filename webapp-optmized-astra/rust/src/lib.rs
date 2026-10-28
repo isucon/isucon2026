@@ -61,3 +61,5 @@ pub mod stored_upload;
 pub mod db_pool;
 
 pub mod file_store;
+
+pub mod archive_store;

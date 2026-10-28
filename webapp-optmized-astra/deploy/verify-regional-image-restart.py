@@ -7,6 +7,7 @@ import hashlib
 import hmac
 import json
 import os
+import re
 from pathlib import Path
 import subprocess
 import sys
@@ -26,7 +27,7 @@ def fetch(uri):
     return {'bytes':len(data),'sha256':hashlib.sha256(data).hexdigest()}
 
 
-if sys.argv[1:] == ['capture']:
+if sys.argv[1:2] == ['capture'] and len(sys.argv) in (2,3):
     import base64
     env=dict(os.environ,PGPASSWORD=os.environ.get('ISUREAL_DB_PASSWORD','isureal'))
     query="""SELECT coalesce(json_agg(row_to_json(sample)), '[]'::json) FROM (
@@ -43,13 +44,24 @@ if sys.argv[1:] == ['capture']:
         ORDER BY p.posted_at DESC,p.id DESC LIMIT 2
       ) images
     ) sample"""
-    command=['psql','-XAt','-v','ON_ERROR_STOP=1',
+    historical = len(sys.argv)==3
+    if historical:
+        partition=sys.argv[2]
+        assert re.fullmatch('image_objects_202[4-7](0[1-9]|1[0-2])',partition)
+        query=f"""SELECT coalesce(json_agg(row_to_json(sample)),'[]'::json) FROM (
+          SELECT u.region,i.id AS image_id,u.secret_key_hash FROM {partition} i
+          JOIN users u ON u.id=i.owner_user_id AND u.status='active'
+          WHERE EXISTS(SELECT 1 FROM posts p WHERE p.image_id=i.id AND p.author_id=u.id AND p.deleted_at IS NULL)
+          ORDER BY i.id LIMIT 5
+        ) sample"""
+    command=['psql' ,'-XAt','-v','ON_ERROR_STOP=1',
              '-h',os.environ.get('ISUREAL_DB_HOST','192.168.148.10'),
              '-p',os.environ.get('ISUREAL_DB_PORT','5432'),
              '-U',os.environ.get('ISUREAL_DB_USER','isureal'),
              '-d',os.environ.get('ISUREAL_DB_NAME','isureal'),'-c',query]
     rows=json.loads(subprocess.check_output(command,env=env,text=True))
-    assert len(rows)==6 and {r['region'] for r in rows}=={'asia','europe','america'}
+    assert len(rows)==(5 if historical else 6)
+    if not historical:assert {r['region'] for r in rows}=={'asia','europe','america'}
     samples=[]
     exp=int(time.time())+3600
     for row in rows:
@@ -62,12 +74,12 @@ if sys.argv[1:] == ['capture']:
     snapshot.parent.mkdir(mode=0o711,parents=True,exist_ok=True)
     fd=os.open(snapshot,os.O_WRONLY|os.O_CREAT|os.O_TRUNC,0o600)
     with os.fdopen(fd,'w') as output:json.dump(samples,output)
-    print('Captured 6 published images: 2 each from Asia, Europe and America stores')
+    print('Captured',len(samples),'published images'+(' from '+partition if historical else ': 2 each from Asia, Europe and America stores'))
 elif sys.argv[1:] == ['verify']:
     samples=json.loads(snapshot.read_text())
     for sample in samples:
         assert fetch(sample['uri'])=={k:sample[k] for k in ('bytes','sha256')}
     snapshot.unlink()
-    print('Verified 6 images after restart: exact bytes and JPEG types match for all three stores')
+    print('Verified',len(samples),'images after restart: exact bytes and JPEG types match')
 else:
     raise SystemExit('Expected capture or verify')

@@ -240,7 +240,7 @@ impl ImageStore {
     }
 
     pub async fn get(&self, id: &str) -> Result<Vec<u8>, sqlx::Error> {
-        if id.starts_with("fs:") {
+        if id.starts_with("fs:") || id.starts_with("pack:") {
             let files = self
                 .files
                 .as_ref()

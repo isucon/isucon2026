@@ -18,6 +18,38 @@ gc = module('asset_gc', 'asset-gc.py')
 
 
 class FileCleanup(unittest.TestCase):
+    def test_archives_are_retained_until_the_last_published_range_is_removed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);packs=root/'packs';packs.mkdir()
+            live,orphan=[uuid.uuid4().hex for _ in range(2)]
+            (packs/live).write_bytes(b'firstsecond');(packs/orphan).write_bytes(b'orphan')
+            refs=[f'pack:{live}:0:5',f'pack:{live}:5:6']
+            result=files.collect(root,refs,True)
+            self.assertEqual(result['orphan_files'],1)
+            self.assertEqual((packs/live).read_bytes(),b'firstsecond')
+            files.collect(root,refs[1:],True)
+            self.assertTrue((packs/live).exists())
+            files.collect(root,[],True)
+            self.assertFalse((packs/live).exists())
+
+    def test_truncated_archive_aborts_without_removing_orphans(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);packs=root/'packs';packs.mkdir()
+            live,orphan=[uuid.uuid4().hex for _ in range(2)]
+            (packs/live).write_bytes(b'short');(packs/orphan).write_bytes(b'orphan')
+            with self.assertRaisesRegex(ValueError,'published archive'):
+                files.collect(root,[f'pack:{live}:4:2'],True)
+            self.assertTrue((packs/orphan).exists())
+
+    def test_archive_snapshots_require_all_regions_and_valid_ranges(self):
+        key=f'pack:{uuid.uuid4().hex}:0:1'
+        regions=['asia','europe','america']
+        grouped=gc.split_references([key],regions,regions,True)
+        self.assertEqual(grouped['pack'],[key])
+        with self.assertRaises(ValueError):gc.split_references([key],regions,regions)
+        for invalid in [key+':extra',key[:-1]+'0',key.replace(':0:',':8589934592:')]:
+            with self.assertRaises(ValueError):gc.split_references([invalid],regions,regions,True)
+
     def test_mixed_references_have_distinct_storage_namespaces(self):
         key = str(uuid.uuid4())
         result = gc.split_references([key, 'europe:'+key, 'fs:asia:'+key, 'fs:europe:'+key], ['asia','europe'], ['asia','europe'])
