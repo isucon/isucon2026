@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{sync::Arc, time::Instant};
 
 use crate::stored_upload::StoredUpload;
 use axum::Extension;
@@ -88,6 +88,7 @@ pub async fn create_post_handler(
     stored: Option<Extension<StoredUpload>>,
     Bind(input): Bind<CreatePostRequest>,
 ) -> Result<Response, Error> {
+    let timing = (*crate::write_fence::POST_TIMING).then(Instant::now);
     let Some(image) = &input.image else {
         return Err(new_api_error(StatusCode::BAD_REQUEST, "invalid_post"));
     };
@@ -125,6 +126,7 @@ pub async fn create_post_handler(
         return Err(new_api_error(StatusCode::BAD_REQUEST, "invalid_post"));
     }
 
+    let validated = timing.as_ref().map(|_| Instant::now());
     let image_id = Uuid::new_v4().to_string();
     let post_id = Uuid::new_v4().to_string();
     let user_columns = crate::user::USER_COLUMNS
@@ -143,6 +145,7 @@ pub async fn create_post_handler(
     } else {
         None
     };
+    let saved = timing.as_ref().map(|_| Instant::now());
     let data = if store.is_some() {
         &[][..]
     } else {
@@ -167,6 +170,7 @@ pub async fn create_post_handler(
         .bind(&location.locality)
         .bind(&asset_key);
     let result = query.fetch_one(&h.db).await;
+    let queried = timing.as_ref().map(|_| Instant::now());
     let mut result = result.map_err(|err| {
         if let Some(database_error) = err.as_database_error()
             && database_error.code().as_deref() == Some("PZ001")
@@ -191,10 +195,23 @@ pub async fn create_post_handler(
         );
     }
     result.author.set_image_key()?;
-    json(
+    let response = json(
         StatusCode::CREATED,
         new_post_response(&result.post, &result.author),
-    )
+    );
+    if let Some(started) = timing {
+        let validated = validated.unwrap();
+        let saved = saved.unwrap();
+        let queried = queried.unwrap();
+        eprintln!(
+            "{{\"metric\":\"post_work\",\"at_ms\":{},\"stored\":{},\"validation_us\":{},\"store_us\":{},\"sql_us\":{},\"response_us\":{}}}",
+            Utc::now().timestamp_millis(), u8::from(stored.is_some()),
+            validated.duration_since(started).as_micros(),
+            saved.duration_since(validated).as_micros(),
+            queried.duration_since(saved).as_micros(), queried.elapsed().as_micros(),
+        );
+    }
+    response
 }
 
 pub fn new_post_response(post: &Post, user: &User) -> CreatePostResponse {
