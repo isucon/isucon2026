@@ -235,7 +235,14 @@ func (r *Runner) listen(ctx context.Context, u *user, out chan notice, subscribe
 		opened := time.Now()
 		stream, err := u.API.OpenNotifications(ctx, u.Token)
 		if subscribed != nil {
-			subscribed <- struct{}{}
+			select {
+			case subscribed <- struct{}{}:
+			case <-ctx.Done():
+				if stream != nil {
+					_ = stream.Close()
+				}
+				return
+			}
 			subscribed = nil
 		}
 		if err != nil {
@@ -260,7 +267,12 @@ func (r *Runner) listen(ctx context.Context, u *user, out chan notice, subscribe
 			case <-out:
 			default:
 			}
-			out <- notice{Notification: n, received: received}
+			select {
+			case out <- notice{Notification: n, received: received}:
+			case <-ctx.Done():
+				_ = stream.Close()
+				return
+			}
 		}
 		// 残りを読み切って接続を使い回す。応答を終えない実装でも通知を待たせないよう、
 		// 通知を渡してから閉じる。
