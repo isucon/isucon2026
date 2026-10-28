@@ -365,3 +365,4 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261028T175325Z-team10 | direct immutable image files before SQL publication | PASS | 178,502 |
 | 20261028T180156Z-team10 | repeat direct immutable image files without restart | PASS | 181,905 |
 | 20261028T180707Z-team10 | application fixed malloc thresholds at 128 KiB | PASS | 192,384 |
+| 20261028T181011Z-team10 | repeat application fixed malloc thresholds without restart | PASS | 164,303 |
