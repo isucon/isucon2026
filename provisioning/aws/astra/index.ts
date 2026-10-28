@@ -153,6 +153,7 @@ if (runtime.archivePeer) {
     const peer = runtime.archivePeer;
     if (typeof peer.enabled !== "boolean" || typeof peer.readsEnabled !== "boolean"
         || (peer.readsEnabled && !peer.enabled)
+        || (peer.aioThreads !== undefined && typeof peer.aioThreads !== "boolean")
         || peer.host !== runtime.database.host || peer.instanceId !== runtime.database.instanceId
         || peer.host !== "192.168.148.10" || peer.port !== 8082
         || peer.root !== "/var/lib/astra-images/packs"

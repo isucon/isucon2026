@@ -18,12 +18,14 @@ if p['enabled']:
  fd=os.open('/var/lib',os.O_RDONLY|os.O_DIRECTORY)
  try:os.fsync(fd)
  finally:os.close(fd)
+ aio='threads' if p.get('aioThreads',False) else 'off'
  allow='\n'.join('    allow '+a['host']+';' for a in r['applications']+[r['database']])
  text=f'''# Managed by provisioning/aws/astra. Existing db1 immutable archive peer.
 server {{
     listen {p['host']}:{p['port']};
     server_name _;
     sendfile on;
+    aio {aio};
     tcp_nopush on;
     access_log off;
     gzip off;
