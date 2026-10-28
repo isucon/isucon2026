@@ -95,7 +95,8 @@ try:
     print('PASS: paused replay blocks HTTP reads; timeout returns 503; resumed replay exposes committed updates')
 finally:
     local_sql('SELECT pg_wal_replay_resume()')
-    os.killpg(watchdog.pid,signal.SIGTERM)
+    try:os.killpg(watchdog.pid,signal.SIGTERM)
+    except ProcessLookupError:pass
     watchdog.wait()
     if token:
         status,_=request('POST','/api/me/account-deletion')
