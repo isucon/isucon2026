@@ -14,7 +14,7 @@ const WRITE_SLOTS: u32 = 64;
 const BYTES_PER_SLOT: u64 = 256 * 1024;
 const SMALL_BODY_BYTES: u64 = 64 * 1024;
 pub(crate) const SMALL_WRITE_SLOTS: usize = 128;
-pub(crate) const IMAGE_RESPONSE_SLOTS: usize = 256;
+pub(crate) const IMAGE_RESPONSE_SLOTS: usize = 64;
 
 #[derive(Default)]
 struct Pending {
