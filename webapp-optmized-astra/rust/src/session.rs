@@ -7,7 +7,7 @@ use axum::middleware::Next;
 use axum::response::Response;
 use chrono::{DateTime, Utc};
 use sha2::{Digest, Sha256};
-use sqlx::{Executor, PgConnection, PgPool, Postgres};
+use sqlx::{PgConnection, PgPool};
 use uuid::Uuid;
 
 use crate::api_error::{Error, new_api_error};
@@ -124,8 +124,6 @@ pub async fn create_login_session_tx(
     tx: &mut PgConnection,
     user_id: &str,
 ) -> Result<Session, Error> {
-    let random_token = Uuid::new_v4().to_string();
-    let token_hash = hex::encode(Sha256::digest(random_token.as_bytes()));
     let _locked_user_id: String = sqlx::query_scalar(
         "SELECT id FROM users WHERE id = $1 AND status = 'active' FOR NO KEY UPDATE",
     )
@@ -133,6 +131,17 @@ pub async fn create_login_session_tx(
     .fetch_one(&mut *tx)
     .await
     .context("failed to lock user")?;
+    create_login_session_for_locked_user_tx(tx, user_id).await
+}
+
+/// The caller must hold the active user's row lock until this transaction ends.
+/// Login already acquired it while checking the current credentials and status.
+pub(crate) async fn create_login_session_for_locked_user_tx(
+    tx: &mut PgConnection,
+    user_id: &str,
+) -> Result<Session, Error> {
+    let random_token = Uuid::new_v4().to_string();
+    let token_hash = hex::encode(Sha256::digest(random_token.as_bytes()));
     sqlx::query(
         r#"
   UPDATE login_sessions
@@ -145,32 +154,19 @@ pub async fn create_login_session_tx(
     .await
     .context("failed to invalidate sessions")?;
     let session_id = Uuid::new_v4().to_string();
-    sqlx::query(
+    let mut session: Session = sqlx::query_as(
         r#"
   INSERT INTO login_sessions (id, user_id, token_hash)
   VALUES ($1, $2, $3)
+  RETURNING user_id, token_hash, created_at
  "#,
     )
     .bind(&session_id)
     .bind(user_id)
     .bind(&token_hash)
-    .execute(&mut *tx)
+    .fetch_one(&mut *tx)
     .await
     .context("failed to insert session")?;
-    let mut session = get_login_session(&mut *tx, &session_id).await?;
     session.token = random_token;
-    Ok(session)
-}
-
-async fn get_login_session<'c>(
-    db: impl Executor<'c, Database = Postgres>,
-    session_id: &str,
-) -> Result<Session, Error> {
-    let session =
-        sqlx::query_as("SELECT user_id, token_hash, created_at FROM login_sessions WHERE id = $1")
-            .bind(session_id)
-            .fetch_one(db)
-            .await
-            .context("failed to get session")?;
     Ok(session)
 }
