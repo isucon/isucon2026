@@ -17,3 +17,16 @@ pub fn options(max_connections: u32) -> PgPoolOptions {
             })
         })
 }
+
+/// Bound ordinary SQL concurrency separately from response-visibility barriers.
+pub fn metadata_connections() -> u32 {
+    let connections = std::env::var("ISUREAL_METADATA_POOL_CONNECTIONS")
+        .unwrap_or_else(|_| "30".into())
+        .parse()
+        .expect("metadata pool capacity");
+    assert!(
+        (4..=64).contains(&connections),
+        "metadata pool must have 4–64 connections"
+    );
+    connections
+}
