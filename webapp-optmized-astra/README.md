@@ -241,3 +241,4 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261028T014307Z-team10 | selected regional application with alternate seed 20261028 | FAIL | 0 |
 | 20261028T014704Z-team10 | repeat alternate seed after registration timeout investigation | PASS | 120,515 |
 | 20261028T044719Z-team10 | 133279-point application control after regional image compaction | PASS | 117,126 |
+| 20261028T045250Z-team10 | normalized Unicode search text with atomic updates and stale-name fallback | PASS | 129,685 |
