@@ -1,4 +1,4 @@
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::{Arc, LazyLock, Mutex, Weak};
 
 use axum::extract::{RawQuery, State};
@@ -46,6 +46,7 @@ struct CachedImage {
 
 struct ImageCache {
     images: HashMap<String, CachedImage>,
+    owners: HashMap<String, HashSet<String>>,
     order: VecDeque<String>,
     bytes: usize,
     capacity: usize,
@@ -55,6 +56,7 @@ impl Default for ImageCache {
     fn default() -> Self {
         Self {
             images: HashMap::new(),
+            owners: HashMap::new(),
             order: VecDeque::new(),
             bytes: 0,
             capacity: 1024 * 1024 * 1024,
@@ -141,9 +143,10 @@ fn cached_bytes_for_object(id: &str, object: &ImageObject) -> Option<Bytes> {
         return None;
     }
     image.recently_used = true;
-    image.created_at = object.created_at;
-    image.owner_id = Some(object.owner_id.clone());
-    Some(image.data.clone())
+    let data = image.data.clone();
+    let version = image.version.clone();
+    cache.update_metadata(id, &version, object.created_at, &object.owner_id);
+    Some(data)
 }
 
 pub fn remember_stored_image(id: String, created_at: DateTime<Utc>, data: Bytes) {
@@ -177,25 +180,59 @@ pub(crate) struct ExportCache {
 }
 
 pub(crate) fn cached_export_images(owner: &str) -> ExportCache {
-    let mut result = ExportCache {
-        ids: Vec::new(),
-        versions: Vec::new(),
-        timestamps: Vec::new(),
-        bytes: HashMap::new(),
-    };
-    let cache = IMAGE_CACHE.lock().unwrap();
-    for (id, image) in &cache.images {
-        if image.owner_id.as_deref() == Some(owner) {
-            result.ids.push(id.clone());
-            result.versions.push(image.version.clone());
-            result.timestamps.push(image.created_at);
-            result.bytes.insert(id.clone(), image.data.clone());
-        }
-    }
-    result
+    IMAGE_CACHE.lock().unwrap().export(owner)
 }
 
 impl ImageCache {
+    fn export(&self, owner: &str) -> ExportCache {
+        let mut result = ExportCache {
+            ids: Vec::new(),
+            versions: Vec::new(),
+            timestamps: Vec::new(),
+            bytes: HashMap::new(),
+        };
+        if let Some(ids) = self.owners.get(owner) {
+            for id in ids {
+                let image = &self.images[id];
+                result.ids.push(id.clone());
+                result.versions.push(image.version.clone());
+                result.timestamps.push(image.created_at);
+                result.bytes.insert(id.clone(), image.data.clone());
+            }
+        }
+        result
+    }
+
+    fn remove_owner(&mut self, owner: Option<&str>, id: &str) {
+        if let Some(owner) = owner
+            && let Some(ids) = self.owners.get_mut(owner)
+        {
+            ids.remove(id);
+            if ids.is_empty() {
+                self.owners.remove(owner);
+            }
+        }
+    }
+
+    fn update_metadata(&mut self, id: &str, version: &str, timestamp: DateTime<Utc>, owner: &str) {
+        let Some(image) = self.images.get_mut(id) else {
+            return;
+        };
+        if image.version != version {
+            return;
+        }
+        image.created_at = timestamp;
+        if image.owner_id.as_deref() == Some(owner) {
+            return;
+        }
+        let old_owner = image.owner_id.replace(owner.to_owned());
+        self.remove_owner(old_owner.as_deref(), id);
+        self.owners
+            .entry(owner.to_owned())
+            .or_default()
+            .insert(id.to_owned());
+    }
+
     fn get(&mut self, id: &str) -> Option<CachedImage> {
         let image = self.images.get_mut(id)?;
         image.recently_used = true;
@@ -216,6 +253,7 @@ impl ImageCache {
             }
             if let Some(old) = self.images.remove(&key) {
                 self.bytes -= old.data.len();
+                self.remove_owner(old.owner_id.as_deref(), &key);
                 return true;
             }
         }
@@ -228,6 +266,7 @@ impl ImageCache {
         }
         if let Some(old) = self.images.remove(&id) {
             self.bytes -= old.data.len();
+            self.remove_owner(old.owner_id.as_deref(), &id);
             self.order.retain(|key| key != &id);
         }
         while self.bytes + image.data.len() > self.capacity
@@ -236,6 +275,12 @@ impl ImageCache {
             if !self.evict() {
                 break;
             }
+        }
+        if let Some(owner) = &image.owner_id {
+            self.owners
+                .entry(owner.clone())
+                .or_default()
+                .insert(id.clone());
         }
         self.bytes += image.data.len();
         self.order.push_back(id.clone());
@@ -369,13 +414,15 @@ async fn get_image(
             let cached = cached.expect("data omitted only for the matching cached version");
             // Immutable asset identity validates bytes even when the upload
             // response timestamp differs from the image row timestamp.
-            if (cached.created_at != object.created_at
-                || cached.owner_id.as_deref() != Some(object.owner_id.as_str()))
-                && let Some(current) = IMAGE_CACHE.lock().unwrap().images.get_mut(&input.image_id)
-                && current.version == cached.version
+            if cached.created_at != object.created_at
+                || cached.owner_id.as_deref() != Some(object.owner_id.as_str())
             {
-                current.created_at = object.created_at;
-                current.owner_id = Some(object.owner_id);
+                IMAGE_CACHE.lock().unwrap().update_metadata(
+                    &input.image_id,
+                    &cached.version,
+                    object.created_at,
+                    &object.owner_id,
+                );
             }
             cached.data
         }
@@ -525,5 +572,85 @@ mod cache_tests {
         cache.insert("a".into(), entry(b"aaaa"));
         assert_eq!(cache.bytes, 4);
         assert_eq!(response.as_ref(), b"aaa");
+    }
+    #[test]
+    fn owner_index_tracks_learning_replacement_and_eviction() {
+        let mut cache = ImageCache {
+            capacity: 6,
+            ..ImageCache::default()
+        };
+        cache.insert("a".into(), entry(b"aa"));
+        assert!(cache.export("alice").ids.is_empty());
+        let time = Utc::now();
+        cache.update_metadata("a", "wrong-version", time, "alice");
+        assert!(cache.owners.is_empty());
+        cache.update_metadata("a", "1", time, "alice");
+        let pinned = cache.export("alice");
+        assert_eq!(pinned.ids, ["a"]);
+        assert_eq!(pinned.timestamps, [time]);
+        assert_eq!(pinned.versions, ["1"]);
+        cache.update_metadata("a", "1", time, "bob");
+        assert!(!cache.owners.contains_key("alice"));
+        assert_eq!(cache.export("bob").ids, ["a"]);
+        let mut b = entry(b"bb");
+        b.owner_id = Some("alice".into());
+        cache.insert("b".into(), b);
+        cache.insert("a".into(), entry(b"new"));
+        assert!(!cache.owners.contains_key("bob"));
+        assert_eq!(cache.export("alice").ids, ["b"]);
+        cache.insert("c".into(), entry(b"cc")); // Evicts b to fit the byte budget.
+        assert!(cache.owners.is_empty());
+        assert!(cache.export("alice").ids.is_empty());
+        assert_eq!(pinned.bytes["a"].as_ref(), b"aa");
+        cache.update_metadata("missing", "1", time, "alice");
+        assert!(cache.owners.is_empty());
+    }
+
+    #[test]
+    #[ignore = "local export-cache timing comparison"]
+    fn compare_export_owner_index_with_full_scan() {
+        use std::{hint::black_box, time::Instant};
+        let mut cache = ImageCache::default();
+        for i in 0..IMAGE_CACHE_ENTRIES {
+            let mut image = entry(b"sample image");
+            image.owner_id = Some(format!("owner-{}", i % 1024));
+            cache.insert(format!("image-{i}"), image);
+        }
+        let scan = |owner: &str| {
+            let mut result = ExportCache {
+                ids: Vec::new(),
+                versions: Vec::new(),
+                timestamps: Vec::new(),
+                bytes: HashMap::new(),
+            };
+            for (id, image) in &cache.images {
+                if image.owner_id.as_deref() == Some(owner) {
+                    result.ids.push(id.clone());
+                    result.versions.push(image.version.clone());
+                    result.timestamps.push(image.created_at);
+                    result.bytes.insert(id.clone(), image.data.clone());
+                }
+            }
+            result
+        };
+        for owner in ["owner-0", "owner-31", "missing"] {
+            assert_eq!(scan(owner).bytes, cache.export(owner).bytes);
+        }
+        for pass in 0..3 {
+            let started = Instant::now();
+            for i in 0..2000 {
+                black_box(scan(black_box(&format!("owner-{}", i % 1024))));
+            }
+            let scan_us = started.elapsed().as_micros();
+            let started = Instant::now();
+            for i in 0..2000 {
+                black_box(cache.export(black_box(&format!("owner-{}", i % 1024))));
+            }
+            println!(
+                "pass={pass} exports=2000 entries={} scan_us={scan_us} indexed_us={}",
+                IMAGE_CACHE_ENTRIES,
+                started.elapsed().as_micros()
+            );
+        }
     }
 }
