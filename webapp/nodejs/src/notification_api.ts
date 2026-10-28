@@ -4,14 +4,13 @@ import { must } from "./db.ts";
 import { logError, marshalJSON } from "./response.ts";
 import type { Env, HandlerContext } from "./server.ts";
 import { getSession, type Session } from "./session.ts";
-import type { Timestamp } from "./time.ts";
 import { getUser } from "./user.ts";
 
 type GetNotificationsResponse = {
   id: string;
   postingWindowId: string;
   region: string;
-  createdAt: Timestamp;
+  createdAt: Temporal.Instant;
 };
 
 const notificationPollInterval = 500;
@@ -19,7 +18,7 @@ const notificationPollInterval = 500;
 export function getNotificationsHandler(h: HandlerContext): Handler<Env> {
   return async (c) => {
     const session = getSession(c)!;
-    const { clock_timestamp: connectedAt } = must(await h.db.get<{ clock_timestamp: Timestamp }>(`SELECT clock_timestamp()`));
+    const { clock_timestamp: connectedAt } = must(await h.db.get<{ clock_timestamp: Temporal.Instant }>(`SELECT clock_timestamp()`));
     const signal = c.req.raw.signal;
     const stream = new ReadableStream<Uint8Array>({
       start(controller) {
@@ -33,7 +32,7 @@ export function getNotificationsHandler(h: HandlerContext): Handler<Env> {
 async function streamNotification(
   h: HandlerContext,
   session: Session,
-  connectedAt: Timestamp,
+  connectedAt: Temporal.Instant,
   signal: AbortSignal,
   controller: ReadableStreamDefaultController<Uint8Array>,
 ): Promise<void> {
@@ -50,7 +49,7 @@ async function streamNotification(
         }
         return;
       }
-      if (user === undefined || user.region !== session.region) {
+      if (!user || user.region !== session.region) {
         return;
       }
       let row;
@@ -71,7 +70,7 @@ async function streamNotification(
         }
         return;
       }
-      if (row !== undefined) {
+      if (row) {
         const notification: GetNotificationsResponse = {
           id: row.id,
           postingWindowId: row.posting_window_id,
