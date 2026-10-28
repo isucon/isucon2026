@@ -1178,6 +1178,84 @@ async fn independent_bytes_publish_atomically_and_preserve_visibility_export_and
             StatusCode::CONFLICT
         );
         assert_eq!(count(&db, "posts").await, post_count);
+        // A successful regional preflight never authorizes publication after
+        // logout. The writer must still run its fresh session middleware.
+        let (parts, body) = make_upload().into_parts();
+        let body = axum::body::to_bytes(body, 32 * 1024 * 1024).await.unwrap();
+        let prepared = offload
+            .prepare(
+                &parts.headers,
+                "192.0.2.5",
+                "multipart/form-data; boundary=boundary",
+                body.clone(),
+            )
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(prepared.body.len() < body.len());
+        assert!(
+            !prepared
+                .body
+                .windows(original.len())
+                .any(|bytes| bytes == original)
+        );
+        let h = Arc::new(HandlerContext {
+            db: db.clone(),
+            config: config_from_env(),
+            ip_bans: Default::default(),
+            notifications: Default::default(),
+            read_fence: None,
+            image_store: Some(regional_store.clone()),
+        });
+        let authenticated_writer = Router::new()
+            .route("/api/posts", post(create_post_handler))
+            .route_layer(axum::middleware::from_fn_with_state(
+                (h.clone(), true),
+                isureal::session::session_middleware,
+            ))
+            .with_state(h)
+            .layer(axum::middleware::from_fn_with_state(
+                UploadAuthenticator::new(
+                    handoff_key,
+                    [("127.0.0.1".parse().unwrap(), "europe".into())].into(),
+                ),
+                authenticate,
+            ));
+        let mut forwarded_headers = parts.headers;
+        forwarded_headers.insert("content-type", prepared.content_type.parse().unwrap());
+        let proof = isureal::stored_upload::sign(
+            &handoff_key,
+            prepared.reference.clone(),
+            "/api/posts",
+            &forwarded_headers,
+            &prepared.body,
+        );
+        let mut forwarded = Request::post("/api/posts")
+            .body(Body::from(prepared.body))
+            .unwrap();
+        *forwarded.headers_mut() = forwarded_headers;
+        forwarded
+            .headers_mut()
+            .insert(isureal::stored_upload::HEADER, proof.parse().unwrap());
+        forwarded
+            .extensions_mut()
+            .insert(axum::extract::ConnectInfo(
+                "127.0.0.1:12345".parse::<std::net::SocketAddr>().unwrap(),
+            ));
+        sqlx::query("UPDATE login_sessions SET active=false WHERE id='regional-session'")
+            .execute(&db)
+            .await
+            .unwrap();
+        let post_count = count(&db, "posts").await;
+        assert_eq!(
+            request(authenticated_writer, forwarded).await.0,
+            StatusCode::UNAUTHORIZED
+        );
+        assert_eq!(count(&db, "posts").await, post_count);
+        sqlx::query("UPDATE login_sessions SET active=true WHERE id='regional-session'")
+            .execute(&db)
+            .await
+            .unwrap();
         sqlx::query(
             "INSERT INTO ip_bans(ip,banned_until) VALUES ('192.0.2.5',now()+interval '1 hour')",
         )

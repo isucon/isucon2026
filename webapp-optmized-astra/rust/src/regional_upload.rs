@@ -9,7 +9,7 @@ use std::convert::Infallible;
 
 #[derive(Clone)]
 pub struct RegionalUpload {
-    primary: PgPool,
+    auth_read_db: PgPool,
     store: ImageStore,
     region: String,
     pub(crate) key: [u8; 32],
@@ -21,14 +21,14 @@ pub struct PreparedUpload {
     pub reference: StoredUpload,
 }
 impl RegionalUpload {
-    pub fn new(primary: PgPool, store: ImageStore, region: String, key: [u8; 32]) -> Self {
+    pub fn new(auth_read_db: PgPool, store: ImageStore, region: String, key: [u8; 32]) -> Self {
         assert!(
             store.writes_enabled
                 && matches!(region.as_str(), "europe" | "america")
                 && store.has_region(&region)
         );
         Self {
-            primary,
+            auth_read_db,
             store,
             region,
             key,
@@ -48,11 +48,13 @@ impl RegionalUpload {
         else {
             return Ok(None);
         };
-        // This preflight prevents unauthenticated/banned clients from filling
-        // regional storage. The authoritative writer rechecks all permissions.
+        // Use the regional read DB, whose visibility is protected by the
+        // normal write-response fences. This prevents unauthenticated/banned
+        // clients from filling storage without another cross-region query.
+        // The authoritative writer rechecks all permissions before publication.
         let allowed: bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM login_sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=$1 AND s.active AND u.status='active' AND u.region=$2) AND NOT EXISTS(SELECT 1 FROM ip_bans WHERE ip=$3 AND banned_until>clock_timestamp())")
             .bind(hex::encode(Sha256::digest(token.as_bytes()))).bind(&self.region).bind(client_ip)
-            .fetch_one(&self.primary).await?;
+            .fetch_one(&self.auth_read_db).await?;
         if !allowed {
             return Ok(None);
         }
