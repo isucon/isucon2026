@@ -14,6 +14,7 @@ print(','.join(app['host'] for app in apps if 'replicaName' in app) if runtime.g
 print(runtime.get('writeFenceMode', 'poll'))
 print('true' if runtime.get('regionalUploadCacheEnabled',False) else 'false')
 print('true' if runtime.get('regionalReactionCacheEnabled',True) else 'false')
+print('true' if runtime.get('asiaUpstreamKeepaliveEnabled',False) else 'false')
 PY
 )
 enabled=${values[0]}
@@ -23,6 +24,7 @@ write_fence_hosts=${values[3]}
 write_fence_mode=${values[4]}
 upload_cache=${values[5]}
 reaction_cache=${values[6]}
+asia_keepalive=${values[7]}
 if [ "$role" = backend ]; then
     if [ "$enabled" = true ]; then
         # Public topology only; the existing env.sh provides DB credentials.
@@ -62,11 +64,17 @@ UNIT
         systemctl disable --now webapp-optmized-astra-writer
     fi
 elif [ "$role" = frontend ]; then
+    region=${2:?frontend region required}
+    case "$region" in asia|europe|america) ;; *) exit 2 ;; esac
+    [ "$region" != asia ] || enabled=false
     # The frontend remains in its original region. Only write requests cross
     # the existing, shaped data-plane route to the private worker.
-    python3 - "$enabled" "$backend_host" "$upload_cache" "$reaction_cache" > /etc/nginx/sites-available/isureal.conf.astra-new <<'PY'
+    python3 - "$enabled" "$backend_host" "$upload_cache" "$reaction_cache" "$region" "$asia_keepalive" > /etc/nginx/sites-available/isureal.conf.astra-new <<'PY'
 import sys
-enabled, host, upload_cache, reaction_cache = sys.argv[1:]
+enabled, host, upload_cache, reaction_cache, region, asia_keepalive = sys.argv[1:]
+keepalive=region!='asia' or asia_keepalive=='true'
+http_version='1.1' if keepalive else '1.0'
+connection='""' if keepalive else 'close'
 print('''upstream astra_local {
   server 127.0.0.1:8080;
   keepalive 64;
@@ -88,8 +96,8 @@ print('''server {
   root /home/isucon/webapp/public;
 
   location /api/ {
-    proxy_http_version 1.1;
-    proxy_set_header Connection "";
+    proxy_http_version '''+http_version+''';
+    proxy_set_header Connection '''+connection+''';
     proxy_set_header Host $host;
     proxy_next_upstream off;
     proxy_pass http://'''+upstream+''';
