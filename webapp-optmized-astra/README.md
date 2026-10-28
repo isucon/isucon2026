@@ -309,3 +309,4 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261028T100711Z-team10 | repeat selective Asia feed and search replica reads | FAIL | 0 |
 | 20261028T101058Z-team10 | selective read recheck after isolated initial login timeout; unchanged runtime | PASS | 174,050 |
 | 20261028T101558Z-team10 | adaptive friends-of-friends query with selective Asia reads | PASS | 169,293 |
+| 20261028T101921Z-team10 | repeat adaptive friends-of-friends query with selective Asia reads | PASS | 179,625 |
