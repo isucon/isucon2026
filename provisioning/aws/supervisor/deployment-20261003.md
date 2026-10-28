@@ -251,6 +251,6 @@ Pulumi の差分はタスク定義 6 件の置き換えとサービス 6 件の�
 このとき portal-dev のベンチを実際に実行しているのは共有プール `isucon2026-shared-supervisor`
 （接続先 `https://portal-dev.isucon.net`、イメージ `sha256:aec29420…`、`--timeout 300s`、`HARD_TIMEOUT` 310）で、
 この stack のチーム別 service は `desiredCount: 0` です。この stack の適用ではポータルから走るベンチは変わりません。
-共有プールの定義は同日に `isucon2026-private` から [provisioning/aws/shared-supervisor](../shared-supervisor/README.md)
+共有プールの定義は同日に `isucon2026-private` から [provisioning/aws/shared-supervisor](pool/README.md)
 へ移し、同じ digest と `ISUXBENCH_IMAGES=/opt/isucon/photos/merged.zip` で task definition revision 6 を
 ecspresso で配備しました（3 タスク）。経緯はそちらの適用記録にあります。
