@@ -341,3 +341,4 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261028T151345Z-team10 | repeat unbuffered uploads with regional file storage | FAIL | 0 |
 | 20261028T151839Z-team10 | restore buffered uploads after unbuffered regression | PASS | 176,344 |
 | 20261028T152510Z-team10 | ThinLTO release with one codegen unit | PASS | 178,621 |
+| 20261028T152857Z-team10 | repeat ThinLTO release with warm application caches | PASS | 180,392 |
