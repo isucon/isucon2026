@@ -9,7 +9,7 @@
 ローカルで3台目のレプリカを用意し、その反映だけを停止した場合に応答が返らず、再開後は3台とも同じ更新結果を読めることを検証する。その後、実機設定照合・固定seed反復・GCと再起動後の画像照合で比較する。AsiaのCPU・I/O負荷が増え、同期反映の遅延が全地域へ影響する可能性もあるため、採用は実測で判断する。
 
 
-実装では `asiaReplicaSynchronous` を追加した。falseの既定値は既存構成を維持する。trueではnative write fenceとAsiaレプリカ、読み取り範囲allを必須にし、主DBは `FIRST 3 (astra_europe, astra_america, astra_asia)`、Asiaのread fenceは無効にする。既存の `ISUREAL_WRITE_FENCE_HOSTS` はpoll方式のEU・US接続先として維持する。native方式の反映確認対象は主DBの同期対象設定から決まり、起動時と実機照合でも確認する。
+実装では `asiaReplicaSynchronous` を追加した。falseの既定値は既存構成を維持する。trueではnative write fenceとAsiaレプリカを必須にし、主DBは `FIRST 3 (astra_europe, astra_america, astra_asia)`、Asiaのread fenceは無効にする。既存の `ISUREAL_WRITE_FENCE_HOSTS` はpoll方式のEU・US接続先として維持する。native方式の反映確認対象は主DBの同期対象設定から決まり、起動時と実機照合でも確認する。
 
 切替は、false/feed_searchのまま互換版をapplication配備し、true/allへ変更してreplication配備、続けてapplication配備する。切り戻しはfalse/feed_searchへ変更してapplication配備を先に行い、その後replication配備する。配備処理は、Asiaが確認なしでレプリカを読んでいる間の同期対象削減を拒否する。主DB設定ファイルはストリーミング確認後に置換する。
 
@@ -25,3 +25,8 @@
 無再起動の反復（20261028T194923Z-team10）は負荷前の利用者登録タイムアウトで0点FAIL。以前の2台同期でも同種の準備失敗があるため、3台同期だけに原因を帰属しない。失敗もコミットとPRへ保存した。
 
 次は3台同期を維持し、既存db1の初期画像パック配信を有効にして比較する。以前はローカル画像読み取りに劣った構成だが、今回は主DB負荷が減り、Asia側のI/O負荷が増えたため再評価する。既存の検証済みコピーとaio threads対応を使い、新しいAWSリソースは作らない。
+
+
+初期画像をdb1から読む3台同期構成は158,226点PASS（20261028T195416Z-team10）。AsiaのI/O待ちは20.77%、登録中央値は1,265ms、画像取得中央値37ms・p90 253ms。3台同期・画像ローカルの151,126点より上がったが、既存2台同期の反復185,395点・184,915点には届かない。
+
+次の比較では3台同期とdb1画像配信を維持し、Asiaの読み取り範囲だけをfeed_searchへ戻す。これまでのfeed_searchは読み取り前のWAL確認を必須にしていたが、3台同期なら更新応答までにAsiaへ反映されるため、この確認を省ける。起動時は従来どおり実レプリカのスロットと主DBの同期対象設定を照合する。読み取り前確認なしの検索、非同期構成の検索待機・ログアウト反映の実APIテスト各1件、経路設定5件、Clippyと型検査を通過した。

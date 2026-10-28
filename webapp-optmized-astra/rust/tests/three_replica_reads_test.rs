@@ -148,7 +148,7 @@ async fn asia_local_reads_require_third_acknowledgement_and_observe_logout() {
             3,
         )
         .await;
-        let app = isureal::new_server(config).await;
+        let app = isureal::new_server(config.clone()).await;
         let (status, user) = request(
             app.clone(),
             "POST",
@@ -168,6 +168,10 @@ async fn asia_local_reads_require_third_acknowledgement_and_observe_logout() {
         .await;
         assert_eq!(status, 200);
         let token = login["token"].as_str().unwrap().to_owned();
+        unsafe {
+            std::env::set_var("ISUREAL_DB_READ_SCOPE", "feed_search");
+        }
+        let selective_app = isureal::new_server(config).await;
         assert_eq!(
             request(app.clone(), "GET", "/api/me", &token, Value::Null)
                 .await
@@ -205,6 +209,23 @@ async fn asia_local_reads_require_third_acknowledgement_and_observe_logout() {
             .0,
             200,
             "local reads must not wait for a fresh primary WAL position"
+        );
+        assert_eq!(
+            timeout(
+                Duration::from_secs(1),
+                request(
+                    selective_app,
+                    "GET",
+                    "/api/users?q=viewer",
+                    &token,
+                    Value::Null
+                )
+            )
+            .await
+            .unwrap()
+            .0,
+            200,
+            "synchronous selective reads must not wait for a fresh WAL position"
         );
         let logout_app = app.clone();
         let logout_token = token.clone();
