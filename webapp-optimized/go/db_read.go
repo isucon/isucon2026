@@ -47,31 +47,11 @@ func decodeRecords(data []byte) ([]writeResult, error) {
 	return items, nil
 }
 
-var commentsListSQL = `SELECT true AS allowed, ` + interactionJSON(true,
-	`c.post_id=$1 AND ($2::timestamptz IS NULL OR (c.created_at,c.id)>($2,$3))`, 51) + ` AS items`
-var reactionsListSQL = `SELECT true AS allowed, ` + interactionJSON(false,
-	`r.post_id=$1 AND ($2::timestamptz IS NULL OR (r.created_at,r.id)<($2,$3))`, 51) + ` AS items`
-
 func readInteractions(ctx context.Context, db sqlx.QueryerContext, actor, post string, comments bool, at *time.Time, id string) ([]writeResult, bool, error) {
-	// The hot state decides access to posts of open windows; only the list
-	// is read from the database.
-	if allowed, ok := hot.interactionAllowed(realActor(ctx, actor), post, comments); ok {
-		if !allowed {
-			return nil, false, nil
-		}
-		query := reactionsListSQL
-		if comments {
-			query = commentsListSQL
-		}
-		var page struct {
-			Allowed bool   `db:"allowed"`
-			Items   []byte `db:"items"`
-		}
-		if err := sqlx.GetContext(ctx, db, &page, query, post, at, id); err != nil {
-			return nil, false, err
-		}
-		records, err := decodeRecords(page.Items)
-		return records, true, err
+	// The hot state holds the comments and RealMojis of the posts of open
+	// windows and decides access to them.
+	if records, allowed, ok := hot.interactions(realActor(ctx, actor), post, comments, at, id); ok {
+		return records, allowed, nil
 	}
 	query := reactionsPageSQL
 	if comments {
