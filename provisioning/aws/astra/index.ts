@@ -113,3 +113,7 @@ if (!Number.isInteger(runtime.listenBacklog) || runtime.listenBacklog < 128 || r
 if (typeof runtime.signatureCacheCoalescing !== "boolean" || typeof runtime.signatureCacheMetrics !== "boolean") {
     throw new Error("Signature cache options must be explicit booleans");
 }
+
+if (typeof runtime.issuedImageUrlCacheEnabled !== "boolean") {
+    throw new Error("Issued image URL caching must be explicitly configured");
+}

@@ -22,6 +22,7 @@ program = r'''
 import json, subprocess
 rows = subprocess.check_output(['journalctl', '-u', 'webapp-optmized-astra', '-u', 'webapp-optmized-astra-writer', '--since', SINCE, '--until', UNTIL, '-o', 'json'], text=True)
 keys = ['hits', 'misses', 'pending', 'computations', 'evictions']
+optional = ['url_hits', 'url_misses']
 result = []
 for line in rows.splitlines():
     try:
@@ -32,7 +33,7 @@ for line in rows.splitlines():
     if row.get('metric') != 'signature_cache':
         continue
     assert all(type(row[k]) is int and row[k] >= 0 for k in keys)
-    result.append(dict(timestamp_us=int(journal['__REALTIME_TIMESTAMP']), service=journal['_SYSTEMD_UNIT'], **{k: row[k] for k in keys}))
+    result.append(dict(timestamp_us=int(journal['__REALTIME_TIMESTAMP']), service=journal['_SYSTEMD_UNIT'], **{k: row[k] for k in keys + optional if k in row}))
 print(json.dumps(result))
 '''
 output = {'since': since, 'until': until, 'regions': {}}
