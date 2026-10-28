@@ -390,3 +390,4 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261028T201116Z-team10 | repeat selective three-replica reads with local archives without restart | PASS | 175,796 |
 | 20261028T201755Z-team10 | restore two-replica acknowledgement after three-replica comparison | PASS | 181,005 |
 | 20261028T203054Z-team10 | read all Asia metadata from the primary after application improvements | PASS | 176,830 |
+| 20261028T203453Z-team10 | repeat all Asia primary reads without restart | PASS | 174,401 |
