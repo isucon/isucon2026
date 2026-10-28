@@ -5,6 +5,7 @@ use axum::Extension;
 use axum::extract::State;
 use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::Response;
+use bytes::Bytes;
 use futures_util::StreamExt;
 use serde::Serialize;
 use sqlx::postgres::PgRow;
@@ -44,18 +45,28 @@ pub async fn export_posts_handler(
         let _permit = permit;
         build_archive(receiver, author)
     });
+    let cached = crate::image_api::cached_export_images(user_id);
     let query = export_query();
     let mut rows = sqlx::query_as::<_, ExportPost>(&query)
         .bind(user_id)
+        .bind(&cached.ids)
+        .bind(&cached.versions)
+        .bind(&cached.timestamps)
         .fetch(&h.db)
         .map(|row| async {
             let mut row: ExportPost = row?;
-            if let Some(key) = &row.asset_key {
+            if row.cache_hit {
+                row.image_data = cached
+                    .bytes
+                    .get(&row.post.image_id)
+                    .ok_or_else(|| sqlx::Error::Protocol("missing pinned export image".into()))?
+                    .clone();
+            } else if let Some(key) = &row.asset_key {
                 let store = h
                     .image_store
                     .as_ref()
                     .ok_or_else(|| sqlx::Error::Protocol("image store unavailable".into()))?;
-                row.image_data = store.get(key).await?;
+                row.image_data = store.get(key).await?.into();
             }
             Ok(row)
         })
@@ -85,19 +96,26 @@ pub async fn export_posts_handler(
 fn export_query() -> String {
     format!(
         r#"
-   SELECT {POST_COLUMNS}, i.data AS image_data, i.asset_key
+   WITH cached AS MATERIALIZED (
+     SELECT * FROM unnest($2::text[],$3::text[],$4::timestamptz[]) AS c(id,version,created_at)
+   )
+   SELECT {POST_COLUMNS},
+     CASE WHEN (i.created_at=c.created_at AND i.version=c.version)
+       OR (i.asset_key IS NOT NULL AND 'asset:'||i.asset_key=c.version)
+       THEN NULL ELSE i.data END AS image_data, i.asset_key
    FROM posts p
    JOIN posting_windows w ON w.id = p.posting_window_id
    JOIN LATERAL (
      WITH hinted AS MATERIALIZED (
-       SELECT data, asset_key FROM image_objects
+       SELECT id, data, asset_key, created_at, xmin::text AS version FROM image_objects
        WHERE id = p.image_id AND created_at = p.posted_at
      )
-     SELECT data, asset_key FROM hinted
+     SELECT id, data, asset_key, created_at, version FROM hinted
      UNION ALL
-     SELECT data, asset_key FROM image_objects
+     SELECT id, data, asset_key, created_at, xmin::text AS version FROM image_objects
      WHERE id = p.image_id AND NOT EXISTS (SELECT 1 FROM hinted)
    ) i ON true
+   LEFT JOIN cached c ON c.id=i.id
    WHERE p.author_id = $1 AND p.deleted_at IS NULL
    ORDER BY p.posted_at, p.id
   "#
@@ -109,14 +127,17 @@ static EXPORTS: Semaphore = Semaphore::const_new(2);
 #[derive(Debug)]
 struct ExportPost {
     post: Post,
-    image_data: Vec<u8>,
+    image_data: Bytes,
     asset_key: Option<String>,
+    cache_hit: bool,
 }
 impl FromRow<'_, PgRow> for ExportPost {
     fn from_row(row: &PgRow) -> sqlx::Result<ExportPost> {
+        let data: Option<Vec<u8>> = row.try_get("image_data")?;
         Ok(ExportPost {
+            cache_hit: data.is_none(),
             post: Post::from_row(row)?,
-            image_data: row.try_get("image_data")?,
+            image_data: data.unwrap_or_default().into(),
             asset_key: row.try_get("asset_key")?,
         })
     }
@@ -187,8 +208,9 @@ mod tests {
                 on_time_deadline: now,
                 window_ended_at: None,
             },
-            image_data,
+            image_data: image_data.into(),
             asset_key: None,
+            cache_hit: false,
         }
     }
 
@@ -323,11 +345,33 @@ mod tests {
                 .unwrap();
             let new: Vec<ExportPost> = sqlx::query_as(&export_query())
                 .bind(actor)
+                .bind(Vec::<String>::new())
+                .bind(Vec::<String>::new())
+                .bind(Vec::<chrono::DateTime<Utc>>::new())
                 .fetch_all(&db)
                 .await
                 .unwrap();
             assert_eq!(format!("{new:?}"), format!("{old:?}"), "{actor}");
         }
+        let memo: Vec<(String,String,chrono::DateTime<Utc>)> = sqlx::query_as("SELECT id,xmin::text,created_at FROM image_objects WHERE id IN ('image-1','image-2','image-3') ORDER BY id").fetch_all(&db).await.unwrap();
+        let ids: Vec<_> = memo.iter().map(|r| r.0.clone()).collect();
+        let versions: Vec<_> = memo.iter().map(|r| r.1.clone()).collect();
+        let timestamps: Vec<_> = memo.iter().map(|r| r.2).collect();
+        let cached: Vec<ExportPost> = sqlx::query_as(&export_query())
+            .bind("matched")
+            .bind(&ids)
+            .bind(&versions)
+            .bind(&timestamps)
+            .fetch_all(&db)
+            .await
+            .unwrap();
+        assert_eq!(cached.iter().filter(|r| r.cache_hit).count(), 3);
+        assert!(
+            cached
+                .iter()
+                .filter(|r| r.cache_hit)
+                .all(|r| r.image_data.is_empty())
+        );
         // Deletion/recreation under the same ID and movement between partitions
         // must not make a post disappear or retain its old image bytes.
         sqlx::raw_sql("UPDATE image_objects SET created_at='2025-02-03', data='changed'::bytea WHERE id='image-1'; \
@@ -341,10 +385,58 @@ mod tests {
             .unwrap();
         let new: Vec<ExportPost> = sqlx::query_as(&export_query())
             .bind("matched")
+            .bind(Vec::<String>::new())
+            .bind(Vec::<String>::new())
+            .bind(Vec::<chrono::DateTime<Utc>>::new())
             .fetch_all(&db)
             .await
             .unwrap();
         assert_eq!(format!("{new:?}"), format!("{old:?}"));
+        let cached: Vec<ExportPost> = sqlx::query_as(&export_query())
+            .bind("matched")
+            .bind(&ids)
+            .bind(&versions)
+            .bind(&timestamps)
+            .fetch_all(&db)
+            .await
+            .unwrap();
+        let hits: Vec<_> = cached
+            .iter()
+            .filter(|r| r.cache_hit)
+            .map(|r| r.post.image_id.as_str())
+            .collect();
+        assert_eq!(hits, ["image-3"]);
+        assert_eq!(
+            cached
+                .iter()
+                .find(|r| r.post.image_id == "image-1")
+                .unwrap()
+                .image_data
+                .as_ref(),
+            b"changed"
+        );
+        assert_eq!(
+            cached
+                .iter()
+                .find(|r| r.post.image_id == "image-2")
+                .unwrap()
+                .image_data
+                .as_ref(),
+            b"recreated"
+        );
+        sqlx::query("UPDATE posts SET deleted_at=now() WHERE image_id='image-3'")
+            .execute(&db)
+            .await
+            .unwrap();
+        let deleted: Vec<ExportPost> = sqlx::query_as(&export_query())
+            .bind("matched")
+            .bind(&ids)
+            .bind(&versions)
+            .bind(&timestamps)
+            .fetch_all(&db)
+            .await
+            .unwrap();
+        assert!(!deleted.iter().any(|r| r.post.image_id == "image-3"));
         db.close().await;
         sqlx::query(&format!("DROP SCHEMA {schema} CASCADE"))
             .execute(&admin)

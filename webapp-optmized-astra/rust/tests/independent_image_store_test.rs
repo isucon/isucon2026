@@ -294,6 +294,21 @@ async fn independent_bytes_publish_atomically_and_preserve_visibility_export_and
         .await,
         (StatusCode::OK, original.to_vec())
     );
+    // Export validates current metadata before reusing bytes; a warm immutable
+    // image does not need another connection to the external store.
+    let (status, archive) = request(
+        cached_reader.clone(),
+        Request::get("/api/me/export").body(Body::empty()).unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let mut zip = zip::ZipArchive::new(Cursor::new(archive)).unwrap();
+    let mut exported = Vec::new();
+    zip.by_name("images/000002.jpg")
+        .unwrap()
+        .read_to_end(&mut exported)
+        .unwrap();
+    assert_eq!(exported, original);
     let unpublished = uuid::Uuid::new_v4().to_string();
     isureal::image_api::remember_stored_image(
         unpublished.clone(),
@@ -319,6 +334,19 @@ async fn independent_bytes_publish_atomically_and_preserve_visibility_export_and
         .execute(&db)
         .await
         .unwrap();
+    let (status, archive) = request(
+        cached_reader.clone(),
+        Request::get("/api/me/export").body(Body::empty()).unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let mut zip = zip::ZipArchive::new(Cursor::new(archive)).unwrap();
+    let mut exported = Vec::new();
+    zip.by_name("images/000002.jpg")
+        .unwrap()
+        .read_to_end(&mut exported)
+        .unwrap();
+    assert_eq!(exported, second);
     assert_eq!(
         request(
             cached_reader.clone(),
@@ -438,12 +466,10 @@ async fn independent_bytes_publish_atomically_and_preserve_visibility_export_and
     assert_eq!(count(&db, "posts").await, 2);
     assert_eq!(count(&db, "image_objects").await, 2);
     assert_eq!(count(&assets, "astra_image_data").await, 2);
-    sqlx::raw_sql(
-        "DROP TRIGGER fail_asset_publish ON posts; DROP FUNCTION fail_asset_publish()",
-    )
-    .execute(&db)
-    .await
-    .unwrap();
+    sqlx::raw_sql("DROP TRIGGER fail_asset_publish ON posts; DROP FUNCTION fail_asset_publish()")
+        .execute(&db)
+        .await
+        .unwrap();
 
     // Switching off new external writes retains readers for already published bytes.
     let mut local_store = store.clone();
