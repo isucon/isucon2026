@@ -103,6 +103,7 @@ async fn only_graph_routes_wait_for_local_replay_and_logout_stays_fresh() {
             include_str!("../../sql/006-registration.sql"),
             include_str!("../../sql/014-normalized-user-search.sql"),
             include_str!("../../sql/015-search-candidates.sql"),
+            include_str!("../../sql/016-notification-region-locks.sql"),
         ] {
             sqlx::raw_sql(sql).execute(&db).await.unwrap();
         }
