@@ -72,9 +72,14 @@ export const AdminTeamEdit: React.FC<Props> = (props: Props) => {
                   type="text"
                   required={true}
                   {...register("team.name")}
+                  maxLength={255}
+                  aria-describedby={`AdminTeamEdit-${props.team.id}-name-help`}
                   id={`AdminTeamEdit-${props.team.id}-name`}
                 />
               </div>
+              <p className="help" id={`AdminTeamEdit-${props.team.id}-name-help`}>
+                255文字以内で入力してください。
+              </p>
             </div>
 
             <div className="field">
@@ -172,10 +177,15 @@ export const AdminTeamEdit: React.FC<Props> = (props: Props) => {
                       className="input"
                       type="text"
                       required={true}
+                      maxLength={255}
+                      aria-describedby={`AdminTeamEdit-${props.team.id}-${member.id}-name-help`}
                       id={`AdminTeamEdit-${props.team.id}-${member.id}-name`}
                       {...register(`contestants.${i}.name` as const)}
                     />
                   </div>
+                  <p className="help" id={`AdminTeamEdit-${props.team.id}-${member.id}-name-help`}>
+                    255文字以内で入力してください。
+                  </p>
                 </div>
                 <div className="field">
                   <label className="label" htmlFor={`AdminTeamEdit-${props.team.id}-${member.id}-githubLogin`}>
