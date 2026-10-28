@@ -23,7 +23,7 @@ pub async fn refresh(db: &PgPool) -> Result<(), sqlx::Error> {
         let display_names: Vec<_> = batch.iter().map(|u| u.2.as_str()).collect();
         let normalized_names: Vec<_> = names.iter().map(|v| normalize(v)).collect();
         let normalized_displays: Vec<_> = display_names.iter().map(|v| normalize(v)).collect();
-        sqlx::query("INSERT INTO astra_user_search SELECT x.* FROM unnest($1::text[],$2::text[],$3::text[],$4::text[],$5::text[]) AS x(id,username,display_name,normalized_username,normalized_display_name) JOIN users u ON u.id=x.id AND u.username=x.username AND u.display_name=x.display_name ON CONFLICT (user_id) DO UPDATE SET source_username=EXCLUDED.source_username,source_display_name=EXCLUDED.source_display_name,normalized_username=EXCLUDED.normalized_username,normalized_display_name=EXCLUDED.normalized_display_name")
+        sqlx::query("INSERT INTO astra_user_search SELECT x.* FROM unnest($1::text[],$2::text[],$3::text[],$4::text[],$5::text[]) AS x(id,username,display_name,normalized_username,normalized_display_name) JOIN users u ON u.id=x.id AND u.username=x.username AND u.display_name=x.display_name FOR SHARE OF u ON CONFLICT (user_id) DO UPDATE SET source_username=EXCLUDED.source_username,source_display_name=EXCLUDED.source_display_name,normalized_username=EXCLUDED.normalized_username,normalized_display_name=EXCLUDED.normalized_display_name")
             .bind(ids).bind(names).bind(display_names).bind(normalized_names).bind(normalized_displays).execute(db).await?;
     }
     Ok(())

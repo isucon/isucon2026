@@ -1,4 +1,5 @@
 DROP TABLE IF EXISTS
+  astra_search_dirty,
   astra_user_search,
   ip_bans,
   notifications,
@@ -245,3 +246,5 @@ DO $$ BEGIN
         GRANT SELECT, INSERT, UPDATE, DELETE, TRUNCATE ON astra_user_search TO isureal;
     END IF;
 END $$;
+
+CREATE TABLE IF NOT EXISTS astra_search_dirty (user_id text PRIMARY KEY);
