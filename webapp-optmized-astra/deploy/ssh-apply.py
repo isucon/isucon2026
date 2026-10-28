@@ -221,6 +221,8 @@ if mode in ("all", "replication") and runtime["replicasEnabled"]:
         remote(instance, "chmod 600 /home/isucon/.astra-replication.env")
 
     parallel(credentials, [database] + [app["instanceId"] for app in replicas])
+    if not runtime['asiaReplicaEnabled']:
+        remote(write_host, 'sudo bash /home/isucon/astra-deploy/disable-asia-replica.sh')
     synchronous = str(runtime["replicasSynchronous"]).lower()
     if not runtime["replicasSynchronous"] and write_fence and not read_fence:
         require_write_fences()

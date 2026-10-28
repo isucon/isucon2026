@@ -63,6 +63,7 @@ if ! cmp -s "$staging/astra-standby.conf" /etc/postgresql/16/main/conf.d/astra-s
     changed=true
 fi
 systemctl enable postgresql
+echo auto > /etc/postgresql/16/main/start.conf
 if [ "$changed" = true ] || ! systemctl is-active --quiet postgresql@16-main; then
     systemctl restart postgresql@16-main
 fi
