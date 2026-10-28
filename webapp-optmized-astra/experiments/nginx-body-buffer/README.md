@@ -9,3 +9,5 @@ Pulumi runtimeのnginxClientBodyBufferKiBに容量を記録し、既存3アプ�
 ローカルでは生成スクリプトを256KiB・同値再適用・8KiBへの復帰の順に実行し、重複設定が増えないことと、リクエストバッファリングが有効のままであることを確認した。各段階のNginx構文検査、Pulumi型検査、Bash/Python構文検査は成功した。
 
 2026-10-28 16:59 UTCごろ、実機Asiaのnginx -Tでclient_body_buffer_sizeとproxy_bufferingの明示設定がないこと、proxy_request_buffering on、client_max_body_size 32mを確認した。比較対象は既定容量からの変更になる。
+
+256KiBの実機比較は188,737点・169,140点でPASS。初回のAsia平均ディスク書き込みは直前対照の39.50→30.58MB/s、平均メモリは1831.67→1846.09MiBだった。反復も28.68MB/sと書き込みは低めだが、スコアは下がり、安定した改善は未確認。GC・全地域再起動で18画像の本文とContent-Typeが一致し、Asiaの空き容量は8.8GiBへ回復した。次は同じバッファリング設定のまま1MiBと比較する。
