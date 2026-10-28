@@ -44,7 +44,6 @@ sub invalidate_login_session ($db, $user_id, $token_hash) {
     $tx->commit;
 }
 
-# 2026-09-03: リファクタリング後にこの関数の利用がないようです。消すのはいかがでしょうか
 sub create_login_session ($db, $user_id) {
     my $tx      = $db->begin;
     my $session = create_login_session_tx($db, $user_id);

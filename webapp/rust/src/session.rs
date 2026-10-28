@@ -112,7 +112,6 @@ pub async fn invalidate_login_session(
     Ok(())
 }
 
-// 2026-09-03: リファクタリング後にこの関数の利用がないようです。消すのはいかがでしょうか
 pub async fn create_login_session(db: &PgPool, user_id: &str) -> Result<Session, Error> {
     let mut tx = db.begin().await.context("failed to begin transaction")?;
     let session = create_login_session_tx(&mut tx, user_id).await?;

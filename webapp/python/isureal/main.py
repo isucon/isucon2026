@@ -62,6 +62,8 @@ async def unexpected_error_handler(_: Request, exc: Exception) -> JSONResponse:
     return error_response(HTTPStatus.INTERNAL_SERVER_ERROR, str(exc))
 
 
+# 2026-09-23
+
 def create_app(config: Config | None = None) -> FastAPI:
     config = config or Config.from_env()
     if not valid_region(config.region):

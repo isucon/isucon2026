@@ -78,7 +78,6 @@ export async function invalidateLoginSession(db: DB, userID: string, tokenHash: 
   await tx.commit();
 }
 
-// 2026-09-03: リファクタリング後にこの関数の利用がないようです。消すのはいかがでしょうか
 export async function createLoginSession(db: DB, userID: string): Promise<Session> {
   await using tx = await db.begin();
   const session = await createLoginSessionTx(tx, userID);
