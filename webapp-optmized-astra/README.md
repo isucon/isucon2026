@@ -221,3 +221,4 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261028T005258Z-team10 | regional images; local preflight with authoritative writer reauthentication | PASS | 121,353 |
 | 20261028T005720Z-team10 | documented JPEG header validation without pixel decoding | PASS | 120,988 |
 | 20261028T010144Z-team10 | Asia upstream HTTP keepalive with regional images and header validation | PASS | 129,521 |
+| 20261028T010533Z-team10 | info action logs; preserve login guard and server errors | PASS | 118,394 |
