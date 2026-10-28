@@ -116,6 +116,8 @@ bundle = ROOT / "var/astra/configuration.tar.gz"
 bundle.parent.mkdir(parents=True, exist_ok=True)
 with tarfile.open(bundle, "w:gz") as tar:
     tar.add(DEPLOY / "runtime.json", arcname="runtime.json")
+    for name in ("archive-peer-files.py", "archive-peer-manifest.json"):
+        tar.add(DEPLOY / name, arcname=name)
     for path in sorted(DEPLOY.glob("*.sh")):
         tar.add(path, arcname=path.name)
     for path in sorted((ROOT / "webapp-optmized-astra/sql").glob("0??-*.sql")):
@@ -130,6 +132,14 @@ def stage(instance):
 
 instances = [database] + [app["instanceId"] for app in applications]
 parallel(stage, instances)
+
+archive_peer = runtime.get("archivePeer", {"enabled": False, "readsEnabled": False})
+application_mode = mode in ("all", "application", "upgrade")
+if application_mode and archive_peer["enabled"]:
+    remote(database, "sudo bash /home/isucon/astra-deploy/archive-peer-runtime.sh")
+    if archive_peer["readsEnabled"]:
+        subprocess.run([sys.executable, str(DEPLOY / "archive-peer.py"), "verify"], check=True)
+
 
 # Provision the independent cluster only on an existing application VM. Readers
 # must be deployed with writes disabled before enabling new image publication.
@@ -245,6 +255,10 @@ if mode in ("all", "application", "upgrade") and runtime["replicaReads"] and not
 if mode in ("all", "application", "upgrade"):
     remote(write_host, "sudo bash /home/isucon/astra-deploy/write-routing.sh backend")
     parallel(write_frontend, applications)
+
+# Readers switch back to their retained local files before the peer stops.
+if application_mode and not archive_peer["enabled"]:
+    remote(database, "sudo bash /home/isucon/astra-deploy/archive-peer-runtime.sh")
 
 if mode == "image-gc":
     subprocess.run([sys.executable, str(DEPLOY / "asset-gc.py")], check=True)

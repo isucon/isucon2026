@@ -1435,6 +1435,145 @@ async fn independent_bytes_publish_atomically_and_preserve_visibility_export_and
         .await,
         (StatusCode::OK, original.to_vec())
     );
+    // A pack absent from local disk must also work through the private peer.
+    // Cached bytes must never bypass current metadata authorization.
+    let peer_reads = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let peer_address = listener.local_addr().unwrap();
+    let peer_bytes = original.to_vec();
+    let peer_http = Router::new().route(
+        "/internal/astra/packs/{archive}",
+        get({
+            let reads = peer_reads.clone();
+            move |headers: axum::http::HeaderMap| {
+                let reads = reads.clone();
+                let bytes = peer_bytes.clone();
+                async move {
+                    assert_eq!(headers["Range"], format!("bytes=7-{}", 6 + bytes.len()));
+                    reads.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    let range = format!("bytes 7-{}/{}", 6 + bytes.len(), bytes.len() + 14);
+                    (
+                        StatusCode::PARTIAL_CONTENT,
+                        [("Content-Range", range)],
+                        bytes,
+                    )
+                }
+            }
+        }),
+    );
+    let peer_server = tokio::spawn(async move { axum::serve(listener, peer_http).await.unwrap() });
+    let peer_app = app(
+        db.clone(),
+        Some(
+            ImageStore::new(assets.clone(), true, None)
+                .with_file_store(Some(files.clone().with_archive_peer(Some(peer_address)))),
+        ),
+    );
+    sqlx::query("UPDATE image_objects SET asset_key=$2 WHERE id=$1")
+        .bind(&file_image)
+        .bind(format!(
+            "pack:{}:7:{}",
+            uuid::Uuid::new_v4().simple(),
+            original.len()
+        ))
+        .execute(&db)
+        .await
+        .unwrap();
+    assert_eq!(
+        request(
+            peer_app.clone(),
+            Request::get(&url).body(Body::empty()).unwrap()
+        )
+        .await,
+        (StatusCode::OK, original.to_vec())
+    );
+    assert_eq!(peer_reads.load(std::sync::atomic::Ordering::SeqCst), 1);
+    sqlx::query("UPDATE users SET secret_key_hash=repeat('cd',32) WHERE id='owner'")
+        .execute(&db)
+        .await
+        .unwrap();
+    assert_eq!(
+        request(
+            peer_app.clone(),
+            Request::get(&url).body(Body::empty()).unwrap()
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    let rotated_url = image_url(&file_image, &[0xcd; 32]);
+    assert_eq!(
+        request(
+            peer_app.clone(),
+            Request::get(&rotated_url).body(Body::empty()).unwrap()
+        )
+        .await,
+        (StatusCode::OK, original.to_vec())
+    );
+    assert_eq!(peer_reads.load(std::sync::atomic::Ordering::SeqCst), 1);
+    sqlx::query("UPDATE users SET status='deleted' WHERE id='owner'")
+        .execute(&db)
+        .await
+        .unwrap();
+    assert_eq!(
+        request(
+            peer_app.clone(),
+            Request::get(&rotated_url).body(Body::empty()).unwrap()
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    sqlx::query(
+        "UPDATE users SET status='active',secret_key_hash=repeat('ab',32) WHERE id='owner'",
+    )
+    .execute(&db)
+    .await
+    .unwrap();
+    sqlx::query("UPDATE posts SET deleted_at=now() WHERE id=$1")
+        .bind(file_post)
+        .execute(&db)
+        .await
+        .unwrap();
+    assert_eq!(
+        request(
+            peer_app.clone(),
+            Request::get(&url).body(Body::empty()).unwrap()
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    sqlx::query("UPDATE posts SET deleted_at=NULL WHERE id=$1")
+        .bind(file_post)
+        .execute(&db)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE image_objects SET asset_key=$2 WHERE id=$1")
+        .bind(&file_image)
+        .bind(format!(
+            "pack:{}:7:{}",
+            uuid::Uuid::new_v4().simple(),
+            original.len()
+        ))
+        .execute(&db)
+        .await
+        .unwrap();
+    let (status, archive) = request(
+        peer_app,
+        Request::get("/api/me/export").body(Body::empty()).unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let mut zip = zip::ZipArchive::new(Cursor::new(archive)).unwrap();
+    let mut exported = Vec::new();
+    zip.by_name("images/000001.jpg")
+        .unwrap()
+        .read_to_end(&mut exported)
+        .unwrap();
+    assert_eq!(exported, original);
+    assert!(peer_reads.load(std::sync::atomic::Ordering::SeqCst) >= 2);
+    peer_server.abort();
     // Concurrent cold requests still authorize individually, but fetch the
     // immutable remote bytes once. Failed reads must remain retryable.
     let read_count = Arc::new(std::sync::atomic::AtomicUsize::new(0));

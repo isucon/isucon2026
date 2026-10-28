@@ -34,6 +34,7 @@ archive = args.restore or args.reclaim or args.resume or uuid.uuid4().hex
 assert re.fullmatch('[0-9a-f]{32}', archive)
 runtime = json.loads((deploy / 'runtime.json').read_text())
 assert runtime['fileImageStore']['enabled'] and runtime['fileImageStore']['archiveReadsEnabled']
+assert not runtime.get('archivePeer',{}).get('readsEnabled',False), 'Switch archive readers to local files before changing the published archive set; then update and verify the peer manifest'
 lock = open(root / 'var/astra/operation.lock', 'w')
 fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
 env = dict(os.environ, AWS_CONFIG_FILE=str(root / 'provisioning/aws-sdk.config'), AWS_SDK_LOAD_CONFIG='1', PULUMI_BACKEND_URL='s3://isucon2026-pulumi-state')
