@@ -215,7 +215,7 @@ func adminOnlyExempt(path string) bool {
 	case path == "/site/sha" || path == "/admin/long_running_check",
 		path == "/admin/session/new" || path == "/admin/session",
 		path == "/api/session",
-		path == "/api/env_check_info" || path == "/api/ssh_public_keys" || path == "/api/env_checks",
+		path == "/api/env_check_info" || path == "/api/ssh_public_keys" || path == "/api/env_checks" || path == "/api/instance_registrations",
 		strings.HasPrefix(path, "/api/bench/"),
 		strings.HasPrefix(path, "/broadcast_view/"),
 		strings.HasPrefix(path, "/debug/"),
@@ -269,7 +269,7 @@ func (h *Handler) verifyCSRF(next http.Handler) http.Handler {
 			return
 		}
 		path := r.URL.Path
-		if strings.HasPrefix(path, "/api/bench/") || path == "/api/env_checks" || strings.HasPrefix(path, "/debug/") {
+		if strings.HasPrefix(path, "/api/bench/") || path == "/api/env_checks" || path == "/api/instance_registrations" || strings.HasPrefix(path, "/debug/") {
 			next.ServeHTTP(w, r)
 			return
 		}

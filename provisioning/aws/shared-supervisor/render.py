@@ -10,7 +10,6 @@
 """
 
 import copy
-import ipaddress
 import json
 import pathlib
 import re
@@ -28,7 +27,7 @@ def build(task, service, config):
     """雛形のタスク定義 task とサービス service に config（pool.json）を当てて、ecspresso 用の定義を返す。
 
     雛形からは CPU、メモリ、実行 role、コンテナ定義（ログ、secrets、ulimit など）とネットワーク設定を写し、
-    イメージ、環境変数、ベンチの起動コマンド（転送表）を config から作る。雛形は変更しない。
+    イメージ、環境変数、ベンチの起動コマンドを config から作る。雛形は変更しない。
     """
     if not IMAGE.fullmatch(config["image"]):
         raise ValueError("image must be pinned")
@@ -47,21 +46,12 @@ def build(task, service, config):
         raise ValueError("hardTimeout must be seconds")
     bench_images = config.get("benchImages")
     if bench_images is not None and not IMAGES.fullmatch(bench_images):
-        raise ValueError("benchImages must be an absolute path in the image or an HTTPS URL")
+        raise ValueError(
+            "benchImages must be an absolute path in the image or an HTTPS URL"
+        )
     bench_args = " --target-port 8080 --scale large"
     if bench_timeout is not None:
         bench_args += f" --timeout {bench_timeout}"
-    cases = []
-    for ip, route in sorted(config["routes"].items()):
-        ip = str(ipaddress.IPv4Address(ip))
-        target = str(ipaddress.IPv4Address(route["target"]))
-        if not re.fullmatch(r"[A-Za-z0-9.-]+", route["host"]):
-            raise ValueError("invalid host")
-        cases.append(
-            f"  '{ip}') exec /usr/local/bin/isureal-bench \"$@\" --target '{target}' --host '{route['host']}'{bench_args} ;;"
-        )
-    if not cases:
-        raise ValueError("routes must not be empty")
     keys = [
         "cpu",
         "memory",
@@ -89,9 +79,10 @@ def build(task, service, config):
         env["ISUXBENCH_IMAGES"] = bench_images
     c["environment"] = [{"name": k, "value": v} for k, v in sorted(env.items())]
     script = (
-        'set -eu\ncase "$ISUXBENCH_TARGET" in\n'
-        + "\n".join(cases)
-        + '\n  *) echo "Unexpected target" >&2; exit 2 ;;\nesac'
+        # Router IP and Host come from the portal registration, never a static map.
+        "set -eu\n"
+        + 'if [ "${1:-}" != "--host" ] || [ -z "${2:-}" ]; then echo "Router registration required" >&2; exit 2; fi\n'
+        + f'exec /usr/local/bin/isureal-bench "$@"{bench_args}\n'
     )
     c["command"] = ["/bin/sh", "-c", script, "bench-proxy"]
     return {
@@ -142,21 +133,61 @@ def templates(config):
     region = "ap-northeast-1"
     task = json.loads(
         subprocess.run(
-            ["aws", "ecs", "describe-task-definition", "--region", region, "--task-definition", config["name"],
-             "--query", "taskDefinition", "--output", "json"],
-            check=True, capture_output=True, text=True,
+            [
+                "aws",
+                "ecs",
+                "describe-task-definition",
+                "--region",
+                region,
+                "--task-definition",
+                config["name"],
+                "--query",
+                "taskDefinition",
+                "--output",
+                "json",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
         ).stdout
     )
     cluster = subprocess.run(
-        ["aws", "ecs", "list-clusters", "--region", region, "--query", "clusterArns", "--output", "json"],
-        check=True, capture_output=True, text=True,
+        [
+            "aws",
+            "ecs",
+            "list-clusters",
+            "--region",
+            region,
+            "--query",
+            "clusterArns",
+            "--output",
+            "json",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
     ).stdout
     cluster = next(arn for arn in json.loads(cluster) if "/supervisor-cluster-" in arn)
     service = json.loads(
         subprocess.run(
-            ["aws", "ecs", "describe-services", "--region", region, "--cluster", cluster, "--services", config["name"],
-             "--query", "services[0]", "--output", "json"],
-            check=True, capture_output=True, text=True,
+            [
+                "aws",
+                "ecs",
+                "describe-services",
+                "--region",
+                region,
+                "--cluster",
+                cluster,
+                "--services",
+                config["name"],
+                "--query",
+                "services[0]",
+                "--output",
+                "json",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
         ).stdout
     )
     if not service or service.get("status") != "ACTIVE":
@@ -175,9 +206,14 @@ def main(argv):
         stack = argv[2] if len(argv) == 3 else "portal-dev"
         subprocess.run(
             ["pulumi", "config", "set", "--stack", stack, "--plaintext", "deployments"],
-            check=True, input=value, text=True, cwd=pathlib.Path(__file__).parent,
+            check=True,
+            input=value,
+            text=True,
+            cwd=pathlib.Path(__file__).parent,
         )
-        print(f"deployments of stack {stack} updated from {argv[1]} (task definition {task['family']}:{task['revision']})")
+        print(
+            f"deployments of stack {stack} updated from {argv[1]} (task definition {task['family']}:{task['revision']})"
+        )
     elif len(argv) == 1:
         export(json.load(sys.stdin)["deployments"], argv[0])
     else:
