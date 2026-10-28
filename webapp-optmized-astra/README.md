@@ -347,3 +347,4 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261028T154938Z-team10 | error-level action logging with failed-login guard events preserved | PASS | 190,094 |
 | 20261028T155335Z-team10 | repeat minimal action logging with guard events intact | PASS | 177,132 |
 | 20261028T155749Z-team10 | verify logging and notification improvements with alternate seed 20261028 | PASS | 185,577 |
+| 20261028T160310Z-team10 | 1 GiB primary metadata shared buffers after application optimizations | PASS | 188,372 |
