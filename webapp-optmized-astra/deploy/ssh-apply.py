@@ -68,7 +68,7 @@ def require_write_fences():
         remote(instance, f"systemctl show {service} -p Environment --value | tr ' ' '\\n' | grep -Fxq ISUREAL_WRITE_FENCE_MODE={write_fence_mode} || {{ echo 'Deploy the requested fence mode with synchronous replication enabled first' >&2; exit 1; }}")
 
 
-if runtime["replicaReads"] and not runtime["replicasSynchronous"] and not read_fence:
+if runtime["replicaReads"] and not runtime["replicasSynchronous"] and (not read_fence or asia_sync):
     require_write_fences()
 
 
@@ -217,7 +217,7 @@ if mode in ("all", "application", "upgrade") and not runtime["replicaReads"]:
     parallel(application, applications)
 
 # In a combined deployment, readers must gain fences before sync commits stop.
-early_fenced_apps = mode == "all" and runtime["replicaReads"] and read_fence and not runtime["replicasSynchronous"]
+early_fenced_apps = mode == "all" and runtime["replicaReads"] and read_fence and not runtime["replicasSynchronous"] and not asia_sync
 if early_fenced_apps:
     parallel(application, applications)
 
@@ -240,7 +240,7 @@ if mode in ("all", "replication") and runtime["replicasEnabled"]:
     if not runtime['asiaReplicaEnabled']:
         remote(write_host, 'sudo bash /home/isucon/astra-deploy/disable-asia-replica.sh')
     synchronous = str(runtime["replicasSynchronous"]).lower()
-    if not runtime["replicasSynchronous"] and write_fence and not read_fence:
+    if not runtime["replicasSynchronous"] and write_fence and (not read_fence or asia_sync):
         require_write_fences()
     elif not runtime["replicasSynchronous"]:
         for app in replicas:
