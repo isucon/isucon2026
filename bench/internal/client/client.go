@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -20,6 +21,7 @@ import (
 	"time"
 
 	"github.com/goccy/go-json"
+	"github.com/zeebo/xxh3"
 )
 
 const (
@@ -246,6 +248,9 @@ type request struct {
 	want        int
 	timeout     time.Duration
 	maxBody     int64
+	// digest は X-Benchmark-Request-Id（乱数の種）を付け、Router に本体の代わりにその種で計算した
+	// XXH3 を返させる（画像とエクスポート）。Router がバイト列を二度転送しないため。
+	digest bool
 }
 
 func (c *Client) newRequest(ctx context.Context, r request) (*http.Request, error) {
@@ -268,7 +273,32 @@ func (c *Client) newRequest(ctx context.Context, r request) (*http.Request, erro
 	if r.token != "" {
 		httpRequest.Header.Set("Authorization", "Bearer "+r.token)
 	}
+	if r.digest {
+		httpRequest.Header.Set("X-Benchmark-Request-Id", strconv.FormatUint(rand.Uint64(), 10))
+	}
 	return httpRequest, nil
+}
+
+// digestMarker は、Router が本体の代わりにダイジェストを返したときに Image が返す値（エクスポートの
+// 画像の項目も同じ）の先頭。続けて種、XXH3-64、長さをビッグエンディアンの uint64 で置く。
+var digestMarker = []byte("\x00isureal-xxh3:")
+
+func digestValue(seed, hash, length uint64) []byte {
+	out := bytes.Clone(digestMarker)
+	out = binary.BigEndian.AppendUint64(out, seed)
+	out = binary.BigEndian.AppendUint64(out, hash)
+	return binary.BigEndian.AppendUint64(out, length)
+}
+
+// SameImage は got（画像のバイト列か Router が返したダイジェスト）が want と同じかを返す。
+// ダイジェストは要求ごとの種で計算するので、アプリが画像を持たずに合わせることはできない。
+func SameImage(got, want []byte) bool {
+	rest, ok := bytes.CutPrefix(got, digestMarker)
+	if !ok || len(rest) != 24 {
+		return bytes.Equal(got, want)
+	}
+	seed := binary.BigEndian.Uint64(rest)
+	return binary.BigEndian.Uint64(rest[16:]) == uint64(len(want)) && binary.BigEndian.Uint64(rest[8:]) == xxh3.HashSeed(want, seed)
 }
 
 // send は r を送り、503 なら再試行ポリシーに従って再試行し、最後の
@@ -344,6 +374,15 @@ func (c *Client) attempts(ctx context.Context, r request, record *Record) ([]byt
 		}
 		if response.StatusCode != r.want {
 			return nil, &APIError{Method: r.method, Path: r.path, Status: response.StatusCode, Want: r.want, Code: problemCode(data), Attempts: record.Attempts}
+		}
+		if sum := response.Header.Get("X-Body-Xxh3"); r.digest && sum != "" {
+			seed, err1 := strconv.ParseUint(response.Request.Header.Get("X-Benchmark-Request-Id"), 10, 64)
+			hash, err2 := strconv.ParseUint(sum, 16, 64)
+			length, err3 := strconv.ParseUint(response.Header.Get("X-Body-Length"), 10, 64)
+			if err := errors.Join(err1, err2, err3); err != nil {
+				return nil, requestFailure(r, fmt.Errorf("X-Body-Xxh3 %q を解釈できません: %w", sum, err))
+			}
+			return digestValue(seed, hash, length), nil
 		}
 		return data, nil
 	}
@@ -802,12 +841,13 @@ func (s *NotificationStream) Receive() (Notification, error) {
 }
 
 // Image は署名付きの画像 URL を取得する。署名付き URL には Authorization
-// ヘッダが要らないので送らない。
+// ヘッダが要らないので送らない。Router がダイジェストを返したときはそれを返すので、
+// 中身は SameImage で比べる。
 func (c *Client) Image(ctx context.Context, path string) ([]byte, error) {
 	if !strings.HasPrefix(path, apiPrefix+"/images/") {
 		return nil, fmt.Errorf("画像 URL %q が /api/images/ で始まりません", path)
 	}
-	return c.send(ctx, request{method: http.MethodGet, path: path, route: "GET /api/images/:imageId", want: http.StatusOK, maxBody: maxImageBytes})
+	return c.send(ctx, request{method: http.MethodGet, path: path, route: "GET /api/images/:imageId", want: http.StatusOK, maxBody: maxImageBytes, digest: true})
 }
 
 type Profile struct {
@@ -888,9 +928,9 @@ func (c *Client) Relationships(ctx context.Context, token, kind string, before *
 	return page, err
 }
 
-// Export は自分の全投稿の ZIP を取る。
+// Export は自分の全投稿の ZIP を取る。Router は JSON 以外の項目をダイジェストに置き換えることがある。
 func (c *Client) Export(ctx context.Context, token string) ([]byte, error) {
-	return c.send(ctx, request{method: http.MethodGet, path: apiPrefix + "/me/export", token: token, want: http.StatusOK, maxBody: maxExportBytes})
+	return c.send(ctx, request{method: http.MethodGet, path: apiPrefix + "/me/export", token: token, want: http.StatusOK, maxBody: maxExportBytes, digest: true})
 }
 
 // --- 関係と投稿の変更 ---
