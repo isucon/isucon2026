@@ -73,7 +73,7 @@ sub get_post_with_author ($db, $post_id) {
 
 sub load_viewer_context ($db, $viewer_id) {
     my $user = get_user($db, $viewer_id) or return undef;
-    my $viewer = { %$user, friends => {}, friends_of_friends => {} };
+    my $viewer = { %$user, friends => {}, friends_of_friends => {}, mutual_friends => {} };
     $viewer->{has_posted_today} = $db->query(<<~'SQL', $viewer->{id}, $viewer->{region})->array->[0];
           SELECT EXISTS(
             SELECT 1 FROM posts p
@@ -96,8 +96,14 @@ sub load_viewer_context ($db, $viewer_id) {
     )->hashes;
     for my $friendship (@$friendships) {
         my ($low, $high) = $friendship->@{qw(user_low_id user_high_id)};
-        $viewer->{friends_of_friends}{$high} = true if $viewer->{friends}{$low};
-        $viewer->{friends_of_friends}{$low}  = true if $viewer->{friends}{$high};
+        if ($viewer->{friends}{$low}) {
+            $viewer->{friends_of_friends}{$high} = true;
+            $viewer->{mutual_friends}{$high}++ if $high ne $viewer->{id};
+        }
+        if ($viewer->{friends}{$high}) {
+            $viewer->{friends_of_friends}{$low} = true;
+            $viewer->{mutual_friends}{$low}++ if $low ne $viewer->{id};
+        }
     }
     return $viewer;
 }

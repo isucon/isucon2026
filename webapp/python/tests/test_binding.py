@@ -4,7 +4,7 @@ import pytest
 from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
 
-from isureal.binding import Form, RequestBody, form_body, json_body
+from isureal.binding import Form, RequestBody, cursor_int, form_body, json_body
 from isureal.errors import APIError
 from isureal.main import api_error_handler
 
@@ -116,3 +116,26 @@ def test_form_body_rejects_unknown_media_type() -> None:
         "/form", content=b"x", headers={"content-type": "text/plain"}
     )
     assert response.status_code == 415
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        (None, None),
+        ("", 0),
+        ("+007", 7),
+        ("-12", -12),
+        ("9223372036854775807", 2**63 - 1),
+        ("-9223372036854775808", -(2**63)),
+    ],
+)
+def test_cursor_int(value: str | None, expected: int | None) -> None:
+    assert cursor_int(value) == expected
+
+
+@pytest.mark.parametrize(
+    "value", ["1_0", " 1", "0x10", "1.0", "abc", "\u0661", "9223372036854775808"]
+)
+def test_cursor_int_rejects(value: str) -> None:
+    with pytest.raises(APIError):
+        cursor_int(value)

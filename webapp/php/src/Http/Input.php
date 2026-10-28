@@ -107,6 +107,19 @@ final class Input
         return Time::parseRfc3339($value) ?? throw ApiError::badRequest();
     }
 
+    public static function queryInt(ServerRequestInterface $request, string $name): ?int
+    {
+        $value = self::query($request, $name);
+        if ($value === null) {
+            return null;
+        }
+        if ($value === '') {
+            return 0;
+        }
+        $number = preg_match('/\A([+-]?)0*([0-9]+)\z/', $value, $m) ? filter_var($m[1] . $m[2], FILTER_VALIDATE_INT) : false;
+        return $number === false ? throw ApiError::badRequest() : $number;
+    }
+
     /**
      * クエリパラメータの値をすべて返す。
      * $_GET は同じ名前の値を後勝ちでまとめてしまうので、クエリ文字列を自分で解釈する

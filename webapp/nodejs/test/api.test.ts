@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import type { AddressInfo } from "node:net";
 import { after, before, beforeEach, describe, it } from "node:test";
@@ -116,6 +116,56 @@ describe("API", { skip: !enabled && "ISUREAL_TEST_DATABASE=1 のときだけ実�
     assert.equal(imageRes.headers.get("cache-control"), "no-store");
     assert.deepEqual(new Uint8Array(await imageRes.arrayBuffer()), image);
     assert.equal((await fetch(baseURL + feed.items[0].imageUrl.replace(/sig=../, "sig=AA"))).status, 403);
+  });
+
+  it("友達の友達フィードをおすすめ順に並べる", async () => {
+    for (const id of ["viewer", "f1", "f2", "a1", "a2", "x"]) {
+      await db.query(`INSERT INTO users (id, username, secret_key_hash, display_name, region) VALUES ($1, $2, $3, $4, 'asia')`, [id, id, sha256(`${id}-secret`), id]);
+    }
+    const viewer = await login("viewer");
+    await db.query(`INSERT INTO posting_windows (id, region, local_date, starts_at, on_time_deadline, ended_at) VALUES ('w', 'asia', '2026-09-23', '2026-09-23T00:00:00Z', '2026-09-23T00:02:00Z', NULL)`);
+    for (const [i, author] of ["viewer", "a1", "a2", "x"].entries()) {
+      await db.query(`INSERT INTO image_objects (id, owner_user_id, data, media_type) VALUES ($1, $2, $3, 'image/jpeg')`, [`${author}-image`, author, Buffer.from("image")]);
+      await db.query(
+        `INSERT INTO posts (id, author_id, posting_window_id, image_id, caption, visibility, location_kind, posted_at) VALUES ($1, $2, 'w', $3, 'caption', 'friends_of_friends', 'none', $4)`,
+        [author, author, `${author}-image`, `2026-09-23T00:01:0${i}Z`],
+      );
+    }
+    for (const pair of [["f1", "viewer"], ["f2", "viewer"], ["a1", "f1"], ["a1", "f2"], ["a2", "f1"], ["a1", "x"], ["a2", "x"], ["f2", "x"]]) {
+      const [low, high] = pair.toSorted();
+      await db.query(`INSERT INTO friendships (id, user_low_id, user_high_id) VALUES ($1, $2, $3)`, [randomUUID(), low, high]);
+    }
+    const assertRanking = async (path: string, ...expected: string[]) => {
+      const res = await request("GET", path, { token: viewer });
+      assert.equal(res.status, 200, res.text);
+      const response = res.json();
+      const got = response.items.map((item: { id: string; score?: number }) => {
+        assert.ok(Number.isInteger(item.score), `${path}: post ${item.id} has no score`);
+        return `${item.id}:${item.score}`;
+      });
+      assert.deepEqual(got, expected, path);
+      return response;
+    };
+    const feed = "/api/feeds/friends-of-friends";
+    await assertRanking(feed, "a1:7", "x:6", "a2:4");
+    await db.query(`INSERT INTO realmojis (id, post_id, reactor_id, image_id, reaction_type, created_at) VALUES ($1, 'a2', 'f1', 'rm', 'smile', clock_timestamp())`, [randomUUID()]);
+    await db.query(`INSERT INTO comments (id, post_id, author_id, body, created_at) VALUES ($1, 'a2', 'f1', 'nice', clock_timestamp()), ($2, 'a2', 'x', 'nice', clock_timestamp())`, [randomUUID(), randomUUID()]);
+    const page = await assertRanking(feed, "a2:14", "a1:7", "x:6");
+    await db.query(`INSERT INTO realmojis (id, post_id, reactor_id, image_id, reaction_type, created_at) VALUES ($1, 'a1', 'f2', 'rm', 'smile', clock_timestamp())`, [randomUUID()]);
+    await db.query(`UPDATE users SET status='deleted' WHERE id='f2'`);
+    await assertRanking(feed, "a2:14", "a1:7", "x:6");
+
+    const cursor = page.items[1];
+    const before = new URLSearchParams({ beforeScore: String(cursor.score), beforePostedAt: cursor.postedAt, beforeId: cursor.id });
+    await assertRanking(`${feed}?${before}`, "x:6");
+    assert.equal((await request("GET", `${feed}?beforeScore=7`, { token: viewer })).status, 400);
+    assert.equal((await request("GET", `${feed}?beforePostedAt=2026-09-23T00:01:01Z&beforeId=a1`, { token: viewer })).status, 400);
+
+    const friends = await request("GET", "/api/feeds/friends", { token: viewer });
+    assert.equal(friends.status, 200, friends.text);
+    for (const item of friends.json().items) {
+      assert.ok(!Object.hasOwn(item, "score"), `friends feed returned a score for ${item.id}`);
+    }
   });
 
   it("通知はヘッダを先に返し、投稿期間が始まると 1 件送って閉じる", async () => {

@@ -105,6 +105,7 @@ export type ViewerContext = {
   hasPostedToday: boolean;
   friends: Set<string>;
   friendsOfFriends: Set<string>;
+  mutualFriends: Map<string, number>;
   blocked: Set<string>;
 };
 
@@ -113,7 +114,7 @@ export async function loadViewerContext(db: Queryer, viewerID: string): Promise<
   if (!user) {
     return undefined;
   }
-  const viewer: ViewerContext = { user, hasPostedToday: false, friends: new Set(), friendsOfFriends: new Set(), blocked: new Set() };
+  const viewer: ViewerContext = { user, hasPostedToday: false, friends: new Set(), friendsOfFriends: new Set(), mutualFriends: new Map(), blocked: new Set() };
   const posted = must(await db.get<{ exists: boolean }>(
     `
   SELECT EXISTS(
@@ -146,9 +147,15 @@ export async function loadViewerContext(db: Queryer, viewerID: string): Promise<
   for (const friendship of friendships) {
     if (viewer.friends.has(friendship.user_low_id)) {
       viewer.friendsOfFriends.add(friendship.user_high_id);
+      if (friendship.user_high_id !== viewer.user.id) {
+        viewer.mutualFriends.set(friendship.user_high_id, (viewer.mutualFriends.get(friendship.user_high_id) ?? 0) + 1);
+      }
     }
     if (viewer.friends.has(friendship.user_high_id)) {
       viewer.friendsOfFriends.add(friendship.user_low_id);
+      if (friendship.user_low_id !== viewer.user.id) {
+        viewer.mutualFriends.set(friendship.user_low_id, (viewer.mutualFriends.get(friendship.user_low_id) ?? 0) + 1);
+      }
     }
   }
   return viewer;

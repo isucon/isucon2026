@@ -149,13 +149,23 @@ function convert(value: string, type: FieldType): unknown {
     case "float":
       return parseFloat64(value);
     case "int":
-      if (!/^[+-]?\d+$/.test(value) || BigInt(value) >= 2n ** 63n || BigInt(value) < -(2n ** 63n)) {
-        throw new Error(`strconv.ParseInt: parsing ${JSON.stringify(value)}: invalid syntax`);
-      }
-      return Number(value);
+      return parseInt64(value);
     default:
       throw new Error("unknown type");
   }
+}
+
+function parseInt64(value: string): number {
+  if (value === "") {
+    return 0;
+  }
+  if (!/^[+-]?\d+$/.test(value)) {
+    throw new Error(`strconv.ParseInt: parsing ${JSON.stringify(value)}: invalid syntax`);
+  }
+  if (BigInt(value) >= 2n ** 63n || BigInt(value) < -(2n ** 63n)) {
+    throw new Error(`strconv.ParseInt: parsing ${JSON.stringify(value)}: value out of range`);
+  }
+  return Number(value);
 }
 
 function parseFloat64(value: string): number {
