@@ -81,7 +81,7 @@ print(json.dumps(result))
         assert remote(app['instanceId'],'sudo -u postgres psql -XAtc "SELECT pg_is_in_recovery()"').strip()=='t'
         result['metadata']='standby'
     else:
-        disabled=remote(app['instanceId'], 'if test -f /var/lib/postgresql/16/astra/.astra-basebackup-complete; then systemctl is-active postgresql@16-main || true; cat /etc/postgresql/16/main/start.conf; fi').strip()
+        disabled=remote(app['instanceId'], 'if sudo test -f /var/lib/postgresql/16/astra/.astra-basebackup-complete; then systemctl is-active postgresql@16-main || true; cat /etc/postgresql/16/main/start.conf; fi').strip()
         if disabled:
             assert disabled=='inactive\nmanual', 'Disabled Asia standby must stay stopped across reboot'
             result['metadata']='derived standby stopped; primary reads'
