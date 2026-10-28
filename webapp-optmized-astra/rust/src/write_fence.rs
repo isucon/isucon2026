@@ -16,6 +16,10 @@ static AUTH_TIMING: LazyLock<bool> = LazyLock::new(|| {
     std::env::var("ISUREAL_AUTH_TIMING").is_ok_and(|value| value == "1")
 });
 
+pub(crate) static POST_TIMING: LazyLock<bool> = LazyLock::new(|| {
+    std::env::var("ISUREAL_POST_TIMING").is_ok_and(|value| value == "1")
+});
+
 #[derive(Clone)]
 pub enum WriteFence {
     Polling(Vec<ReadFence>),
@@ -44,10 +48,11 @@ pub async fn write_fence_middleware(
     req: Request,
     next: Next,
 ) -> Response {
-    let timing = if *AUTH_TIMING && req.method() == Method::POST {
+    let timing = if req.method() == Method::POST {
         match req.uri().path() {
-            "/api/auth/register" => Some(("register", Instant::now())),
-            "/api/auth/login" => Some(("login", Instant::now())),
+            "/api/auth/register" if *AUTH_TIMING => Some(("register", Instant::now())),
+            "/api/auth/login" if *AUTH_TIMING => Some(("login", Instant::now())),
+            "/api/posts" if *POST_TIMING => Some(("create_post", Instant::now())),
             _ => None,
         }
     } else {
@@ -96,7 +101,8 @@ pub async fn write_fence_middleware(
         let handled = handled.unwrap();
         // Temporary, opt-in timing only: no credentials, identity or body data.
         eprintln!(
-            "{{\"metric\":\"slow_auth\",\"at_ms\":{},\"action\":\"{}\",\"status\":{},\"admission_us\":{},\"handler_us\":{},\"fence_us\":{}}}",
+            "{{\"metric\":\"{}\",\"at_ms\":{},\"action\":\"{}\",\"status\":{},\"admission_us\":{},\"handler_us\":{},\"fence_us\":{}}}",
+            if action == "create_post" { "slow_post" } else { "slow_auth" },
             chrono::Utc::now().timestamp_millis(), action, response.status().as_u16(),
             admitted.duration_since(started).as_micros(),
             handled.duration_since(admitted).as_micros(), handled.elapsed().as_micros(),

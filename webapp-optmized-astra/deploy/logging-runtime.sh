@@ -15,6 +15,9 @@ for key,env in [('signatureCacheCoalescing','ISUREAL_SIGNATURE_COALESCE'),('sign
 auth_timing=runtime.get('authTimingEnabled',False)
 assert type(auth_timing) is bool
 print('ISUREAL_AUTH_TIMING='+str(int(auth_timing)))
+post_timing=runtime.get('postTimingEnabled',False)
+assert type(post_timing) is bool
+print('ISUREAL_POST_TIMING='+str(int(post_timing)))
 entries=runtime['issuedImageUrlCacheEntries']
 assert type(entries) is int and 16 <= entries <= 262144 and entries % 16 == 0
 print('ISUREAL_ISSUED_URL_CACHE_ENTRIES='+str(entries))
