@@ -33,11 +33,16 @@ trap cleanup EXIT INT TERM
 
 echo "router e2e: preparing isolated project $project_name"
 "${compose[@]}" down --volumes --remove-orphans --timeout 5 >/dev/null 2>&1 || true
-"${compose[@]}" build portal router haproxy app1 app2 app3 db1 e2e
-"${compose[@]}" up --detach --wait --wait-timeout 90 portal router app1 app2 app3 db1 haproxy
+"${compose[@]}" build portal router haproxy digest app1 app2 app3 db1 e2e
+"${compose[@]}" up --detach --wait --wait-timeout 90 portal router app1 app2 app3 db1 haproxy digest
 
 echo "router e2e: validating routing, shaping, and dynamic updates"
 "${compose[@]}" run --rm --no-deps e2e full
+
+echo "router e2e: stopping isureal-digest; the apps must answer the benchmark"
+"${compose[@]}" stop --timeout 5 digest
+"${compose[@]}" run --rm --no-deps e2e digest-fallback
+"${compose[@]}" up --detach --wait --wait-timeout 90 digest
 
 echo "router e2e: injecting Portal restart"
 "${compose[@]}" restart --timeout 5 portal
@@ -53,8 +58,8 @@ fi
 "${compose[@]}" run --rm --no-deps e2e verify-initial
 
 echo "router e2e: injecting Router and HAProxy restart"
-"${compose[@]}" stop --timeout 5 haproxy router
-"${compose[@]}" up --detach --wait --wait-timeout 90 router haproxy
+"${compose[@]}" stop --timeout 5 digest haproxy router
+"${compose[@]}" up --detach --wait --wait-timeout 90 router haproxy digest
 "${compose[@]}" run --rm --no-deps e2e verify-initial
 
 echo "router e2e: proving peer isolation while Router is down"
@@ -76,7 +81,7 @@ for peer_pair in "${peer_pairs[@]}"; do
   read -r source target <<<"$peer_pair"
   "${compose[@]}" exec --no-TTY "$source" wget -q -T 5 -O /dev/null "http://$target:8080/healthz"
 done
-"${compose[@]}" stop --timeout 5 haproxy router
+"${compose[@]}" stop --timeout 5 digest haproxy router
 for peer_pair in "${peer_pairs[@]}"; do
   read -r source target <<<"$peer_pair"
   if "${compose[@]}" exec --no-TTY "$source" wget -q -T 2 -O /dev/null "http://$target:8080/healthz"; then
@@ -86,7 +91,7 @@ for peer_pair in "${peer_pairs[@]}"; do
 done
 echo "router e2e: PASS all twelve peer directions are isolated"
 
-"${compose[@]}" up --detach --wait --wait-timeout 90 router haproxy
+"${compose[@]}" up --detach --wait --wait-timeout 90 router haproxy digest
 "${compose[@]}" run --rm --no-deps e2e verify-initial
 
 echo "router e2e: PASS"

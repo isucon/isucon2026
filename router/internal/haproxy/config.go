@@ -53,6 +53,18 @@ const streamPath = "/api/notifications"
 
 func streamBackend(server domain.ServerID) string { return string(server) + "_stream" }
 
+// The benchmark marks its downloads of images and exports with this header.
+// They go to isureal-digest (router/digest), which reads the app's response and
+// answers with its digest, so that the Router forwards those bytes once instead
+// of twice. Browsers never send the header.
+const (
+	benchmarkHeader = "x-benchmark-request-id"
+	imagePathPrefix = "/api/images/"
+	exportPath      = "/api/me/export"
+)
+
+func digestBackend(server domain.ServerID) string { return string(server) + "_digest" }
+
 // route is one target host and client region. Each country still gets its own
 // bandwidth bucket, keyed by host and country.
 type route struct {
@@ -171,12 +183,21 @@ func Render(cfg config.Config) (map[string]string, error) {
 		line("    http-request set-bandwidth-limit down_%d if { var(txn.pair) -m str %s }", bps, keys)
 	}
 	line("    http-request set-header X-Client-IP %%[src] if { req.fhdr_cnt(x-client-ip) -m int eq 0 }")
+	digest := cfg.DigestAddress != ""
+	if digest {
+		line("    acl bench_digest req.fhdr_cnt(%s) -m int gt 0", benchmarkHeader)
+		line("    acl digest_path path_beg %s", imagePathPrefix)
+		line("    acl digest_path path %s", exportPath)
+	}
 	for _, server := range apps {
 		var keys []string
 		for _, r := range all {
 			if r.server == server {
 				keys = append(keys, r.key)
 			}
+		}
+		if digest {
+			line("    use_backend %s if { method GET } bench_digest digest_path { var(txn.pair) -m str %s }", digestBackend(server), strings.Join(keys, " "))
 		}
 		line("    use_backend %s if { path %s } { var(txn.pair) -m str %s }", streamBackend(server), streamPath, strings.Join(keys, " "))
 		line("    use_backend %s if { var(txn.pair) -m str %s }", server, strings.Join(keys, " "))
@@ -190,6 +211,30 @@ func Render(cfg config.Config) (map[string]string, error) {
 		line("backend %s", streamBackend(server))
 		line("    option http-no-delay")
 		line("    server %s %s", server, upstream)
+		if !digest {
+			continue
+		}
+		// isureal-digest gets the app's address and the route's bandwidth
+		// limit, which it applies to the bodies HAProxy no longer forwards.
+		// While it is down the app answers instead, without the benchmark's
+		// header, and the benchmark compares the bytes.
+		line("")
+		line("backend %s", digestBackend(server))
+		line("    acl digest_up srv_is_up(%s/digest)", digestBackend(server))
+		line("    http-request del-header %s unless digest_up", benchmarkHeader)
+		line("    http-request set-header X-Isureal-Upstream %s if digest_up", upstream)
+		line("    http-request set-header X-Isureal-Route %%[var(txn.route)] if digest_up")
+		limits := map[uint64][]string{}
+		for _, r := range all {
+			if r.server == server {
+				limits[r.class.BandwidthBPS] = append(limits[r.class.BandwidthBPS], r.key)
+			}
+		}
+		for _, bps := range slices.Sorted(maps.Keys(limits)) {
+			line("    http-request set-header X-Isureal-Limit %d if digest_up { var(txn.pair) -m str %s }", max(bps/8, 1), strings.Join(limits[bps], " "))
+		}
+		line("    server digest %s check inter 1s fall 2 rise 2", cfg.DigestAddress)
+		line("    server %s %s backup", server, upstream)
 	}
 	line("")
 	line("backend bandwidth")
