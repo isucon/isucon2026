@@ -2,6 +2,8 @@
 set -euo pipefail
 synchronous=$1
 native=${2:-false}
+asia_replica=${3:-false}
+case "$asia_replica" in true|false) ;; *) exit 2 ;; esac
 case "$native" in true|false) ;; *) exit 2 ;; esac
 case "$synchronous" in true|false) ;; *) exit 2 ;; esac
 if [ "$synchronous" = false ] && [ "$native" = false ]; then
@@ -25,7 +27,12 @@ SELECT pg_create_physical_replication_slot('astra_europe') WHERE NOT EXISTS (SEL
 SELECT pg_create_physical_replication_slot('astra_america') WHERE NOT EXISTS (SELECT FROM pg_replication_slots WHERE slot_name = 'astra_america');
 SQL
 unset ASTRA_REPL_PASSWORD
-for ip in 192.168.146.10 192.168.147.10; do
+replica_ips=(192.168.146.10 192.168.147.10)
+if [ "$asia_replica" = true ]; then
+    sudo -u postgres psql -X -v ON_ERROR_STOP=1 -c "SELECT pg_create_physical_replication_slot('astra_asia') WHERE NOT EXISTS (SELECT FROM pg_replication_slots WHERE slot_name='astra_asia')"
+    replica_ips+=(192.168.145.10)
+fi
+for ip in "${replica_ips[@]}"; do
     rule="host replication astra_repl $ip/32 scram-sha-256"
     grep -qxF "$rule" /etc/postgresql/16/main/pg_hba.conf || printf '%s\n' "$rule" >>/etc/postgresql/16/main/pg_hba.conf
 done

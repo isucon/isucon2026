@@ -18,6 +18,7 @@ import subprocess
 import tarfile
 import time
 import uuid
+from runtime_topology import metadata_replicas
 
 root = Path(__file__).resolve().parents[2]
 deploy = root / 'webapp-optmized-astra/deploy'
@@ -43,6 +44,8 @@ spec.loader.exec_module(gc)
 gc.ensure_idle()
 subprocess.run(['python3', str(deploy / 'verify-runtime.py')], cwd=root, env=env, check=True)
 apps = runtime['applications']
+replicas = metadata_replicas(runtime)
+replica_names = [app['replicaName'] for app in replicas]
 asia = next(app for app in apps if app['region'] == 'asia')
 database = runtime['database']
 ssh = str(deploy / 'ssh.sh')
@@ -114,14 +117,14 @@ while True:
 
 def verify_replay():
     # A vacuum rewrite commits outside the application transaction. Wait for
-    # its WAL on both standbys before starting any local image lookups.
+    # its WAL on every configured standby before starting any local image lookups.
     target = sql('SELECT pg_current_wal_lsn()')
-    program = 'target=' + repr(target) + '\n' + '''import subprocess,time
+    program = 'target=' + repr(target) + '\nreplica_names=' + repr(replica_names) + '\n' + '''import subprocess,time
 deadline=time.monotonic()+180
 while True:
- query="SELECT count(*) FROM pg_stat_replication WHERE state='streaming' AND replay_lsn>='"+target+"'::pg_lsn"
+ query="SELECT count(*) FROM pg_stat_replication WHERE application_name IN ("+",".join("'"+name+"'" for name in replica_names)+") AND state='streaming' AND replay_lsn>='"+target+"'::pg_lsn"
  count=subprocess.check_output(['sudo','-u','postgres','psql','-XAt','-d','isureal','-c',query],text=True).strip()
- if count=='2':break
+ if int(count)==len(replica_names):break
  if time.monotonic()>deadline:raise RuntimeError('metadata replicas did not catch up')
  time.sleep(.5)
 '''
@@ -133,8 +136,8 @@ def await_cleanup_horizon():
     # stale slot xmin would make VACUUM FULL retain the old image row versions.
     barrier=sql('SELECT pg_current_xact_id()::text::xid')
     assert barrier.isdigit()
-    program='barrier='+repr(barrier)+'\n'+'''import subprocess,time
-query="SELECT count(*)=2 AND bool_and(xmin IS NULL OR age(xmin)<=age('"+barrier+"'::xid)) FROM pg_replication_slots WHERE slot_name IN ('astra_europe','astra_america')"
+    program='barrier='+repr(barrier)+'\nreplica_names='+repr(replica_names)+'\n'+'''import subprocess,time
+query="SELECT count(*)="+str(len(replica_names))+" AND bool_and(xmin IS NULL OR age(xmin)<=age('"+barrier+"'::xid)) FROM pg_replication_slots WHERE slot_name IN ("+",".join("'"+name+"'" for name in replica_names)+")"
 deadline=time.monotonic()+60
 while True:
  ready=subprocess.check_output(['sudo','-u','postgres','psql','-XAt','-d','isureal','-c',query],text=True).strip()
@@ -188,7 +191,7 @@ try:
     sql('CHECKPOINT')
     verify_replay()
     for app in apps:
-        if app['region']!='asia':remote(app,'sudo -u postgres psql -X -d isureal -c CHECKPOINT')
+        if any(replica['region']==app['region'] for replica in replicas):remote(app,'sudo -u postgres psql -X -d isureal -c CHECKPOINT')
     if args.restore:
         reports = parallel(lambda app: invoke(app, 'verify-source'))
         assert reports[0] == reports[1] == reports[2]
@@ -202,5 +205,5 @@ subprocess.run(['python3', str(deploy / 'verify-runtime.py')], cwd=root, env=env
 evidence = root / 'webapp-optmized-astra/results' / ('archive-' + archive + ('-restore' if args.restore else '-reclaim' if args.reclaim else ''))
 evidence.mkdir()
 (evidence / 'report.json').write_text(json.dumps(report, indent=2) + '\n')
-(evidence / 'validation.txt').write_text('All three archive and manifest hashes matched before SQL publication. Available public images (up to five per region) matched before/after migration and application restart. Runtime and both metadata replicas verified.\n')
+(evidence / 'validation.txt').write_text('All three archive and manifest hashes matched before SQL publication. Available public images (up to five per region) matched before/after migration and application restart. Runtime and all configured metadata replicas verified.\n')
 print('Completed', 'restore' if args.restore else 'reclaim' if args.reclaim else 'migration', args.partition, archive, flush=True)

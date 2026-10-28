@@ -21,6 +21,11 @@ if (runtime.writeFenceMode === "native" && (!runtime.writeFenceEnabled || !runti
 if (runtime.replicaReads && !runtime.replicasSynchronous && !runtime.readFenceEnabled && !runtime.writeFenceEnabled) {
 	throw new Error("Replica reads require synchronous remote_apply replication, read fences, or write response fences");
 }
+if (typeof runtime.asiaReplicaEnabled !== "boolean" || typeof runtime.asiaReplicaReads !== "boolean"
+    || (runtime.asiaReplicaEnabled && !runtime.replicasEnabled)
+    || (runtime.asiaReplicaReads && (!runtime.asiaReplicaEnabled || !runtime.replicaReads))) {
+    throw new Error("Asia replica reads require the existing Asia standby and enabled replica reads");
+}
 export const artifactSha256 = createHash("sha256")
 	.update(readFileSync("../../../" + runtime.archivePath))
 	.digest("hex");

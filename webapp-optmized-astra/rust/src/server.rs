@@ -231,6 +231,14 @@ pub async fn new_server(config: Config) -> Router {
                 .await
                 .expect("read recovery state");
             assert!(in_recovery, "local read database must be a standby");
+            let slot: String = sqlx::query_scalar("SHOW primary_slot_name")
+                .fetch_one(&read_db)
+                .await
+                .expect("read standby slot identity");
+            assert!(
+                fenced || matches!(slot.as_str(), "astra_europe" | "astra_america"),
+                "a standby outside the regional write barrier requires a fresh read fence"
+            );
             let read_fence = fenced.then(|| {
                 ReadFence::new(
                     handler_context.db.clone(),
