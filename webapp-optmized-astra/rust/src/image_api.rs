@@ -37,6 +37,7 @@ impl Bindable for GetImageRequest {
 
 #[derive(Clone)]
 struct CachedImage {
+    owner_id: Option<String>,
     version: String,
     created_at: DateTime<Utc>,
     data: Bytes,
@@ -93,12 +94,41 @@ pub fn remember_asset_image(id: String, asset_key: &str, created_at: DateTime<Ut
     IMAGE_CACHE.lock().unwrap().insert(
         id,
         CachedImage {
+            owner_id: None,
             version,
             created_at,
             data,
             recently_used: false,
         },
     );
+}
+
+/// Pin only this owner's bytes while the export query checks their current
+/// metadata versions. Permissions and post visibility remain in fresh SQL.
+pub(crate) struct ExportCache {
+    pub ids: Vec<String>,
+    pub versions: Vec<String>,
+    pub timestamps: Vec<DateTime<Utc>>,
+    pub bytes: HashMap<String, Bytes>,
+}
+
+pub(crate) fn cached_export_images(owner: &str) -> ExportCache {
+    let mut result = ExportCache {
+        ids: Vec::new(),
+        versions: Vec::new(),
+        timestamps: Vec::new(),
+        bytes: HashMap::new(),
+    };
+    let cache = IMAGE_CACHE.lock().unwrap();
+    for (id, image) in &cache.images {
+        if image.owner_id.as_deref() == Some(owner) {
+            result.ids.push(id.clone());
+            result.versions.push(image.version.clone());
+            result.timestamps.push(image.created_at);
+            result.bytes.insert(id.clone(), image.data.clone());
+        }
+    }
+    result
 }
 
 impl ImageCache {
@@ -253,6 +283,7 @@ async fn get_image(
             IMAGE_CACHE.lock().unwrap().insert(
                 input.image_id,
                 CachedImage {
+                    owner_id: Some(object.owner_id),
                     data: data.clone(),
                     recently_used: false,
                     version: object.version,
@@ -265,11 +296,13 @@ async fn get_image(
             let cached = cached.expect("data omitted only for the matching cached version");
             // Immutable asset identity validates bytes even when the upload
             // response timestamp differs from the image row timestamp.
-            if cached.created_at != object.created_at
+            if (cached.created_at != object.created_at
+                || cached.owner_id.as_deref() != Some(object.owner_id.as_str()))
                 && let Some(current) = IMAGE_CACHE.lock().unwrap().images.get_mut(&input.image_id)
                 && current.version == cached.version
             {
                 current.created_at = object.created_at;
+                current.owner_id = Some(object.owner_id);
             }
             cached.data
         }
@@ -284,6 +317,7 @@ async fn get_image(
 
 #[derive(sqlx::FromRow)]
 struct ImageObject {
+    owner_id: String,
     data: Option<Vec<u8>>,
     media_type: String,
     secret_key_hash: String,
@@ -297,7 +331,7 @@ struct ImageObject {
 // OFFSET 0 preserves every matching row while preventing that join flattening.
 const IMAGE_QUERY: &str = r#"
    SELECT CASE WHEN (i.created_at = $3 AND i.xmin::text = $2) OR (i.asset_key IS NOT NULL AND 'asset:' || i.asset_key = $2) THEN NULL ELSE i.data END AS data,
-          i.media_type, u.secret_key_hash, i.xmin::text AS version, i.created_at, i.asset_key
+          u.id AS owner_id, i.media_type, u.secret_key_hash, i.xmin::text AS version, i.created_at, i.asset_key
    FROM image_objects i
    JOIN LATERAL (
      SELECT id, secret_key_hash, profile_image_id FROM users
@@ -370,6 +404,7 @@ mod cache_tests {
 
     fn entry(bytes: &'static [u8]) -> CachedImage {
         CachedImage {
+            owner_id: None,
             version: "1".into(),
             created_at: Utc::now(),
             data: Bytes::from_static(bytes),
