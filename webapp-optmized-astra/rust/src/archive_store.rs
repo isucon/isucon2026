@@ -46,6 +46,15 @@ impl ArchiveReference {
 
     pub fn read(&self, directory: &Path) -> io::Result<Vec<u8>> {
         let file = File::open(directory.join(&self.archive))?;
+        // These are small ranges scattered across large immutable packs.
+        // Avoid pulling adjacent, unrelated images into the page cache.
+        #[cfg(target_os = "linux")]
+        {
+            use std::os::fd::AsRawFd;
+            // SAFETY: file owns a live descriptor; fadvise borrows it and
+            // does not access Rust memory. Advice failure does not affect reads.
+            let _ = unsafe { libc::posix_fadvise(file.as_raw_fd(), 0, 0, libc::POSIX_FADV_RANDOM) };
+        }
         let size = file.metadata()?.len();
         if size > MAX_ARCHIVE_BYTES || self.offset + self.length as u64 > size {
             return Err(io::Error::new(
