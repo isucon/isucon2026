@@ -6,4 +6,4 @@ reset.sqlのトランザクション終了後に対象4テーブルの `VACUUM (
 
 [PostgreSQL 16の説明](https://www.postgresql.org/docs/16/routine-vacuuming.html)では、通常のVACUUMは削除済み行の領域を再利用可能にし、可視性マップを更新する。VACUUM自体のI/O負荷もあるため、今回の実験では負荷走行前の初期化に置く。FULLは指定しない。
 
-現時点では候補であり未配備。
+実データでの初回事前実行は、VACUUMとANALYZEが20.306秒、小さい関連テーブルのANALYZEが0.326秒、検索テーブルが0.026秒だった。SSHを含む合計は20.964秒。初期化全体の60秒制限と実機スコアは配備後に確認する。
