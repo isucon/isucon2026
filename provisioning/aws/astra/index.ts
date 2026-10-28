@@ -180,3 +180,7 @@ if (![0, 64, 128, 256, 512].includes(runtime.applicationMallocThresholdKiB ?? 0)
 if (runtime.authTimingEnabled !== undefined && typeof runtime.authTimingEnabled !== "boolean") {
     throw new Error("Invalid auth timing flag");
 }
+
+if (runtime.postTimingEnabled !== undefined && typeof runtime.postTimingEnabled !== "boolean") {
+    throw new Error("Invalid post timing flag");
+}
