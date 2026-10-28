@@ -267,3 +267,4 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261028T061211Z-team10 | filesystem reader control with PostgreSQL image writes | PASS | 144,909 |
 | 20261028T061638Z-team10 | durable regional filesystem images instead of PostgreSQL blob writes | PASS | 80,972 |
 | 20261028T062146Z-team10 | filesystem image writes with corrected regional reference validation | PASS | 150,931 |
+| 20261028T062953Z-team10 | repeat filesystem images after GC and full process restart | PASS | 163,405 |
