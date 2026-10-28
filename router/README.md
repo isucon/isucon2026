@@ -16,8 +16,8 @@ make router-e2e
 ```
 
 `router-check` は go vet/test/build、Compose model、既定の環境変数で生成した HAProxy の設定を検証する。
-`router-e2e` は Portal Mock、Router、HAProxy、3つの server segment、runner を project `isureal-router-e2e` に構築し、
-routing、実測 shaping、動的変更、
+`router-e2e` は Portal Mock、Router、HAProxy、isureal-digest、3つの server segment、runner を project
+`isureal-router-e2e` に構築し、routing、実測 shaping、ベンチの画像のダイジェストと isureal-digest 停止時の切り替え、動的変更、
 再起動回復、Router 停止中の隔離を自動判定して cleanup する。既存の root/Portal Mock Compose project は停止しない。
 
 失敗後に container と network を残して調査する場合だけ次を使う。
@@ -45,6 +45,7 @@ internal/netcontrol/    interface discovery, nftables, HTB/netem, rollback
 internal/haproxy/       HAProxy config rendering, runtime API (default country)
 internal/reconcile/     Portal stream, latest-wins apply, report retry
 internal/status/        /healthz and /readyz
+digest/                 isureal-digest (Rust): digests of the benchmark's image downloads
 test-fixtures/server/   bounded E2E-only backend and peer probe
 tests/e2e/              compiled assertions and Compose orchestration
 compose.e2e.yaml        isolated five-network topology
@@ -85,6 +86,12 @@ runtime API で書き換える。
 | `ROUTER_UPSTREAM_PORT` | `8080` | app1〜3 の HTTP port |
 | `ROUTER_HAPROXY_DIR` | `/run/isureal-haproxy` | HAProxy が読むファイルの置き場所 |
 | `ROUTER_HAPROXY_RUNTIME_ADDRESS` | `127.0.0.1:18001` | HAProxy runtime API（TCP） |
+| `ROUTER_DIGEST_ADDRESS` | `127.0.0.1:18010` | isureal-digest の待ち受け。空にするとベンチの画像のダウンロードもアプリへ送る |
+
+ベンチの画像とエクスポートのダウンロード（`X-Benchmark-Request-Id` 付き）は、同じ network namespace で動く
+`isureal-digest`（`digest/`、Rust）に送り、本体の代わりに XXH3 を返す（[設計文書](../docs/router.md) の
+「ベンチの画像のダウンロード」）。isureal-digest は上の 2 つのアドレスだけを環境変数から読む。単体テストは
+`cargo test --manifest-path router/digest/Cargo.toml`。
 
 ### Public hostnames
 

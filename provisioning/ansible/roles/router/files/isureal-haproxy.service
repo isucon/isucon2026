@@ -1,7 +1,7 @@
 [Unit]
 Description=ISUReal HAProxy edge proxy
 After=network-online.target
-Wants=network-online.target
+Wants=network-online.target isureal-digest.service
 
 # The configuration comes from the Router environment; the Router controller
 # sets the Portal's default country through the runtime API.
