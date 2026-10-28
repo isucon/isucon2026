@@ -519,6 +519,20 @@ func TestUncertainDeletionStopsUser(t *testing.T) {
 	}
 }
 
+// アプリを閉じたあと、ログインし直す前に走行が終わったユーザーはトークンを持たない。
+// そのユーザーを走行後の整合性チェックで確かめると、正しいアプリでも 401 で fail になる。
+func TestLoggedOutUserSkippedInFinalCheck(t *testing.T) {
+	runner, _ := newTestRunner(t, 2, metrics.SLO{FailRate: 1000, MinOps: 1})
+	for _, u := range runner.usersSnapshot() {
+		runner.mu.Lock()
+		u.Token = ""
+		runner.mu.Unlock()
+	}
+	if reason := runner.finalCheck(t.Context()); reason != "" {
+		t.Fatalf("final check: %s", reason)
+	}
+}
+
 // 友達を解除する間に相手が退会すれば、アプリは 404 を返す（webapp/go の beginRelationshipTx）。
 // 退会の結果がわからない間の 404 は正しく、確実に有効な相手への 404 は違反とする。
 func TestUnfriendDuringDeletion(t *testing.T) {
@@ -636,5 +650,105 @@ func TestAwaitPhotosAfterInitialize(t *testing.T) {
 	}
 	if n := others.Load(); n != 0 {
 		t.Fatalf("requests other than initialize before the photos were ready = %d", n)
+	}
+}
+
+// TestUsersMoveBetweenRegions は、ユーザーが日を過ごし終えたあとで所属リージョンを変えても、
+// 移った先の国から使い続け、モデルが偽のアプリと食い違わないことを確かめる。
+func TestUsersMoveBetweenRegions(t *testing.T) {
+	runner, app := newTestRunner(t, 3, metrics.SLO{FailRate: 1000, MinOps: 1})
+	runner.setDuration(2 * time.Second)
+	runner.moveRate = 1
+	if reason := runner.load(t.Context()); reason != "" || runner.board.ErrorCount() != 0 || runner.board.CriticalCount() != 0 {
+		t.Fatalf("reason=%q errors=%v critical=%v", reason, runner.board.Errors(), runner.board.Critical())
+	}
+	moves := 0
+	for _, n := range runner.moves {
+		moves += n
+	}
+	if moves == 0 {
+		t.Fatal("no user moved")
+	}
+	app.mu.Lock()
+	defer app.mu.Unlock()
+	for _, u := range runner.usersSnapshot() {
+		if fake := app.users[u.Token]; fake != nil && !u.cohort && fake.region != u.Region {
+			t.Errorf("%s: bench thinks %s, app has %s", u.Username, u.Region, fake.region)
+		}
+	}
+}
+
+// TestUsersSignOffOvernight は、日の終わりにログアウトして次の日にログインし直すユーザーが、
+// 通知を待たずに投稿してエラーにならないことを確かめる。
+func TestUsersSignOffOvernight(t *testing.T) {
+	runner, _ := newTestRunner(t, 3, metrics.SLO{FailRate: 1000, MinOps: 1})
+	runner.setDuration(2 * time.Second)
+	runner.signOffRate = 1
+	if reason := runner.load(t.Context()); reason != "" || runner.board.ErrorCount() != 0 || runner.board.CriticalCount() != 0 {
+		t.Fatalf("reason=%q errors=%v critical=%v", reason, runner.board.Errors(), runner.board.Critical())
+	}
+	if runner.board.Count(score.TagGatePass) == 0 {
+		t.Fatal("no gate passes")
+	}
+}
+
+// TestUncertainMoveIsReconciled は、所属リージョンの変更が反映されたのに応答がエラーだった
+// とき、同じ変更を送り直して移った先のリージョンから使い続ける（前のリージョンから送り続けない）
+// ことを確かめる。偽のアプリは、所属と違う国からの要求でテストを失敗させる。
+func TestUncertainMoveIsReconciled(t *testing.T) {
+	runner, app := newTestRunner(t, 3, metrics.SLO{FailRate: 1000, MinOps: 1})
+	runner.setDuration(2 * time.Second)
+	runner.moveRate = 1
+	app.mu.Lock()
+	app.flakyMoves = 4
+	app.mu.Unlock()
+	runner.load(t.Context())
+	for _, e := range runner.board.Errors() {
+		if !strings.Contains(e, "所属リージョンを") {
+			t.Errorf("unexpected error: %s", e)
+		}
+	}
+	if runner.board.CriticalCount() != 0 {
+		t.Fatalf("critical=%v", runner.board.Critical())
+	}
+	app.mu.Lock()
+	defer app.mu.Unlock()
+	if app.flakyMoves != 0 {
+		t.Fatalf("flaky moves left: %d", app.flakyMoves)
+	}
+	for _, u := range runner.usersSnapshot() {
+		if fake := app.users[u.Token]; fake != nil && !u.cohort && !u.stopped.Load() && fake.region != u.Region {
+			t.Errorf("%s: bench thinks %s, app has %s", u.Username, u.Region, fake.region)
+		}
+	}
+}
+
+// TestRejectedRetryAfterAppliedMove は、反映されたのに 500 だった変更のあとで送り直しが拒否
+// されても、前のリージョンに戻ったとみなさず、そのユーザーを止めて使えなかった人として数え
+// 続けることを確かめる。偽のアプリは、所属と違う国からの要求でテストを失敗させる。
+func TestRejectedRetryAfterAppliedMove(t *testing.T) {
+	runner, app := newTestRunner(t, 3, metrics.SLO{FailRate: 1000, MinOps: 1})
+	runner.setDuration(2 * time.Second)
+	runner.moveRate = 1
+	app.mu.Lock()
+	app.moveReplies = []int{http.StatusInternalServerError, http.StatusConflict}
+	app.mu.Unlock()
+	runner.load(t.Context())
+	for _, e := range runner.board.Errors() {
+		if !strings.Contains(e, "所属リージョンを") {
+			t.Errorf("unexpected error: %s", e)
+		}
+	}
+	stranded := 0
+	for _, u := range runner.usersSnapshot() {
+		if u.stranded.Load() {
+			stranded++
+			if !u.stopped.Load() {
+				t.Errorf("%s: stranded but still running", u.Username)
+			}
+		}
+	}
+	if stranded != 1 {
+		t.Fatalf("stranded users = %d, want 1", stranded)
 	}
 }

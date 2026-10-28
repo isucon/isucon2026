@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/isucon/isucon2026/bench/internal/client"
+	"github.com/isucon/isucon2026/bench/internal/geo"
 	"github.com/isucon/isucon2026/dataset"
 )
 
@@ -51,9 +52,12 @@ func (r *Runner) evilEnv(start time.Time) EvilEnv {
 		Length:  r.cfg.Duration,
 		Users: func() []EvilTarget {
 			var out []EvilTarget
-			for _, u := range r.usersSnapshot() {
-				if !u.stopped.Load() {
-					out = append(out, EvilTarget{ID: u.ID, Username: u.Username, Region: u.Region})
+			byRegion := r.usersByRegion()
+			for _, region := range geo.Regions {
+				for _, u := range byRegion[region] {
+					if !u.stopped.Load() {
+						out = append(out, EvilTarget{ID: u.ID, Username: u.Username, Region: region})
+					}
 				}
 			}
 			return out

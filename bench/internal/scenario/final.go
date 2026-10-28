@@ -36,8 +36,12 @@ func (r *Runner) finalCheck(ctx context.Context) string {
 	defer func() { r.cfg.Logger.Info("final check done", "elapsed", time.Since(start).Round(time.Millisecond)) }()
 	var users []*agent.Agent
 	for _, u := range r.usersSnapshot() {
-		// 退会したユーザーと BAN されたユーザーは確かめられない。
-		if !u.stopped.Load() {
+		// 退会したユーザーと BAN されたユーザーは確かめられない。アプリを閉じたまま走行が
+		// 終わったユーザー（ログインし直す前に終わった）もトークンがないので確かめない。
+		r.mu.Lock()
+		loggedOut := u.Token == ""
+		r.mu.Unlock()
+		if !u.stopped.Load() && !loggedOut {
 			users = append(users, u.Agent)
 		}
 	}

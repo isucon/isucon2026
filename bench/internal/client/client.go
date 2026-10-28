@@ -629,9 +629,20 @@ func buildMultipart(fields map[string]string, files []filePart) (string, []byte,
 	return writer.FormDataContentType(), buffer.Bytes(), nil
 }
 
-func (c *Client) CreatePost(ctx context.Context, token string, image []byte, caption, visibility string) (Post, error) {
+func (c *Client) CreatePost(ctx context.Context, token string, image []byte, caption, visibility string, location Location) (Post, error) {
+	fields := map[string]string{"caption": caption, "visibility": visibility, "location_kind": location.Kind}
+	if location.Kind == "" {
+		fields["location_kind"] = "none"
+	}
+	if location.Latitude != nil && location.Longitude != nil {
+		fields["latitude"] = strconv.FormatFloat(*location.Latitude, 'f', -1, 64)
+		fields["longitude"] = strconv.FormatFloat(*location.Longitude, 'f', -1, 64)
+	}
+	if location.Locality != nil {
+		fields["locality"] = *location.Locality
+	}
 	contentType, body, err := buildMultipart(
-		map[string]string{"caption": caption, "visibility": visibility, "location_kind": "none"},
+		fields,
 		[]filePart{
 			{field: "image", filename: multipartImageName, contentType: "image/jpeg", data: image},
 		},

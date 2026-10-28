@@ -67,6 +67,12 @@ type Config struct {
 	// VerifyRate は負荷走行で重い検証（フィードの欠落、画像 URL の署名、履歴の画像）を行う
 	// 操作の割合（0 より大きく 1 以下）。0 なら DefaultVerifyRate。
 	VerifyRate float64
+	// MoveRate は正なら、好みにかかわらず、移れるユーザーが日を過ごし終えるたびにこの確率で
+	// リージョンを移る（開発で移動を確かめる用）。0 なら好み（persona）に従う。
+	MoveRate float64
+	// SignOffRate は正なら、好みにかかわらず、日を過ごし終えるたびにこの確率でアプリを閉じる
+	// （開発でログインし直しを確かめる用）。0 なら好みに従う。
+	SignOffRate float64
 	// Growth はユーザーの増え方。ゼロ値なら DefaultGrowth。
 	Growth GrowthConfig
 	// Dataset は対象の DB に入っている初期データ。nil なら dataset.Small() から作る。
@@ -148,6 +154,10 @@ type Runner struct {
 	visibility func() string
 	// peekRate は、通知を受けて投稿する前にフィードを覗くユーザーの割合。
 	peekRate float64
+	// moveRate は Config.MoveRate。
+	moveRate float64
+	// signOffRate は Config.SignOffRate。
+	signOffRate float64
 	// historyImages は履歴を 1 か月読むたびに中身を取得する画像の数。
 	historyImages int
 	// verifyRate は負荷走行で重い検証を行う操作の割合（Config.VerifyRate）。
@@ -176,8 +186,10 @@ type Runner struct {
 	// arriving はリージョンごとの、登録中の新しいユーザーの数。
 	arriving       map[string]int
 	returningCount map[string]int
-	revisiting     map[string]bool
-	evilUsers      map[string]bool
+	// moves はリージョンを移った人数（"移る前>移った先" ごと）。
+	moves      map[string]int
+	revisiting map[string]bool
+	evilUsers  map[string]bool
 	// openedAt は投稿期間ごとに、開く要求を送った時刻。
 	openedAt        map[string]time.Time
 	story           []string
@@ -242,6 +254,8 @@ func NewRunner(cfg Config) (*Runner, error) {
 		changeRate:        0.1,
 		historyImages:     4,
 		verifyRate:        cfg.VerifyRate,
+		moveRate:          cfg.MoveRate,
+		signOffRate:       cfg.SignOffRate,
 		returningRatio:    returningRatio,
 		users:             map[string][]*user{},
 		byID:              map[string]*user{},
@@ -255,6 +269,7 @@ func NewRunner(cfg Config) (*Runner, error) {
 		reactionsByWindow: map[string]map[string]int{},
 		arriving:          map[string]int{},
 		returningCount:    map[string]int{},
+		moves:             map[string]int{},
 		revisiting:        map[string]bool{},
 		evilUsers:         map[string]bool{},
 		openedAt:          map[string]time.Time{},

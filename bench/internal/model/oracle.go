@@ -83,30 +83,33 @@ func (m *Model) windowOpenTri(p *Post, r Read) Tri {
 	})
 }
 
-// postedTodayTri は、閲覧者のリージョンで開いている投稿期間と同じ日付の投稿を、閲覧者が
+// postedTodayTri は、閲覧者の（今の）リージョンで開いている投稿期間と同じ日付の投稿を、閲覧者が
 // 持っているか。持っていないと他人の投稿は見えない。
 func (m *Model) postedTodayTri(viewer *User, r Read) Tri {
 	pending := False
 	if m.mayHaveUnknownPost(viewer.ID, r) {
 		pending = Unknown
 	}
-	return forAll(m.currentWindowOf(viewer.Region), r, func(id string) Tri {
-		if id == "" {
-			return False
-		}
-		window := m.windows[id]
-		if window == nil {
-			return Unknown
-		}
-		result := pending
-		for _, p := range m.byAuthor[viewer.ID] {
-			if p.LocalDate.Equal(window.LocalDate) {
-				if result = max(result, m.liveTri(p, r)); result == True {
-					return True
+	// 閲覧者がリージョンを移っている最中なら、移る前と後のどちらの投稿期間でも判定する。
+	return forAll(viewer.region, r, func(region string) Tri {
+		return forAll(m.currentWindowOf(region), r, func(id string) Tri {
+			if id == "" {
+				return False
+			}
+			window := m.windows[id]
+			if window == nil {
+				return Unknown
+			}
+			result := pending
+			for _, p := range m.byAuthor[viewer.ID] {
+				if p.LocalDate.Equal(window.LocalDate) {
+					if result = max(result, m.liveTri(p, r)); result == True {
+						return True
+					}
 				}
 			}
-		}
-		return result
+			return result
+		})
 	})
 }
 
