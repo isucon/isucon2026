@@ -272,3 +272,4 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261028T065922Z-team10 | small initial-image archive with original 128-connection listen backlog | PASS | 157,618 |
 | 20261028T070427Z-team10 | 4096 application listen backlog; same small historical archive | PASS | 157,098 |
 | 20261028T081316Z-team10 | all initial images in locally replicated immutable files; metadata and authorization remain SQL | PASS | 149,107 |
+| 20261028T081730Z-team10 | repeat all initial image archives before additional application changes | PASS | 162,724 |
