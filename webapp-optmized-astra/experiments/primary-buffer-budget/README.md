@@ -1,0 +1,7 @@
+# プライマリの共有バッファ比較候補
+
+メタデータ専用のdb1ではshared_buffersを512MiBに固定していた。画像の本体をファイルへ移し、残るメタデータのI/O待ちを確認したため、1GiBとの比較を行えるようにする。
+
+`primarySharedBuffersMiB` をruntime.jsonとPulumiで管理する。`apply.sh database` がPostgreSQLの設定ファイルへ反映し、値が変わった場合だけプライマリを再起動する。`verify-runtime.py` は実際のshared_buffersをバイト数で照合する。EU・US・Asiaのレプリカ側の512MiB設定は変更しない。
+
+候補の既定値は既存どおり512。実機で1GiBを比較する前に、ベンチが終了していることを確認する。変更後は複製とアプリの再接続を検証してから測定する。切り戻しも同じ配備手順で512へ戻す。

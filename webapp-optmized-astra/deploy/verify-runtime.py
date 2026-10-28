@@ -118,6 +118,9 @@ with ThreadPoolExecutor(max_workers=3) as pool:
     for region,result in pool.map(inspect,runtime['applications']):print(region,json.dumps(result),flush=True)
 query="SELECT application_name,state,sync_state,pg_wal_lsn_diff(pg_current_wal_lsn(),replay_lsn)::bigint FROM pg_stat_replication ORDER BY application_name"
 rows=remote(runtime['database']['instanceId'],'sudo -u postgres psql -X -d isureal -Atc '+shlex.quote(query)).strip().splitlines()
+primary_cache=int(remote(runtime['database']['instanceId'], "sudo -u postgres psql -XAtc \"SELECT pg_size_bytes(current_setting('shared_buffers'))\"").strip())
+assert primary_cache==runtime['primarySharedBuffersMiB']*1024**2
+print('primary shared buffers MiB='+str(primary_cache//1024**2))
 expected_replicas={app["replicaName"] for app in metadata_replicas(runtime)}
 assert len(rows)==len(expected_replicas) and {row.split("|")[0] for row in rows}==expected_replicas
 for row in rows:
