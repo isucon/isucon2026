@@ -1433,6 +1433,79 @@ async fn independent_bytes_publish_atomically_and_preserve_visibility_export_and
         .await,
         (StatusCode::OK, original.to_vec())
     );
+    // Concurrent cold requests still authorize individually, but fetch the
+    // immutable remote bytes once. Failed reads must remain retryable.
+    let read_count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let fail_first = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let remote_bytes = original.to_vec();
+    let remote = Router::new().fallback(get({
+        let read_count = read_count.clone();
+        let fail_first = fail_first.clone();
+        move || {
+            let read_count = read_count.clone();
+            let fail_first = fail_first.clone();
+            let bytes = remote_bytes.clone();
+            async move {
+                read_count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                tokio::time::sleep(Duration::from_millis(100)).await;
+                if fail_first.swap(false, std::sync::atomic::Ordering::SeqCst) {
+                    (StatusCode::INTERNAL_SERVER_ERROR, Vec::new())
+                } else {
+                    (StatusCode::OK, bytes)
+                }
+            }
+        }
+    }));
+    let server = tokio::spawn(async move { axum::serve(listener, remote).await.unwrap() });
+    let remote_store = ImageStore::new(assets.clone(), true, None)
+        .with_cache_enabled(false)
+        .with_file_store(Some(isureal::file_store::FileStore::new(
+            file_root.clone(),
+            "asia".into(),
+            [("europe".into(), address.to_string())].into(),
+            false,
+        )));
+    let remote_app = app(db.clone(), Some(remote_store));
+    for fail in [false, true] {
+        read_count.store(0, std::sync::atomic::Ordering::SeqCst);
+        fail_first.store(fail, std::sync::atomic::Ordering::SeqCst);
+        sqlx::query("UPDATE image_objects SET asset_key=$2 WHERE id=$1")
+            .bind(&file_image)
+            .bind(format!("fs:europe:{}", uuid::Uuid::new_v4()))
+            .execute(&db)
+            .await
+            .unwrap();
+        let responses = futures_util::future::join_all((0..20).map(|_| {
+            request(
+                remote_app.clone(),
+                Request::get(&url).body(Body::empty()).unwrap(),
+            )
+        }))
+        .await;
+        let failures = responses
+            .iter()
+            .filter(|(status, _)| *status == StatusCode::INTERNAL_SERVER_ERROR)
+            .count();
+        assert_eq!(failures, usize::from(fail));
+        for (status, bytes) in responses {
+            if status != StatusCode::INTERNAL_SERVER_ERROR {
+                assert_eq!((status, bytes), (StatusCode::OK, original.to_vec()));
+            }
+        }
+        assert_eq!(
+            read_count.load(std::sync::atomic::Ordering::SeqCst),
+            1 + usize::from(fail)
+        );
+    }
+    server.abort();
+    sqlx::query("UPDATE image_objects SET asset_key=$2 WHERE id=$1")
+        .bind(&file_image)
+        .bind(&pack_key)
+        .execute(&db)
+        .await
+        .unwrap();
     let (status, archive) = request(
         file_app.clone(),
         Request::get("/api/me/export").body(Body::empty()).unwrap(),

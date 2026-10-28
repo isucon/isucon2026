@@ -1,5 +1,5 @@
 use std::collections::{HashMap, VecDeque};
-use std::sync::{Arc, LazyLock, Mutex};
+use std::sync::{Arc, LazyLock, Mutex, Weak};
 
 use axum::extract::{RawQuery, State};
 use axum::http::{HeaderValue, StatusCode, header};
@@ -81,6 +81,43 @@ pub fn remember_image_timestamp(image_id: &str, timestamp: DateTime<Utc>) {
 static IMAGE_CACHE: LazyLock<Mutex<ImageCache>> = LazyLock::new(Mutex::default);
 const IMAGE_CACHE_BYTES: usize = 1024 * 1024 * 1024;
 const IMAGE_CACHE_ENTRIES: usize = 16384;
+
+// Keep only weak references here: completed reads retain no image bytes or
+// permanent locks. Cap retained keys even when many distinct images are read.
+type ImageRead = Arc<tokio::sync::Mutex<()>>;
+static IMAGE_READS: LazyLock<Mutex<HashMap<String, Weak<tokio::sync::Mutex<()>>>>> =
+    LazyLock::new(Mutex::default);
+fn image_read(id: &str) -> ImageRead {
+    let mut reads = IMAGE_READS.lock().unwrap();
+    if let Some(read) = reads.get(id).and_then(Weak::upgrade) {
+        return read;
+    }
+    if reads.len() >= IMAGE_CACHE_ENTRIES {
+        reads.retain(|_, read| read.strong_count() > 0);
+    }
+    let read = Arc::new(tokio::sync::Mutex::new(()));
+    if reads.len() < IMAGE_CACHE_ENTRIES {
+        reads.insert(id.to_owned(), Arc::downgrade(&read));
+    }
+    read
+}
+
+fn cached_bytes_for_object(id: &str, object: &ImageObject) -> Option<Bytes> {
+    let mut cache = IMAGE_CACHE.lock().unwrap();
+    let image = cache.images.get_mut(id)?;
+    let matches = (image.created_at == object.created_at && image.version == object.version)
+        || object
+            .asset_key
+            .as_ref()
+            .is_some_and(|key| image.version.strip_prefix("asset:") == Some(key));
+    if !matches {
+        return None;
+    }
+    image.recently_used = true;
+    image.created_at = object.created_at;
+    image.owner_id = Some(object.owner_id.clone());
+    Some(image.data.clone())
+}
 
 pub fn remember_stored_image(id: String, created_at: DateTime<Utc>, data: Bytes) {
     remember_asset_image(id.clone(), &id, created_at, data);
@@ -268,29 +305,38 @@ async fn get_image(
     if exp <= Utc::now().timestamp() {
         return Err(new_api_error(StatusCode::FORBIDDEN, "image_forbidden"));
     }
-    let data = match object.data {
+    let mut object = object;
+    let data = match object.data.take() {
         Some(data) => {
-            let data = if let Some(key) = &object.asset_key {
-                h.image_store
-                    .as_ref()
-                    .ok_or_else(|| anyhow::anyhow!("image store unavailable"))?
-                    .get(key)
-                    .await?
+            // Authorization above stays fresh for every request. Only the
+            // immutable/current-version byte load is shared among waiters.
+            let read = image_read(&input.image_id);
+            let _reading = read.lock().await;
+            if let Some(bytes) = cached_bytes_for_object(&input.image_id, &object) {
+                bytes
             } else {
+                let data = if let Some(key) = &object.asset_key {
+                    h.image_store
+                        .as_ref()
+                        .ok_or_else(|| anyhow::anyhow!("image store unavailable"))?
+                        .get(key)
+                        .await?
+                } else {
+                    data
+                };
+                let data = Bytes::from(data);
+                IMAGE_CACHE.lock().unwrap().insert(
+                    input.image_id,
+                    CachedImage {
+                        owner_id: Some(object.owner_id),
+                        data: data.clone(),
+                        recently_used: false,
+                        version: object.version,
+                        created_at: object.created_at,
+                    },
+                );
                 data
-            };
-            let data = Bytes::from(data);
-            IMAGE_CACHE.lock().unwrap().insert(
-                input.image_id,
-                CachedImage {
-                    owner_id: Some(object.owner_id),
-                    data: data.clone(),
-                    recently_used: false,
-                    version: object.version,
-                    created_at: object.created_at,
-                },
-            );
-            data
+            }
         }
         None => {
             let cached = cached.expect("data omitted only for the matching cached version");
