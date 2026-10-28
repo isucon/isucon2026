@@ -314,3 +314,4 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261028T103148Z-team10 | reuse issued image URLs; preserve original 24-hour expiry and fresh permissions | PASS | 162,003 |
 | 20261028T103720Z-team10 | repeat issued URL cache after image GC and all application restart | PASS | 162,842 |
 | 20261028T104152Z-team10 | issued image URL cache capacity 262144 entries | PASS | 152,824 |
+| 20261028T104946Z-team10 | gzip JSON responses at level one; image and SSE formats unchanged | PASS | 160,343 |
