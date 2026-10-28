@@ -89,28 +89,53 @@ pub async fn search_users_handler(
         username: String,
         display_name: String,
     }
-    let candidates: Vec<Candidate> = sqlx::query_as(
-        "SELECT u.id, u.username, u.display_name FROM users u \
-         LEFT JOIN astra_user_search s ON s.user_id=u.id \
-         WHERE u.status='active' AND u.id<>$1 \
-         AND ($2='' OR (u.username,u.id)>($2,$3)) \
-         AND (s.user_id IS NULL OR s.source_username<>u.username OR s.source_display_name<>u.display_name \
-           OR s.normalized_username LIKE $4 ESCAPE '!' \
-           OR s.normalized_display_name LIKE $4 ESCAPE '!') \
-         AND NOT EXISTS(SELECT 1 FROM block_relations b WHERE b.blocker_id=$1 AND b.blocked_id=u.id) \
-         AND NOT EXISTS(SELECT 1 FROM block_relations b WHERE b.blocked_id=$1 AND b.blocker_id=u.id) \
-         ORDER BY u.username,u.id")
-        .bind(viewer).bind(&input.before_username).bind(&input.before_id).bind(&pattern)
+    // Match immutable derived text first. Name changes, missing derived rows,
+    // and reset mark users dirty in the same transaction, so the fallback
+    // below preserves coverage until Rust has rebuilt their normalization.
+    let mut cursor = (input.before_username.clone(), input.before_id.clone());
+    let mut ids = Vec::with_capacity(51);
+    let mut batch_size = 64_i64;
+    loop {
+        let candidates: Vec<Candidate> = sqlx::query_as(
+        r#"WITH candidate_ids AS MATERIALIZED (
+             SELECT user_id FROM astra_user_search
+             WHERE normalized_username LIKE $4 ESCAPE '!'
+                OR normalized_display_name LIKE $4 ESCAPE '!'
+             UNION SELECT user_id FROM astra_search_dirty
+           )
+           SELECT u.id,u.username,u.display_name
+           FROM candidate_ids c JOIN users u ON u.id=c.user_id
+           WHERE u.status='active' AND u.id<>$1
+             AND ($2='' OR (u.username,u.id)>($2,$3))
+             AND NOT EXISTS(SELECT 1 FROM block_relations b WHERE b.blocker_id=$1 AND b.blocked_id=u.id)
+             AND NOT EXISTS(SELECT 1 FROM block_relations b WHERE b.blocked_id=$1 AND b.blocker_id=u.id)
+           ORDER BY u.username,u.id LIMIT $5"#)
+        // Broad and selective substrings need different PostgreSQL plans.
+        // An unnamed statement keeps planning sensitive to the current pattern.
+        .persistent(false)
+        .bind(viewer).bind(&cursor.0).bind(&cursor.1).bind(&pattern).bind(batch_size)
         .fetch_all(&mut *tx).await?;
-    let ids: Vec<String> = candidates
-        .into_iter()
-        .filter(|user| {
-            search_text::matches(&user.username, &query)
+        let exhausted = candidates.len() < batch_size as usize;
+        if let Some(last) = candidates.last() {
+            cursor = (last.username.clone(), last.id.clone());
+        }
+        for user in candidates {
+            if search_text::matches(&user.username, &query)
                 || search_text::matches(&user.display_name, &query)
-        })
-        .take(51)
-        .map(|user| user.id)
-        .collect();
+            {
+                ids.push(user.id);
+                if ids.len() == 51 {
+                    break;
+                }
+            }
+        }
+        if ids.len() == 51 || exhausted {
+            break;
+        }
+        // A rebuild/import can temporarily leave many dirty candidates. Bound
+        // memory while avoiding hundreds of roundtrips through that fallback.
+        batch_size = (batch_size * 2).min(4096);
+    }
     let users: Vec<User> = if ids.is_empty() {
         Vec::new()
     } else {
