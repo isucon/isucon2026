@@ -12,7 +12,7 @@ use tokio::sync::{Semaphore, SemaphorePermit, oneshot};
 const WRITE_SLOTS: u32 = 64;
 const BYTES_PER_SLOT: u64 = 256 * 1024;
 const SMALL_BODY_BYTES: u64 = 64 * 1024;
-const SMALL_WRITE_SLOTS: usize = 32;
+pub(crate) const SMALL_WRITE_SLOTS: usize = 128;
 
 #[derive(Default)]
 struct Pending {

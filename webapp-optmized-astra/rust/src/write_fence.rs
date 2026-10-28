@@ -443,21 +443,22 @@ mod tests {
                     }
                 }).await.unwrap();
                 let mut ordinary = Vec::new();
-                for _ in 0..32 {
+                let admitted = crate::native_write_fence::SMALL_WRITE_SLOTS as i32;
+                for _ in 0..admitted {
                     ordinary.push(tokio::spawn(app.clone().oneshot(
                         HttpRequest::post("/write").body(Body::empty()).unwrap(),
                     )));
                 }
-                wait_value(&primary, &table, 39).await;
+                wait_value(&primary, &table, 7 + admitted).await;
                 let mut queued_small = tokio::spawn(app.clone().oneshot(
                     HttpRequest::post("/write").body(Body::empty()).unwrap(),
                 ));
                 assert!(timeout(Duration::from_millis(100), &mut queued_small).await.is_err());
-                assert_eq!(value(&primary, &table).await, 39);
+                assert_eq!(value(&primary, &table).await, 7 + admitted);
                 let mut control = tokio::spawn(app.clone().oneshot(
                     HttpRequest::post("/api/admin/posting-window").body(Body::empty()).unwrap(),
                 ));
-                wait_value(&primary, &table, 40).await;
+                wait_value(&primary, &table, 8 + admitted).await;
                 assert!(timeout(Duration::from_millis(100), &mut control).await.is_err());
                 assert_eq!(value(&replica2, &table).await, 7);
                 sqlx::query("SELECT pg_wal_replay_resume()").execute(&replica2).await.unwrap();
@@ -465,8 +466,8 @@ mod tests {
                 for response in ordinary {
                     assert_eq!(timeout(Duration::from_secs(3), response).await.unwrap().unwrap().unwrap().status(), StatusCode::NO_CONTENT);
                 }
-                assert_eq!(value(&replica, &table).await, 41);
-                assert_eq!(value(&replica2, &table).await, 41);
+                assert_eq!(value(&replica, &table).await, 9 + admitted);
+                assert_eq!(value(&replica2, &table).await, 9 + admitted);
 
             }
         })
