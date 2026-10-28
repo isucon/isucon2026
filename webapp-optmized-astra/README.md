@@ -218,3 +218,4 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261028T004046Z-team10 | regional image DB readers; Asia-write control | PASS | 92,830 |
 | 20261028T004433Z-team10 | regional durable post images with signed reference handoff | PASS | 112,367 |
 | 20261028T004825Z-team10 | regional images; reuse recently active DB connections | PASS | 119,333 |
+| 20261028T005258Z-team10 | regional images; local preflight with authoritative writer reauthentication | PASS | 121,353 |
