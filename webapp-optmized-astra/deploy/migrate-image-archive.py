@@ -147,6 +147,9 @@ try:
     print('Reclaiming the old partition storage after publication', flush=True)
     sql(f'VACUUM (FULL, ANALYZE) {args.partition}')
     verify_replay()
+    if args.restore:
+        reports = parallel(lambda app: invoke(app, 'verify-source'))
+        assert reports[0] == reports[1] == reports[2]
 finally:
     with ThreadPoolExecutor(max_workers=3) as pool:
         list(pool.map(start, stopped))
