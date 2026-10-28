@@ -110,6 +110,7 @@ print(json.dumps(result))
     if 'nginxRequestBuffering' in runtime:
         nginx=remote(app['instanceId'],'cat /etc/nginx/nginx.conf')
         assert 'proxy_request_buffering '+('on' if runtime['nginxRequestBuffering'] else 'off')+'; # astra-managed' in nginx
+        assert 'client_body_buffer_size '+str(runtime.get('nginxClientBodyBufferKiB',8))+'k; # astra-managed' in nginx
         log_bytes=runtime.get('nginxAccessLogBufferBytes',0)
         if not runtime.get('nginxAccessLogEnabled',True):
             assert 'access_log off; # astra-managed' in nginx
