@@ -149,7 +149,7 @@ def application(app):
 
 
 def write_frontend(app):
-    remote(app["instanceId"], "sudo bash /home/isucon/astra-deploy/write-routing.sh frontend")
+    remote(app["instanceId"], "sudo bash /home/isucon/astra-deploy/write-routing.sh frontend " + shlex.quote(app["region"]))
 
 
 # Restore local writes before stopping or replacing the private worker.
@@ -198,8 +198,7 @@ if mode in ("all", "application") and runtime["replicaReads"] and not early_fenc
 
 if mode in ("all", "application"):
     remote(write_host, "sudo bash /home/isucon/astra-deploy/write-routing.sh backend")
-    if write_proxy:
-        parallel(write_frontend, remote_apps)
+    parallel(write_frontend, applications)
 
 if mode == "image-gc":
     subprocess.run([sys.executable, str(DEPLOY / "asset-gc.py")], check=True)
