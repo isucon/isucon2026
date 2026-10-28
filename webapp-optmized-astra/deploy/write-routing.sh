@@ -56,6 +56,7 @@ UNIT
         printf '[Service]\nEnvironment=ISUREAL_WRITE_FENCE_HOSTS=%s\nEnvironment=ISUREAL_WRITE_FENCE_MODE=%s\n' "$write_fence_hosts" "$write_fence_mode" >/etc/systemd/system/webapp-optmized-astra-writer.service.d/writer.conf
         bash "$(dirname "$0")/tokio-runtime.sh" webapp-optmized-astra-writer
         bash "$(dirname "$0")/logging-runtime.sh" webapp-optmized-astra-writer
+        bash "$(dirname "$0")/malloc-runtime.sh" webapp-optmized-astra-writer
         bash "$(dirname "$0")/image-store-runtime.sh" webapp-optmized-astra-writer
         bash "$(dirname "$0")/file-store-runtime.sh" webapp-optmized-astra-writer asia
         bash "$(dirname "$0")/upload-proxy-runtime.sh" webapp-optmized-astra-writer asia
