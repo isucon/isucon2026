@@ -519,6 +519,20 @@ func TestUncertainDeletionStopsUser(t *testing.T) {
 	}
 }
 
+// アプリを閉じたあと、ログインし直す前に走行が終わったユーザーはトークンを持たない。
+// そのユーザーを走行後の整合性チェックで確かめると、正しいアプリでも 401 で fail になる。
+func TestLoggedOutUserSkippedInFinalCheck(t *testing.T) {
+	runner, _ := newTestRunner(t, 2, metrics.SLO{FailRate: 1000, MinOps: 1})
+	for _, u := range runner.usersSnapshot() {
+		runner.mu.Lock()
+		u.Token = ""
+		runner.mu.Unlock()
+	}
+	if reason := runner.finalCheck(t.Context()); reason != "" {
+		t.Fatalf("final check: %s", reason)
+	}
+}
+
 // 友達を解除する間に相手が退会すれば、アプリは 404 を返す（webapp/go の beginRelationshipTx）。
 // 退会の結果がわからない間の 404 は正しく、確実に有効な相手への 404 は違反とする。
 func TestUnfriendDuringDeletion(t *testing.T) {
