@@ -42,10 +42,10 @@ func (h *Handler) AdminDashboard(w http.ResponseWriter, r *http.Request) error {
 	}
 
 	var clarCount int64
-	var latestClarAt sql.NullTime
+	var earliestClarAt sql.NullTime
 	if err := h.db.QueryRowContext(ctx,
-		`SELECT COUNT(*), MAX(created_at) FROM clarifications WHERE answered_at IS NULL AND admin = false`,
-	).Scan(&clarCount, &latestClarAt); err != nil {
+		`SELECT COUNT(*), MIN(created_at) FROM clarifications WHERE answered_at IS NULL AND admin = false`,
+	).Scan(&clarCount, &earliestClarAt); err != nil {
 		return err
 	}
 
@@ -53,8 +53,8 @@ func (h *Handler) AdminDashboard(w http.ResponseWriter, r *http.Request) error {
 		Leaderboard:                  lb,
 		UnansweredClarificationCount: clarCount,
 	}
-	if latestClarAt.Valid {
-		res.EarliestUnansweredClarificationAt = timestamppb.New(latestClarAt.Time)
+	if earliestClarAt.Valid {
+		res.EarliestUnansweredClarificationAt = timestamppb.New(earliestClarAt.Time)
 	}
 	renderPB(w, http.StatusOK, res)
 	return nil
