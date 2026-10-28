@@ -47,14 +47,19 @@ class CleanupSQL(unittest.TestCase):
                                self.container,'psql','-XAt','-U','postgres','-v','ON_ERROR_STOP=1'],
                               input=sql, text=True, capture_output=True, check=check)
 
-    def cleanup(self, keys, expected=None):
+    def cleanup(self, keys, expected=None, compact=False):
         path=self.folder+'/refs'
         subprocess.run(['docker','exec','-i',self.container,'sh','-c','cat > '+shlex.quote(path)],
                        input=''.join(key+'\n' for key in keys), text=True, check=True)
-        return self.sql(gc.cleanup_sql(path, len(keys) if expected is None else expected),check=False)
+        return self.sql(gc.cleanup_sql(path, len(keys) if expected is None else expected, compact),check=False)
 
     def test_published_bytes_survive_and_orphan_is_removed(self):
         result=self.cleanup([KEY])
+        self.assertEqual(result.returncode,0,result.stderr)
+        self.assertEqual(self.sql("SELECT id,encode(data,'hex') FROM astra_image_data").stdout.strip(),KEY+'|010203')
+
+    def test_compaction_preserves_published_bytes(self):
+        result=self.cleanup([KEY],compact=True)
         self.assertEqual(result.returncode,0,result.stderr)
         self.assertEqual(self.sql("SELECT id,encode(data,'hex') FROM astra_image_data").stdout.strip(),KEY+'|010203')
 
