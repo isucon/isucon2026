@@ -134,7 +134,7 @@ func TestPostMultipart(t *testing.T) {
 		fmt.Fprint(w, `{"id":"p1","imageUrl":"/api/images/i1"}`)
 	}))
 	defer server.Close()
-	post, err := client.New(server.URL).CreatePost(t.Context(), "token", image, "caption", "public")
+	post, err := client.New(server.URL).CreatePost(t.Context(), "token", image, "caption", "public", client.Location{Kind: "none"})
 	if err != nil || post.ID != "p1" {
 		t.Fatalf("post=%+v err=%v", post, err)
 	}
