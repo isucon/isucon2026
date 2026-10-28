@@ -35,23 +35,9 @@ pub fn image_signing_key(secret_key_hash: &str) -> Result<Vec<u8>, Error> {
 }
 
 #[derive(Clone, Hash, Eq, PartialEq)]
-enum MemoBytes<const N: usize> {
-    Inline([u8; N]),
-    Other(Vec<u8>),
-}
-impl<const N: usize> MemoBytes<N> {
-    fn new(bytes: &[u8]) -> Self {
-        match bytes.try_into() {
-            Ok(bytes) => Self::Inline(bytes),
-            Err(_) => Self::Other(bytes.to_vec()),
-        }
-    }
-}
-
-#[derive(Clone, Hash, Eq, PartialEq)]
 struct SignatureKey {
-    key: MemoBytes<32>,
-    image_id: MemoBytes<36>,
+    key: Vec<u8>,
+    image_id: String,
     exp: i64,
 }
 
@@ -61,16 +47,16 @@ struct SignatureCache {
     order: VecDeque<SignatureKey>,
 }
 
-pub fn image_signature(key: &[u8], image_id: &str, exp: i64) -> [u8; 32] {
+pub fn image_signature(key: &[u8], image_id: &str, exp: i64) -> Vec<u8> {
     // Only the pure cryptographic calculation is memoized. Database visibility,
     // current signing keys, and expiration are still checked by the handler.
     const SHARDS: usize = 16;
-    const CAPACITY_PER_SHARD: usize = 16384;
+    const CAPACITY_PER_SHARD: usize = 4096;
     static CACHE: OnceLock<[Mutex<SignatureCache>; SHARDS]> = OnceLock::new();
     let caches = CACHE.get_or_init(|| std::array::from_fn(|_| Mutex::default()));
     let lookup = SignatureKey {
-        key: MemoBytes::new(key),
-        image_id: MemoBytes::new(image_id.as_bytes()),
+        key: key.to_vec(),
+        image_id: image_id.to_owned(),
         exp,
     };
     use std::hash::{Hash, Hasher};
@@ -78,7 +64,7 @@ pub fn image_signature(key: &[u8], image_id: &str, exp: i64) -> [u8; 32] {
     lookup.hash(&mut hasher);
     let cache = &caches[hasher.finish() as usize % SHARDS];
     if let Some(value) = cache.lock().unwrap().values.get(&lookup) {
-        return *value;
+        return value.to_vec();
     }
     let base = Hmac::<Sha256>::new_from_slice(key).expect("HMAC accepts keys of any size");
     let mut mac = base.clone();
@@ -99,7 +85,7 @@ pub fn image_signature(key: &[u8], image_id: &str, exp: i64) -> [u8; 32] {
         cache.order.push_back(lookup.clone());
         cache.values.insert(lookup, value);
     }
-    value
+    value.to_vec()
 }
 
 pub fn signed_image_url(user: &User, image_id: &str) -> String {
