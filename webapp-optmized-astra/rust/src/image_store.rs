@@ -7,7 +7,7 @@ use crate::config::Config;
 use bytes::Bytes;
 use sha2::{Digest, Sha256};
 use sqlx::PgPool;
-use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
+use sqlx::postgres::PgConnectOptions;
 
 #[derive(Clone)]
 pub struct ImageStore {
@@ -90,8 +90,7 @@ impl ImageStore {
             .username(&config.db_user)
             .password(&config.db_password)
             .database("isureal_assets");
-        let db = PgPoolOptions::new()
-            .max_connections(16)
+        let db = crate::db_pool::options(16)
             .connect_with(options)
             .await
             .expect("independent image database is available");
@@ -147,8 +146,7 @@ impl ImageStore {
                 .username(&config.db_user)
                 .password(&config.db_password)
                 .database("isureal_assets");
-            let pool = PgPoolOptions::new()
-                .max_connections(16)
+            let pool = crate::db_pool::options(16)
                 .connect_with(options)
                 .await
                 .expect("regional immutable image database is available");
