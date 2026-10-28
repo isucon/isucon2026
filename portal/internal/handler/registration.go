@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"unicode/utf8"
 
 	pbresources "github.com/isucon/isucon2026/portal/gen/pb/isuxportal/resources"
 	pbcommon "github.com/isucon/isucon2026/portal/gen/pb/isuxportal/services/common"
@@ -330,6 +331,9 @@ func (h *Handler) RegistrationUpdate(w http.ResponseWriter, r *http.Request) err
 	if err := decodePB(r, req); err != nil {
 		return err
 	}
+	if err := validateNameLength(req.Name, "選手名"); err != nil {
+		return err
+	}
 	team, err := h.currentTeam(r)
 	if err != nil {
 		return err
@@ -538,7 +542,17 @@ func (h *Handler) RegistrationAvatarURL(w http.ResponseWriter, r *http.Request) 
 
 // --- 内部ヘルパ ---
 
+func validateNameLength(name, label string) error {
+	if utf8.RuneCountInString(name) > 255 {
+		return &model.InvalidError{Messages: []string{label + "は255文字以内で入力してください"}}
+	}
+	return nil
+}
+
 func validateTeamInput(ctx context.Context, tx model.DBTX, name, email string, selfID int64) error {
+	if err := validateNameLength(name, "チーム名"); err != nil {
+		return err
+	}
 	var msgs []string
 	if name == "" {
 		msgs = append(msgs, "Name can't be blank")
@@ -562,6 +576,9 @@ func validateTeamInput(ctx context.Context, tx model.DBTX, name, email string, s
 }
 
 func validateContestantInput(ctx context.Context, tx model.DBTX, name, githubID, discordID string) error {
+	if err := validateNameLength(name, "選手名"); err != nil {
+		return err
+	}
 	var msgs []string
 	if name == "" {
 		msgs = append(msgs, "Name can't be blank")

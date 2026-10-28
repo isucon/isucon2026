@@ -195,6 +195,14 @@ func (h *Handler) AdminTeamsUpdate(w http.ResponseWriter, r *http.Request) error
 	if req.Team.Id != id {
 		return errBadRequest("")
 	}
+	if err := validateNameLength(req.Team.Name, "チーム名"); err != nil {
+		return err
+	}
+	for _, c := range req.Contestants {
+		if err := validateNameLength(c.Name, "選手名"); err != nil {
+			return err
+		}
+	}
 
 	tx, err := h.db.BeginTx(ctx, nil)
 	if err != nil {
