@@ -13,8 +13,7 @@ pub(crate) const VISIBILITY_BATCHES: usize = 8;
 const WRITE_SLOTS: u32 = 64;
 const BYTES_PER_SLOT: u64 = 256 * 1024;
 const SMALL_BODY_BYTES: u64 = 64 * 1024;
-pub(crate) const SMALL_WRITE_SLOTS: usize = 64;
-const AUTH_WRITE_SLOTS: usize = 64;
+pub(crate) const SMALL_WRITE_SLOTS: usize = 128;
 
 #[derive(Default)]
 struct Pending {
@@ -30,7 +29,6 @@ struct Inner {
     mutations: Semaphore,
     small_mutations: Semaphore,
     control_mutations: Semaphore,
-    auth_mutations: Semaphore,
 }
 
 #[derive(Clone)]
@@ -46,7 +44,6 @@ impl NativeWriteFence {
             mutations: Semaphore::new(WRITE_SLOTS as usize),
             small_mutations: Semaphore::new(SMALL_WRITE_SLOTS),
             control_mutations: Semaphore::new(4),
-            auth_mutations: Semaphore::new(AUTH_WRITE_SLOTS),
         }))
     }
 
@@ -58,7 +55,6 @@ impl NativeWriteFence {
         body_bytes: Option<u64>,
         control: bool,
         image_upload: bool,
-        authentication: bool,
     ) -> SemaphorePermit<'_> {
         // Small account/admin mutations must not queue behind image uploads.
         // They retain their own bounded budget until the same replay barrier,
@@ -71,12 +67,6 @@ impl NativeWriteFence {
                     .acquire()
                     .await
                     .expect("control write admission stays open");
-            }
-            // Registration/login must not queue behind bursts of relationship
-            // updates. They still keep admission until the same replay barrier.
-            if authentication {
-                return self.0.auth_mutations.acquire().await
-                    .expect("authentication admission stays open");
             }
             return self
                 .0
@@ -181,51 +171,35 @@ mod admission_tests {
         let fence = NativeWriteFence::new(db, Duration::from_secs(1));
         let mut images = Vec::new();
         for _ in 0..WRITE_SLOTS {
-            images.push(fence.admit(Some(16), false, true, false).await);
+            images.push(fence.admit(Some(16), false, true).await);
         }
         assert!(
             tokio::time::timeout(
                 Duration::from_millis(20),
-                fence.admit(Some(16), false, true, false)
+                fence.admit(Some(16), false, true)
             )
             .await
             .is_err()
         );
         let account = tokio::time::timeout(
             Duration::from_millis(100),
-            fence.admit(Some(16), false, false, false),
+            fence.admit(Some(16), false, false),
         )
         .await
         .unwrap();
         let control = tokio::time::timeout(
             Duration::from_millis(100),
-            fence.admit(Some(16), true, false, false),
+            fence.admit(Some(16), true, false),
         )
         .await
         .unwrap();
-        let mut small = vec![account];
-        for _ in 1..SMALL_WRITE_SLOTS {
-            small.push(fence.admit(Some(16), false, false, false).await);
-        }
-        let mut auth = Vec::new();
-        for _ in 0..AUTH_WRITE_SLOTS {
-            auth.push(tokio::time::timeout(Duration::from_millis(100),
-                fence.admit(Some(16), false, false, true)).await.unwrap());
-        }
-        assert!(tokio::time::timeout(Duration::from_millis(20),
-            fence.admit(Some(16), false, false, true)).await.is_err());
-        // Large or unknown auth bodies still use the weighted image budget.
-        for size in [None, Some(SMALL_BODY_BYTES + 1)] {
-            assert!(tokio::time::timeout(Duration::from_millis(20),
-                fence.admit(size, false, false, true)).await.is_err());
-        }
         images.pop();
         let image = tokio::time::timeout(
             Duration::from_millis(100),
-            fence.admit(Some(16), false, true, false),
+            fence.admit(Some(16), false, true),
         )
         .await
         .unwrap();
-        drop((images, small, auth, control, image));
+        drop((images, account, control, image));
     }
 }
