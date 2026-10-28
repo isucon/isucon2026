@@ -96,11 +96,12 @@ type viewerContext struct {
 	HasPostedToday   bool
 	Friends          map[string]bool
 	FriendsOfFriends map[string]bool
+	MutualFriends    map[string]int
 	Blocked          map[string]bool
 }
 
 func loadViewerContext(ctx context.Context, db sqlx.QueryerContext, viewerID string) (viewerContext, error) {
-	viewer := viewerContext{Friends: map[string]bool{}, FriendsOfFriends: map[string]bool{}}
+	viewer := viewerContext{Friends: map[string]bool{}, FriendsOfFriends: map[string]bool{}, MutualFriends: map[string]int{}}
 	var err error
 	if viewer.User, err = getUser(ctx, db, viewerID); err != nil {
 		return viewer, err
@@ -143,9 +144,15 @@ func loadViewerContext(ctx context.Context, db sqlx.QueryerContext, viewerID str
 	for _, friendship := range friendships {
 		if viewer.Friends[friendship.UserLowID] {
 			viewer.FriendsOfFriends[friendship.UserHighID] = true
+			if friendship.UserHighID != viewer.ID {
+				viewer.MutualFriends[friendship.UserHighID]++
+			}
 		}
 		if viewer.Friends[friendship.UserHighID] {
 			viewer.FriendsOfFriends[friendship.UserLowID] = true
+			if friendship.UserLowID != viewer.ID {
+				viewer.MutualFriends[friendship.UserLowID]++
+			}
 		}
 	}
 	return viewer, nil

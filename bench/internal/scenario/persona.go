@@ -49,6 +49,11 @@ type persona struct {
 	avatar, bio float64
 	// signOff は日を過ごし終えたあとでログアウトし、次の日に開き直してログインする確率。
 	signOff float64
+	// circle は友達つながりで登録したときに送る友達申請の数。1 割の人は顔が広く、多く送る。
+	circle int
+	// discover は友達の友達フィードで見た投稿者に友達申請を送る確率（知り合いかもしれない人）。
+	// 公開フィードではこの 3 分の 1。
+	discover float64
 }
 
 // newPersona は username の好みと癖を決める。
@@ -99,6 +104,12 @@ func newPersona(seed uint64, username string) persona {
 	if at("signoff") < 0.15 {
 		p.signOff = 0.4 + 0.4*at("signoff-rate")
 	}
+	if at("connector") < 0.1 {
+		p.circle = 15 + int(16*at("circle"))
+	} else {
+		p.circle = 3 + int(8*at("circle"))
+	}
+	p.discover = 0.05 + 0.2*at("discover")
 	// 1 割弱の人はよく旅をし、ほかの人はリージョンを移らない。
 	if at("traveler") < 0.08 {
 		p.wanderlust = 0.15 + 0.2*at("wanderlust")

@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use chrono::{DateTime, Utc};
 use serde::Serialize;
@@ -160,13 +160,14 @@ pub struct ViewerContext {
     pub has_posted_today: bool,
     pub friends: HashSet<String>,
     pub friends_of_friends: HashSet<String>,
+    pub mutual_friends: HashMap<String, i64>,
     pub blocked: HashSet<String>,
 }
 
 #[derive(sqlx::FromRow)]
-struct Friendship {
-    user_low_id: String,
-    user_high_id: String,
+pub struct Friendship {
+    pub user_low_id: String,
+    pub user_high_id: String,
 }
 
 pub async fn load_viewer_context(
@@ -178,6 +179,7 @@ pub async fn load_viewer_context(
         has_posted_today: false,
         friends: HashSet::new(),
         friends_of_friends: HashSet::new(),
+        mutual_friends: HashMap::new(),
         blocked: HashSet::new(),
     };
     viewer.has_posted_today = sqlx::query_scalar(
@@ -220,11 +222,23 @@ pub async fn load_viewer_context(
             viewer
                 .friends_of_friends
                 .insert(friendship.user_high_id.clone());
+            if friendship.user_high_id != viewer.user.id {
+                *viewer
+                    .mutual_friends
+                    .entry(friendship.user_high_id.clone())
+                    .or_default() += 1;
+            }
         }
         if viewer.friends.contains(&friendship.user_high_id) {
             viewer
                 .friends_of_friends
                 .insert(friendship.user_low_id.clone());
+            if friendship.user_low_id != viewer.user.id {
+                *viewer
+                    .mutual_friends
+                    .entry(friendship.user_low_id.clone())
+                    .or_default() += 1;
+            }
         }
     }
     Ok(viewer)

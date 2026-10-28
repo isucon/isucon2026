@@ -33,6 +33,17 @@ class BindTest < Minitest::Test
       assert_raises(ArgumentError, value) { Isureal::Bind.parse_float(value) }
     end
   end
+
+  def test_parse_int_matches_strconv
+    assert_equal 0, Isureal::Bind.parse_int('')
+    assert_equal 7, Isureal::Bind.parse_int('+007')
+    assert_equal(-12, Isureal::Bind.parse_int('-12'))
+    assert_equal((2**63) - 1, Isureal::Bind.parse_int('9223372036854775807'))
+    assert_equal(-(2**63), Isureal::Bind.parse_int('-9223372036854775808'))
+    ['1_0', ' 1', '0x10', '1.0', 'abc', '9223372036854775808'].each do |value|
+      assert_raises(ArgumentError, value) { Isureal::Bind.parse_int(value) }
+    end
+  end
 end
 
 class ResponseTest < Minitest::Test
