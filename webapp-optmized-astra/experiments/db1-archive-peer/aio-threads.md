@@ -5,3 +5,5 @@
 次の候補はdb1のprivate画像配信だけに`aio threads`を指定する。Nginx workerがファイル読み取りで止まる時間を減らせるか、既定のスレッドプールで比較する。3地域のファイル配信やアプリのコードは変更しない。設定はarchivePeer.aioThreadsへ記録し、配備後に実際のNginx設定も照合する。
 
 [公式のaioドキュメント](https://nginx.org/en/docs/http/ngx_http_core_module.html#aio)は、Linuxでsendfileとaio threadsを併用し、読み取りと送信をスレッドへ移せると説明している。--with-threadsでのビルドが必要。実機ではnginx -Vとnginx -tで確認する。効果は未測定。
+
+Pulumi型検査・Bash構文・Python構文の検査は成功した。生成したNginx設定はaio off/threadsの両方をローカルNginxで構文検証した（listenのIPのみコンテナのloopbackへ置換）。実機db1のnginx -Vでも--with-threadsを確認した。
