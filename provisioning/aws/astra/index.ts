@@ -122,3 +122,7 @@ if (!Number.isInteger(runtime.issuedImageUrlCacheEntries) || runtime.issuedImage
     || runtime.issuedImageUrlCacheEntries > 262144 || runtime.issuedImageUrlCacheEntries % 16 !== 0) {
     throw new Error("Invalid issued image URL cache capacity");
 }
+
+if (typeof runtime.nginxJsonGzipEnabled !== "boolean") {
+    throw new Error("JSON response compression must be explicitly configured");
+}
