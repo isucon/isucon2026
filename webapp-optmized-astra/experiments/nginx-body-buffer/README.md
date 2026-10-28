@@ -11,3 +11,7 @@ Pulumi runtimeのnginxClientBodyBufferKiBに容量を記録し、既存3アプ�
 2026-10-28 16:59 UTCごろ、実機Asiaのnginx -Tでclient_body_buffer_sizeとproxy_bufferingの明示設定がないこと、proxy_request_buffering on、client_max_body_size 32mを確認した。比較対象は既定容量からの変更になる。
 
 256KiBの実機比較は188,737点・169,140点でPASS。初回のAsia平均ディスク書き込みは直前対照の39.50→30.58MB/s、平均メモリは1831.67→1846.09MiBだった。反復も28.68MB/sと書き込みは低めだが、スコアは下がり、安定した改善は未確認。GC・全地域再起動で18画像の本文とContent-Typeが一致し、Asiaの空き容量は8.8GiBへ回復した。次は同じバッファリング設定のまま1MiBと比較する。
+
+1MiBの初回（20261028T172332Z-team10）は195,259点でPASSし、最高点を更新した。反復（20261028T172715Z-team10）は162,498点でPASS。AsiaのNginxの負荷中平均RSS合計は約61.6→403.3MiBへ増えた（各PIDの平均RSSを合計、共有ページを含む）。256KiBでも55.3→146.7MiBと増えている。大きな本文バッファを解放した後もallocatorがメモリを保持している可能性を調べる。
+
+次の比較では本文バッファ1MiBを保ち、NginxだけのMALLOC_MMAP_THRESHOLD_とMALLOC_TRIM_THRESHOLD_を131072に固定する。[glibc公式ドキュメント](https://sourceware.org/glibc/manual/latest/html_node/Memory-Allocation-Tunables.html)によると、閾値を明示すると動的な引き上げが無効になり、大きな割り当てをfreeした際にOSへ返せる。アプリのallocatorは変更しない。Pulumi runtimeのnginxMallocThresholdKiBで管理し、環境変数を変えた配備ではNginx masterを再起動する。0で既定動作へ戻せる。
