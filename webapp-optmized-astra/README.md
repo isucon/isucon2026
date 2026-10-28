@@ -331,3 +331,4 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261028T140619Z-team10 | repeat sixteen ordinary metadata connections | PASS | 183,359 |
 | 20261028T141246Z-team10 | 128 upload admission slots with durable regional files | PASS | 168,825 |
 | 20261028T141650Z-team10 | repeat 128 upload admission slots | PASS | 172,721 |
+| 20261028T142236Z-team10 | restore 64 upload slots after paired wider admission comparison | PASS | 181,962 |
