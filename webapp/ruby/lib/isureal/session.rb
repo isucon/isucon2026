@@ -48,7 +48,6 @@ module Isureal
       end
     end
 
-    # 2026-09-03: リファクタリング後にこの関数の利用がないようです。消すのはいかがでしょうか
     def create_login_session(user_id)
       db.transaction { |tx| create_login_session_tx(tx, user_id) }
     end

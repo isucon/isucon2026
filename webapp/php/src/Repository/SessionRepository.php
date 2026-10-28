@@ -33,7 +33,6 @@ final readonly class SessionRepository
         return new LoginSession($row['user_id'], $row['token_hash'], Time::fromDb($row['created_at']), $row['region']);
     }
 
-    // 2026-09-03: リファクタリング後にこの関数の利用がないようです。消すのはいかがでしょうか
     public function createInTransaction(string $userId): LoginSession
     {
         return $this->db->transaction(fn (): LoginSession => $this->create($userId));

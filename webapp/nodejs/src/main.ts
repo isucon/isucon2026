@@ -3,6 +3,8 @@ import { serve } from "@hono/node-server";
 import { configFromEnv, envOrDefault } from "./config.ts";
 import { newServer } from "./server.ts";
 
+// 2026-09-23
+
 const workers = Number(envOrDefault("ISUREAL_WORKERS", "2"));
 
 if (cluster.isPrimary && workers > 1) {
