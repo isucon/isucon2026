@@ -3,18 +3,23 @@
 開発ポータル（`https://portal-dev.isucon.net`）のベンチを実行する Supervisor の共有プールです。
 ECS service `isucon2026-shared-supervisor`（cluster `supervisor-cluster-1090218`）に 3 タスクを置き、
 チームも AZ も絞らずにポータルのキューをポーリングします。各タスクは 4 vCPU / 8 GiB です。
-cluster、実行 role、ネットワーク、ECR、log group は [試し解き用 Supervisor の stack](../supervisor/README.md) が持ち、
+cluster、実行 role、ネットワーク、ECR、log group は [試し解き用 Supervisor の stack](../README.md) が持ち、
 このディレクトリはサービスとタスク定義だけを扱います。
+
+2026-10-28 に `provisioning/aws/shared-supervisor/` から `provisioning/aws/supervisor/pool/` に移しました。
+Pulumi project、stack、backend と配備設定は維持しています。
+このディレクトリの `mise.toml` は親の基盤用 backend を上書きします。
+旧ディレクトリを指定する手元のスクリプトは新しいパスに変更してください。
 
 | 管理 | 対象 |
 |---|---|
-| `pool.json` | 定義の元。接続先、イメージ、タスク数、ベンチの上限時間、Supervisor の上限時間、写真のアーカイブの場所、登録済みの app の公開 IP から Router への転送表 |
+| `pool.json` | 定義の元。接続先、イメージ、タスク数、ベンチの上限時間、Supervisor の上限時間、写真のアーカイブの場所 |
 | Pulumi（project `isucon2026-shared-supervisor`、stack `portal-dev`） | `render.py` が作った配備の定義（タスク定義、サービス定義、ecspresso の設定）を stack の設定 `deployments` に保持して出力する。リソースは作らない |
 | ecspresso（`generated/`、Git 管理外） | stack の出力から書いた JSON でサービスとタスク定義を配備する |
 
 Pulumi の backend は `s3://isucon2026-pulumi-state-124502390568/shared-supervisor`、stack は `portal-dev`、
 passphrase は空です（`mise.toml` が設定します）。state を別に作らないでください。
-依存関係は親の `provisioning/aws` の `node_modules` を使います（`npm --prefix provisioning/aws ci`）。
+依存関係は`provisioning/aws` の `node_modules` を使います（`npm --prefix provisioning/aws ci`）。
 
 ## 出どころ
 
@@ -32,24 +37,38 @@ private リポジトリの設定は 2026-10-17 の配備（イメージ `sha256:
 `render.py` が live の定義をそのまま再現することを確かめたうえで、イメージと写真のアーカイブを更新しました。
 
 private の `deployments` には退役したチーム別 service 7 件（`desiredCount: 0`）も入っていましたが、
-`supervisor-service-1〜6` は [試し解き用 Supervisor の stack](../supervisor/README.md) が Pulumi で
+`supervisor-service-1〜6` は [試し解き用 Supervisor の stack](../README.md) が Pulumi で
 `desiredCount: 0` のまま管理しているので、二重管理を避けるためにここには入れていません。
-`isucon2026-practice-supervisor-30001` も private の `ops/practice-supervisor` の管理のままで、ここでは扱いません。
+`isucon2026-practice-supervisor-30001` は移行時点では private の `ops/practice-supervisor` が管理していましたが、2026-10-28 にサービスと専用 Pulumi stack を廃止しました。
+private の過去の設定からこの stack を作り直したり、旧サービスを再配備したりしないでください。
+
+## CloudFormation instance registration
+
+New ISUCON2026 contest stacks register their Router with the portal. Jobs from
+these environments contain the Router IP and a portal-generated `--host` as the
+first extra argument. The Supervisor uses that target directly, so recreation
+does not require updating `pool.json`. Existing Pulumi environments also register
+Router endpoints and their physical team hostnames through the
+[instance sync](../../../../portal/deploy/ecspresso/INSTANCE_SYNC.md).
+The static `routes` table and fallback have been removed. Jobs without a Host
+are rejected with `Router registration required`; register the environment
+before running benchmarks. See the [contest template and registration
+workflow](../../../../portal/internal/cloudformation/README.md).
 
 ## 更新の手順
 
 リポジトリルートで実行します。AWS の認証は `provisioning/aws-sdk.config` を通します
 （`AWS_CONFIG_FILE=provisioning/aws-sdk.config AWS_PROFILE=default AWS_SDK_LOAD_CONFIG=1`）。
 
-1. 新しいベンチのイメージを作って push する（[Supervisor 構築手順](../supervisor/README.md) の `make supervisor-image`）。
+1. 新しいベンチのイメージを作って push する（[Supervisor 構築手順](../README.md) の `make supervisor-image`）。
    写真のアーカイブを同梱したイメージなら、`benchImages` に同梱した場所（`/opt/isucon/photos/merged.zip`）を指定します。
-2. `pool.json` を更新する。`image` は digest で固定します。app の公開 IP や Router の公開 IP が変わったときや
-   チームを足すときは `routes` を更新します（登録されていない IP のジョブは起動前に `exit 2` で拒否されます）。
+2. `pool.json` のイメージや共通設定を更新する。`image` は digest で固定します。
+   IP の変更やチーム追加はポータルのインスタンス登録・同期で反映し、固定IPの転送表は管理しません。
 3. 配備の定義を作って stack の設定に書き、適用する。雛形には稼働中のタスク定義（family の最新の ACTIVE）と
    サービスを AWS から取り、CPU、メモリ、実行 role、ログ、secrets、ulimit、ネットワーク設定を写します。
 
    ```bash
-   cd provisioning/aws/shared-supervisor
+   cd provisioning/aws/supervisor/pool
    python3 -m unittest discover
    python3 render.py config pool.json          # AWS から雛形を取り、pulumi config set deployments する
    pulumi preview --stack portal-dev --diff    # 出力 deployments の差分だけが出る
@@ -77,6 +96,19 @@ ecspresso は `mise exec "aqua:kayac/ecspresso@2.8.7" -- ecspresso` で使えま
 AWS に触らずに結果を確かめられます。
 
 ## 適用記録
+
+### 2026-10-28 Practice Supervisor の廃止
+
+- `isucon2026-practice-supervisor-30001` の desired / running / pending が全て 0 であることを確認し、`ecspresso delete --force` で削除しました。
+- 専用タスク定義 `isucon2026-practice-supervisor-30001:1`、`:2`、`:3` を登録解除しました。
+  ecspresso の deregister は削除済みサービスを INACTIVE として拒否したため、登録解除には AWS ECS API を使用しました。
+  定義は INACTIVE の履歴として残ります。
+- backend `s3://isucon2026-pulumi-state-124502390568/practice-supervisor` の project `isucon2026-practice-supervisor`、stack `portal-dev` は、配備設定を出力する root stack だけを持ち、AWS リソースを管理していないことを export と destroy preview で確認しました。
+  `pulumi destroy` と `pulumi stack rm` を実行し、stack 一覧が空になったことを確認しました。
+- 削除後、サービスが INACTIVE、タスク数が全て 0、専用 family の ACTIVE タスク定義が 0 件であることを検証しました。
+  現行 shared-supervisor の Pulumi state に practice サービスへの参照がないことも確認しました。
+- 共有プールは revision 9 で desired / running が 3、pending が 0 でした。
+  今回、共有プール、旧チーム別サービス 1〜6、共有基盤、Secrets Manager、ログには変更を加えていません。
 
 ### 2026-10-27 写真のアーカイブを同梱したベンチへの更新
 

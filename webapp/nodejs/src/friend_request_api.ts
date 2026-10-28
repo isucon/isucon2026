@@ -8,7 +8,6 @@ import { beginRelationshipTx, getFriendRequest, insertFriendship, isBlocked } fr
 import { jsonResponse } from "./response.ts";
 import type { Env, HandlerContext } from "./server.ts";
 import { getSession } from "./session.ts";
-import type { Timestamp } from "./time.ts";
 
 const createFriendRequestRequest = {
   recipientId: { json: "recipientId" },
@@ -17,7 +16,7 @@ const createFriendRequestRequest = {
 type FriendRequestResponse = {
   relationId: string;
   status: string;
-  updatedAt: Timestamp;
+  updatedAt: Temporal.Instant;
 };
 
 export function createFriendRequestHandler(h: HandlerContext): Handler<Env> {
@@ -44,7 +43,7 @@ export function createFriendRequestHandler(h: HandlerContext): Handler<Env> {
       input.recipientId,
     );
     let requestID: string;
-    if (existing !== undefined) {
+    if (existing) {
       const request = must(await getFriendRequest(tx, existing.id));
       if (request.requesterID === actor) {
         throw new APIError(409, "relationship_conflict");
@@ -92,7 +91,7 @@ export function transitionFriendRequestHandler(h: HandlerContext): Handler<Env> 
     }
     const actor = getSession(c)!.userID;
     let request = await getFriendRequest(h.db, input.requestId);
-    if (request === undefined) {
+    if (!request) {
       throw new APIError(404, "relationship_not_found");
     }
     if ((status === "cancelled" && actor !== request.requesterID) || (status !== "cancelled" && actor !== request.recipientID)) {

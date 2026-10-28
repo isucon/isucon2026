@@ -10,13 +10,52 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/isucon/isucon2026/bench/internal/client"
+	"github.com/zeebo/xxh3"
 )
+
+// Router がダイジェストを返したときも、バイト列を返したときも SameImage で比べられる。
+func TestImageDigest(t *testing.T) {
+	image := bytes.Repeat([]byte("jpeg"), 50_000)
+	digest := true
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seed, err := strconv.ParseUint(r.Header.Get("X-Benchmark-Request-Id"), 10, 64)
+		if err != nil {
+			t.Errorf("X-Benchmark-Request-Id %q: %v", r.Header.Get("X-Benchmark-Request-Id"), err)
+		}
+		if !digest {
+			_, _ = w.Write(image)
+			return
+		}
+		w.Header().Set("X-Body-Xxh3", fmt.Sprintf("%016x", xxh3.HashSeed(image, seed)))
+		w.Header().Set("X-Body-Length", strconv.Itoa(len(image)))
+	}))
+	defer server.Close()
+	api := client.New(server.URL)
+	for _, digest = range []bool{true, false} {
+		got, err := api.Image(t.Context(), "/api/images/x?exp=1&sig=s")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if (len(got) == len(image)) == digest {
+			t.Errorf("digest=%v: got %d bytes", digest, len(got))
+		}
+		if !client.SameImage(got, image) {
+			t.Errorf("digest=%v: the image does not match", digest)
+		}
+		other := bytes.Clone(image)
+		other[len(other)-1]++
+		if client.SameImage(got, other) || client.SameImage(got, image[1:]) {
+			t.Errorf("digest=%v: another image matches", digest)
+		}
+	}
+}
 
 func TestRegisterThenLogin(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

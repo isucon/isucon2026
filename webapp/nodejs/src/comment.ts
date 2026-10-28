@@ -1,6 +1,5 @@
 import type { Queryer, Row } from "./db.ts";
 import { getPostWithAuthor, loadViewerContext, canView } from "./post.ts";
-import type { Timestamp } from "./time.ts";
 import { setImageKey, userColumnsAs, userFromRow, type User } from "./user.ts";
 
 export type Comment = {
@@ -8,8 +7,8 @@ export type Comment = {
   postID: string;
   authorID: string;
   body: string;
-  createdAt: Timestamp;
-  deletedAt: Timestamp | null;
+  createdAt: Temporal.Instant;
+  deletedAt: Temporal.Instant | null;
 };
 
 function commentFromRow(row: Row): Comment {
@@ -50,14 +49,14 @@ export async function selectCommentsWithAuthor(db: Queryer, conditions: string, 
 
 export async function canComment(db: Queryer, viewerID: string, postID: string): Promise<boolean> {
   const post = await getPostWithAuthor(db, postID);
-  if (post === undefined) {
+  if (!post) {
     return false;
   }
   const viewer = await loadViewerContext(db, viewerID);
-  if (viewer === undefined) {
+  if (!viewer) {
     return false;
   }
-  if (!canView(viewer, post.post) || post.post.windowEndedAt !== null) {
+  if (!canView(viewer, post.post) || post.post.windowEndedAt) {
     return false;
   }
   if (viewer.user.id === post.post.authorID) {

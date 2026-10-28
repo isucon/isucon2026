@@ -54,6 +54,7 @@ type Config struct {
 
 	TestAMIID    string
 	ContestAMIID string
+	RouterAMIID  string
 	// CloudFormationStaging はトークン期限を発行時起点にする（ISUXPORTAL_CLOUDFORMATION_STAGING）
 	CloudFormationStaging bool
 
@@ -141,6 +142,7 @@ func Load() (*Config, error) {
 
 		TestAMIID:             os.Getenv("ISUXPORTAL_TEST_AMI_ID"),
 		ContestAMIID:          getenv("ISUXPORTAL_QUALIFY_AMI_ID", "ami-y"),
+		RouterAMIID:           os.Getenv("ISUXPORTAL_ROUTER_AMI_ID"),
 		CloudFormationStaging: os.Getenv("ISUXPORTAL_CLOUDFORMATION_STAGING") == "1",
 
 		IsuconAdminSSHKeyPath: os.Getenv("ISUXPORTAL_ISUCON_ADMIN_SSH_PRIVATE_KEY_PATH"),

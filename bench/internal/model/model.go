@@ -40,11 +40,12 @@ type Post struct {
 	AuthorID string
 	WindowID string
 	ImageID  string
-	// ImageHash は投稿した画像の SHA-256。
-	ImageHash [32]byte
-	Caption   string
-	PostedAt  time.Time
-	LocalDate time.Time
+	// ImageBytes は投稿した画像を作り直す。Router が返すダイジェストは要求ごとに種が違うので、
+	// 比べるたびに画像そのものが要る（写真のアーカイブから作り直せるので持たない）。
+	ImageBytes func() []byte
+	Caption    string
+	PostedAt   time.Time
+	LocalDate  time.Time
 
 	caption    *timeline[string]
 	visibility *timeline[string]

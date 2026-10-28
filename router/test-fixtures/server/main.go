@@ -1,6 +1,7 @@
 package main
 
 import (
+	"archive/zip"
 	"context"
 	"crypto/sha256"
 	"encoding/json"
@@ -97,6 +98,30 @@ func newHandler(config serverConfig) http.Handler {
 			remaining -= writeSize
 		}
 	})
+	// The webapp's downloads that HAProxy sends to isureal-digest for the
+	// benchmark. X-Fixture-Saw names the headers meant for the Router that
+	// reached the app, which should be none.
+	mux.HandleFunc("GET /api/images/{id}", func(writer http.ResponseWriter, request *http.Request) {
+		size, err := strconv.Atoi(request.URL.Query().Get("bytes"))
+		if err != nil || size < 1 || size > config.MaxBlobBytes {
+			http.Error(writer, "invalid bytes", http.StatusBadRequest)
+			return
+		}
+		writer.Header().Set("Content-Type", "image/jpeg")
+		writer.Header().Set("X-Fixture-Saw", routerHeaders(request))
+		writer.Header().Set("Content-Length", strconv.Itoa(size))
+		_, _ = writer.Write(fixtureImage(request.PathValue("id"), size))
+	})
+	mux.HandleFunc("GET /api/me/export", func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("Content-Type", "application/zip")
+		writer.Header().Set("X-Fixture-Saw", routerHeaders(request))
+		archive := zip.NewWriter(writer)
+		posts, _ := archive.CreateHeader(&zip.FileHeader{Name: "posts.json", Method: zip.Deflate})
+		_, _ = posts.Write([]byte(fixturePosts))
+		image, _ := archive.CreateHeader(&zip.FileHeader{Name: "images/export.jpg", Method: zip.Store})
+		_, _ = image.Write(fixtureImage("export", 300_000))
+		_ = archive.Close()
+	})
 	mux.HandleFunc("GET /fetch", func(writer http.ResponseWriter, request *http.Request) {
 		target, err := validateFetchTarget(request.URL.Query().Get("url"), config.AllowedPeerHosts)
 		if err != nil {
@@ -144,6 +169,29 @@ func newHandler(config serverConfig) http.Handler {
 		writeJSON(writer, http.StatusOK, routeResponse{Target: target, Route: route})
 	})
 	return mux
+}
+
+// fixturePosts is the posts.json of the fixture's export.
+const fixturePosts = `[{"id":"export","imagePath":"images/export.jpg"}]`
+
+// fixtureImage is the fixture's image named id: size bytes the e2e test can
+// compute too.
+func fixtureImage(id string, size int) []byte {
+	image := make([]byte, size)
+	for i := range image {
+		image[i] = id[i%len(id)] ^ byte(i>>10)
+	}
+	return image
+}
+
+func routerHeaders(request *http.Request) string {
+	var saw []string
+	for _, name := range []string{"X-Benchmark-Request-Id", "X-Isureal-Upstream", "X-Isureal-Route", "X-Isureal-Limit"} {
+		if request.Header.Get(name) != "" {
+			saw = append(saw, name)
+		}
+	}
+	return strings.Join(saw, ",")
 }
 
 func loadConfig() (serverConfig, error) {
