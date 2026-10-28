@@ -10,7 +10,7 @@ use tokio::sync::{Semaphore, SemaphorePermit, oneshot};
 // Immutable image bytes no longer enter the metadata replication stream.
 // Keep a finite upload budget while allowing more independent-store work.
 pub(crate) const VISIBILITY_BATCHES: usize = 8;
-const WRITE_SLOTS: u32 = 128;
+const WRITE_SLOTS: u32 = 64;
 const BYTES_PER_SLOT: u64 = 256 * 1024;
 const SMALL_BODY_BYTES: u64 = 64 * 1024;
 pub(crate) const SMALL_WRITE_SLOTS: usize = 128;
