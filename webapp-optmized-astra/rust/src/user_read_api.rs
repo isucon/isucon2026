@@ -60,19 +60,23 @@ pub async fn search_users_handler(
     }
     let viewer = &session.user_id;
     let query = search_text::normalize(&input.q);
-    // C collation folds ASCII exactly like Rust. Retain every non-ASCII name
-    // for the full NFC/case-fold check below (for example, ß can match "ss").
-    // An ASCII-only name cannot match a normalized non-ASCII query.
-    // PostgreSQL text cannot contain NUL; such queries cannot match stored names.
-    let ascii_pattern = (query.is_ascii() && !query.contains('\0')).then(|| {
-        format!(
-            "%{}%",
-            query
-                .replace('!', "!!")
-                .replace('%', "!%")
-                .replace('_', "!_")
-        )
-    });
+    // PostgreSQL text cannot contain NUL, so no stored name can match it.
+    if query.contains('\0') {
+        return json(
+            StatusCode::OK,
+            SearchUsersResponse {
+                items: Vec::new(),
+                has_more: false,
+            },
+        );
+    }
+    let pattern = format!(
+        "%{}%",
+        query
+            .replace('!', "!!")
+            .replace('%', "!%")
+            .replace('_', "!_")
+    );
     // Keep candidate matching and returned account fields in one snapshot.
     // Most candidates do not match; their bio, key, and other large fields
     // need not be transferred from PostgreSQL or decoded by SQLx.
@@ -87,16 +91,16 @@ pub async fn search_users_handler(
     }
     let candidates: Vec<Candidate> = sqlx::query_as(
         "SELECT u.id, u.username, u.display_name FROM users u \
+         LEFT JOIN astra_user_search s ON s.user_id=u.id \
          WHERE u.status='active' AND u.id<>$1 \
          AND ($2='' OR (u.username,u.id)>($2,$3)) \
-         AND (octet_length(convert_to(u.username,'UTF8'))<>char_length(u.username) \
-           OR octet_length(convert_to(u.display_name,'UTF8'))<>char_length(u.display_name) \
-           OR lower(u.username COLLATE \"C\") LIKE $4 ESCAPE '!' \
-           OR lower(u.display_name COLLATE \"C\") LIKE $4 ESCAPE '!') \
+         AND (s.user_id IS NULL OR s.source_username<>u.username OR s.source_display_name<>u.display_name \
+           OR s.normalized_username LIKE $4 ESCAPE '!' \
+           OR s.normalized_display_name LIKE $4 ESCAPE '!') \
          AND NOT EXISTS(SELECT 1 FROM block_relations b WHERE b.blocker_id=$1 AND b.blocked_id=u.id) \
          AND NOT EXISTS(SELECT 1 FROM block_relations b WHERE b.blocked_id=$1 AND b.blocker_id=u.id) \
          ORDER BY u.username,u.id")
-        .bind(viewer).bind(&input.before_username).bind(&input.before_id).bind(&ascii_pattern)
+        .bind(viewer).bind(&input.before_username).bind(&input.before_id).bind(&pattern)
         .fetch_all(&mut *tx).await?;
     let ids: Vec<String> = candidates
         .into_iter()
