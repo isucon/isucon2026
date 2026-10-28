@@ -1,4 +1,5 @@
 {{define "ssh_public_keys"}}            - |
+              (
               set -eu
               umask 077
               keydir=/home/isucon/.ssh
@@ -30,4 +31,5 @@
               done
               echo "Could not install SSH keys; check portal key registration and rerun this cloud-init command" >&2
               exit 1
+              )
 {{end}}

@@ -52,6 +52,9 @@ export const config = {
 			}),
 		)
 		.parse(c.getObject("teamImages") ?? {}),
+	teamRouterInstanceTypes: z
+		.record(z.string(), z.string().min(1))
+		.parse(c.getObject("teamRouterInstanceTypes") ?? {}),
 	serviceAmiId: c.get("serviceAmiId"),
 	routerAmiId: c.get("routerAmiId"),
 	availabilityZone: c.get("availabilityZone") ?? "ap-northeast-1a",
