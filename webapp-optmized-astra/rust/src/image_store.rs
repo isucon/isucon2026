@@ -54,6 +54,28 @@ impl ImageStore {
         self.regional.contains_key(region)
     }
 
+    pub fn can_read_regional_reference(&self, key: &str) -> bool {
+        let (files, key) = match key.strip_prefix("fs:") {
+            Some(key) => (true, key),
+            None => (false, key),
+        };
+        let Some((region, id)) = key.split_once(':') else {
+            return false;
+        };
+        if !matches!(region, "europe" | "america")
+            || !uuid::Uuid::parse_str(id).is_ok_and(|uuid| uuid.to_string() == id)
+        {
+            return false;
+        }
+        if files {
+            self.files
+                .as_ref()
+                .is_some_and(|store| store.has_region(region))
+        } else {
+            self.has_region(region)
+        }
+    }
+
     pub async fn put_regional(
         &self,
         region: &str,
