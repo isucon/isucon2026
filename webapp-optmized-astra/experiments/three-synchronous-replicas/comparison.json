@@ -1,0 +1,716 @@
+{
+  "window": "First 60 seconds from load start; CPU excludes idle and I/O wait",
+  "runs": [
+    {
+      "run": "20261028T191756Z-team10",
+      "score": 185395,
+      "passed": true,
+      "source": "26ca2af706f0ee06672e415f5e9a329300b3c6c9",
+      "artifact_sha256": "4f236ded0a61493316472f7f4a283614332a389319967726b920be9bea6afdad",
+      "asia_synchronous": false,
+      "asia_read_scope": "feed_search",
+      "db1_archive_reads": false,
+      "routes": [
+        {
+          "region": "asia",
+          "route": "GET /api/feeds/friends",
+          "operations": 6453,
+          "failures": 0,
+          "p50_ms": 174.31,
+          "p90_ms": 255.87
+        },
+        {
+          "region": "asia",
+          "route": "GET /api/images/:imageId",
+          "operations": 15855,
+          "failures": 0,
+          "p50_ms": 84.7,
+          "p90_ms": 193.05
+        },
+        {
+          "region": "asia",
+          "route": "POST /api/auth/register",
+          "operations": 1298,
+          "failures": 0,
+          "p50_ms": 540.94,
+          "p90_ms": 2047.17
+        },
+        {
+          "region": "asia",
+          "route": "POST /api/posts",
+          "operations": 2449,
+          "failures": 3,
+          "p50_ms": 505.89,
+          "p90_ms": 4029.05
+        }
+      ],
+      "load_start": "2026-10-28T19:18:43.760Z",
+      "hosts": {
+        "db1": {
+          "samples": 58,
+          "mean": {
+            "cpu_pct": 44.22,
+            "iowait_pct": 10.03,
+            "mem_used_mib": 1439.08,
+            "disk_r_mbs": 3.88,
+            "disk_w_mbs": 9.36
+          }
+        },
+        "app1": {
+          "samples": 59,
+          "mean": {
+            "cpu_pct": 46.23,
+            "iowait_pct": 11.85,
+            "mem_used_mib": 1778.21,
+            "disk_r_mbs": 14.8,
+            "disk_w_mbs": 22.55
+          }
+        },
+        "app2": {
+          "samples": 58,
+          "mean": {
+            "cpu_pct": 34.5,
+            "iowait_pct": 10.7,
+            "mem_used_mib": 1653.31,
+            "disk_r_mbs": 1.15,
+            "disk_w_mbs": 13.78
+          }
+        },
+        "app3": {
+          "samples": 58,
+          "mean": {
+            "cpu_pct": 33.37,
+            "iowait_pct": 12.12,
+            "mem_used_mib": 1572.14,
+            "disk_r_mbs": 1.74,
+            "disk_w_mbs": 13.44
+          }
+        }
+      }
+    },
+    {
+      "run": "20261028T192319Z-team10",
+      "score": 184915,
+      "passed": true,
+      "source": "ab32e602cb1b8df32c2f97e21c9a27815cff32bb",
+      "artifact_sha256": "4f236ded0a61493316472f7f4a283614332a389319967726b920be9bea6afdad",
+      "asia_synchronous": false,
+      "asia_read_scope": "feed_search",
+      "db1_archive_reads": false,
+      "routes": [
+        {
+          "region": "asia",
+          "route": "GET /api/feeds/friends",
+          "operations": 6286,
+          "failures": 0,
+          "p50_ms": 159.33,
+          "p90_ms": 244.67
+        },
+        {
+          "region": "asia",
+          "route": "GET /api/images/:imageId",
+          "operations": 16096,
+          "failures": 0,
+          "p50_ms": 80.57,
+          "p90_ms": 181.13
+        },
+        {
+          "region": "asia",
+          "route": "POST /api/auth/register",
+          "operations": 1328,
+          "failures": 0,
+          "p50_ms": 565.33,
+          "p90_ms": 2134.28
+        },
+        {
+          "region": "asia",
+          "route": "POST /api/posts",
+          "operations": 2408,
+          "failures": 1,
+          "p50_ms": 538.28,
+          "p90_ms": 4221.7
+        }
+      ],
+      "load_start": "2026-10-28T19:24:01.106Z",
+      "hosts": {
+        "db1": {
+          "samples": 58,
+          "mean": {
+            "cpu_pct": 38.88,
+            "iowait_pct": 10.99,
+            "mem_used_mib": 1548.21,
+            "disk_r_mbs": 3.63,
+            "disk_w_mbs": 6.91
+          }
+        },
+        "app1": {
+          "samples": 58,
+          "mean": {
+            "cpu_pct": 46.8,
+            "iowait_pct": 10.81,
+            "mem_used_mib": 2235.61,
+            "disk_r_mbs": 14.29,
+            "disk_w_mbs": 24.35
+          }
+        },
+        "app2": {
+          "samples": 58,
+          "mean": {
+            "cpu_pct": 32.44,
+            "iowait_pct": 10.24,
+            "mem_used_mib": 2161.93,
+            "disk_r_mbs": 1.01,
+            "disk_w_mbs": 14.81
+          }
+        },
+        "app3": {
+          "samples": 58,
+          "mean": {
+            "cpu_pct": 31.62,
+            "iowait_pct": 11.21,
+            "mem_used_mib": 2130.72,
+            "disk_r_mbs": 1.55,
+            "disk_w_mbs": 13.09
+          }
+        }
+      }
+    },
+    {
+      "run": "20261028T194609Z-team10",
+      "score": 151126,
+      "passed": true,
+      "source": "d3dc25b0072f0fd25c89538b8f12e821a5a5747a",
+      "artifact_sha256": "06902ab12dd1303b9702d8dca2d4cfe2382bff1d485ab9fa3d4d456a7d2325f1",
+      "asia_synchronous": true,
+      "asia_read_scope": "all",
+      "db1_archive_reads": false,
+      "routes": [
+        {
+          "region": "asia",
+          "route": "GET /api/feeds/friends",
+          "operations": 5458,
+          "failures": 0,
+          "p50_ms": 48.8,
+          "p90_ms": 153.26
+        },
+        {
+          "region": "asia",
+          "route": "GET /api/images/:imageId",
+          "operations": 10618,
+          "failures": 0,
+          "p50_ms": 49.54,
+          "p90_ms": 256.14
+        },
+        {
+          "region": "asia",
+          "route": "POST /api/auth/register",
+          "operations": 1290,
+          "failures": 0,
+          "p50_ms": 2165.49,
+          "p90_ms": 3528.29
+        },
+        {
+          "region": "asia",
+          "route": "POST /api/posts",
+          "operations": 1817,
+          "failures": 1,
+          "p50_ms": 681.99,
+          "p90_ms": 3416.69
+        }
+      ],
+      "load_start": "2026-10-28T19:46:54.555Z",
+      "hosts": {
+        "db1": {
+          "samples": 59,
+          "mean": {
+            "cpu_pct": 20.65,
+            "iowait_pct": 10.66,
+            "mem_used_mib": 1361.33,
+            "disk_r_mbs": 0.8,
+            "disk_w_mbs": 5.07
+          }
+        },
+        "app1": {
+          "samples": 57,
+          "mean": {
+            "cpu_pct": 53.72,
+            "iowait_pct": 25.01,
+            "mem_used_mib": 1841.69,
+            "disk_r_mbs": 25.31,
+            "disk_w_mbs": 19.6
+          }
+        },
+        "app2": {
+          "samples": 58,
+          "mean": {
+            "cpu_pct": 32.22,
+            "iowait_pct": 9.33,
+            "mem_used_mib": 1639.88,
+            "disk_r_mbs": 1.09,
+            "disk_w_mbs": 12.23
+          }
+        },
+        "app3": {
+          "samples": 58,
+          "mean": {
+            "cpu_pct": 29.58,
+            "iowait_pct": 10.49,
+            "mem_used_mib": 1570.72,
+            "disk_r_mbs": 1.47,
+            "disk_w_mbs": 10.97
+          }
+        }
+      }
+    },
+    {
+      "run": "20261028T194923Z-team10",
+      "score": 0,
+      "passed": false,
+      "source": "a48538ec67e02f12c0ce50c1362ae8bbe43382e9",
+      "artifact_sha256": "06902ab12dd1303b9702d8dca2d4cfe2382bff1d485ab9fa3d4d456a7d2325f1",
+      "asia_synchronous": true,
+      "asia_read_scope": "all",
+      "db1_archive_reads": false,
+      "messages": [
+        "\u8ca0\u8377\u30e6\u30fc\u30b6\u30fc\u306e\u767b\u9332\u306b\u5931\u6557\u3057\u307e\u3057\u305f: POST /api/auth/register: \u5fdc\u7b54\u304c\u30bf\u30a4\u30e0\u30a2\u30a6\u30c8\u3057\u307e\u3057\u305f",
+        "POST /api/auth/register: \u5fdc\u7b54\u304c\u30bf\u30a4\u30e0\u30a2\u30a6\u30c8\u3057\u307e\u3057\u305f"
+      ],
+      "routes": []
+    },
+    {
+      "run": "20261028T195416Z-team10",
+      "score": 158226,
+      "passed": true,
+      "source": "90e714ff9dbd2db8390192598ddcc55823caf1e5",
+      "artifact_sha256": "06902ab12dd1303b9702d8dca2d4cfe2382bff1d485ab9fa3d4d456a7d2325f1",
+      "asia_synchronous": true,
+      "asia_read_scope": "all",
+      "db1_archive_reads": true,
+      "routes": [
+        {
+          "region": "asia",
+          "route": "GET /api/feeds/friends",
+          "operations": 5474,
+          "failures": 0,
+          "p50_ms": 39.84,
+          "p90_ms": 186.74
+        },
+        {
+          "region": "asia",
+          "route": "GET /api/images/:imageId",
+          "operations": 11186,
+          "failures": 0,
+          "p50_ms": 36.88,
+          "p90_ms": 253.01
+        },
+        {
+          "region": "asia",
+          "route": "POST /api/auth/register",
+          "operations": 1134,
+          "failures": 0,
+          "p50_ms": 1265.47,
+          "p90_ms": 2236.73
+        },
+        {
+          "region": "asia",
+          "route": "POST /api/posts",
+          "operations": 1964,
+          "failures": 2,
+          "p50_ms": 704.47,
+          "p90_ms": 3475.94
+        }
+      ],
+      "load_start": "2026-10-28T19:55:06.623Z",
+      "hosts": {
+        "db1": {
+          "samples": 59,
+          "mean": {
+            "cpu_pct": 25.09,
+            "iowait_pct": 15.83,
+            "mem_used_mib": 1345.08,
+            "disk_r_mbs": 11.47,
+            "disk_w_mbs": 6.26
+          }
+        },
+        "app1": {
+          "samples": 58,
+          "mean": {
+            "cpu_pct": 54.73,
+            "iowait_pct": 20.77,
+            "mem_used_mib": 1836.1,
+            "disk_r_mbs": 17.0,
+            "disk_w_mbs": 22.83
+          }
+        },
+        "app2": {
+          "samples": 59,
+          "mean": {
+            "cpu_pct": 32.47,
+            "iowait_pct": 10.43,
+            "mem_used_mib": 1640.94,
+            "disk_r_mbs": 1.41,
+            "disk_w_mbs": 13.92
+          }
+        },
+        "app3": {
+          "samples": 58,
+          "mean": {
+            "cpu_pct": 31.95,
+            "iowait_pct": 11.42,
+            "mem_used_mib": 1562.52,
+            "disk_r_mbs": 1.76,
+            "disk_w_mbs": 12.66
+          }
+        }
+      }
+    },
+    {
+      "run": "20261028T200121Z-team10",
+      "score": 182703,
+      "passed": true,
+      "source": "232eec6c53c0e86e6b4bc6a0a86b336fc37b1645",
+      "artifact_sha256": "15d46cfa7f91947e73e5228378649698e201817fcface31296238a7d921ab472",
+      "asia_synchronous": true,
+      "asia_read_scope": "feed_search",
+      "db1_archive_reads": true,
+      "routes": [
+        {
+          "region": "asia",
+          "route": "GET /api/feeds/friends",
+          "operations": 6825,
+          "failures": 0,
+          "p50_ms": 8.35,
+          "p90_ms": 61.66
+        },
+        {
+          "region": "asia",
+          "route": "GET /api/images/:imageId",
+          "operations": 14833,
+          "failures": 0,
+          "p50_ms": 95.41,
+          "p90_ms": 229.1
+        },
+        {
+          "region": "asia",
+          "route": "POST /api/auth/register",
+          "operations": 1334,
+          "failures": 0,
+          "p50_ms": 707.32,
+          "p90_ms": 2346.26
+        },
+        {
+          "region": "asia",
+          "route": "POST /api/posts",
+          "operations": 2293,
+          "failures": 0,
+          "p50_ms": 492.65,
+          "p90_ms": 3878.59
+        }
+      ],
+      "load_start": "2026-10-28T20:02:15.805Z",
+      "hosts": {
+        "db1": {
+          "samples": 58,
+          "mean": {
+            "cpu_pct": 47.78,
+            "iowait_pct": 11.94,
+            "mem_used_mib": 1431.32,
+            "disk_r_mbs": 17.91,
+            "disk_w_mbs": 7.7
+          }
+        },
+        "app1": {
+          "samples": 58,
+          "mean": {
+            "cpu_pct": 48.73,
+            "iowait_pct": 8.06,
+            "mem_used_mib": 1736.77,
+            "disk_r_mbs": 1.63,
+            "disk_w_mbs": 25.69
+          }
+        },
+        "app2": {
+          "samples": 58,
+          "mean": {
+            "cpu_pct": 33.69,
+            "iowait_pct": 11.71,
+            "mem_used_mib": 1634.77,
+            "disk_r_mbs": 1.57,
+            "disk_w_mbs": 18.45
+          }
+        },
+        "app3": {
+          "samples": 58,
+          "mean": {
+            "cpu_pct": 33.6,
+            "iowait_pct": 13.58,
+            "mem_used_mib": 1557.39,
+            "disk_r_mbs": 2.71,
+            "disk_w_mbs": 16.85
+          }
+        }
+      }
+    },
+    {
+      "run": "20261028T200747Z-team10",
+      "score": 176347,
+      "passed": true,
+      "source": "d00a52d75663e0bb3078d68baa8433dc367f4fe1",
+      "artifact_sha256": "15d46cfa7f91947e73e5228378649698e201817fcface31296238a7d921ab472",
+      "asia_synchronous": true,
+      "asia_read_scope": "feed_search",
+      "db1_archive_reads": false,
+      "routes": [
+        {
+          "region": "asia",
+          "route": "GET /api/feeds/friends",
+          "operations": 6596,
+          "failures": 0,
+          "p50_ms": 20.69,
+          "p90_ms": 104.74
+        },
+        {
+          "region": "asia",
+          "route": "GET /api/images/:imageId",
+          "operations": 16068,
+          "failures": 0,
+          "p50_ms": 84.6,
+          "p90_ms": 285.19
+        },
+        {
+          "region": "asia",
+          "route": "POST /api/auth/register",
+          "operations": 1349,
+          "failures": 0,
+          "p50_ms": 619.4,
+          "p90_ms": 2339.29
+        },
+        {
+          "region": "asia",
+          "route": "POST /api/posts",
+          "operations": 2514,
+          "failures": 1,
+          "p50_ms": 885.6,
+          "p90_ms": 4364.53
+        }
+      ],
+      "load_start": "2026-10-28T20:08:38.834Z",
+      "hosts": {
+        "db1": {
+          "samples": 58,
+          "mean": {
+            "cpu_pct": 43.34,
+            "iowait_pct": 10.62,
+            "mem_used_mib": 1427.47,
+            "disk_r_mbs": 4.76,
+            "disk_w_mbs": 8.2
+          }
+        },
+        "app1": {
+          "samples": 58,
+          "mean": {
+            "cpu_pct": 49.59,
+            "iowait_pct": 9.76,
+            "mem_used_mib": 1738.23,
+            "disk_r_mbs": 15.68,
+            "disk_w_mbs": 24.03
+          }
+        },
+        "app2": {
+          "samples": 59,
+          "mean": {
+            "cpu_pct": 31.3,
+            "iowait_pct": 13.13,
+            "mem_used_mib": 1640.39,
+            "disk_r_mbs": 1.67,
+            "disk_w_mbs": 16.97
+          }
+        },
+        "app3": {
+          "samples": 58,
+          "mean": {
+            "cpu_pct": 32.13,
+            "iowait_pct": 14.09,
+            "mem_used_mib": 1562.35,
+            "disk_r_mbs": 2.22,
+            "disk_w_mbs": 14.92
+          }
+        }
+      }
+    },
+    {
+      "run": "20261028T201116Z-team10",
+      "score": 175796,
+      "passed": true,
+      "source": "4c6a679f194b8a0a6af2fad4e019868f7fa9ce08",
+      "artifact_sha256": "15d46cfa7f91947e73e5228378649698e201817fcface31296238a7d921ab472",
+      "asia_synchronous": true,
+      "asia_read_scope": "feed_search",
+      "db1_archive_reads": false,
+      "routes": [
+        {
+          "region": "asia",
+          "route": "GET /api/feeds/friends",
+          "operations": 6523,
+          "failures": 0,
+          "p50_ms": 18.04,
+          "p90_ms": 98.98
+        },
+        {
+          "region": "asia",
+          "route": "GET /api/images/:imageId",
+          "operations": 15080,
+          "failures": 0,
+          "p50_ms": 106.16,
+          "p90_ms": 280.43
+        },
+        {
+          "region": "asia",
+          "route": "POST /api/auth/register",
+          "operations": 1318,
+          "failures": 0,
+          "p50_ms": 600.19,
+          "p90_ms": 2271.71
+        },
+        {
+          "region": "asia",
+          "route": "POST /api/posts",
+          "operations": 2425,
+          "failures": 1,
+          "p50_ms": 780.8,
+          "p90_ms": 4135.74
+        }
+      ],
+      "load_start": "2026-10-28T20:12:12.703Z",
+      "hosts": {
+        "db1": {
+          "samples": 58,
+          "mean": {
+            "cpu_pct": 42.04,
+            "iowait_pct": 12.42,
+            "mem_used_mib": 1554.49,
+            "disk_r_mbs": 6.95,
+            "disk_w_mbs": 7.04
+          }
+        },
+        "app1": {
+          "samples": 58,
+          "mean": {
+            "cpu_pct": 50.21,
+            "iowait_pct": 9.0,
+            "mem_used_mib": 2222.81,
+            "disk_r_mbs": 14.91,
+            "disk_w_mbs": 25.65
+          }
+        },
+        "app2": {
+          "samples": 58,
+          "mean": {
+            "cpu_pct": 32.94,
+            "iowait_pct": 10.14,
+            "mem_used_mib": 2162.7,
+            "disk_r_mbs": 0.71,
+            "disk_w_mbs": 16.27
+          }
+        },
+        "app3": {
+          "samples": 59,
+          "mean": {
+            "cpu_pct": 30.65,
+            "iowait_pct": 11.28,
+            "mem_used_mib": 2137.98,
+            "disk_r_mbs": 1.29,
+            "disk_w_mbs": 14.53
+          }
+        }
+      }
+    },
+    {
+      "run": "20261028T201755Z-team10",
+      "score": 181005,
+      "passed": true,
+      "source": "8449176615a8ca9860a1c24f68ac7a022f9c73f4",
+      "artifact_sha256": "15d46cfa7f91947e73e5228378649698e201817fcface31296238a7d921ab472",
+      "asia_synchronous": false,
+      "asia_read_scope": "feed_search",
+      "db1_archive_reads": false,
+      "routes": [
+        {
+          "region": "asia",
+          "route": "GET /api/feeds/friends",
+          "operations": 6476,
+          "failures": 0,
+          "p50_ms": 147.29,
+          "p90_ms": 272.85
+        },
+        {
+          "region": "asia",
+          "route": "GET /api/images/:imageId",
+          "operations": 16611,
+          "failures": 0,
+          "p50_ms": 77.13,
+          "p90_ms": 225.6
+        },
+        {
+          "region": "asia",
+          "route": "POST /api/auth/register",
+          "operations": 1338,
+          "failures": 0,
+          "p50_ms": 532.88,
+          "p90_ms": 2047.8
+        },
+        {
+          "region": "asia",
+          "route": "POST /api/posts",
+          "operations": 2622,
+          "failures": 1,
+          "p50_ms": 792.09,
+          "p90_ms": 4497.18
+        }
+      ],
+      "load_start": "2026-10-28T20:18:44.328Z",
+      "hosts": {
+        "db1": {
+          "samples": 58,
+          "mean": {
+            "cpu_pct": 44.32,
+            "iowait_pct": 9.89,
+            "mem_used_mib": 1436.77,
+            "disk_r_mbs": 3.18,
+            "disk_w_mbs": 9.64
+          }
+        },
+        "app1": {
+          "samples": 58,
+          "mean": {
+            "cpu_pct": 46.21,
+            "iowait_pct": 11.77,
+            "mem_used_mib": 1750.62,
+            "disk_r_mbs": 16.26,
+            "disk_w_mbs": 23.18
+          }
+        },
+        "app2": {
+          "samples": 59,
+          "mean": {
+            "cpu_pct": 29.39,
+            "iowait_pct": 13.14,
+            "mem_used_mib": 1646.95,
+            "disk_r_mbs": 1.37,
+            "disk_w_mbs": 14.76
+          }
+        },
+        "app3": {
+          "samples": 58,
+          "mean": {
+            "cpu_pct": 30.86,
+            "iowait_pct": 13.84,
+            "mem_used_mib": 1561.86,
+            "disk_r_mbs": 1.86,
+            "disk_w_mbs": 14.09
+          }
+        }
+      }
+    }
+  ]
+}
