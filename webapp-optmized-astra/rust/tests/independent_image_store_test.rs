@@ -1057,274 +1057,308 @@ async fn independent_bytes_publish_atomically_and_preserve_visibility_export_and
     // An independent regional cluster owns the bytes; metadata carries only a
     // signed reference, and a fresh reader can retrieve them after cache loss.
     if let Ok(regional_dsn) = std::env::var("ISUREAL_REGIONAL_ASSET_TEST_DSN") {
-        use isureal::{
-            regional_upload::RegionalUpload,
-            stored_upload::{UploadAuthenticator, authenticate},
-        };
-        use sha2::{Digest, Sha256};
-        let region_admin = PgPool::connect(&regional_dsn).await.unwrap();
-        let region_id: i64 =
-            sqlx::query_scalar("SELECT system_identifier::bigint FROM pg_control_system()")
-                .fetch_one(&region_admin)
+        for file_backend in [false, true] {
+            use isureal::{
+                regional_upload::RegionalUpload,
+                stored_upload::{UploadAuthenticator, authenticate},
+            };
+            use sha2::{Digest, Sha256};
+            let region_admin = PgPool::connect(&regional_dsn).await.unwrap();
+            let region_id: i64 =
+                sqlx::query_scalar("SELECT system_identifier::bigint FROM pg_control_system()")
+                    .fetch_one(&region_admin)
+                    .await
+                    .unwrap();
+            assert_ne!(region_id, asset_id);
+            assert_ne!(region_id, primary_id);
+            sqlx::query(&format!("CREATE SCHEMA {schema}"))
+                .execute(&region_admin)
                 .await
                 .unwrap();
-        assert_ne!(region_id, asset_id);
-        assert_ne!(region_id, primary_id);
-        sqlx::query(&format!("CREATE SCHEMA {schema}"))
-            .execute(&region_admin)
-            .await
-            .unwrap();
-        let region_pool = pool(&regional_dsn, &schema).await;
-        sqlx::raw_sql("CREATE TABLE astra_image_data(id varchar(36) PRIMARY KEY,data bytea NOT NULL,created_at timestamptz NOT NULL DEFAULT clock_timestamp())").execute(&region_pool).await.unwrap();
-        let regional_store = ImageStore::new(assets.clone(), true, None)
-            .with_cache_enabled(false)
-            .with_regional_pools([("europe".into(), region_pool.clone())].into());
-        sqlx::query("UPDATE users SET region='europe' WHERE id='owner'")
-            .execute(&db)
-            .await
-            .unwrap();
-        next_window(&db, 3).await;
-        sqlx::query("UPDATE posting_windows SET region='europe' WHERE id='window-3'")
-            .execute(&db)
-            .await
-            .unwrap();
-        sqlx::query("INSERT INTO login_sessions(id,user_id,token_hash) VALUES ('regional-session','owner',$1)").bind(hex::encode(Sha256::digest(b"regional-token"))).execute(&db).await.unwrap();
-        let handoff_key = [42; 32];
-        let upstream = app(db.clone(), Some(regional_store.clone())).layer(
-            axum::middleware::from_fn_with_state(
-                UploadAuthenticator::new(
-                    handoff_key,
-                    [("127.0.0.1".parse().unwrap(), "europe".into())].into(),
+            let region_pool = pool(&regional_dsn, &schema).await;
+            sqlx::raw_sql("CREATE TABLE astra_image_data(id varchar(36) PRIMARY KEY,data bytea NOT NULL,created_at timestamptz NOT NULL DEFAULT clock_timestamp())").execute(&region_pool).await.unwrap();
+            let file_root =
+                std::env::temp_dir().join(format!("astra-regional-file-{}", uuid::Uuid::new_v4()));
+            let files = if file_backend {
+                let files = isureal::file_store::FileStore::new(
+                    file_root.clone(),
+                    "europe".into(),
+                    Default::default(),
+                    true,
+                );
+                files.prepare().await.unwrap();
+                Some(files)
+            } else {
+                None
+            };
+            let regional_store = ImageStore::new(assets.clone(), true, None)
+                .with_cache_enabled(false)
+                .with_regional_pools([("europe".into(), region_pool.clone())].into())
+                .with_file_store(files.clone());
+            sqlx::query("UPDATE users SET region='europe' WHERE id='owner'")
+                .execute(&db)
+                .await
+                .unwrap();
+            let window_number = if file_backend { 4 } else { 3 };
+            next_window(&db, window_number).await;
+            sqlx::query("DELETE FROM ip_bans WHERE ip='192.0.2.5'")
+                .execute(&db)
+                .await
+                .unwrap();
+            sqlx::query("UPDATE posting_windows SET region='europe' WHERE id=$1")
+                .bind(format!("window-{window_number}"))
+                .execute(&db)
+                .await
+                .unwrap();
+            sqlx::query("INSERT INTO login_sessions(id,user_id,token_hash) VALUES ('regional-session','owner',$1) ON CONFLICT (id) DO UPDATE SET active=true").bind(hex::encode(Sha256::digest(b"regional-token"))).execute(&db).await.unwrap();
+            let handoff_key = [42; 32];
+            let upstream = app(db.clone(), Some(regional_store.clone())).layer(
+                axum::middleware::from_fn_with_state(
+                    UploadAuthenticator::new(
+                        handoff_key,
+                        [("127.0.0.1".parse().unwrap(), "europe".into())].into(),
+                    ),
+                    authenticate,
                 ),
-                authenticate,
-            ),
-        );
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let offload = RegionalUpload::new(
-            db.clone(),
-            regional_store.clone(),
-            "europe".into(),
-            handoff_key,
-        );
-        let proxy = isureal::upload_proxy::UploadProxy::new(listener.local_addr().unwrap())
-            .with_regional_upload(offload.clone());
-        let task = tokio::spawn(async move {
-            axum::serve(
-                listener,
-                upstream.into_make_service_with_connect_info::<std::net::SocketAddr>(),
-            )
-            .await
-            .unwrap()
-        });
-        let ingress = Router::new()
-            .fallback(|| async { StatusCode::IM_A_TEAPOT })
-            .layer(axum::middleware::from_fn_with_state(
-                proxy,
-                isureal::upload_proxy::upload_proxy_middleware,
-            ));
-        let make_upload = || {
-            let mut r = upload(original);
-            r.headers_mut()
-                .insert("authorization", "Bearer regional-token".parse().unwrap());
-            r.headers_mut()
-                .insert("x-client-ip", "192.0.2.5".parse().unwrap());
-            r
-        };
-        let invalid = upload(original);
-        let (parts, body) = invalid.into_parts();
-        let body = axum::body::to_bytes(body, 32 * 1024 * 1024).await.unwrap();
-        assert!(
-            offload
-                .prepare(
-                    &parts.headers,
-                    "192.0.2.5",
-                    "multipart/form-data; boundary=boundary",
-                    body
+            );
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let offload = RegionalUpload::new(
+                db.clone(),
+                regional_store.clone(),
+                "europe".into(),
+                handoff_key,
+            );
+            let proxy = isureal::upload_proxy::UploadProxy::new(listener.local_addr().unwrap())
+                .with_regional_upload(offload.clone());
+            let task = tokio::spawn(async move {
+                axum::serve(
+                    listener,
+                    upstream.into_make_service_with_connect_info::<std::net::SocketAddr>(),
                 )
                 .await
                 .unwrap()
-                .is_none()
-        );
-        assert_eq!(count(&region_pool, "astra_image_data").await, 0);
-        let before = count(&assets, "astra_image_data").await;
-        let (status, response) = request(ingress.clone(), make_upload()).await;
-        assert_eq!(
-            status,
-            StatusCode::CREATED,
-            "{}",
-            String::from_utf8_lossy(&response)
-        );
-        let response: Value = serde_json::from_slice(&response).unwrap();
-        let post_id = response["id"].as_str().unwrap();
-        let image_url = response["imageUrl"].as_str().unwrap();
-        let (reference,inline):(String,i32)=sqlx::query_as("SELECT i.asset_key,octet_length(i.data) FROM image_objects i JOIN posts p ON p.image_id=i.id WHERE p.id=$1").bind(post_id).fetch_one(&db).await.unwrap();
-        assert!(reference.starts_with("europe:"));
-        assert_eq!(inline, 0);
-        assert_eq!(count(&assets, "astra_image_data").await, before);
-        assert_eq!(count(&region_pool, "astra_image_data").await, 1);
-        let fresh_store = ImageStore::new(assets.clone(), false, None)
-            .with_cache_enabled(false)
-            .with_regional_pools([("europe".into(), region_pool.clone())].into());
-        assert_eq!(fresh_store.get(&reference).await.unwrap(), original);
-        let fresh = app(db.clone(), Some(fresh_store));
-        assert_eq!(
-            request(
+            });
+            let ingress = Router::new()
+                .fallback(|| async { StatusCode::IM_A_TEAPOT })
+                .layer(axum::middleware::from_fn_with_state(
+                    proxy,
+                    isureal::upload_proxy::upload_proxy_middleware,
+                ));
+            let make_upload = || {
+                let mut r = upload(original);
+                r.headers_mut()
+                    .insert("authorization", "Bearer regional-token".parse().unwrap());
+                r.headers_mut()
+                    .insert("x-client-ip", "192.0.2.5".parse().unwrap());
+                r
+            };
+            let invalid = upload(original);
+            let (parts, body) = invalid.into_parts();
+            let body = axum::body::to_bytes(body, 32 * 1024 * 1024).await.unwrap();
+            assert!(
+                offload
+                    .prepare(
+                        &parts.headers,
+                        "192.0.2.5",
+                        "multipart/form-data; boundary=boundary",
+                        body
+                    )
+                    .await
+                    .unwrap()
+                    .is_none()
+            );
+            assert_eq!(count(&region_pool, "astra_image_data").await, 0);
+            let before = count(&assets, "astra_image_data").await;
+            let (status, response) = request(ingress.clone(), make_upload()).await;
+            assert_eq!(
+                status,
+                StatusCode::CREATED,
+                "{}",
+                String::from_utf8_lossy(&response)
+            );
+            let response: Value = serde_json::from_slice(&response).unwrap();
+            let post_id = response["id"].as_str().unwrap();
+            let image_url = response["imageUrl"].as_str().unwrap();
+            let (reference,inline):(String,i32)=sqlx::query_as("SELECT i.asset_key,octet_length(i.data) FROM image_objects i JOIN posts p ON p.image_id=i.id WHERE p.id=$1").bind(post_id).fetch_one(&db).await.unwrap();
+            assert!(reference.starts_with(if file_backend {
+                "fs:europe:"
+            } else {
+                "europe:"
+            }));
+            assert_eq!(inline, 0);
+            assert_eq!(count(&assets, "astra_image_data").await, before);
+            assert_eq!(
+                count(&region_pool, "astra_image_data").await,
+                if file_backend { 0 } else { 1 }
+            );
+            let fresh_store = ImageStore::new(assets.clone(), false, None)
+                .with_cache_enabled(false)
+                .with_regional_pools([("europe".into(), region_pool.clone())].into())
+                .with_file_store(files.clone());
+            assert_eq!(fresh_store.get(&reference).await.unwrap(), original);
+            let fresh = app(db.clone(), Some(fresh_store));
+            assert_eq!(
+                request(
+                    fresh.clone(),
+                    Request::get(image_url).body(Body::empty()).unwrap()
+                )
+                .await,
+                (StatusCode::OK, original.to_vec())
+            );
+            let (status, archive) = request(
                 fresh.clone(),
-                Request::get(image_url).body(Body::empty()).unwrap()
+                Request::get("/api/me/export").body(Body::empty()).unwrap(),
             )
-            .await,
-            (StatusCode::OK, original.to_vec())
-        );
-        let (status, archive) = request(
-            fresh.clone(),
-            Request::get("/api/me/export").body(Body::empty()).unwrap(),
-        )
-        .await;
-        assert_eq!(status, StatusCode::OK);
-        let mut zip = zip::ZipArchive::new(Cursor::new(archive)).unwrap();
-        let mut manifest = String::new();
-        zip.by_name("posts.json")
-            .unwrap()
-            .read_to_string(&mut manifest)
-            .unwrap();
-        let manifest: Value = serde_json::from_str(&manifest).unwrap();
-        let index = manifest
-            .as_array()
-            .unwrap()
-            .iter()
-            .position(|p| p["id"] == post_id)
-            .unwrap();
-        let mut bytes = Vec::new();
-        zip.by_name(&format!("images/{:06}.jpg", index + 1))
-            .unwrap()
-            .read_to_end(&mut bytes)
-            .unwrap();
-        assert_eq!(bytes, original);
-        // Duplicate publication can leave immutable private bytes, never another post.
-        let post_count = count(&db, "posts").await;
-        assert_eq!(
-            request(ingress.clone(), make_upload()).await.0,
-            StatusCode::CONFLICT
-        );
-        assert_eq!(count(&db, "posts").await, post_count);
-        // A successful regional preflight never authorizes publication after
-        // logout. The writer must still run its fresh session middleware.
-        let (parts, body) = make_upload().into_parts();
-        let body = axum::body::to_bytes(body, 32 * 1024 * 1024).await.unwrap();
-        let prepared = offload
-            .prepare(
-                &parts.headers,
-                "192.0.2.5",
-                "multipart/form-data; boundary=boundary",
-                body.clone(),
-            )
-            .await
-            .unwrap()
-            .unwrap();
-        assert!(prepared.body.len() < body.len());
-        assert!(
-            !prepared
-                .body
-                .windows(original.len())
-                .any(|bytes| bytes == original)
-        );
-        let h = Arc::new(HandlerContext {
-            db: db.clone(),
-            config: config_from_env(),
-            ip_bans: Default::default(),
-            notifications: Default::default(),
-            read_fence: None,
-            image_store: Some(regional_store.clone()),
-        });
-        let authenticated_writer = Router::new()
-            .route("/api/posts", post(create_post_handler))
-            .route_layer(axum::middleware::from_fn_with_state(
-                (h.clone(), true),
-                isureal::session::session_middleware,
-            ))
-            .with_state(h)
-            .layer(axum::middleware::from_fn_with_state(
-                UploadAuthenticator::new(
-                    handoff_key,
-                    [("127.0.0.1".parse().unwrap(), "europe".into())].into(),
-                ),
-                authenticate,
-            ));
-        let mut forwarded_headers = parts.headers;
-        forwarded_headers.insert("content-type", prepared.content_type.parse().unwrap());
-        let proof = isureal::stored_upload::sign(
-            &handoff_key,
-            prepared.reference.clone(),
-            "/api/posts",
-            &forwarded_headers,
-            &prepared.body,
-        );
-        let mut forwarded = Request::post("/api/posts")
-            .body(Body::from(prepared.body))
-            .unwrap();
-        *forwarded.headers_mut() = forwarded_headers;
-        forwarded
-            .headers_mut()
-            .insert(isureal::stored_upload::HEADER, proof.parse().unwrap());
-        forwarded
-            .extensions_mut()
-            .insert(axum::extract::ConnectInfo(
-                "127.0.0.1:12345".parse::<std::net::SocketAddr>().unwrap(),
-            ));
-        sqlx::query("UPDATE login_sessions SET active=false WHERE id='regional-session'")
-            .execute(&db)
-            .await
-            .unwrap();
-        let post_count = count(&db, "posts").await;
-        assert_eq!(
-            request(authenticated_writer, forwarded).await.0,
-            StatusCode::UNAUTHORIZED
-        );
-        assert_eq!(count(&db, "posts").await, post_count);
-        sqlx::query("UPDATE login_sessions SET active=true WHERE id='regional-session'")
-            .execute(&db)
-            .await
-            .unwrap();
-        sqlx::query(
-            "INSERT INTO ip_bans(ip,banned_until) VALUES ('192.0.2.5',now()+interval '1 hour')",
-        )
-        .execute(&db)
-        .await
-        .unwrap();
-        let (parts, body) = make_upload().into_parts();
-        let body = axum::body::to_bytes(body, 32 * 1024 * 1024).await.unwrap();
-        let count_before = count(&region_pool, "astra_image_data").await;
-        assert!(
-            offload
+            .await;
+            assert_eq!(status, StatusCode::OK);
+            let mut zip = zip::ZipArchive::new(Cursor::new(archive)).unwrap();
+            let mut manifest = String::new();
+            zip.by_name("posts.json")
+                .unwrap()
+                .read_to_string(&mut manifest)
+                .unwrap();
+            let manifest: Value = serde_json::from_str(&manifest).unwrap();
+            let index = manifest
+                .as_array()
+                .unwrap()
+                .iter()
+                .position(|p| p["id"] == post_id)
+                .unwrap();
+            let mut bytes = Vec::new();
+            zip.by_name(&format!("images/{:06}.jpg", index + 1))
+                .unwrap()
+                .read_to_end(&mut bytes)
+                .unwrap();
+            assert_eq!(bytes, original);
+            // Duplicate publication can leave immutable private bytes, never another post.
+            let post_count = count(&db, "posts").await;
+            assert_eq!(
+                request(ingress.clone(), make_upload()).await.0,
+                StatusCode::CONFLICT
+            );
+            assert_eq!(count(&db, "posts").await, post_count);
+            // A successful regional preflight never authorizes publication after
+            // logout. The writer must still run its fresh session middleware.
+            let (parts, body) = make_upload().into_parts();
+            let body = axum::body::to_bytes(body, 32 * 1024 * 1024).await.unwrap();
+            let prepared = offload
                 .prepare(
                     &parts.headers,
                     "192.0.2.5",
                     "multipart/form-data; boundary=boundary",
-                    body
+                    body.clone(),
                 )
                 .await
                 .unwrap()
-                .is_none()
-        );
-        assert_eq!(count(&region_pool, "astra_image_data").await, count_before);
-        sqlx::query("UPDATE posts SET deleted_at=now() WHERE id=$1")
-            .bind(post_id)
+                .unwrap();
+            assert!(prepared.body.len() < body.len());
+            assert!(
+                !prepared
+                    .body
+                    .windows(original.len())
+                    .any(|bytes| bytes == original)
+            );
+            let h = Arc::new(HandlerContext {
+                db: db.clone(),
+                config: config_from_env(),
+                ip_bans: Default::default(),
+                notifications: Default::default(),
+                read_fence: None,
+                image_store: Some(regional_store.clone()),
+            });
+            let authenticated_writer = Router::new()
+                .route("/api/posts", post(create_post_handler))
+                .route_layer(axum::middleware::from_fn_with_state(
+                    (h.clone(), true),
+                    isureal::session::session_middleware,
+                ))
+                .with_state(h)
+                .layer(axum::middleware::from_fn_with_state(
+                    UploadAuthenticator::new(
+                        handoff_key,
+                        [("127.0.0.1".parse().unwrap(), "europe".into())].into(),
+                    ),
+                    authenticate,
+                ));
+            let mut forwarded_headers = parts.headers;
+            forwarded_headers.insert("content-type", prepared.content_type.parse().unwrap());
+            let proof = isureal::stored_upload::sign(
+                &handoff_key,
+                prepared.reference.clone(),
+                "/api/posts",
+                &forwarded_headers,
+                &prepared.body,
+            );
+            let mut forwarded = Request::post("/api/posts")
+                .body(Body::from(prepared.body))
+                .unwrap();
+            *forwarded.headers_mut() = forwarded_headers;
+            forwarded
+                .headers_mut()
+                .insert(isureal::stored_upload::HEADER, proof.parse().unwrap());
+            forwarded
+                .extensions_mut()
+                .insert(axum::extract::ConnectInfo(
+                    "127.0.0.1:12345".parse::<std::net::SocketAddr>().unwrap(),
+                ));
+            sqlx::query("UPDATE login_sessions SET active=false WHERE id='regional-session'")
+                .execute(&db)
+                .await
+                .unwrap();
+            let post_count = count(&db, "posts").await;
+            assert_eq!(
+                request(authenticated_writer, forwarded).await.0,
+                StatusCode::UNAUTHORIZED
+            );
+            assert_eq!(count(&db, "posts").await, post_count);
+            sqlx::query("UPDATE login_sessions SET active=true WHERE id='regional-session'")
+                .execute(&db)
+                .await
+                .unwrap();
+            sqlx::query(
+                "INSERT INTO ip_bans(ip,banned_until) VALUES ('192.0.2.5',now()+interval '1 hour')",
+            )
             .execute(&db)
             .await
             .unwrap();
-        assert_eq!(
-            request(fresh, Request::get(image_url).body(Body::empty()).unwrap())
+            let (parts, body) = make_upload().into_parts();
+            let body = axum::body::to_bytes(body, 32 * 1024 * 1024).await.unwrap();
+            let count_before = count(&region_pool, "astra_image_data").await;
+            assert!(
+                offload
+                    .prepare(
+                        &parts.headers,
+                        "192.0.2.5",
+                        "multipart/form-data; boundary=boundary",
+                        body
+                    )
+                    .await
+                    .unwrap()
+                    .is_none()
+            );
+            assert_eq!(count(&region_pool, "astra_image_data").await, count_before);
+            sqlx::query("UPDATE posts SET deleted_at=now() WHERE id=$1")
+                .bind(post_id)
+                .execute(&db)
                 .await
-                .0,
-            StatusCode::FORBIDDEN
-        );
-        task.abort();
-        region_pool.close().await;
-        sqlx::query(&format!("DROP SCHEMA {schema} CASCADE"))
-            .execute(&region_admin)
-            .await
-            .unwrap();
-        region_admin.close().await;
+                .unwrap();
+            assert_eq!(
+                request(fresh, Request::get(image_url).body(Body::empty()).unwrap())
+                    .await
+                    .0,
+                StatusCode::FORBIDDEN
+            );
+            task.abort();
+            region_pool.close().await;
+            sqlx::query(&format!("DROP SCHEMA {schema} CASCADE"))
+                .execute(&region_admin)
+                .await
+                .unwrap();
+            region_admin.close().await;
+            if file_backend {
+                std::fs::remove_dir_all(file_root).unwrap();
+            }
+        }
     }
     // Files use the same metadata authority and publication order as the SQL
     // stores, while image bytes no longer enter an asset table or its WAL.

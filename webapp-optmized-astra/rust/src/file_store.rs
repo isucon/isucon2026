@@ -120,6 +120,10 @@ impl FileStore {
         Some(store)
     }
 
+    pub fn has_region(&self, region: &str) -> bool {
+        self.is_local(region) || self.targets.contains_key(region)
+    }
+
     pub fn is_local(&self, region: &str) -> bool {
         self.region == region
     }
