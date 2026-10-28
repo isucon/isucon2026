@@ -23,6 +23,10 @@ def remote(instance,command):
 def inspect(app):
     services=['webapp-optmized-astra']
     if app['region']=='asia':services.append('webapp-optmized-astra-writer')
+    if runtime['signatureFileCacheEnabled']:
+        local_hash=hashlib.file_digest(open(root/runtime['signatureFileCachePath'],'rb'),'sha256').hexdigest()
+        assert remote(app['instanceId'], 'sha256sum /home/isucon/.astra-signatures.bin').split()[0]==local_hash
+        assert remote(app['instanceId'], "stat -c %a /home/isucon/.astra-signatures.bin").strip()=='600'
     expected={}
     for service in services:
         regional=service=='webapp-optmized-astra' and app['region']!='asia'
@@ -41,6 +45,7 @@ def inspect(app):
             'ISUREAL_SIGNATURE_METRICS':str(int(runtime['signatureCacheMetrics'])),
             'ISUREAL_ISSUED_URL_CACHE':str(int(runtime['issuedImageUrlCacheEnabled'])),
             'ISUREAL_ISSUED_URL_CACHE_ENTRIES':str(runtime['issuedImageUrlCacheEntries']),
+            'ISUREAL_SIGNATURE_FILE':'/home/isucon/.astra-signatures.bin' if runtime['signatureFileCacheEnabled'] and not service.endswith('-writer') else '',
             'ISUREAL_WRITE_FENCE_MODE':runtime['writeFenceMode'],
             'ISUREAL_DB_READ_HOST':read_host,
             'ISUREAL_DB_READ_SCOPE':read_scope(runtime,app,writer=service.endswith('-writer')),
@@ -115,4 +120,6 @@ for row in rows:
     print(name,'streaming; replay backlog bytes='+lag)
 outputs=json.loads(subprocess.check_output(['pulumi','stack','output','-C',str(root/'provisioning/aws/astra'),'--stack','dev','--json'],env=env,text=True))
 assert outputs['runtime']==runtime and outputs['artifactSha256']==expected_artifact
+if runtime['signatureFileCacheEnabled']:
+    assert outputs['signatureFileSha256']==hashlib.file_digest(open(root/runtime['signatureFileCachePath'],'rb'),'sha256').hexdigest()
 print('Pulumi runtime, artifact, live processes and durable storage verified')
