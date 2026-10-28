@@ -158,6 +158,12 @@ if mode in ("all", "application", "upgrade") and regional_writes:
 def application(app):
     instance = app["instanceId"]
     copy(instance, ROOT / runtime["archivePath"], "/home/isucon/astra-release.tar.gz")
+    if runtime['signatureFileCacheEnabled']:
+        source = ROOT / runtime['signatureFileCachePath']
+        assert source.stat().st_mode & 0o077 == 0, 'Signature cache must remain private'
+        remote(instance, 'umask 077; : > /home/isucon/.astra-signatures.next')
+        copy(instance, source, '/home/isucon/.astra-signatures.next')
+        remote(instance, 'chmod 600 /home/isucon/.astra-signatures.next && mv /home/isucon/.astra-signatures.next /home/isucon/.astra-signatures.bin')
     read_host, fenced = read_settings(runtime, app)
     fenced = str(int(fenced))
     remote(instance, "sudo bash /home/isucon/astra-deploy/application.sh /home/isucon/astra-release.tar.gz " + shlex.quote(read_host) + " " + fenced + " " + shlex.quote(write_fence_hosts) + " " + shlex.quote(write_fence_mode) + " " + shlex.quote(app["region"]) + " " + shlex.quote(read_scope(runtime, app)))

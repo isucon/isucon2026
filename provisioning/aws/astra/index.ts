@@ -126,3 +126,9 @@ if (!Number.isInteger(runtime.issuedImageUrlCacheEntries) || runtime.issuedImage
 if (typeof runtime.nginxJsonGzipEnabled !== "boolean") {
     throw new Error("JSON response compression must be explicitly configured");
 }
+
+if (typeof runtime.signatureFileCacheEnabled !== "boolean" || runtime.signatureFileCachePath !== "var/astra/signatures.bin") {
+    throw new Error("Invalid private signature file cache configuration");
+}
+export const signatureFileSha256 = runtime.signatureFileCacheEnabled
+    ? createHash("sha256").update(readFileSync("../../../" + runtime.signatureFileCachePath)).digest("hex") : "";
