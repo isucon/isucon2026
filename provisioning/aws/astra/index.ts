@@ -109,3 +109,7 @@ if (runtime.fileImageStore) {
 if (!Number.isInteger(runtime.listenBacklog) || runtime.listenBacklog < 128 || runtime.listenBacklog > 4096) {
     throw new Error("Invalid application listen backlog");
 }
+
+if (typeof runtime.signatureCacheCoalescing !== "boolean" || typeof runtime.signatureCacheMetrics !== "boolean") {
+    throw new Error("Signature cache options must be explicit booleans");
+}
