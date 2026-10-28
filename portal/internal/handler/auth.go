@@ -32,6 +32,10 @@ func safeBackTo(s string) bool {
 	if s == "" || !strings.HasPrefix(s, "/") || strings.HasPrefix(s, "//") {
 		return false
 	}
+	// Browsers treat backslashes as slashes, unlike net/url (e.g. /\host).
+	if strings.Contains(s, `\`) {
+		return false
+	}
 	u, err := url.Parse(s)
 	return err == nil && u.Host == "" && u.Scheme == ""
 }
@@ -196,7 +200,8 @@ func (h *Handler) authFailure(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) redirectAfterAuth(w http.ResponseWriter, r *http.Request, fallback string) {
 	ri := info(r)
 	dest := fallback
-	if ri.sess.BackTo != "" {
+	// Revalidate sessions saved before the return-path validation was tightened.
+	if safeBackTo(ri.sess.BackTo) {
 		dest = ri.sess.BackTo
 	}
 	if err := h.saveSession(w, r); err != nil {
