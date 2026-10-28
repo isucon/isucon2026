@@ -328,3 +328,4 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261028T121807Z-team10 | vacuum deleted metadata and refresh statistics during initialization | PASS | 170,756 |
 | 20261028T122308Z-team10 | repeat initialization vacuum and planner statistics refresh | PASS | 176,341 |
 | 20261028T122920Z-team10 | sixteen ordinary metadata connections with separate visibility barriers | PASS | 173,249 |
+| 20261028T140619Z-team10 | repeat sixteen ordinary metadata connections | PASS | 183,359 |
