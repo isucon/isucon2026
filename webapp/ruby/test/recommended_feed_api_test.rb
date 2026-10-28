@@ -16,7 +16,7 @@ class RecommendedFeedAPITest < IntegrationTest
       INSERT INTO posting_windows (id, region, local_date, starts_at, on_time_deadline, ended_at)
       VALUES ('w', 'asia', '2026-09-23', '2026-09-23T00:00:00Z', '2026-09-23T00:02:00Z', NULL)
     SQL
-    %w[viewer a1 a2 x].each_with_index do |author, i|
+    %w[viewer a1 a2 x f1].each_with_index do |author, i|
       @conn.exec_params("INSERT INTO image_objects (id, owner_user_id, data, media_type) VALUES ($1, $2, $3, 'image/jpeg')",
                         ["#{author}-image", author, { value: 'image', format: 1 }])
       @conn.exec_params(<<~SQL, [author, "#{author}-image", "2026-09-23T00:01:0#{i}Z"])
@@ -49,7 +49,10 @@ class RecommendedFeedAPITest < IntegrationTest
 
     request_json('GET', '/api/feeds/friends', token:)
     assert_status 200
-    body['items'].each { |item| refute item.key?('score'), "friends feed returned a score for #{item['id']}" }
+    assert_equal ['f1'], body['items'].map { |item| item['id'] }
+    refute body['items'][0].key?('score'), 'friends feed returned a score for f1'
+    request_json('GET', '/api/feeds/friends?beforeScore=abc', token:)
+    assert_status 400
   end
 
   private
