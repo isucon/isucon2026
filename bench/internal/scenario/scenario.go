@@ -123,6 +123,10 @@ type Result struct {
 	Windows    []metrics.Stats `json:"windows"`
 	// Routes はリージョンとルートごとの所要時間。
 	Routes []metrics.RouteStats `json:"routes"`
+	// Friends は走行の終わりの、リージョンごとの友達の数と友達の友達の数。
+	Friends map[string]FriendStats `json:"friends"`
+	// Ranking は友達の友達フィードで確かめたおすすめの点数の記録。
+	Ranking model.RankingStats `json:"ranking"`
 }
 
 type Runner struct {
@@ -190,6 +194,8 @@ type Runner struct {
 	moves      map[string]int
 	revisiting map[string]bool
 	evilUsers  map[string]bool
+	// discoveries はリージョンごとの、フィードで見た人に送った友達申請の数。
+	discoveries map[string]int
 	// openedAt は投稿期間ごとに、開く要求を送った時刻。
 	openedAt        map[string]time.Time
 	story           []string
@@ -270,6 +276,7 @@ func NewRunner(cfg Config) (*Runner, error) {
 		arriving:          map[string]int{},
 		returningCount:    map[string]int{},
 		moves:             map[string]int{},
+		discoveries:       map[string]int{},
 		revisiting:        map[string]bool{},
 		evilUsers:         map[string]bool{},
 		openedAt:          map[string]time.Time{},
@@ -311,6 +318,8 @@ func (r *Runner) Run(ctx context.Context) Result {
 		OpenedWindows: r.openedCounts(),
 		Users:         r.populations(),
 		Reputation:    r.reputations(),
+		Friends:       r.friendStats(),
+		Ranking:       r.model.RankingStats(),
 		Seed:          r.seed,
 		Critical:      r.board.Critical(),
 		Errors:        r.board.Errors(),

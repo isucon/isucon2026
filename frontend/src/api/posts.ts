@@ -28,6 +28,7 @@ export interface Post {
   postedAt: string;
   onTime: boolean;
   lateSeconds: number;
+  score?: number;
 }
 
 export interface PostPage {
@@ -84,7 +85,11 @@ export function getFeed(feed: FeedKind, next?: string): Promise<PostPage> {
   return pageRequest<Post>(
     `/feeds/${feed}`,
     next,
-    (post) => ({ beforePostedAt: post.postedAt, beforeId: post.id }),
+    (post) => ({
+      ...(post.score === undefined ? {} : { beforeScore: String(post.score) }),
+      beforePostedAt: post.postedAt,
+      beforeId: post.id,
+    }),
   );
 }
 

@@ -694,6 +694,8 @@ type FeedPost struct {
 	Caption         string     `json:"caption"`
 	Visibility      string     `json:"visibility"`
 	PostedAt        time.Time  `json:"postedAt"`
+	// Score はおすすめ順のフィード（友達の友達）の点数。ほかのフィードにはない。
+	Score *int64 `json:"score"`
 }
 
 // FeedPost は投稿をフィードの投稿の項目に絞る。
@@ -712,7 +714,11 @@ type FeedPage struct {
 func (c *Client) Feed(ctx context.Context, token, feed string, before *FeedPost) (FeedPage, error) {
 	path := apiPrefix + "/feeds/" + feed
 	if before != nil {
-		path += "?" + url.Values{"beforePostedAt": {before.PostedAt.Format(time.RFC3339Nano)}, "beforeId": {before.ID}}.Encode()
+		query := url.Values{"beforePostedAt": {before.PostedAt.Format(time.RFC3339Nano)}, "beforeId": {before.ID}}
+		if before.Score != nil {
+			query.Set("beforeScore", strconv.FormatInt(*before.Score, 10))
+		}
+		path += "?" + query.Encode()
 	}
 	var page FeedPage
 	err := c.do(ctx, request{method: http.MethodGet, path: path, token: token, want: http.StatusOK}, &page)

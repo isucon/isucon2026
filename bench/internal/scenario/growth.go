@@ -470,11 +470,13 @@ func (r *Runner) runNewcomer(ctx context.Context, region string) {
 	if unit(r.seed, "onboard-bio", username) < u.persona.bio {
 		r.updateBio(ctx, u)
 	}
+	// 友達つながりで来た人は登録してすぐ何人かに申請し、残りは毎日の投稿のあとで少しずつ
+	// 送る。認定公開アカウントをきっかけに来た人も、あとから少しは友達を作る。
 	if u.rng.Float64() < r.cfg.Growth.FriendRatio {
-		for _, target := range r.chooseFriends(u, friendRequestsPerNewcomer) {
-			r.requestFriend(ctx, u, target, u.rng.IntN(2) == 0)
-		}
+		u.circleLeft = u.persona.circle
+		r.reachOut(ctx, u, reachOutOnRegister)
 	} else {
+		u.circleLeft = u.persona.circle / 3
 		r.followCertified(ctx, u, 1+u.rng.IntN(3))
 	}
 	r.runUser(ctx, u, true, nil)
@@ -573,9 +575,10 @@ func (r *Runner) newName() (string, string) {
 }
 
 // percentileOf は昇順に並んだ sorted の q 分位点（空なら 0）。
-func percentileOf(sorted []time.Duration, q float64) time.Duration {
+func percentileOf[T any](sorted []T, q float64) T {
 	if len(sorted) == 0 {
-		return 0
+		var zero T
+		return zero
 	}
 	return sorted[min(int(float64(len(sorted))*q), len(sorted)-1)]
 }
