@@ -53,3 +53,6 @@ pub use config::{Config, config_from_env};
 pub use server::{HandlerContext, new_server, start};
 
 pub mod upload_proxy;
+
+pub mod regional_upload;
+pub mod stored_upload;

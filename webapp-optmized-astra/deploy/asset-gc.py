@@ -91,7 +91,7 @@ def main():
         with tempfile.TemporaryDirectory(prefix="astra-asset-gc-") as directory:
             refs = Path(directory) / "refs"
             fd = os.open(refs, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-            snapshot = "BEGIN; LOCK TABLE image_objects IN ACCESS EXCLUSIVE MODE; COPY (SELECT DISTINCT asset_key FROM image_objects WHERE asset_key IS NOT NULL ORDER BY asset_key) TO STDOUT; COMMIT;"
+            snapshot = "BEGIN; LOCK TABLE image_objects IN ACCESS EXCLUSIVE MODE; COPY (SELECT DISTINCT asset_key FROM image_objects WHERE asset_key IS NOT NULL AND position(':' IN asset_key)=0 ORDER BY asset_key) TO STDOUT; COMMIT;"
             with os.fdopen(fd, "wb") as output:
                 remote(runtime["database"]["instanceId"],
                        "sudo -u postgres psql -XqAt -v ON_ERROR_STOP=1 -d isureal -c " + shlex.quote(snapshot),

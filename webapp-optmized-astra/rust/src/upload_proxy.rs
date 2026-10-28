@@ -23,6 +23,7 @@ pub struct UploadProxy {
     target: SocketAddr,
     client: Client<HttpConnector>,
     pending: Arc<Semaphore>,
+    regional: Option<crate::regional_upload::RegionalUpload>,
 }
 
 impl UploadProxy {
@@ -36,10 +37,20 @@ impl UploadProxy {
                 .retry_canceled_requests(false)
                 .build(connector),
             pending: Arc::new(Semaphore::new(BODY_LIMIT / SLOT_BYTES)),
+            regional: None,
         }
     }
 
-    pub(crate) fn from_env(region: &str) -> Option<Self> {
+    pub fn with_regional_upload(
+        mut self,
+        regional: crate::regional_upload::RegionalUpload,
+    ) -> Self {
+        self.regional = Some(regional);
+        self
+    }
+
+    pub(crate) fn from_env(context: &crate::server::HandlerContext) -> Option<Self> {
+        let region = context.config.region.as_str();
         let target = std::env::var("ISUREAL_UPLOAD_PROXY_TARGET").unwrap_or_default();
         if target.is_empty() {
             return None;
@@ -52,7 +63,20 @@ impl UploadProxy {
             target, "192.168.145.10:8081",
             "use the existing private writer"
         );
-        Some(Self::new(target.parse().unwrap()))
+        let mut proxy = Self::new(target.parse().unwrap());
+        if let Some(key) = crate::stored_upload::key_from_env() {
+            let store = context
+                .image_store
+                .clone()
+                .expect("regional upload readers configured");
+            proxy = proxy.with_regional_upload(crate::regional_upload::RegionalUpload::new(
+                context.db.clone(),
+                store,
+                region.to_owned(),
+                key,
+            ));
+        }
+        Some(proxy)
     }
 
     async fn forward(&self, request: Request) -> Result<Response, anyhow::Error> {
@@ -69,13 +93,46 @@ impl UploadProxy {
             .div_ceil(SLOT_BYTES)
             .clamp(1, BODY_LIMIT / SLOT_BYTES) as u32;
         let _permit = self.pending.acquire_many(slots).await?;
-        let (parts, body) = request.into_parts();
+        let client_ip = crate::ip_ban::extract_client_ip(&request);
+        let (mut parts, body) = request.into_parts();
         let body = axum::body::to_bytes(body, BODY_LIMIT).await?;
         let content_type = parts
             .headers
             .get(header::CONTENT_TYPE)
             .and_then(|v| v.to_str().ok())
             .map(str::to_owned);
+        let mut prepared = None;
+        if parts.uri.path() == "/api/posts"
+            && let (Some(regional), Some(content_type)) = (&self.regional, &content_type)
+        {
+            prepared = regional
+                .prepare(&parts.headers, &client_ip, content_type, body.clone())
+                .await?;
+        }
+        let forwarded_body = if let Some(prepared) = &prepared {
+            parts
+                .headers
+                .insert(header::CONTENT_TYPE, prepared.content_type.parse()?);
+            let uri = parts
+                .uri
+                .path_and_query()
+                .map(|p| p.as_str())
+                .unwrap_or("/api/posts");
+            let proof = crate::stored_upload::sign(
+                &self.regional.as_ref().unwrap().key,
+                prepared.reference.clone(),
+                uri,
+                &parts.headers,
+                &prepared.body,
+            );
+            parts
+                .headers
+                .insert(crate::stored_upload::HEADER, proof.parse()?);
+            prepared.body.clone()
+        } else {
+            parts.headers.remove(crate::stored_upload::HEADER);
+            body.clone()
+        };
         let mut upstream = hyper_client::Request::builder().method("POST").uri(format!(
             "http://{}{}",
             self.target,
@@ -87,14 +144,20 @@ impl UploadProxy {
         ));
         // Copy only headers the upload APIs consume. The regional identity is
         // derived by the writer from this connection's real peer address.
-        for name in ["authorization", "content-type", "x-client-ip", "host"] {
+        for name in [
+            "authorization",
+            "content-type",
+            "x-client-ip",
+            "host",
+            crate::stored_upload::HEADER,
+        ] {
             if let Some(value) = parts.headers.get(name) {
                 upstream = upstream.header(name, value.as_bytes());
             }
         }
         let mut upstream = self
             .client
-            .request(upstream.body(Body::from(body.clone()))?)
+            .request(upstream.body(Body::from(forwarded_body))?)
             .await?;
         let status = StatusCode::from_u16(upstream.status().as_u16())?;
         let response_type = upstream
@@ -118,7 +181,9 @@ impl UploadProxy {
         if status == StatusCode::CREATED {
             // A cache parse failure cannot alter a successful authoritative
             // response. Both raw request bytes and writer response stay intact.
-            if let Some(content_type) = content_type {
+            if let Some(prepared) = prepared {
+                let _ = warm_prepared(prepared, &response_body);
+            } else if let Some(content_type) = content_type {
                 let _ = warm(&content_type, body, &response_body).await;
             }
         }
@@ -166,6 +231,32 @@ pub(crate) fn is_upload_path(path: &str) -> bool {
             .strip_prefix("/api/posts/")
             .and_then(|path| path.strip_suffix("/realmojis"))
             .is_some_and(|id| !id.is_empty() && !id.contains('/'))
+}
+
+fn warm_prepared(
+    prepared: crate::regional_upload::PreparedUpload,
+    response: &[u8],
+) -> Result<(), anyhow::Error> {
+    let response: serde_json::Value = serde_json::from_slice(response)?;
+    let id = response["imageUrl"]
+        .as_str()
+        .and_then(|url| url.strip_prefix("/api/images/"))
+        .and_then(|url| url.split_once('?').map(|(id, _)| id))
+        .ok_or_else(|| anyhow::anyhow!("missing image URL"))?;
+    uuid::Uuid::parse_str(id)?;
+    let at = DateTime::parse_from_rfc3339(
+        response["postedAt"]
+            .as_str()
+            .ok_or_else(|| anyhow::anyhow!("missing post timestamp"))?,
+    )?
+    .with_timezone(&Utc);
+    crate::image_api::remember_asset_image(
+        id.to_owned(),
+        &prepared.reference.asset_key,
+        at,
+        prepared.image,
+    );
+    Ok(())
 }
 
 async fn warm(content_type: &str, body: Bytes, response: &[u8]) -> Result<(), anyhow::Error> {

@@ -1,12 +1,19 @@
 #!/bin/bash
-# Independent PostgreSQL on the existing Asia application VM. No AWS resources.
+# Independent PostgreSQL on existing application VMs. No AWS resources.
 set -euo pipefail
 runtime="$(dirname "$0")/runtime.json"
-python3 - "$runtime" <<'PY_CONFIG'
+region=${1:-asia}
+image_host=$(python3 - "$runtime" "$region" <<'PY_CONFIG'
 import json,sys
-s=json.load(open(sys.argv[1]))['imageStore']
+runtime=json.load(open(sys.argv[1])); s=runtime['imageStore']; region=sys.argv[2]
 assert s['enabled'] and s['host']=='192.168.145.10' and s['port']==5433
+assert region in ('asia','europe','america')
+assert region=='asia' or runtime.get('regionalImageStoresEnabled',False)
+app=next(app for app in runtime['applications'] if app['region']==region)
+assert app['host']=={'asia':'192.168.145.10','europe':'192.168.146.10','america':'192.168.147.10'}[region]
+print(app['host'])
 PY_CONFIG
+)
 set -a
 . /home/isucon/env.sh
 set +a
@@ -28,8 +35,8 @@ if [ ! -f "$configuration/postgresql.conf" ]; then
 fi
 staging=$(mktemp -d)
 trap 'rm -rf "$staging"' EXIT
-cat >"$staging/astra.conf" <<'CONF'
-listen_addresses = '127.0.0.1,192.168.145.10'
+cat >"$staging/astra.conf" <<CONF
+listen_addresses = '127.0.0.1,$image_host'
 port = 5433
 shared_buffers = '256MB'
 effective_cache_size = '2GB'

@@ -58,3 +58,10 @@ if (!Number.isInteger(runtime.tokioWorkerThreads) || runtime.tokioWorkerThreads 
 if (runtime.regionalReactionCacheEnabled && !runtime.regionalUploadCacheEnabled) {
     throw new Error("Regional reaction caching requires upload caching");
 }
+
+if (runtime.regionalImageStoresEnabled && !runtime.imageStore?.enabled) {
+    throw new Error("Regional immutable image readers require the existing image store");
+}
+if (runtime.regionalImageWritesEnabled && (!runtime.regionalImageStoresEnabled || !runtime.regionalUploadCacheEnabled || !runtime.imageStore?.writesEnabled || runtime.regionalUploadEnvPath !== "var/astra/.regional-upload.env")) {
+    throw new Error("Regional image writes require deployed readers, the upload proxy, and a private SCP environment file");
+}

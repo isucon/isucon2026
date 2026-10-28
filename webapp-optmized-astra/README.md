@@ -1,10 +1,10 @@
 # webapp-optmized-astra
 
 Team 10向けのRust最適化実装。`webapp/rust`と`webapp/sql`を2335d5fから複製した。
-作業期限は2026年10月28日09:00 JST。各ベンチ結果をこのディレクトリに記録し、コミットしてpushする。
+作業期限は2026年10月28日11:00 JST。各ベンチ結果をこのディレクトリに記録し、コミットしてpushする。
 
 <!-- astra-final-summary-start -->
-## 採用構成と最終確認
+## 09:00時点の採用構成と確認
 
 最高点は[**95,017点・PASS**](results/20261027T234159Z-team10/result.json)。採用構成を再配置した最終確認は[93,597点・PASS](results/20261027T235343Z-team10/result.json)だった。各走行のソース、配布物のSHA-256、ベンチイメージは対応する`experiment.json`に記録している。
 
@@ -39,6 +39,18 @@ Secretの物理削除はAWSの非同期処理に従う。アプリやDBの実行
 nginxの接続上限は`runtime.json`の`nginxWorkerConnections`と`nginxWorkerRlimitNofile`で管理する。
 検索改善版の負荷試験で従来の768接続を使い切り、AsiaでEOF・502が増えてFAILしたため、
 各ワーカー8,192接続・65,536ファイル記述子へ変更する。反映前に`nginx -t`で検証する。
+
+## 地域別の独立画像DB
+
+`regionalImageStoresEnabled`で欧州・米州の既存アプリVMにもポート5433の独立PostgreSQLを用意する。既存5432のメタデータレプリカは維持する。`apply.sh image-store`でクラスタを作成し、`apply.sh database`で画像参照列を64文字へ広げ、書き込み無効のまま`apply.sh application`で全プロセスへ読み取り対応を配置する。
+
+その後`regionalImageWritesEnabled=true`を反映すると、欧州・米州の投稿画像は受信地域でJPEG検証と永続化を行い、Asiaの更新ワーカーへ署名付き参照だけを転送する。Asiaは通常どおり認証・地域・公開条件を確認し、メタデータのコミットと両レプリカへの反映完了後に応答する。プロフィールとリアルモジは従来の保存方式を使う。
+
+地域間の認証鍵はgit管理外の`var/astra/.regional-upload.env`に生成し、既存3台へ`/home/isucon/.astra-upload.env`としてscpで配る。いずれも権限600。Pulumiにはファイルパスと機能フラグだけを記録し、AWSリソースは追加しない。
+
+参照は`europe:<UUID>`または`america:<UUID>`。従来のUUID参照はAsiaへ接続する。書き込みを無効化しても地域別の読み取り対応と保存DBは残す。公開中の地域別参照がある状態で読み取りを外すデプロイは拒否する。旧バイナリへの復帰は、対応バイナリで初期化して地域別参照がなくなったことを確認した後に行う。既存GCはAsiaの孤立画像だけを対象とし、地域別DBのデータは削除しない。
+
+地域別の永続化・取得・ZIP・削除確認は、独立した3個目のローカルPostgreSQLを`ISUREAL_REGIONAL_ASSET_TEST_DSN`で指定して実行する。署名は本文、認証ヘッダー、Content-Type、クライアントIP、URL、画像参照を束ね、実際の接続元IPと地域が一致した場合だけ受け入れる。
 
 ## 検証
 
