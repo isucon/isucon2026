@@ -2,7 +2,6 @@ package job
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"log/slog"
 	"math/rand"
@@ -654,14 +653,7 @@ func (e *Env) SyncContestantInstances(ctx context.Context, project string) error
 	if err != nil {
 		return err
 	}
-	for _, i := range instances {
-		publicIP := sql.NullString{String: i.PublicIPAddress, Valid: i.PublicIPAddress != ""}
-		if err := model.UpsertInstance(ctx, e.DB, i.TeamID, i.Number, i.InstanceID,
-			pbresources.ContestantInstance_RUNNING, i.PrivateIPAddress, publicIP); err != nil {
-			return err
-		}
-	}
-	return nil
+	return e.SyncEC2Instances(ctx, instances)
 }
 
 // ExecuteOnContestantInstance は 1 台への SSH コマンド実行と結果記録。

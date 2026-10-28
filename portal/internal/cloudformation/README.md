@@ -52,8 +52,9 @@ result. Registrations are rejected after the contest ends or token expiry.
 
 New environments wait for Router registration before claiming benchmarks. A
 benchmark receives the current Router IP and `--host` from the portal; the
-shared Supervisor executes this target directly. Old environments without
-`team_routers` records continue to use the existing `pool.json` fallback.
+shared Supervisor executes this target directly. Existing Pulumi environments
+use [instance sync](../../deploy/ecspresso/INSTANCE_SYNC.md) to register their
+Routers too. There is no static IP fallback; register the Router before benchmarking.
 `ISUXBENCH_ALL_ADDRESSES` contains only the four contestant servers.
 
 Recreating a stack replaces the addresses when its instances register. Delete
