@@ -386,3 +386,4 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261028T194923Z-team10 | repeat three synchronous replicas and local Asia reads without restart | FAIL | 0 |
 | 20261028T195416Z-team10 | offload Asia archive reads to db1 with three synchronous replicas | PASS | 158,226 |
 | 20261028T200121Z-team10 | use three synchronous replicas with selective Asia reads and db1 archives | PASS | 182,703 |
+| 20261028T200747Z-team10 | use selective three-replica reads with local archives after GC and restart | PASS | 176,347 |
