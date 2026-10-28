@@ -1,0 +1,104 @@
+load window: not found in bench.log; using the whole run
+
+host    cpus  cpu avg    p95    max  usr/sys/sirq/steal/iow %        mem MiB  rx Mbps avg/max  tx Mbps avg/max    tcp
+bench      4    11.7%    59%    59%    11/  1/   0/ 0.0/  0      1351/15606     49.8/468.1        0.2/1.3          70
+router     2     0.9%     1%     3%     0/  1/   0/ 0.0/  0       695/3812      12.5/401.5       12.6/402.3      2158
+app1       2     0.9%     1%    13%     0/  0/   0/ 0.0/  0      2083/3812       0.1/5.9          1.1/84.5        244
+app2       2     1.0%     2%     8%     0/  1/   0/ 0.0/  1      2670/3812       5.2/199.6        0.3/24.3        144
+app3       2     1.1%     2%     9%     1/  1/   0/ 0.0/  1      2536/3812       5.2/199.4        0.5/43.7        148
+db1        2     2.7%    12%    36%     2/  1/   0/ 0.0/  2      1930/3812       0.1/5.1         10.6/399.8        91
+
+processes in the load window (cores):
+  bench   isureal-bench 0.50, sh 0.01
+  router  sh 0.02, ssm-agent-worke 0.00, haproxy 0.00, isureal-router 0.00, kworker 0.00
+  app1    sh 0.01, isureal 0.00, ssm-agent-worke 0.00, kworker 0.00, cron 0.00
+  app2    sh 0.01, postgres 0.00, ssm-agent-worke 0.00, isureal 0.00, kworker 0.00
+  app3    sh 0.02, postgres 0.01, ssm-agent-worke 0.00, kworker 0.00, isureal 0.00
+  db1     postgres 0.02, sh 0.02, sshd 0.01, kcompactd0 0.00, systemd 0.00
+
+cpu % every 5s from the load start:
+     t   bench  router    app1    app2    app3     db1
+    0s       -       1       1       1       1       1
+    5s       -       1       1       1       1       1
+   10s       -       1       1       1       1      11
+   15s       -       1       1       1       1       1
+   20s       -       1       1       1       1       1
+   25s       -       1       1       1       1       1
+   30s      11       1       1       1       1       4
+   35s      26       1       1       4       4      14
+   40s      23       1       3       1       2       2
+   45s       1       1       1       1       1       3
+   50s       0       1       1       1       1       1
+   55s       -       1       1       1       1       1
+   60s       -       1       1       1       1       1
+   65s       -       1       1       1       1       1
+   70s       -       1       1       1       1       2
+   75s       -       1       1       1       1       1
+   80s       -       1       1       1       1       1
+   85s       -       1       1       1       1       1
+
+disk in the load window (avg/max):
+  host    device       r IOPS        w IOPS       r MB/s      w MB/s      util %   await ms   queue   dirty MiB
+  bench   nvme0n1      0.0/0.0       4.4/84.1     0.0/0.0     0.0/0.6       0/1       0.91  0.0/0.1        1
+  bench   nvme1n1      0.0/0.0       0.4/2.0      0.0/0.0     0.0/0.2       0/0       0.62  0.0/0.0        1
+  router  nvme0n1      0.0/0.0       1.0/23.7     0.0/0.0     0.1/2.8       0/1       1.39  0.0/0.0        3
+                    limit: gp3 3000 IOPS 125 MiB/s; c6in.large baseline 6250 IOPS 195 MB/s, burst 100000 IOPS 3125 MB/s
+  app1    nvme0n1      8.2/601.4     2.7/90.2     0.2/12.0    0.1/1.5       0/5       0.75  0.0/0.4        2
+                    limit: gp3 3000 IOPS 125 MiB/s; c7i.large baseline 3600 IOPS 81 MB/s, burst 40000 IOPS 1250 MB/s
+  app2    nvme0n1      1.3/29.7     71.2/486.1    0.0/0.4     1.7/28.5      1/36      1.09  0.1/0.7       41
+                    limit: gp3 3000 IOPS 125 MiB/s; c7i.large baseline 3600 IOPS 81 MB/s, burst 40000 IOPS 1250 MB/s
+  app3    nvme0n1      1.1/43.5     22.4/251.0    0.0/0.3     1.3/26.1      1/38      1.37  0.0/0.4       39
+                    limit: gp3 3000 IOPS 125 MiB/s; c7i.large baseline 3600 IOPS 81 MB/s, burst 40000 IOPS 1250 MB/s
+  db1     nvme0n1     72.4/2052.3   43.6/321.1    4.7/167.6   1.6/53.5      4/90      0.93  0.1/1.7       45
+                    limit: gp3 6000 IOPS 200 MiB/s; c6in.large baseline 6250 IOPS 195 MB/s, burst 100000 IOPS 3125 MB/s
+
+disk util % / await ms every 5s from the load start:
+     t      app1:nvme0n1      app2:nvme0n1      app3:nvme0n1       db1:nvme0n1
+    0s         0%/  1.1ms         0%/  0.0ms         0%/  0.0ms         1%/  0.9ms
+    5s         0%/  1.0ms         0%/  0.0ms         0%/  0.0ms         1%/  1.0ms
+   10s         0%/  0.0ms         0%/  1.5ms         0%/  1.1ms         1%/  0.8ms
+   15s         0%/  0.0ms         0%/  0.0ms         0%/  0.0ms         0%/  0.9ms
+   20s         0%/  0.6ms         0%/  0.7ms         0%/  0.7ms         0%/  1.0ms
+   25s         0%/  0.0ms         0%/  1.3ms         0%/  0.0ms         0%/  0.9ms
+   30s         1%/  0.8ms         0%/  0.9ms         0%/  1.2ms        31%/  0.9ms
+   35s         0%/  1.2ms        17%/  1.3ms        18%/  1.6ms        22%/  1.0ms
+   40s         1%/  0.6ms         2%/  1.0ms         1%/  1.0ms         8%/  0.7ms
+   45s         0%/  0.0ms         2%/  1.0ms         1%/  1.0ms         1%/  0.9ms
+   50s         0%/  0.0ms         1%/  1.0ms         0%/  1.1ms         0%/  0.9ms
+   55s         0%/  1.1ms         0%/  1.0ms         0%/  1.0ms         0%/  0.9ms
+   60s         0%/  1.0ms         1%/  1.5ms         1%/  2.8ms         0%/  0.9ms
+   65s         0%/  1.0ms         0%/  1.7ms         1%/  2.1ms         2%/  2.0ms
+   70s         0%/  1.5ms         0%/  1.0ms         0%/  1.6ms         0%/  1.0ms
+   75s         0%/  0.0ms         0%/  2.0ms         0%/  1.0ms         0%/  1.0ms
+   80s         0%/  0.0ms         0%/  1.0ms         0%/  1.2ms         0%/  1.7ms
+   85s         0%/  0.0ms         0%/  0.0ms         0%/  0.0ms         0%/  0.0ms
+
+pressure stall in the load window (% of time, avg/max):
+  host      cpu.some     io.some      io.full    memory.some  memory.full
+  bench      5.5/39       0.0/1        0.0/1        0.0/0        0.0/0
+  router     0.1/0        0.0/0        0.0/0        0.0/0        0.0/0
+  app1       0.1/3        0.1/6        0.1/4        0.0/0        0.0/0
+  app2       0.1/1        0.8/21       0.8/21       0.0/0        0.0/0
+  app3       0.2/1        0.9/31       0.9/31       0.0/0        0.0/0
+  db1        0.3/3        2.0/46       2.0/45       0.1/3        0.1/3
+
+network by interface in the load window (Mbps, avg/max):
+  bench   eth0       rx     0.0/0.0      tx     0.0/0.0
+  bench   eth1       rx    49.8/468.1    tx     0.2/1.3
+  router  ens5       rx     0.0/0.7      tx     1.9/157.0
+  router  data0      rx    12.5/401.5    tx    10.7/402.3
+  app1    enp39s0    rx     0.1/5.9      tx     1.1/84.5
+  app2    enp39s0    rx     5.2/199.6    tx     0.3/24.3
+  app3    enp39s0    rx     5.2/199.4    tx     0.5/43.7
+  db1     ens5       rx     0.1/5.1      tx    10.6/399.8
+
+router qdisc (whole run):
+  data0    sent     116.4 MB  dropped        0  overlimits     6260
+  ens5     sent      21.0 MB  dropped        0  overlimits        0
+  lo       sent       0.0 MB  dropped        0  overlimits        0
+
+router haproxy counters (whole run, non-zero):
+  edge.FRONTEND.ereq: +4
+
+no saturated host found
+timeline: /home/nomeaning/.codex/worktrees/7a9b/isucon2026/var/aws-bench/20261028T085431Z-team10/timeline.csv
