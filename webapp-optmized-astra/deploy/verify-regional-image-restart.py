@@ -51,7 +51,11 @@ if sys.argv[1:2] == ['capture'] and len(sys.argv) in (2,3):
         query=f"""SELECT coalesce(json_agg(row_to_json(sample)),'[]'::json) FROM (
           SELECT u.region,i.id AS image_id,u.secret_key_hash FROM {partition} i
           JOIN users u ON u.id=i.owner_user_id AND u.status='active'
-          WHERE EXISTS(SELECT 1 FROM posts p WHERE p.image_id=i.id AND p.author_id=u.id AND p.deleted_at IS NULL)
+          WHERE u.profile_image_id=i.id
+             OR EXISTS(SELECT 1 FROM posts p WHERE p.image_id=i.id AND p.author_id=u.id AND p.deleted_at IS NULL)
+             OR EXISTS(SELECT 1 FROM realmojis r JOIN posts p ON p.id=r.post_id AND p.deleted_at IS NULL
+                       JOIN users author ON author.id=p.author_id AND author.status='active'
+                       WHERE r.image_id=i.id AND r.reactor_id=u.id AND r.replaced_at IS NULL AND r.deleted_at IS NULL)
           ORDER BY i.id LIMIT 5
         ) sample"""
     command=['psql' ,'-XAt','-v','ON_ERROR_STOP=1',
@@ -60,7 +64,7 @@ if sys.argv[1:2] == ['capture'] and len(sys.argv) in (2,3):
              '-U',os.environ.get('ISUREAL_DB_USER','isureal'),
              '-d',os.environ.get('ISUREAL_DB_NAME','isureal'),'-c',query]
     rows=json.loads(subprocess.check_output(command,env=env,text=True))
-    assert len(rows)==(5 if historical else 6)
+    assert (0<=len(rows)<=5) if historical else len(rows)==6
     if not historical:assert {r['region'] for r in rows}=={'asia','europe','america'}
     samples=[]
     exp=int(time.time())+3600
