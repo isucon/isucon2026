@@ -63,6 +63,7 @@ pub mod db_pool;
 
 pub mod file_store;
 
+mod archive_peer;
 pub mod archive_store;
 
 mod notification_batches;
