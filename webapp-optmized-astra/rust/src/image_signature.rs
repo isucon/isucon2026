@@ -71,6 +71,7 @@ struct SignatureStats {
     evictions: AtomicU64,
     url_hits: AtomicU64,
     url_misses: AtomicU64,
+    url_evictions: AtomicU64,
 }
 
 struct SignatureMemo {
@@ -147,6 +148,7 @@ static SIGNATURE_MEMO: LazyLock<SignatureMemo> =
 pub(crate) fn initialize_signature_cache() {
     LazyLock::force(&SIGNATURE_MEMO);
     LazyLock::force(&ISSUED_URLS_ENABLED);
+    LazyLock::force(&ISSUED_URL_CAPACITY);
     static METRICS_STARTED: OnceLock<()> = OnceLock::new();
     if enabled("ISUREAL_SIGNATURE_METRICS", "0") && METRICS_STARTED.set(()).is_ok() {
         tokio::spawn(async {
@@ -157,14 +159,15 @@ pub(crate) fn initialize_signature_cache() {
                 use std::io::Write;
                 let _ = writeln!(
                     std::io::stdout().lock(),
-                    "{{\"level\":\"info\",\"metric\":\"signature_cache\",\"hits\":{},\"misses\":{},\"pending\":{},\"computations\":{},\"evictions\":{},\"url_hits\":{},\"url_misses\":{}}}",
+                    "{{\"level\":\"info\",\"metric\":\"signature_cache\",\"hits\":{},\"misses\":{},\"pending\":{},\"computations\":{},\"evictions\":{},\"url_hits\":{},\"url_misses\":{},\"url_evictions\":{}}}",
                     stats.hits.load(Ordering::Relaxed),
                     stats.misses.load(Ordering::Relaxed),
                     stats.pending.load(Ordering::Relaxed),
                     stats.computations.load(Ordering::Relaxed),
                     stats.evictions.load(Ordering::Relaxed),
                     stats.url_hits.load(Ordering::Relaxed),
-                    stats.url_misses.load(Ordering::Relaxed)
+                    stats.url_misses.load(Ordering::Relaxed),
+                    stats.url_evictions.load(Ordering::Relaxed)
                 );
             }
         });
@@ -237,6 +240,10 @@ impl IssuedUrlCache {
             && let Some(old) = self.order.pop_front()
         {
             self.values.remove(&old);
+            SIGNATURE_MEMO
+                .stats
+                .url_evictions
+                .fetch_add(1, Ordering::Relaxed);
         }
         let expires = now + IMAGE_URL_LIFETIME.num_seconds();
         let url = issue(expires);
@@ -256,6 +263,15 @@ static ISSUED_URLS: LazyLock<[Mutex<IssuedUrlCache>; 16]> =
     LazyLock::new(|| std::array::from_fn(|_| Mutex::default()));
 static ISSUED_URLS_ENABLED: LazyLock<bool> =
     LazyLock::new(|| enabled("ISUREAL_ISSUED_URL_CACHE", "1"));
+
+static ISSUED_URL_CAPACITY: LazyLock<usize> = LazyLock::new(|| {
+    let entries: usize = std::env::var("ISUREAL_ISSUED_URL_CACHE_ENTRIES")
+        .unwrap_or_else(|_| "65536".into())
+        .parse()
+        .expect("issued URL cache capacity");
+    assert!((16..=262144).contains(&entries) && entries.is_multiple_of(16));
+    entries / 16
+});
 
 pub fn signed_image_url(user: &User, image_id: &str) -> String {
     let now = Utc::now().timestamp();
@@ -285,7 +301,7 @@ pub fn signed_image_url(user: &User, image_id: &str) -> String {
     ISSUED_URLS[hasher.finish() as usize % ISSUED_URLS.len()]
         .lock()
         .unwrap()
-        .get_or_issue(lookup, now, 4096, issue)
+        .get_or_issue(lookup, now, *ISSUED_URL_CAPACITY, issue)
 }
 
 #[cfg(test)]

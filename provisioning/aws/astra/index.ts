@@ -117,3 +117,8 @@ if (typeof runtime.signatureCacheCoalescing !== "boolean" || typeof runtime.sign
 if (typeof runtime.issuedImageUrlCacheEnabled !== "boolean") {
     throw new Error("Issued image URL caching must be explicitly configured");
 }
+
+if (!Number.isInteger(runtime.issuedImageUrlCacheEntries) || runtime.issuedImageUrlCacheEntries < 16
+    || runtime.issuedImageUrlCacheEntries > 262144 || runtime.issuedImageUrlCacheEntries % 16 !== 0) {
+    throw new Error("Invalid issued image URL cache capacity");
+}
