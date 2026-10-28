@@ -15,3 +15,9 @@ Pulumi runtimeのnginxClientBodyBufferKiBに容量を記録し、既存3アプ�
 1MiBの初回（20261028T172332Z-team10）は195,259点でPASSし、最高点を更新した。反復（20261028T172715Z-team10）は162,498点でPASS。AsiaのNginxの負荷中平均RSS合計は約61.6→403.3MiBへ増えた（各PIDの平均RSSを合計、共有ページを含む）。256KiBでも55.3→146.7MiBと増えている。大きな本文バッファを解放した後もallocatorがメモリを保持している可能性を調べる。
 
 次の比較では本文バッファ1MiBを保ち、NginxだけのMALLOC_MMAP_THRESHOLD_とMALLOC_TRIM_THRESHOLD_を131072に固定する。[glibc公式ドキュメント](https://sourceware.org/glibc/manual/latest/html_node/Memory-Allocation-Tunables.html)によると、閾値を明示すると動的な引き上げが無効になり、大きな割り当てをfreeした際にOSへ返せる。アプリのallocatorは変更しない。Pulumi runtimeのnginxMallocThresholdKiBで管理し、環境変数を変えた配備ではNginx masterを再起動する。0で既定動作へ戻せる。
+
+Nginxの閾値128KiB固定は174,417点・174,674点でPASS。AsiaのNginx平均RSS合計は46.6→66.1MiBで、固定前の1MiB反復403.3MiBから減った。スコア向上は確認できていないが、反復時のメモリ保持削減が確認できたため、この設定を次の比較の基準とする。最高195,259点の設定・配布物はローカルの無視対象best-20261028T172332へ保存しており、閾値0で元の動作へ戻せる。全走行の負荷開始後60秒の統計はmetrics.jsonにまとめた。
+
+主DBの読み取り専用サンプリングは、1MiB反復の負荷開始ログを確認してから60秒間、121回採取した。開始時刻は厳密な負荷開始とは一致しない。COMMITのIPC待ちが多く、既存の反映待ちが含まれる。前の採取は途中のUTF-8文字を読み込んで追尾が停止し、測定結果は得られなかった。primary-activity-samples.jsonには成功した採取だけを記録する。
+
+閾値固定後もGC・全地域の再起動で18画像が一致し、3地域のNginx設定128KiBを確認した。Asiaの空き容量は8.7GiBへ回復した。
