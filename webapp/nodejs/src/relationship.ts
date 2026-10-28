@@ -2,15 +2,14 @@ import { randomUUID } from "node:crypto";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { APIError } from "./api_error.ts";
 import { must, type DB, type Queryer, type Row, type Tx } from "./db.ts";
-import type { Timestamp } from "./time.ts";
 
 export type FriendRequest = {
   id: string;
   requesterID: string;
   recipientID: string;
   status: string;
-  createdAt: Timestamp;
-  updatedAt: Timestamp;
+  createdAt: Temporal.Instant;
+  updatedAt: Temporal.Instant;
 };
 
 function friendRequestFromRow(row: Row): FriendRequest {
@@ -45,7 +44,7 @@ export async function beginRelationshipTx(db: DB, actor: string, target: string)
   try {
     for (const id of [minID(actor, target), maxID(actor, target)]) {
       const locked = await tx.get(`SELECT id FROM users WHERE id=$1 AND status='active' FOR NO KEY UPDATE`, id);
-      if (locked === undefined) {
+      if (!locked) {
         throw new APIError(404, "relationship_not_found");
       }
     }

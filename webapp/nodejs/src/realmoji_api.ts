@@ -12,7 +12,6 @@ import type { RelationshipUserResponse } from "./relationship_list_api.ts";
 import { jsonResponse, noContent } from "./response.ts";
 import type { Env, HandlerContext } from "./server.ts";
 import { getSession } from "./session.ts";
-import type { Timestamp } from "./time.ts";
 import { getUser, type User } from "./user.ts";
 import { newRelationshipUserResponse } from "./user_read_api.ts";
 
@@ -27,7 +26,7 @@ export type RealMojiResponse = {
   reactor: RelationshipUserResponse;
   reactionType: string;
   imageUrl: string;
-  createdAt: Timestamp;
+  createdAt: Temporal.Instant;
 };
 
 export function newRealMojiResponse(reaction: RealMoji, user: User): RealMojiResponse {
@@ -59,7 +58,7 @@ export function replaceRealMojiHandler(h: HandlerContext): Handler<Env> {
     }
     const data = Buffer.from(await input.image.arrayBuffer());
     const img = decodeJPEG(data);
-    if (img === null) {
+    if (!img) {
       throw new APIError(400, "invalid_realmoji");
     }
     if (img.width > 512 || img.height > 512) {
@@ -68,7 +67,7 @@ export function replaceRealMojiHandler(h: HandlerContext): Handler<Env> {
 
     const actor = getSession(c)!.userID;
     const post = await getPost(h.db, input.postId);
-    if (post === undefined) {
+    if (!post) {
       throw new APIError(403, "interaction_forbidden");
     }
     if (actor === post.authorID) {
@@ -154,7 +153,7 @@ export function deleteRealMojiHandler(h: HandlerContext): Handler<Env> {
       `SELECT r.reactor_id,p.author_id FROM realmojis r JOIN posts p ON p.id=r.post_id WHERE r.id=$1 AND r.deleted_at IS NULL FOR UPDATE OF r`,
       input.realMojiId,
     );
-    if (record === undefined) {
+    if (!record) {
       throw new APIError(404, "interaction_not_found");
     }
     if (actor !== record.reactor_id && actor !== record.author_id) {

@@ -6,7 +6,7 @@ import { getSession } from "./session.ts";
 export function regionMiddleware(h: HandlerContext): MiddlewareHandler<Env> {
   return async (c, next) => {
     const session = getSession(c);
-    if (session === null) {
+    if (!session) {
       throw new APIError(401, "invalid_session");
     }
     if (session.region !== h.config.region) {
