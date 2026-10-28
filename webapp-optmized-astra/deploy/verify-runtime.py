@@ -7,6 +7,7 @@ from pathlib import Path
 import shlex
 import subprocess
 import tarfile
+from runtime_topology import metadata_replicas, read_settings
 
 root=Path.cwd()
 runtime=json.loads((root/'webapp-optmized-astra/deploy/runtime.json').read_text())
@@ -25,6 +26,7 @@ def inspect(app):
     expected={}
     for service in services:
         regional=service=='webapp-optmized-astra' and app['region']!='asia'
+        read_host, fenced=read_settings(runtime,app,writer=service.endswith('-writer'))
         expected[service]={
             'ISUREAL_LISTEN_BACKLOG':str(runtime['listenBacklog']),
             'TOKIO_WORKER_THREADS':str(runtime['tokioWorkerThreads']),
@@ -36,7 +38,8 @@ def inspect(app):
             'ISUREAL_REGIONAL_IMAGE_WRITES':str(int(runtime.get('regionalImageWritesEnabled',False))),
             'ISUREAL_LOG_LEVEL':runtime.get('applicationLogLevel','debug'),
             'ISUREAL_WRITE_FENCE_MODE':runtime['writeFenceMode'],
-            'ISUREAL_DB_READ_HOST':'127.0.0.1' if regional and runtime['replicaReads'] else '',
+            'ISUREAL_DB_READ_HOST':read_host,
+            'ISUREAL_READ_FENCE':str(int(fenced)) if not service.endswith('-writer') else '',
             'ISUREAL_UPLOAD_PROXY_TARGET':'192.168.145.10:8081' if regional and runtime['regionalUploadCacheEnabled'] else '',
         }
     regions={a['region']:a['host'] for a in runtime['applications'] if a['region']!='asia'} if runtime.get('regionalImageStoresEnabled') else {}
@@ -63,7 +66,7 @@ for service in ['nginx','isureal-guard']:
 print(json.dumps(result))
 '''
     result=json.loads(remote(app['instanceId'],'sudo python3 -c '+shlex.quote(program)))
-    if app['region']!='asia':
+    if app['region']!='asia' or runtime.get('asiaReplicaEnabled',False):
         assert remote(app['instanceId'],'sudo -u postgres psql -XAtc "SELECT pg_is_in_recovery()"').strip()=='t'
         result['metadata']='standby'
     if app['region']=='asia' or runtime.get('regionalImageStoresEnabled',False):
@@ -97,10 +100,11 @@ with ThreadPoolExecutor(max_workers=3) as pool:
     for region,result in pool.map(inspect,runtime['applications']):print(region,json.dumps(result),flush=True)
 query="SELECT application_name,state,sync_state,pg_wal_lsn_diff(pg_current_wal_lsn(),replay_lsn)::bigint FROM pg_stat_replication ORDER BY application_name"
 rows=remote(runtime['database']['instanceId'],'sudo -u postgres psql -X -d isureal -Atc '+shlex.quote(query)).strip().splitlines()
-assert len(rows)==2
+expected_replicas={app["replicaName"] for app in metadata_replicas(runtime)}
+assert len(rows)==len(expected_replicas) and {row.split("|")[0] for row in rows}==expected_replicas
 for row in rows:
     name,state,sync,lag=row.split('|')
-    assert state=='streaming' and sync=='sync' and 0<=int(lag)<=1024*1024
+    assert state=='streaming' and sync==('async' if name=='astra_asia' else 'sync') and 0<=int(lag)<=1024*1024
     print(name,'streaming; replay backlog bytes='+lag)
 outputs=json.loads(subprocess.check_output(['pulumi','stack','output','-C',str(root/'provisioning/aws/astra'),'--stack','dev','--json'],env=env,text=True))
 assert outputs['runtime']==runtime and outputs['artifactSha256']==expected_artifact

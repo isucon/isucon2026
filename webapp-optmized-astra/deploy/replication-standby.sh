@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 replica=$1
-case "$replica" in astra_europe|astra_america) ;; *) exit 2 ;; esac
+case "$replica" in astra_europe|astra_america|astra_asia) ;; *) exit 2 ;; esac
 data=/var/lib/postgresql/16/astra
 changed=false
 staging=$(mktemp -d)
@@ -19,6 +19,12 @@ if [ ! -f "$data/.astra-basebackup-complete" ]; then
         echo "Incomplete base backup at $data; inspect it before retrying" >&2
         exit 1
     fi
+    # Reserve space for the copied databases, retained WAL, and future writes.
+    database_bytes=${2:?source database bytes required}
+    [[ "$database_bytes" =~ ^[0-9]+$ ]] || exit 2
+    available_bytes=$(df -B1 --output=avail /var/lib/postgresql | tail -n1)
+    required_bytes=$((database_bytes + 6 * 1024 * 1024 * 1024))
+    [ "$available_bytes" -ge "$required_bytes" ] || { echo "Insufficient space for base backup plus WAL reserve" >&2; exit 1; }
     systemctl stop postgresql@16-main
     install -d -m700 -o postgres -g postgres "$data"
     # Keep the original AMI database in 16/main; it is never removed.
