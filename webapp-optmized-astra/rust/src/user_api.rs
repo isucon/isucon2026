@@ -14,7 +14,7 @@ use crate::bind::{Bind, Bindable};
 use crate::image_signature::signed_image_url;
 use crate::response::{json, no_content};
 use crate::server::HandlerContext;
-use crate::session::{Session, create_login_session_tx, invalidate_login_session};
+use crate::session::{Session, create_login_session_for_locked_user_tx, invalidate_login_session};
 use crate::user::{USER_COLUMNS, USERNAME_PATTERN, User, get_user, valid_region, valid_user_text};
 
 #[derive(Default, Deserialize)]
@@ -185,7 +185,7 @@ pub async fn login_handler(
             "invalid_credentials",
         ));
     }
-    let session = create_login_session_tx(&mut tx, &user.id).await?;
+    let session = create_login_session_for_locked_user_tx(&mut tx, &user.id).await?;
     tx.commit().await?;
     json(
         StatusCode::OK,
