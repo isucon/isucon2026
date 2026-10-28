@@ -48,6 +48,9 @@ type hotState struct {
 	// each author's posts, so a feed page stops after the first matches.
 	sorted   []*hotPost
 	byAuthor map[string][]*hotPost
+	// posters are the users who created or edited a post since the load, in
+	// any window.
+	posters map[string]bool
 
 	// The comments and RealMojis of the posts of open windows: reactions
 	// holds each reactor's latest RealMoji on a post (one is live at most),
@@ -163,6 +166,7 @@ func (s *hotState) reset() {
 	s.byImage = map[string]string{}
 	s.sorted = nil
 	s.byAuthor = map[string][]*hotPost{}
+	s.posters = map[string]bool{}
 	s.reactions = map[[2]string]hotReaction{}
 	s.comments = map[string]hotComment{}
 	s.postComments = map[string][]string{}
@@ -469,6 +473,7 @@ func (s *hotState) apply(events []stateEvent) {
 			}
 		case "post":
 			p := e.Post
+			s.posters[p.AuthorID] = true
 			if s.closed[p.PostingWindowID] {
 				continue
 			}
@@ -891,10 +896,12 @@ func (s *hotState) search(viewerID, query, beforeUsername, beforeID string) (use
 		}
 	}
 	for _, u := range s.byName[start:] {
-		if u.ID == viewerID || u.Status != "active" || s.blocks[[2]string{viewerID, u.ID}] || s.blocks[[2]string{u.ID, viewerID}] {
+		// The text test first: most users do not match, and the block
+		// lookups hash two IDs each.
+		if !strings.Contains(u.nameKey, query) && !strings.Contains(u.displayKey, query) {
 			continue
 		}
-		if !strings.Contains(u.nameKey, query) && !strings.Contains(u.displayKey, query) {
+		if u.ID == viewerID || u.Status != "active" || s.blocks[[2]string{viewerID, u.ID}] || s.blocks[[2]string{u.ID, viewerID}] {
 			continue
 		}
 		users = append(users, u.User)
@@ -903,6 +910,14 @@ func (s *hotState) search(viewerID, query, beforeUsername, beforeID string) (use
 		}
 	}
 	return users, true
+}
+
+// postedSinceLoad reports whether the user created or edited a post since the
+// load. ok is false when the state is not loaded.
+func (s *hotState) postedSinceLoad(userID string) (posted, ok bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.posters[userID], s.loaded
 }
 
 // tracksPost reports whether the post belongs to an open window, whose
