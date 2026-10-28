@@ -38,6 +38,7 @@ def inspect(app):
             'ISUREAL_METADATA_POOL_CONNECTIONS':str(runtime['metadataPoolConnections']),
             'ISUREAL_NOTIFICATION_BATCH_WRITES':str(int(runtime['notificationBatchWritesEnabled'])),
             'ISUREAL_FILE_IMAGE_ROOT':runtime.get('fileImageStore',{}).get('root','') if runtime.get('fileImageStore',{}).get('enabled') else '',
+            'ISUREAL_ARCHIVE_PEER':'192.168.148.10:8082' if runtime.get('archivePeer',{}).get('readsEnabled',False) and app['region']=='asia' and service=='webapp-optmized-astra' else '',
             'ISUREAL_FILE_IMAGE_ARCHIVES':str(int(runtime.get('fileImageStore',{}).get('archiveReadsEnabled',False))),
             'ISUREAL_FILE_IMAGE_WRITES':str(int(runtime.get('fileImageStore',{}).get('writesEnabled',False))),
             'ISUREAL_IMAGE_STORE_HOST':runtime['imageStore']['host'],
@@ -123,6 +124,20 @@ rows=remote(runtime['database']['instanceId'],'sudo -u postgres psql -X -d isure
 primary_cache=int(remote(runtime['database']['instanceId'], "sudo -u postgres psql -XAtc \"SELECT pg_size_bytes(current_setting('shared_buffers'))\"").strip())
 assert primary_cache==runtime['primarySharedBuffersMiB']*1024**2
 print('primary shared buffers MiB='+str(primary_cache//1024**2))
+peer=runtime.get('archivePeer',{'enabled':False,'readsEnabled':False})
+peer_config=remote(runtime['database']['instanceId'], 'sudo cat /etc/nginx/conf.d/astra-archive-peer.conf 2>/dev/null || true')
+if peer['enabled']:
+    assert 'listen 192.168.148.10:8082;' in peer_config and 'deny all;' in peer_config and 'gzip off;' in peer_config
+    for app in runtime['applications']:
+        assert 'allow '+app['host']+';' in peer_config
+        app_config=remote(app['instanceId'], 'sudo cat /etc/nginx/conf.d/astra-files.conf')
+        assert '/internal/astra/packs/' in app_config and 'max_ranges 1;' in app_config
+    remote(runtime['database']['instanceId'], 'systemctl is-active --quiet nginx && systemctl is-enabled --quiet nginx')
+    if peer['readsEnabled']:
+        subprocess.run(['python3',str(root/'webapp-optmized-astra/deploy/archive-peer.py'),'verify'],env=env,check=True)
+    print('db1 archive peer enabled; Asia peer reads='+str(peer['readsEnabled']))
+else:
+    assert 'listen 192.168.148.10:8082;' not in peer_config
 expected_replicas={app["replicaName"] for app in metadata_replicas(runtime)}
 assert len(rows)==len(expected_replicas) and {row.split("|")[0] for row in rows}==expected_replicas
 for row in rows:
@@ -131,6 +146,8 @@ for row in rows:
     print(name,'streaming; replay backlog bytes='+lag)
 outputs=json.loads(subprocess.check_output(['pulumi','stack','output','-C',str(root/'provisioning/aws/astra'),'--stack','dev','--json'],env=env,text=True))
 assert outputs['runtime']==runtime and outputs['artifactSha256']==expected_artifact
+if peer['enabled']:
+    assert outputs['archivePeerManifestSha256']==hashlib.file_digest(open(root/'webapp-optmized-astra/deploy/archive-peer-manifest.json','rb'),'sha256').hexdigest()
 if runtime['signatureFileCacheEnabled']:
     assert outputs['signatureFileSha256']==hashlib.file_digest(open(root/runtime['signatureFileCachePath'],'rb'),'sha256').hexdigest()
 print('Pulumi runtime, artifact, live processes and durable storage verified')
