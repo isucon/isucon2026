@@ -87,7 +87,9 @@ print(json.dumps(result))
         nginx=remote(app['instanceId'],'cat /etc/nginx/nginx.conf')
         assert 'proxy_request_buffering '+('on' if runtime['nginxRequestBuffering'] else 'off')+'; # astra-managed' in nginx
         log_bytes=runtime.get('nginxAccessLogBufferBytes',0)
-        if log_bytes:
+        if not runtime.get('nginxAccessLogEnabled',True):
+            assert 'access_log off; # astra-managed' in nginx
+        elif log_bytes:
             assert 'access_log /var/log/nginx/access.log combined buffer='+str(log_bytes)+' flush='+str(runtime['nginxAccessLogFlushSeconds'])+'s; # astra-managed' in nginx
     return app['region'],result
 
