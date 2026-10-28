@@ -359,3 +359,4 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261028T171110Z-team10 | 256 KiB Nginx upload buffer with request buffering enabled | PASS | 188,737 |
 | 20261028T171505Z-team10 | repeat 256 KiB upload buffer without restart | PASS | 169,140 |
 | 20261028T172332Z-team10 | 1 MiB Nginx upload buffer after verified GC and restart | PASS | 195,259 |
+| 20261028T172715Z-team10 | repeat 1 MiB upload buffer without restart | PASS | 162,498 |
