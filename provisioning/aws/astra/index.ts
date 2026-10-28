@@ -69,3 +69,7 @@ if (runtime.regionalImageWritesEnabled && (!runtime.regionalImageStoresEnabled |
 if (typeof runtime.asiaUpstreamKeepaliveEnabled !== "boolean") {
     throw new Error("Asia upstream connection reuse must be explicitly configured");
 }
+
+if (!["debug", "info"].includes(runtime.applicationLogLevel)) {
+    throw new Error("Keep failed-login info logs for the existing abuse guard");
+}
