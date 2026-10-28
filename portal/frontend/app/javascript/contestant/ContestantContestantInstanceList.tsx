@@ -11,6 +11,13 @@ export interface Props {
   client: ApiClient;
 }
 
+const serverNames: Record<string, string> = {
+  "1": "asia1",
+  "2": "europe1",
+  "3": "america1",
+  "4": "asia2",
+};
+
 export const ContestantContestantInstanceList: React.FC<Props> = ({ session, client }) => {
   const [template, setTemplate] = useState("");
   useEffect(() => {
@@ -24,8 +31,8 @@ export const ContestantContestantInstanceList: React.FC<Props> = ({ session, cli
 
   const renderRow = (ci: ContestantInstance) => {
     return (
-      <tr>
-        <td>{ci.number.toString()}</td>
+      <tr key={ci.id.toString()}>
+        <td>{serverNames[ci.number.toString()] ?? ci.number.toString()}</td>
         <td>
           {ci.publicIpv4Address}
           <SmallCopyButton content={ci.publicIpv4Address} />
@@ -53,7 +60,7 @@ export const ContestantContestantInstanceList: React.FC<Props> = ({ session, cli
       <table className="table">
         <thead>
           <tr>
-            <th>#</th>
+            <th>name</th>
             <th>Public IPv4</th>
             <th>Private IPv4</th>
             <th>Status</th>
