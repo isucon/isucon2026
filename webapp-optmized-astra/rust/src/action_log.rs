@@ -8,14 +8,14 @@ use axum::http::Method;
 use axum::http::request::Parts;
 use axum::middleware::Next;
 use axum::response::Response;
-use serde_json::{Map, Value};
+use serde::Serialize;
 
 use crate::ip_ban::extract_client_ip;
 use crate::session::Session;
 use crate::user::USERNAME_PATTERN;
 
-static ACTION_NAMES: LazyLock<HashMap<&str, &str>> = LazyLock::new(|| {
-    HashMap::from([
+static ACTION_NAMES: LazyLock<HashMap<(&str, &str), &str>> = LazyLock::new(|| {
+    [
         ("POST /api/initialize", "initialize"),
         ("POST /api/auth/register", "register"),
         ("POST /api/auth/login", "login"),
@@ -70,22 +70,41 @@ static ACTION_NAMES: LazyLock<HashMap<&str, &str>> = LazyLock::new(|| {
             "delete_user_certification",
         ),
         ("POST /api/admin/posting-window", "open_posting_window"),
-    ])
+    ]
+    .into_iter()
+    .map(|(route, action)| (route.split_once(' ').expect("method and route"), action))
+    .collect()
 });
 
-static LOG_LEVEL_RANKS: LazyLock<HashMap<&str, i32>> =
-    LazyLock::new(|| HashMap::from([("debug", 0), ("info", 1), ("error", 2)]));
+fn log_level_rank(level: &str) -> u8 {
+    match level {
+        "info" => 1,
+        "error" => 2,
+        _ => 0,
+    }
+}
+
+#[derive(Serialize)]
+struct ActionEntry<'a> {
+    level: &'static str,
+    action: Option<&'static str>,
+    status: u16,
+    ip: &'a str,
+    user_id: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    username: Option<Option<&'a str>>,
+}
 
 #[derive(Clone)]
 pub struct ActionLog {
-    min_level: String,
+    min_level: u8,
     output: Arc<Mutex<dyn Write + Send>>,
 }
 
 impl ActionLog {
     pub fn new(min_level: &str, output: impl Write + Send + 'static) -> ActionLog {
         ActionLog {
-            min_level: min_level.to_owned(),
+            min_level: log_level_rank(min_level),
             output: Arc::new(Mutex::new(output)),
         }
     }
@@ -122,13 +141,16 @@ pub async fn action_log_middleware(
     next: Next,
 ) -> Response {
     let method = req.method().clone();
-    let route = req
-        .extensions()
-        .get::<MatchedPath>()
-        .map(|path| path.as_str().to_owned());
+    let route = req.extensions().get::<MatchedPath>().cloned();
+    let action = route
+        .as_ref()
+        .and_then(|path| ACTION_NAMES.get(&(method.as_str(), path.as_str())).copied());
     let ip = extract_client_ip(&req);
-    let username = Username::default();
-    req.extensions_mut().insert(username.clone());
+    // Only credential endpoints need a mutable username shared with the handler.
+    let username = matches!(action, Some("login" | "register")).then(Username::default);
+    if let Some(username) = &username {
+        req.extensions_mut().insert(username.clone());
+    }
 
     let response = next.run(req).await;
     let status = response.status().as_u16();
@@ -140,37 +162,27 @@ pub async fn action_log_middleware(
     } else {
         "info"
     };
-    let rank = |level: &str| LOG_LEVEL_RANKS.get(level).copied().unwrap_or_default();
-    if rank(level) < rank(&action_log.min_level) {
+    if log_level_rank(level) < action_log.min_level {
         return response;
     }
 
-    let mut entry = Map::new();
-    entry.insert("level".to_owned(), level.into());
-    entry.insert("action".to_owned(), Value::Null);
-    entry.insert("status".to_owned(), status.into());
-    entry.insert("ip".to_owned(), ip.into());
-    entry.insert("user_id".to_owned(), Value::Null);
-    let action = route.and_then(|path| {
-        ACTION_NAMES
-            .get(format!("{method} {path}").as_str())
-            .copied()
-    });
-    if let Some(action) = action {
-        entry.insert("action".to_owned(), action.into());
-    }
-    if let Some(session) = response.extensions().get::<Session>() {
-        entry.insert("user_id".to_owned(), session.user_id.clone().into());
-    }
-    if action == Some("login") || action == Some("register") {
-        entry.insert("username".to_owned(), Value::Null);
-        if let Some(username) = username.get()
-            && USERNAME_PATTERN.is_match(&username)
-        {
-            entry.insert("username".to_owned(), username.into());
-        }
-    }
-    if let Ok(mut line) = serde_json::to_vec(&entry) {
+    let credential_name = username.as_ref().and_then(Username::get);
+    let credential_name = credential_name
+        .as_deref()
+        .filter(|name| USERNAME_PATTERN.is_match(name));
+    let entry = ActionEntry {
+        level,
+        action,
+        status,
+        ip: &ip,
+        user_id: response
+            .extensions()
+            .get::<Session>()
+            .map(|session| session.user_id.as_str()),
+        username: username.as_ref().map(|_| credential_name),
+    };
+    let mut line = Vec::with_capacity(192);
+    if serde_json::to_writer(&mut line, &entry).is_ok() {
         line.push(b'\n');
         let _ = action_log.output.lock().unwrap().write_all(&line);
     }
