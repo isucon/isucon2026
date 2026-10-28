@@ -128,8 +128,10 @@ pub async fn register_handler(
     // Username uniqueness is enforced atomically by the unique index. Avoid a
     // table-wide lock and multiple network round trips for each registration.
     let user: Option<User> = sqlx::query_as(&format!(
-        "INSERT INTO users (id, username, secret_key_hash, display_name, region) \
-         VALUES ($1, $2, $3, $4, $5) ON CONFLICT (username) DO NOTHING RETURNING {}",
+        "WITH inserted AS (INSERT INTO users (id, username, secret_key_hash, display_name, region) \
+         VALUES ($1, $2, $3, $4, $5) ON CONFLICT (username) DO NOTHING RETURNING {}), \
+         indexed AS (INSERT INTO astra_user_search SELECT id,username,display_name,$6,$7 FROM inserted) \
+         SELECT * FROM inserted",
         USER_COLUMNS.join(", ")
     ))
     .bind(&user_id)
@@ -137,6 +139,8 @@ pub async fn register_handler(
     .bind(hex::encode(hash))
     .bind(&input.display_name)
     .bind(&input.region)
+    .bind(crate::search_text::normalize(&input.username))
+    .bind(crate::search_text::normalize(&input.display_name))
     .fetch_optional(&h.db)
     .await?;
     let Some(user) = user else {
@@ -274,6 +278,9 @@ pub async fn update_me_handler(
         }
         result => result?,
     };
+    if input.display_name.is_some() {
+        crate::search_index::update(&mut tx, &user.id, &user.username, &user.display_name).await?;
+    }
     tx.commit().await?;
     let response: UpdateMeResponse = new_get_me_response(&user);
     json(StatusCode::OK, response)
