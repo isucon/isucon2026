@@ -14,6 +14,8 @@ Team 10向けのRust最適化実装。`webapp/rust`と`webapp/sql`を2335d5fか�
 
 Unicode検索のGIN索引、JPEG検証、ZIP出力、接続再利用、通知の期間別配列保存とSQLの不要な走査・ソート削減、ThinLTOを適用した。アプリログはerror、Nginxアクセスログは無効。失敗ログイン401はログレベルと無関係に記録して監視を維持する。Nginxのリクエストバッファリングは有効。本文バッファは1MiBへ増やし、Nginxのmalloc閾値を128KiBへ固定した。反復時のNginx平均RSS合計はAsiaで約403→66MiBへ減り、固定後のスコアは174,417点・174,674点でPASS。スコア改善は未確定。ログ削減版の実測は34行・4,104バイトで、すべて失敗ログインだった。
 
+[画像保存のファイル操作削減](experiments/direct-image-files/README.md)は178,502点・181,905点でPASS。最終名を排他的に作成し、永続化が完了してからSQLに公開する。[アプリのmalloc閾値128KiB](experiments/application-malloc/README.md)は192,384点・164,303点でPASS。反復時のAsiaアプリ平均RSS合計は約1,203→886MiBへ減ったが、初回スコアは再現しなかった。メモリ削減として維持し、スコア改善とは扱わない。GC・再起動後の18画像と実行設定は一致した。
+
 [db1に初期画像を複製する比較](experiments/db1-archive-peer/README.md)では、準備のみのローカル読み取りが188,226点、db1経由が174,918点、aio threads併用が179,400点・187,288点でPASS。Asiaのディスク読み取りは減ったが画像応答は遅くなり、改善を確認できなかったためローカル読み取りへ戻した。db1のコピーは保持し、private配信は無効にした。
 
 [releaseのRustテスト52件とコピー処理5件が成功](experiments/db1-archive-peer/validation.json)。性能測定用1件は除外。実PostgreSQLとレプリカを使い、画像API・ZIP本文、キャッシュ後の鍵変更・削除などを検証した。db1配信を含む再起動後の18画像と75範囲も一致した。準備時の登録・画像検証タイムアウト、負荷中の通知購読503は未解決で、失敗記録を残している。
