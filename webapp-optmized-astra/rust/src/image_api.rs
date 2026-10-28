@@ -82,10 +82,14 @@ const IMAGE_CACHE_BYTES: usize = 1024 * 1024 * 1024;
 const IMAGE_CACHE_ENTRIES: usize = 16384;
 
 pub fn remember_stored_image(id: String, created_at: DateTime<Utc>, data: Bytes) {
+    remember_asset_image(id.clone(), &id, created_at, data);
+}
+
+pub fn remember_asset_image(id: String, asset_key: &str, created_at: DateTime<Utc>, data: Bytes) {
     // An asset key names bytes that the application role cannot update/delete.
     // Visibility, owner credentials and the current metadata reference are
     // always checked again by IMAGE_QUERY before using these bytes.
-    let version = format!("asset:{id}");
+    let version = format!("asset:{asset_key}");
     IMAGE_CACHE.lock().unwrap().insert(
         id,
         CachedImage {

@@ -13,7 +13,10 @@ host=s['host'] if enabled else ''
 port=s.get('port',5433)
 writes=int(enabled and s.get('writesEnabled',False))
 assert host in ('','192.168.145.10') and port==5433
+regions={app['region']:app['host'] for app in runtime['applications'] if app['region']!='asia'} if runtime.get('regionalImageStoresEnabled',False) else {}
+assert not regions or enabled
 print('[Service]')
+print("Environment='ISUREAL_REGIONAL_IMAGE_HOSTS_JSON="+json.dumps(regions,separators=(',',':'))+"'")
 print(f'Environment=ISUREAL_IMAGE_STORE_HOST={host}')
 print(f'Environment=ISUREAL_IMAGE_STORE_PORT={port}')
 print(f'Environment=ISUREAL_IMAGE_STORE_WRITES={writes}')

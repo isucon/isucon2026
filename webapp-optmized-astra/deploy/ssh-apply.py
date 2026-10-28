@@ -5,6 +5,8 @@ configuration scripts over SSH through the existing Instance Connect Endpoint.
 """
 from concurrent.futures import ThreadPoolExecutor
 import json
+import os
+import secrets
 from pathlib import Path
 import shlex
 import subprocess
@@ -83,6 +85,17 @@ elif not image_store.get("enabled", False):
     remote(database, "sudo -u postgres psql -X -v ON_ERROR_STOP=1 -d isureal -c " + shlex.quote(check))
 
 
+regional_stores = runtime.get("regionalImageStoresEnabled", False)
+regional_writes = runtime.get("regionalImageWritesEnabled", False)
+assert not regional_writes or regional_stores and image_store.get("writesEnabled", False) and runtime.get("regionalUploadCacheEnabled", False)
+if not regional_stores:
+    check = "SELECT 1 / (NOT EXISTS(SELECT 1 FROM image_objects WHERE asset_key LIKE 'europe:%' OR asset_key LIKE 'america:%'))::int"
+    remote(database, "sudo -u postgres psql -X -v ON_ERROR_STOP=1 -d isureal -c " + shlex.quote(check))
+if regional_writes:
+    for instance, service in services:
+        remote(instance, "systemctl show " + service + " -p Environment --value | grep -q 'ISUREAL_REGIONAL_IMAGE_HOSTS_JSON=.*europe.*america' || { echo 'Deploy regional image readers everywhere before enabling writes' >&2; exit 1; }")
+
+
 bundle = ROOT / "var/astra/configuration.tar.gz"
 bundle.parent.mkdir(parents=True, exist_ok=True)
 with tarfile.open(bundle, "w:gz") as tar:
@@ -107,7 +120,24 @@ parallel(stage, instances)
 image_store = runtime.get("imageStore", {})
 if mode in ("all", "image-store") and image_store.get("enabled", False):
     assert image_store["instanceId"] == write_host
-    remote(write_host, "sudo bash /home/isucon/astra-deploy/image-store.sh")
+    stores = applications if regional_stores else [app for app in applications if app['region']=='asia']
+    def provision_store(app):
+        remote(app['instanceId'], "sudo bash /home/isucon/astra-deploy/image-store.sh " + shlex.quote(app['region']))
+    parallel(provision_store, stores)
+
+
+if mode in ("all", "application") and regional_writes:
+    secret_file = ROOT / runtime["regionalUploadEnvPath"]
+    secret_file.parent.mkdir(parents=True, exist_ok=True)
+    if not secret_file.exists():
+        fd = os.open(secret_file, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, 'w') as file:
+            file.write('ISUREAL_UPLOAD_HANDOFF_KEY='+secrets.token_hex(32)+'\n')
+    secret_file.chmod(0o600)
+    def upload_credentials(app):
+        copy(app['instanceId'], secret_file, '/home/isucon/.astra-upload.env')
+        remote(app['instanceId'], 'chmod 600 /home/isucon/.astra-upload.env')
+    parallel(upload_credentials, applications)
 
 
 def application(app):

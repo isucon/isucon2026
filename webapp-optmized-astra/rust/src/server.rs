@@ -312,11 +312,9 @@ pub async fn new_server(config: Config) -> Router {
                 .layer(from_fn_with_state(read_context.read_fence.clone(), read_fence_middleware))
                 .layer(from_fn_with_state(read_context.clone(), ip_ban_middleware)),
         )
-        .with_state(handler_context);
+        .with_state(handler_context.clone());
 
-    let server = if let Some(proxy) =
-        crate::upload_proxy::UploadProxy::from_env(&read_context.config.region)
-    {
+    let server = if let Some(proxy) = crate::upload_proxy::UploadProxy::from_env(&handler_context) {
         server.layer(from_fn_with_state(
             proxy,
             crate::upload_proxy::upload_proxy_middleware,
@@ -325,6 +323,11 @@ pub async fn new_server(config: Config) -> Router {
         server
     };
 
+    let server = if let Some(auth) = crate::stored_upload::UploadAuthenticator::from_env() {
+        server.layer(from_fn_with_state(auth, crate::stored_upload::authenticate))
+    } else {
+        server
+    };
     let ingress = WriteIngress::from_env();
     let server = if ingress.is_none() {
         if let Some(receiver) = crate::image_cache_push::receiver_from_env() {

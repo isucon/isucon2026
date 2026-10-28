@@ -27,7 +27,7 @@ CREATE TABLE image_objects (
   id varchar(36) NOT NULL,
   owner_user_id varchar(36) NOT NULL,
   data bytea NOT NULL,
-  asset_key varchar(36),
+  asset_key varchar(64),
   -- like: image/jpeg, image/png
   media_type text NOT NULL,
   created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
