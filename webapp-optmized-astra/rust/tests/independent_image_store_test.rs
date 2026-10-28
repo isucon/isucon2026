@@ -81,6 +81,7 @@ fn app(db: PgPool, store: Option<ImageStore>) -> Router {
         config: config_from_env(),
         ip_bans: Default::default(),
         notifications: Default::default(),
+        notification_batch_writes: false,
         read_fence: None,
         image_store: store,
     });
@@ -622,13 +623,7 @@ async fn independent_bytes_publish_atomically_and_preserve_visibility_export_and
 
     // Reset removes references while preserving initial images; it never races
     // in-flight publication by deleting independent immutable bytes.
-    sqlx::raw_sql(&format!(
-        "{}\nSET session_replication_role=origin;",
-        include_str!("../../sql/reset.sql")
-    ))
-    .execute(&db)
-    .await
-    .unwrap();
+    reset_fixture(&db).await;
     assert_eq!(count(&db, "posts").await, 1);
     assert_eq!(count(&db, "image_objects").await, 1);
     assert_eq!(count(&assets, "astra_image_data").await, 2);
@@ -1269,6 +1264,7 @@ async fn independent_bytes_publish_atomically_and_preserve_visibility_export_and
                 config: config_from_env(),
                 ip_bans: Default::default(),
                 notifications: Default::default(),
+                notification_batch_writes: false,
                 read_fence: None,
                 image_store: Some(regional_store.clone()),
             });
@@ -1561,13 +1557,7 @@ async fn independent_bytes_publish_atomically_and_preserve_visibility_export_and
         .0,
         StatusCode::FORBIDDEN
     );
-    sqlx::raw_sql(&format!(
-        "{}\nSET session_replication_role=origin;",
-        include_str!("../../sql/reset.sql")
-    ))
-    .execute(&db)
-    .await
-    .unwrap();
+    reset_fixture(&db).await;
     assert_eq!(
         request(file_app, Request::get(&url).body(Body::empty()).unwrap())
             .await
@@ -1590,4 +1580,27 @@ async fn independent_bytes_publish_atomically_and_preserve_visibility_export_and
     }
     admin.close().await;
     asset_admin.close().await;
+}
+
+// psql sends the post-COMMIT maintenance separately. Sending the whole script
+// as one SQLx message would put VACUUM inside an implicit transaction block.
+async fn reset_fixture(db: &PgPool) {
+    let (transaction, maintenance) = include_str!("../../sql/reset.sql")
+        .split_once("COMMIT;")
+        .unwrap();
+    let mut connection = db.acquire().await.unwrap();
+    sqlx::raw_sql(&format!("{transaction}COMMIT;"))
+        .execute(&mut *connection)
+        .await
+        .unwrap();
+    for statement in maintenance.split(';').filter(|sql| !sql.trim().is_empty()) {
+        sqlx::raw_sql(statement)
+            .execute(&mut *connection)
+            .await
+            .unwrap();
+    }
+    sqlx::query("SET session_replication_role=origin")
+        .execute(&mut *connection)
+        .await
+        .unwrap();
 }

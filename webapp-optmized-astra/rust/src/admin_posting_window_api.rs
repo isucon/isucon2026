@@ -115,20 +115,30 @@ pub async fn open_posting_window_handler(
         .iter()
         .map(|_| Uuid::now_v7().to_string())
         .collect();
-    sqlx::query(
-        r#"
+    if h.notification_batch_writes {
+        sqlx::query("INSERT INTO astra_notification_batches(posting_window_id,user_ids,notification_ids,created_at) VALUES($1,$2,$3,$4)")
+            .bind(&window_id)
+            .bind(&recipients)
+            .bind(&notification_ids)
+            .bind(starts_at)
+            .execute(&mut *tx)
+            .await?;
+    } else {
+        sqlx::query(
+            r#"
    INSERT INTO notifications (id, user_id, posting_window_id, created_at)
    SELECT n.id, n.user_id, $3, $4
    FROM unnest($1::text[], $2::text[]) WITH ORDINALITY AS n(id, user_id, position)
    ORDER BY n.position
   "#,
-    )
-    .bind(&notification_ids)
-    .bind(&recipients)
-    .bind(&window_id)
-    .bind(starts_at)
-    .execute(&mut *tx)
-    .await?;
+        )
+        .bind(&notification_ids)
+        .bind(&recipients)
+        .bind(&window_id)
+        .bind(starts_at)
+        .execute(&mut *tx)
+        .await?;
+    }
     let window = get_posting_window(&mut *tx, &window_id).await?;
     tx.commit().await?;
     json(
