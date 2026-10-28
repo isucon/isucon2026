@@ -9,6 +9,7 @@ use tokio::sync::{Semaphore, SemaphorePermit, oneshot};
 
 // Immutable image bytes no longer enter the metadata replication stream.
 // Keep a finite upload budget while allowing more independent-store work.
+pub(crate) const VISIBILITY_BATCHES: usize = 8;
 const WRITE_SLOTS: u32 = 64;
 const BYTES_PER_SLOT: u64 = 256 * 1024;
 const SMALL_BODY_BYTES: u64 = 64 * 1024;
@@ -39,7 +40,7 @@ impl NativeWriteFence {
             primary,
             timeout,
             pending: Mutex::default(),
-            in_flight: Semaphore::new(8),
+            in_flight: Semaphore::new(VISIBILITY_BATCHES),
             mutations: Semaphore::new(WRITE_SLOTS as usize),
             small_mutations: Semaphore::new(SMALL_WRITE_SLOTS),
             control_mutations: Semaphore::new(4),
