@@ -1,40 +1,46 @@
-# Asiaも同期確認対象にして地域内の読み取りを増やす案
+# Asiaを含む3台同期の比較
 
-現在はEU・USへの反映を更新応答前に待ち、Asiaの追加レプリカには検索・フィードだけを振っている。Asiaでレプリカを読むときは主DBのWAL位置を取得して反映を確認する。全読み取りを主DBから移す以前の比較は、この読み取り前確認を伴い、スコア改善を確認できなかった。
+3台同期は今回は採用せず、EU・USの2台同期と、Asiaの検索・フィードだけを非同期レプリカで読む構成へ戻した。切り戻し後は181,005点でPASS。3台同期では一部の読み取りが速くなったが、直前の2台同期185,395点・184,915点を上回る総合スコアを確認できなかった。
 
-次の候補は既存Asiaレプリカを更新応答前の確認対象に加え、全読み取りを地域内へ移すもの。PostgreSQLの[同期対象設定](https://www.postgresql.org/docs/16/runtime-config-replication.html#GUC-SYNCHRONOUS-STANDBY-NAMES)をFIRST 3の3台に限定し、[remote_apply](https://www.postgresql.org/docs/16/runtime-config-wal.html#GUC-SYNCHRONOUS-COMMIT)で全台への反映を待つ。応答後の読み取りはAsiaでも反映済みになるため、読み取りごとのWAL確認を省くことを狙う。互換版の実装とローカル検証を完了した。実機は切替前であり、効果は未測定。
+## 同じseedでの比較
 
-配備は互換版アプリ、主DBの3台同期化、Asiaの全読み取り切替の順に進める。切り戻すときはAsiaの読み取り前確認を先に戻し、その後で主DBを2台同期へ戻す。アプリ起動時にも、Asiaの確認なし読み取りには3台同期が必須であることを検証する。既存VMと既存レプリカのみを使い、変更はruntimeとPulumi・配備スクリプトに反映する。
+| 同期対象 | Asiaのレプリカ読み取り | 初期画像の読み取り | スコア |
+| --- | --- | --- | --- |
+| EU・US、比較元 | フィード・検索、読み取り前確認あり | 地域内 | [185,395 PASS](../../results/20261028T191756Z-team10/result.json)、[184,915 PASS](../../results/20261028T192319Z-team10/result.json) |
+| EU・US・Asia | 全読み取り、読み取り前確認なし | 地域内 | [151,126 PASS](../../results/20261028T194609Z-team10/result.json)、[0 FAIL](../../results/20261028T194923Z-team10/result.json) |
+| EU・US・Asia | 全読み取り、読み取り前確認なし | db1、aio threads | [158,226 PASS](../../results/20261028T195416Z-team10/result.json) |
+| EU・US・Asia | フィード・検索、読み取り前確認なし | db1、aio threads | [182,703 PASS](../../results/20261028T200121Z-team10/result.json) |
+| EU・US・Asia | フィード・検索、読み取り前確認なし | 地域内 | [176,347 PASS](../../results/20261028T200747Z-team10/result.json)、[175,796 PASS](../../results/20261028T201116Z-team10/result.json) |
+| EU・US、切り戻し後 | フィード・検索、読み取り前確認あり | 地域内 | [181,005 PASS](../../results/20261028T201755Z-team10/result.json) |
 
-ローカルで3台目のレプリカを用意し、その反映だけを停止した場合に応答が返らず、再開後は3台とも同じ更新結果を読めることを検証する。その後、実機設定照合・固定seed反復・GCと再起動後の画像照合で比較する。AsiaのCPU・I/O負荷が増え、同期反映の遅延が全地域へ影響する可能性もあるため、採用は実測で判断する。
+seedは12453240012606038961。各走行のソース、配布物SHA-256、ベンチイメージは結果ディレクトリに保存した。0点の走行は負荷前の登録タイムアウトで、性能の反復測定は成立していない。同種の準備失敗は2台同期でも発生しており、今回の構成だけが原因とは断定しない。この時間帯のアプリERRORログには該当する記録がなかった。
 
+## 観測
 
-実装では `asiaReplicaSynchronous` を追加した。falseの既定値は既存構成を維持する。trueではnative write fenceとAsiaレプリカを必須にし、主DBは `FIRST 3 (astra_europe, astra_america, astra_asia)`、Asiaのread fenceは無効にする。既存の `ISUREAL_WRITE_FENCE_HOSTS` はpoll方式のEU・US接続先として維持する。native方式の反映確認対象は主DBの同期対象設定から決まり、起動時と実機照合でも確認する。
+全読み取りをAsiaへ移すと、Asiaのfriendsフィード中央値は159msから49ms、投稿詳細は194msから32msへ短縮した。一方で登録は565msから2,165msへ悪化した。負荷開始後60秒の平均I/O待ちはAsiaで10.81%から25.01%へ増え、主DBの平均CPU使用率は38.88%から20.65%へ下がった。Asia側の読み取りI/Oと同期反映の競合を疑うが、原因を確定する計測ではない。
 
-切替は、false/feed_searchのまま互換版をapplication配備し、true/allへ変更してreplication配備、続けてapplication配備する。切り戻しはfalse/feed_searchへ変更してapplication配備を先に行い、その後replication配備する。配備処理は、Asiaが確認なしでレプリカを読んでいる間の同期対象削減を拒否する。主DB設定ファイルはストリーミング確認後に置換する。
+db1の既存画像パックを読むと、全読み取り構成のAsia I/O待ちは20.77%へ下がった。読み取り範囲をフィード・検索へ絞ると8.06%になり、158,226点から182,703点へ改善した。ただし直前の採用構成より高いスコアは確認できなかった。画像を地域内へ戻した3台同期も176,347点・175,796点で、採用の根拠にはならなかった。単発の差だけで方式一般の優劣は断定しない。
 
-ローカルのPostgreSQL 16では既存standbyのapplication_nameをastra_europe、astra_americaとし、3台目astra-local-standby3をポート26215に追加した。3台目はpg_basebackupで作り、application_nameと物理スロット名をastra_asiaにした。既存のテスト用主DBとレプリカだけを利用し、AWSリソースは作成していない。
+[比較データ](comparison.json)には各走行の設定、AsiaのAPI応答時間、負荷開始後60秒のホスト指標を記録した。CPU使用率はidleとI/O待ちを除く値。
 
-既存回帰と3台目停止のテストは53件PASS、1件ignore。追加した実APIテスト1件もPASS。実APIでは、2台同期時のAsia確認なし読み取りの起動拒否、3台同期時の登録・ログイン・地域内読み取り、主DBに新しいWALがあっても読み取り前確認を待たないこと、Asia反映停止中のログアウト応答待機、応答後の401を検証した。Clippy全targetの警告ゼロ、Pythonの経路設定5件、シェル構文、TypeScript型検査も通過した。
+## 実装と配備
 
-追加テストの環境変数は `ISUREAL_FENCE_REPLICA3_DSN=postgres://postgres@127.0.0.1:26215/postgres` と `ISUREAL_THIRD_REPLICA_HOST`（3台目コンテナのIP）。既存のFENCE/SELECTIVE用変数も設定する。2台同期のテストも、3台目が接続した状態で意図した2台だけを選ぶため、fixtureのapplication_nameを明示するよう変更した。
+`asiaReplicaSynchronous`の既定値はfalseで、現在もfalse。trueでは既存Asiaレプリカとnative write fenceを必須にし、主DBを`FIRST 3 (astra_europe, astra_america, astra_asia)`へ切り替える。PostgreSQLの[同期対象設定](https://www.postgresql.org/docs/16/runtime-config-replication.html#GUC-SYNCHRONOUS-STANDBY-NAMES)と[remote_apply](https://www.postgresql.org/docs/16/runtime-config-wal.html#GUC-SYNCHRONOUS-COMMIT)を使い、更新応答までに3台へ反映する。Asiaの読み取り前確認は省ける。読み取り範囲はallとfeed_searchの両方を比較可能にした。
 
+起動時は実レプリカのスロットと主DBの同期対象設定を照合し、2台同期のままAsiaを確認なしで読む構成を拒否する。`ISUREAL_WRITE_FENCE_HOSTS`は従来のpoll方式のEU・US接続先として維持し、native方式の反映対象は主DBの設定から決める。実機照合では稼働プロセスのwrite fence設定も検証する。
 
-3台同期・Asia全読み取りの初回は151,126点PASS（20261028T194609Z-team10）。直前の185,395点・184,915点を下回った。Asiaのフィードfriendsの中央値は159msから49ms、投稿詳細は194msから32msへ短縮したが、登録は565msから2,165msへ悪化した。負荷開始後60秒の平均I/O待ちはAsiaで10.81%から25.01%へ増え、主DBの平均CPU使用率は38.88%から20.65%へ下がった。Asia側の読み取りI/Oと同期反映の競合を疑うが、原因の確定ではない。
+切替は互換版アプリ、主DBの3台同期化、Asia読み取りの順。切り戻しはAsiaの読み取り前確認を復元してアプリを配備した後、主DBを2台同期へ戻す。配備処理は逆順の切り戻しを拒否する。主DB設定ファイルは必要なレプリカのストリーミング確認後に置換する。変更はPulumi runtimeと配備コードで管理し、新しいAWSリソースは作っていない。db1の初期画像コピーは保持し、配信と読み取りは再び無効にした。
 
-無再起動の反復（20261028T194923Z-team10）は負荷前の利用者登録タイムアウトで0点FAIL。以前の2台同期でも同種の準備失敗があるため、3台同期だけに原因を帰属しない。失敗もコミットとPRへ保存した。
+## 検証
 
-次は3台同期を維持し、既存db1の初期画像パック配信を有効にして比較する。以前はローカル画像読み取りに劣った構成だが、今回は主DB負荷が減り、Asia側のI/O負荷が増えたため再評価する。既存の検証済みコピーとaio threads対応を使い、新しいAWSリソースは作らない。
+既存回帰と3台目停止のRust releaseテストは53件PASS、性能測定用1件ignore。追加の実APIテスト1件もPASS。3台目だけ反映を止めると更新応答が待機し、再開後は3台とも更新を読めることを確認した。実APIでは2台同期での起動拒否、3台同期での登録・ログイン・読み取り、ログアウト応答後の401を検証した。
 
+選択的読み取りを追加した後も、3台同期で検索が新しい主DBのWALを待たないことと、非同期構成で検索待機・ログアウト反映を維持する実APIテストを各1件実行した。Python経路設定5件、Clippy全target、TypeScript型検査、変更したシェルとPythonの構文確認も成功した。
 
-初期画像をdb1から読む3台同期構成は158,226点PASS（20261028T195416Z-team10）。AsiaのI/O待ちは20.77%、登録中央値は1,265ms、画像取得中央値37ms・p90 253ms。3台同期・画像ローカルの151,126点より上がったが、既存2台同期の反復185,395点・184,915点には届かない。
+3台同期・選択的読み取り・地域内画像の構成でGCと再起動を行い、3地域の計18画像の本文とJPEG型が一致した。Asiaの空き容量は8.7GiBへ戻り、全レプリカの未反映WALは0だった。[検証ログ](gc-restart-validation.txt)を保存した。切り戻し後もFIRST 2、Asiaの読み取り前確認、実プロセスの配布物・設定を照合した。
 
-次の比較では3台同期とdb1画像配信を維持し、Asiaの読み取り範囲だけをfeed_searchへ戻す。これまでのfeed_searchは読み取り前のWAL確認を必須にしていたが、3台同期なら更新応答までにAsiaへ反映されるため、この確認を省ける。起動時は従来どおり実レプリカのスロットと主DBの同期対象設定を照合する。読み取り前確認なしの検索、非同期構成の検索待機・ログアウト反映の実APIテスト各1件、経路設定5件、Clippyと型検査を通過した。
+ローカルfixtureはPostgreSQL 16の既存主DBと3レプリカ。application_nameをastra_europe、astra_america、astra_asiaとし、3台目はポート26215、物理スロットastra_asiaで作成した。追加の環境変数は`ISUREAL_FENCE_REPLICA3_DSN=postgres://postgres@127.0.0.1:26215/postgres`と`ISUREAL_THIRD_REPLICA_HOST`。既存のFENCE/SELECTIVE用変数も設定する。
 
+## 次の比較
 
-3台同期・Asiaはfeed_search・初期画像はdb1の構成は182,703点PASS（20261028T200121Z-team10）。同じ画像配信先の全読み取り158,226点から改善した。次は3台同期とfeed_searchを維持し、初期画像だけを地域内読み取りへ戻して比較する。
-
-
-3台同期・feed_search・地域内画像は、GCと再起動後176,347点PASS（20261028T200747Z-team10）、無再起動の反復175,796点PASS（20261028T201116Z-team10）。GC時は3地域の計18画像の本文とJPEG型が再起動前後で一致し、Asiaの空き容量は8.7GiB、全レプリカの未反映WALは0だった。
-
-3台同期の各候補で直前の2台同期185,395点・184,915点を上回る結果を確認できなかったため、今回は2台同期へ戻す。切り戻しではAsiaのread fenceを先に有効にしてアプリを配備し、その後に主DBの同期対象をEU・USの2台へ戻す。コード上の比較機能と起動時検査は残すが、runtimeのasiaReplicaSynchronousはfalseに戻す。
+アプリ側の改善後の負荷配分を踏まえ、Asiaの検索・フィードを主DBへ戻す構成も再評価する余地がある。まず読み取り先だけを変え、既存のレプリカは保持する。登録準備時のタイムアウトは未解消で、アプリの処理時間とHTTP受付時間の照合も必要。
