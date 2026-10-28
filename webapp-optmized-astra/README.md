@@ -247,3 +247,4 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261028T050801Z-team10 | eight replica visibility batches with unchanged small-write admission | PASS | 133,754 |
 | 20261028T051306Z-team10 | 128 bounded small writes with eight replica visibility batches | PASS | 147,184 |
 | 20261028T051739Z-team10 | remove duplicate login lock and session read queries | PASS | 137,453 |
+| 20261028T052149Z-team10 | repeat reduced login queries before log serialization comparison | PASS | 120,577 |
