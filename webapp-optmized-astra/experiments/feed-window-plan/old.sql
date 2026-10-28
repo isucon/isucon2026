@@ -16,7 +16,7 @@ WITH viewer AS (
   p.location_kind, p.latitude, p.longitude, p.locality, p.posted_at,
   w.on_time_deadline, w.ended_at AS window_ended_at, u.id AS "author.id",u.username AS "author.username",u.secret_key_hash AS "author.secret_key_hash",u.display_name AS "author.display_name",u.bio AS "author.bio",u.profile_image_id AS "author.profile_image_id",u.region AS "author.region",u.account_type AS "author.account_type",u.status AS "author.status"
           FROM posts p JOIN users u ON u.id = p.author_id AND u.status = 'active'
-          WHERE p.posting_window_id = w.id AND p.deleted_at IS NULL 
+          WHERE p.posting_window_id = w.id AND p.deleted_at IS NULL
       AND p.author_id <> $1 AND w.ended_at IS NULL
       AND EXISTS (SELECT 1 FROM viewer v WHERE EXISTS (
         SELECT 1 FROM posts own
