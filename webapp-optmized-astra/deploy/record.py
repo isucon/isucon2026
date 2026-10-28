@@ -1,6 +1,8 @@
 """Persist reproducible evidence for one completed Team 10 benchmark."""
 import hashlib
 import json
+import os
+import shlex
 from pathlib import Path
 import shutil
 import subprocess
@@ -29,6 +31,34 @@ experiment = {
     "score": result["score"],
     "note": "The result commit includes source and Pulumi configuration used for this run.",
 }
+# Record the actual published archive references, not merely the migration
+# history: restoring a partition can leave older reports in the repository.
+root = Path(__file__).resolve().parents[2]
+runtime = json.loads((root / "webapp-optmized-astra/deploy/runtime.json").read_text())
+query = """SELECT coalesce(json_agg(row_to_json(t)), '[]'::json) FROM (
+ SELECT tableoid::regclass::text AS partition,
+        split_part(asset_key, ':', 2) AS archive, count(*) AS rows
+ FROM image_objects WHERE asset_key LIKE 'pack:%'
+ GROUP BY tableoid, split_part(asset_key, ':', 2)
+ ORDER BY tableoid::regclass::text, split_part(asset_key, ':', 2)
+) t"""
+try:
+    published = json.loads(subprocess.check_output([
+        str(root / "webapp-optmized-astra/deploy/ssh.sh"),
+        runtime["database"]["instanceId"],
+        "sudo -u postgres psql -XAt -v ON_ERROR_STOP=1 -d isureal -c " + shlex.quote(query),
+    ], text=True, timeout=60, env=dict(os.environ,
+        AWS_CONFIG_FILE=str(root / "provisioning/aws-sdk.config"),
+        AWS_SDK_LOAD_CONFIG="1")))
+    for archive in published:
+        report = root / "webapp-optmized-astra/results" / ("archive-" + archive["archive"]) / "report.json"
+        if report.exists():
+            evidence = json.loads(report.read_text())
+            archive.update({key: evidence[key] for key in ("bytes", "sha256", "manifest_sha256")})
+    experiment["published_image_archives"] = published
+except (OSError, subprocess.SubprocessError, ValueError, KeyError) as error:
+    # Preserve the measured score even if the separate evidence query fails.
+    experiment["archive_evidence_error"] = type(error).__name__
 (destination / "experiment.json").write_text(json.dumps(experiment, indent=2) + "\n")
 with Path("webapp-optmized-astra/README.md").open("a") as file:
     file.write(f'| {run} | {label} | {"PASS" if result["pass"] else "FAIL"} | {result["score"]:,} |\n')
