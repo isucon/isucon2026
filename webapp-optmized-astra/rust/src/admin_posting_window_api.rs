@@ -53,7 +53,21 @@ pub async fn open_posting_window_handler(
     };
     let seconds = input.on_time_seconds.unwrap_or(24 * 60 * 60);
     let mut tx = h.db.begin().await?;
-    sqlx::query("LOCK TABLE users IN SHARE ROW EXCLUSIVE MODE")
+    // Serialize each region's conflict check and window transition. The table
+    // SHARE lock freezes recipient eligibility while allowing other regions'
+    // openers to build notifications concurrently; all user writes still wait.
+    let region_lock: i32 = match region.as_str() {
+        "asia" => 0,
+        "europe" => 1,
+        "america" => 2,
+        _ => unreachable!("validated region"),
+    };
+    sqlx::query("SELECT pg_advisory_xact_lock($1, $2)")
+        .bind(0x4153_5452_i32)
+        .bind(region_lock)
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query("LOCK TABLE users IN SHARE MODE")
         .execute(&mut *tx)
         .await?;
     let conflict: bool = sqlx::query_scalar(
