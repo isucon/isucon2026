@@ -109,3 +109,6 @@ if (runtime.fileImageStore) {
 if (!Number.isInteger(runtime.listenBacklog) || runtime.listenBacklog < 128 || runtime.listenBacklog > 4096) {
     throw new Error("Invalid application listen backlog");
 }
+if (!Number.isInteger(runtime.imageCacheMiB) || runtime.imageCacheMiB < 64 || runtime.imageCacheMiB > 1024) {
+    throw new Error("Invalid image byte cache capacity");
+}
