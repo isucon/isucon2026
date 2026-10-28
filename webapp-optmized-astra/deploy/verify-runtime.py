@@ -79,7 +79,7 @@ print(json.dumps(result))
         assert 'proxy_request_buffering '+('on' if runtime['nginxRequestBuffering'] else 'off')+'; # astra-managed' in nginx
         log_bytes=runtime.get('nginxAccessLogBufferBytes',0)
         if log_bytes:
-            assert 'access_log /var/log/nginx/access.log buffer='+str(log_bytes)+' flush='+str(runtime['nginxAccessLogFlushSeconds'])+'s; # astra-managed' in nginx
+            assert 'access_log /var/log/nginx/access.log combined buffer='+str(log_bytes)+' flush='+str(runtime['nginxAccessLogFlushSeconds'])+'s; # astra-managed' in nginx
     return app['region'],result
 
 with ThreadPoolExecutor(max_workers=3) as pool:

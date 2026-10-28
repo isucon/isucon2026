@@ -28,7 +28,7 @@ assert count == 1, "Expected one global nginx http block"
 log_bytes = runtime['nginxAccessLogBufferBytes']
 flush_seconds = runtime['nginxAccessLogFlushSeconds']
 assert log_bytes in (0, 16384, 32768, 65536) and isinstance(flush_seconds, int) and 1 <= flush_seconds <= 5
-log_options = f" buffer={log_bytes} flush={flush_seconds}s" if log_bytes else ""
+log_options = f" combined buffer={log_bytes} flush={flush_seconds}s" if log_bytes else ""
 content, count = re.subn(r"(?m)^(\s*access_log\s+/var/log/nginx/access\.log)(?:\s+combined)?(?:\s+buffer=\d+[kKmM]?)?(?:\s+flush=\d+[sm]?)?\s*;(?: # astra-managed)?$", lambda m: m[1] + log_options + "; # astra-managed", content)
 assert count == 1, "Expected one standard global Nginx access log"
 configuration.with_suffix(".conf.astra-new").write_text(content)
