@@ -64,6 +64,7 @@ pub struct HandlerContext {
     pub config: Config,
     pub ip_bans: IpBanList,
     pub notifications: NotificationHub,
+    pub notification_batch_writes: bool,
     pub read_fence: Option<ReadFence>,
     pub image_store: Option<crate::image_store::ImageStore>,
 }
@@ -87,6 +88,10 @@ pub async fn new_server(config: Config) -> Router {
         Err(err) => panic!("failed to ping database: {err}"),
     };
 
+    let batch_writes =
+        std::env::var("ISUREAL_NOTIFICATION_BATCH_WRITES").unwrap_or_else(|_| "0".into());
+    assert!(matches!(batch_writes.as_str(), "0" | "1"));
+    let notification_batch_writes = batch_writes == "1";
     let image_store = crate::image_store::ImageStore::from_env(&config).await;
     if image_store.is_none() {
         let external: bool = sqlx::query_scalar(
@@ -106,6 +111,7 @@ pub async fn new_server(config: Config) -> Router {
         config,
         ip_bans: IpBanList::default(),
         notifications: NotificationHub::default(),
+        notification_batch_writes,
         read_fence: None,
         image_store,
     });
@@ -255,6 +261,7 @@ pub async fn new_server(config: Config) -> Router {
                 config: handler_context.config.clone(),
                 ip_bans: IpBanList::default(),
                 notifications: NotificationHub::default(),
+                notification_batch_writes,
             })
         }
         _ => handler_context.clone(),
