@@ -337,3 +337,4 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261028T144755Z-team10 | repeat immutable notification batches | FAIL | 0 |
 | 20261028T145429Z-team10 | notification batches recheck after preparation registration timeout and cleanup | PASS | 174,707 |
 | 20261028T145843Z-team10 | repeat notification batches without restarting application caches | PASS | 187,187 |
+| 20261028T150625Z-team10 | stream uploads without nginx request temp files on regional file storage | PASS | 156,485 |
