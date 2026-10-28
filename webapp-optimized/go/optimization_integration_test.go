@@ -14,6 +14,8 @@ import (
 	"net/url"
 	"os"
 	"reflect"
+	"sort"
+	"strconv"
 	"testing"
 	"time"
 
@@ -96,11 +98,40 @@ func TestOptimizedVisibilityMatchesOriginal(t *testing.T) {
 			}
 		}
 	}
+	// RealMojis (some replaced or deleted) and comments (some deleted) score the
+	// friends-of-friends feed; u17's stop counting once u17 is deleted.
+	for i := range users {
+		for j := range users {
+			a, b := fmt.Sprintf("u%02d", i), fmt.Sprintf("u%02d", j)
+			post := fmt.Sprintf("%s-p%02d", b, rng.Intn(15))
+			if i == j || j%7 == 0 {
+				// Users with i%7 == 0 have no posts.
+				continue
+			}
+			switch rng.Intn(5) {
+			case 0:
+				exec(`INSERT INTO realmojis(id,post_id,reactor_id,image_id,reaction_type,created_at,replaced_at,deleted_at)
+     VALUES($1::text,$2,$3,'x','smile',clock_timestamp(),CASE WHEN $4 THEN clock_timestamp() END,CASE WHEN $5 THEN clock_timestamp() END)`,
+					a+post+"r", post, a, rng.Intn(4) == 0, rng.Intn(4) == 0)
+			case 1:
+				exec(`INSERT INTO comments(id,post_id,author_id,body,created_at,deleted_at)
+     VALUES($1::text,$2,$3,'hi',clock_timestamp(),CASE WHEN $4 THEN clock_timestamp() END)`, a+post+"c", post, a, rng.Intn(4) == 0)
+			}
+		}
+	}
 	exec(`UPDATE users SET status='deleted' WHERE id='u17'`)
 	posts, err := selectPostsWithAuthor(ctx, db, `ORDER BY p.posted_at DESC,p.id DESC`)
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := hot.load(ctx, db); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		hot.mu.Lock()
+		hot.reset()
+		hot.mu.Unlock()
+	}()
 	e := echo.New()
 	e.HTTPErrorHandler = APIErrorHandler
 	e.GET("/api/feeds/:feed", getFeedHandler(&HandlerContext{DB: db}), func(next echo.HandlerFunc) echo.HandlerFunc {
@@ -109,74 +140,181 @@ func TestOptimizedVisibilityMatchesOriginal(t *testing.T) {
 			return next(c)
 		}
 	})
-	for i := range users - 1 {
-		viewerID := fmt.Sprintf("u%02d", i)
-		viewer, err := referenceViewerContext(ctx, db, viewerID)
-		if err != nil {
-			t.Fatal(err)
+	for round := range 2 {
+		if round == 1 {
+			changeInteractions(t, ctx, db, rng, users, posts)
 		}
-		for _, post := range posts {
-			actual, targeted, err := loadPostAccess(ctx, db, viewerID, post.ID)
+		for i := range users - 1 {
+			viewerID := fmt.Sprintf("u%02d", i)
+			viewer, err := referenceViewerContext(ctx, db, viewerID)
 			if err != nil {
 				t.Fatal(err)
 			}
-			author := post.AuthorID
-			if !reflect.DeepEqual(actual, post) {
-				t.Fatalf("post mismatch: %s", post.ID)
-			}
-			if viewer.HasPostedToday != targeted.HasPostedToday || viewer.Friends[author] != targeted.Friends[author] ||
-				viewer.FriendsOfFriends[author] != targeted.FriendsOfFriends[author] || viewer.Blocked[author] != targeted.Blocked[author] {
-				t.Fatalf("relationship mismatch viewer=%s author=%s", viewerID, author)
-			}
-			if viewer.canView(post.Post) != targeted.canView(actual.Post) {
-				t.Fatalf("visibility mismatch viewer=%s post=%s", viewerID, post.ID)
-			}
-		}
-		var followeeIDs []string
-		if err := db.Select(&followeeIDs, `SELECT followee_id FROM follows WHERE follower_id=$1::text`, viewerID); err != nil {
-			t.Fatal(err)
-		}
-		following := map[string]bool{}
-		for _, id := range followeeIDs {
-			following[id] = true
-		}
-		for _, feed := range []string{"public", "friends", "friends-of-friends", "following"} {
-			expected := make([]string, 0)
 			for _, post := range posts {
-				if post.AuthorID != viewerID && post.WindowEndedAt == nil && viewer.canView(post.Post) && matchesFeed(viewer, following, post.Post, feed) {
-					expected = append(expected, post.ID)
-				}
-			}
-			path := "/api/feeds/" + feed
-			offset := 0
-			for {
-				req := httptest.NewRequest(http.MethodGet, path, nil)
-				req.Header.Set("X-Test-Viewer", viewerID)
-				rec := httptest.NewRecorder()
-				e.ServeHTTP(rec, req)
-				if rec.Code != http.StatusOK {
-					t.Fatalf("%s: %d %s", path, rec.Code, rec.Body.String())
-				}
-				var response getFeedResponse
-				if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+				actual, targeted, err := loadPostAccess(ctx, db, viewerID, post.ID)
+				if err != nil {
 					t.Fatal(err)
 				}
-				actual := make([]string, 0, len(response.Items))
-				for _, post := range response.Items {
-					actual = append(actual, post.ID)
+				author := post.AuthorID
+				if !reflect.DeepEqual(actual, post) {
+					t.Fatalf("post mismatch: %s", post.ID)
 				}
-				end := min(offset+50, len(expected))
-				if !reflect.DeepEqual(actual, expected[offset:end]) || response.HasMore != (end < len(expected)) || response.Items == nil {
-					t.Fatalf("viewer=%s feed=%s offset=%d got=%v more=%v want=%v", viewerID, feed, offset, actual, response.HasMore, expected[offset:end])
+				if viewer.HasPostedToday != targeted.HasPostedToday || viewer.Friends[author] != targeted.Friends[author] ||
+					viewer.FriendsOfFriends[author] != targeted.FriendsOfFriends[author] || viewer.Blocked[author] != targeted.Blocked[author] {
+					t.Fatalf("relationship mismatch viewer=%s author=%s", viewerID, author)
 				}
-				if !response.HasMore {
-					break
+				if viewer.canView(post.Post) != targeted.canView(actual.Post) {
+					t.Fatalf("visibility mismatch viewer=%s post=%s", viewerID, post.ID)
 				}
-				last := response.Items[len(response.Items)-1]
-				path = "/api/feeds/" + feed + "?" + url.Values{"beforePostedAt": {last.PostedAt.Format(time.RFC3339Nano)}, "beforeId": {last.ID}}.Encode()
-				offset = end
+			}
+			var followeeIDs []string
+			if err := db.Select(&followeeIDs, `SELECT followee_id FROM follows WHERE follower_id=$1::text`, viewerID); err != nil {
+				t.Fatal(err)
+			}
+			following := map[string]bool{}
+			for _, id := range followeeIDs {
+				following[id] = true
+			}
+			for _, feed := range []string{"public", "friends", "friends-of-friends", "following"} {
+				var candidates []PostWithAuthor
+				for _, post := range posts {
+					if post.AuthorID != viewerID && post.WindowEndedAt == nil && viewer.canView(post.Post) && matchesFeed(viewer, following, post.Post, feed) {
+						candidates = append(candidates, post)
+					}
+				}
+				ranked := feed == "friends-of-friends"
+				var scores map[string]int64
+				if ranked {
+					if scores, err = referenceRecommendationScores(ctx, db, viewerID, candidates); err != nil {
+						t.Fatal(err)
+					}
+					sort.SliceStable(candidates, func(i, j int) bool { return scores[candidates[i].ID] > scores[candidates[j].ID] })
+				}
+				expected := make([]string, 0, len(candidates))
+				for _, post := range candidates {
+					expected = append(expected, fmt.Sprintf("%s:%d", post.ID, scores[post.ID]))
+				}
+				page := func(items []string, offset int, more bool, from string) {
+					t.Helper()
+					end := min(offset+50, len(expected))
+					if !reflect.DeepEqual(items, expected[offset:end]) || more != (end < len(expected)) {
+						t.Fatalf("%s round=%d viewer=%s feed=%s offset=%d got=%v more=%v want=%v", from, round, viewerID, feed, offset, items, more, expected[offset:end])
+					}
+				}
+				path := "/api/feeds/" + feed
+				offset := 0
+				for {
+					req := httptest.NewRequest(http.MethodGet, path, nil)
+					req.Header.Set("X-Test-Viewer", viewerID)
+					rec := httptest.NewRecorder()
+					e.ServeHTTP(rec, req)
+					if rec.Code != http.StatusOK {
+						t.Fatalf("%s: %d %s", path, rec.Code, rec.Body.String())
+					}
+					var response getFeedResponse
+					if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+						t.Fatal(err)
+					}
+					if response.Items == nil {
+						t.Fatalf("viewer=%s feed=%s: items is null", viewerID, feed)
+					}
+					actual := make([]string, 0, len(response.Items))
+					for _, post := range response.Items {
+						if (post.Score != nil) != ranked {
+							t.Fatalf("viewer=%s feed=%s post=%s: score %v", viewerID, feed, post.ID, post.Score)
+						}
+						actual = append(actual, fmt.Sprintf("%s:%d", post.ID, scores[post.ID]))
+						if ranked {
+							actual[len(actual)-1] = fmt.Sprintf("%s:%d", post.ID, *post.Score)
+						}
+					}
+					page(actual, offset, response.HasMore, "database")
+					if !response.HasMore {
+						break
+					}
+					last := response.Items[len(response.Items)-1]
+					query := url.Values{"beforePostedAt": {last.PostedAt.Format(time.RFC3339Nano)}, "beforeId": {last.ID}}
+					if ranked {
+						query.Set("beforeScore", strconv.FormatInt(*last.Score, 10))
+					}
+					path = "/api/feeds/" + feed + "?" + query.Encode()
+					offset += 50
+				}
+				// The hot state answers the same pages.
+				var cursor *feedCursor
+				for offset := 0; ; offset += 50 {
+					hotPosts, hotScores, ok := hot.feed(viewerID, feed, cursor)
+					if !ok {
+						if os.Getenv("ISUREAL_HOT_STATE") != "off" {
+							t.Fatalf("round=%d viewer=%s feed=%s: the hot state cannot answer", round, viewerID, feed)
+						}
+						break
+					}
+					var actual []string
+					for i, post := range hotPosts[:min(len(hotPosts), 50)] {
+						score := scores[post.ID]
+						if ranked {
+							score = hotScores[i]
+						}
+						actual = append(actual, fmt.Sprintf("%s:%d", post.ID, score))
+					}
+					if actual == nil {
+						actual = []string{}
+					}
+					page(actual, offset, len(hotPosts) > 50, "hot state")
+					if len(hotPosts) <= 50 {
+						break
+					}
+					last := hotPosts[49]
+					cursor = &feedCursor{PostedAt: last.PostedAt, ID: last.ID}
+					if ranked {
+						cursor.Score = hotScores[49]
+					}
+				}
 			}
 		}
+	}
+}
+
+// changeInteractions creates and deletes comments and RealMojis through
+// optimized_write, whose events update the hot state, ignoring the writes
+// the users may not make.
+func changeInteractions(t *testing.T, ctx context.Context, db *sqlx.DB, rng *rand.Rand, users int, posts []PostWithAuthor) {
+	t.Helper()
+	var created []writeResult
+	for range 300 {
+		actor := fmt.Sprintf("u%02d", rng.Intn(users))
+		post := posts[rng.Intn(len(posts))].ID
+		action := []string{"comment_create", "reaction_create"}[rng.Intn(2)]
+		args := map[string]any{"postId": post, "body": "hello", "reactionType": "smile", "imageId": fmt.Sprintf("img-%d", rng.Int63())}
+		var image []byte
+		if action == "reaction_create" {
+			image = []byte{}
+		}
+		result, err := runWrite(ctx, db, action, actor, args, image)
+		var apiErr *APIError
+		if errors.As(err, &apiErr) {
+			continue
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		created = append(created, result)
+	}
+	for _, result := range created {
+		if rng.Intn(3) != 0 {
+			continue
+		}
+		action, id, actor := "comment_delete", result.Comment.ID, result.Comment.AuthorID
+		if result.Reaction.ID != "" {
+			action, id, actor = "reaction_delete", result.Reaction.ID, result.Reaction.ReactorID
+		}
+		if _, err := runWrite(ctx, db, action, actor, map[string]any{"id": id}, nil); err != nil && !errors.As(err, new(*APIError)) {
+			t.Fatal(err)
+		}
+	}
+	if len(created) < 30 {
+		t.Fatalf("only %d interactions were created", len(created))
 	}
 }
 
