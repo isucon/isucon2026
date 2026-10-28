@@ -2,7 +2,7 @@ use axum::{
     Extension, Router,
     body::Body,
     http::{Request, StatusCode},
-    routing::get,
+    routing::{get, patch},
 };
 use chrono::Utc;
 use http_body_util::BodyExt;
@@ -111,14 +111,18 @@ async fn search_preserves_unicode_pagination_and_fresh_account_visibility() {
         )
         .await
         .unwrap();
-    sqlx::raw_sql("CREATE TABLE users(id text PRIMARY KEY,username text,secret_key_hash text,display_name text,bio text,profile_image_id text,region text,account_type text,status text); CREATE TABLE block_relations(id text PRIMARY KEY,blocker_id text,blocked_id text);").execute(&db).await.unwrap();
-    sqlx::query("INSERT INTO users SELECT 'user-'||lpad(i::text,4,'0'), CASE WHEN i<55 THEN 'page' ELSE 'page-'||lpad(i::text,4,'0') END, repeat('ab',32), CASE WHEN i%3=0 THEN 'Café Straße '||i ELSE '利用者 '||i END,'private biography',NULL,'asia',CASE WHEN i%5=0 THEN 'certified_public' ELSE 'regular' END,CASE WHEN i%17=0 THEN 'deleted' ELSE 'active' END FROM generate_series(1,175)i").execute(&db).await.unwrap();
-    sqlx::query("INSERT INTO users VALUES ('viewer','page-viewer',repeat('ab',32),'Café Straße','viewer',NULL,'asia','regular','active')").execute(&db).await.unwrap();
-    sqlx::query("INSERT INTO users SELECT 'ascii-'||i, 'ascii-'||lpad(i::text,4,'0'),repeat('ab',32),'Plain ASCII '||i||CASE WHEN i%7=0 THEN '%_!\\' ELSE '' END,'',NULL,'asia','regular','active' FROM generate_series(1,40)i")
+    sqlx::raw_sql("CREATE TABLE users(id text PRIMARY KEY,username text,secret_key_hash text,display_name text,bio text,profile_image_id text,region text,account_type text,status text,updated_at timestamptz DEFAULT now()); CREATE TABLE block_relations(id text PRIMARY KEY,blocker_id text,blocked_id text);").execute(&db).await.unwrap();
+    sqlx::query("INSERT INTO users(id,username,secret_key_hash,display_name,bio,profile_image_id,region,account_type,status) SELECT 'user-'||lpad(i::text,4,'0'), CASE WHEN i<55 THEN 'page' ELSE 'page-'||lpad(i::text,4,'0') END, repeat('ab',32), CASE WHEN i%3=0 THEN 'Café Straße '||i ELSE '利用者 '||i END,'private biography',NULL,'asia',CASE WHEN i%5=0 THEN 'certified_public' ELSE 'regular' END,CASE WHEN i%17=0 THEN 'deleted' ELSE 'active' END FROM generate_series(1,175)i").execute(&db).await.unwrap();
+    sqlx::query("INSERT INTO users(id,username,secret_key_hash,display_name,bio,profile_image_id,region,account_type,status) VALUES ('viewer','page-viewer',repeat('ab',32),'Café Straße','viewer',NULL,'asia','regular','active')").execute(&db).await.unwrap();
+    sqlx::query("INSERT INTO users(id,username,secret_key_hash,display_name,bio,profile_image_id,region,account_type,status) SELECT 'ascii-'||i, 'ascii-'||lpad(i::text,4,'0'),repeat('ab',32),'Plain ASCII '||i||CASE WHEN i%7=0 THEN '%_!\\' ELSE '' END,'',NULL,'asia','regular','active' FROM generate_series(1,40)i")
         .execute(&db).await.unwrap();
     let unicode_names = vec!["ß", "K", "ﬃ", "İ", "Cafe\u{301}", "Σς", "😀", "ＦＦＩ"];
-    sqlx::query("INSERT INTO users SELECT 'unicode-'||i,'unicode-'||i,repeat('ab',32),name,'',NULL,'asia','regular','active' FROM unnest($1::text[]) WITH ORDINALITY AS names(name,i)")
+    sqlx::query("INSERT INTO users(id,username,secret_key_hash,display_name,bio,profile_image_id,region,account_type,status) SELECT 'unicode-'||i,'unicode-'||i,repeat('ab',32),name,'',NULL,'asia','regular','active' FROM unnest($1::text[]) WITH ORDINALITY AS names(name,i)")
         .bind(&unicode_names).execute(&db).await.unwrap();
+    sqlx::raw_sql(include_str!("../../sql/014-normalized-user-search.sql"))
+        .execute(&db)
+        .await
+        .unwrap();
     let h = Arc::new(HandlerContext {
         db: db.clone(),
         config: config_from_env(),
@@ -129,6 +133,7 @@ async fn search_preserves_unicode_pagination_and_fresh_account_visibility() {
     });
     let app = Router::new()
         .route("/api/users", get(search_users_handler))
+        .route("/api/me", patch(isureal::user_api::update_me_handler))
         .with_state(h)
         .layer(Extension(Session {
             region: "asia".into(),
@@ -137,9 +142,10 @@ async fn search_preserves_unicode_pagination_and_fresh_account_visibility() {
             token_hash: String::new(),
             created_at: Utc::now(),
         }));
-    for stage in 0..4 {
+    for stage in 0..6 {
         match stage {
             1 => {
+                isureal::search_index::refresh(&db).await.unwrap();
                 sqlx::query("INSERT INTO block_relations VALUES ('out','viewer','user-0003'),('in','user-0006','viewer')").execute(&db).await.unwrap();
             }
             2 => {
@@ -147,6 +153,15 @@ async fn search_preserves_unicode_pagination_and_fresh_account_visibility() {
             }
             3 => {
                 sqlx::query("DELETE FROM block_relations")
+                    .execute(&db)
+                    .await
+                    .unwrap();
+            }
+            4 => {
+                isureal::search_index::refresh(&db).await.unwrap();
+            }
+            5 => {
+                sqlx::query("DELETE FROM astra_user_search WHERE user_id='user-0003'")
                     .execute(&db)
                     .await
                     .unwrap();
@@ -181,6 +196,43 @@ async fn search_preserves_unicode_pagination_and_fresh_account_visibility() {
     let renamed = search(app.clone(), "renamed", &(String::new(), String::new())).await;
     assert_eq!(renamed["items"][0]["id"], "user-0003");
     assert_eq!(renamed["items"][0]["bio"], "new biography");
+    let updated = app
+        .clone()
+        .oneshot(
+            Request::patch("/api/me")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    serde_json::to_vec(&serde_json::json!({"displayName":"İstanbul Straße"}))
+                        .unwrap(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(updated.status(), StatusCode::OK);
+    let indexed: (String,String) = sqlx::query_as("SELECT source_display_name,normalized_display_name FROM astra_user_search WHERE user_id='viewer'").fetch_one(&db).await.unwrap();
+    assert_eq!(
+        indexed,
+        ("İstanbul Straße".into(), normalized("İstanbul Straße"))
+    );
+    sqlx::raw_sql("CREATE FUNCTION reject_search_update() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'forced search update failure'; END $$; CREATE TRIGGER reject_search BEFORE UPDATE ON astra_user_search FOR EACH ROW EXECUTE FUNCTION reject_search_update();").execute(&db).await.unwrap();
+    let failed = app
+        .oneshot(
+            Request::patch("/api/me")
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"displayName":"must rollback"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(failed.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    assert_eq!(
+        sqlx::query_scalar::<_, String>("SELECT display_name FROM users WHERE id='viewer'")
+            .fetch_one(&db)
+            .await
+            .unwrap(),
+        "İstanbul Straße"
+    );
     db.close().await;
     sqlx::query(&format!("DROP SCHEMA {schema} CASCADE"))
         .execute(&admin)
