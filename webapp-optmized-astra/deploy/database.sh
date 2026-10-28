@@ -1,9 +1,16 @@
 #!/bin/bash
 set -euo pipefail
+shared_buffers_mib=$(python3 - "$(dirname "$0")/runtime.json" <<'PY_CONFIG'
+import json,sys
+value=json.load(open(sys.argv[1]))['primarySharedBuffersMiB']
+assert type(value) is int and 128 <= value <= 1536
+print(value)
+PY_CONFIG
+)
 config=/etc/postgresql/16/main/conf.d/astra.conf
 mkdir -p "$(dirname "$config")"
-cat >"$config.new" <<'CONF'
-shared_buffers = '512MB'
+cat >"$config.new" <<CONF
+shared_buffers = '${shared_buffers_mib}MB'
 effective_cache_size = '2GB'
 max_connections = 200
 max_wal_size = '4GB'
