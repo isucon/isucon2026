@@ -55,6 +55,7 @@ def inspect(app):
             'ISUREAL_ISSUED_URL_CACHE_ENTRIES':str(runtime['issuedImageUrlCacheEntries']),
             'ISUREAL_SIGNATURE_FILE':'/home/isucon/.astra-signatures.bin' if runtime['signatureFileCacheEnabled'] and not service.endswith('-writer') else '',
             'ISUREAL_WRITE_FENCE_MODE':runtime['writeFenceMode'],
+            'ISUREAL_WRITE_FENCE_HOSTS':','.join(a['host'] for a in runtime['applications'] if 'replicaName' in a) if runtime['writeFenceEnabled'] else '',
             'ISUREAL_DB_READ_HOST':read_host,
             'ISUREAL_DB_READ_SCOPE':read_scope(runtime,app,writer=service.endswith('-writer')),
             'ISUREAL_READ_FENCE':str(int(fenced)) if not service.endswith('-writer') else '',
