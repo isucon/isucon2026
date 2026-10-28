@@ -65,6 +65,10 @@ async fn registration_is_unique_and_independent_users_do_not_serialize() {
         .execute(&db)
         .await
         .unwrap();
+    sqlx::raw_sql(include_str!("../../sql/014-normalized-user-search.sql"))
+        .execute(&db)
+        .await
+        .unwrap();
     let context = Arc::new(HandlerContext {
         db: db.clone(),
         config: config_from_env(),
@@ -143,8 +147,22 @@ async fn registration_is_unique_and_independent_users_do_not_serialize() {
         StatusCode::CREATED
     );
     assert_eq!(
-        register(app, "INVALID USER").await.0,
+        register(app.clone(), "INVALID USER").await.0,
         StatusCode::BAD_REQUEST
+    );
+    let indexed: i64 = sqlx::query_scalar("SELECT count(*) FROM astra_user_search s JOIN users u ON u.id=s.user_id WHERE s.source_username=u.username AND s.source_display_name=u.display_name AND s.normalized_display_name='test user'").fetch_one(&db).await.unwrap();
+    assert_eq!(indexed, 3);
+    sqlx::raw_sql("CREATE FUNCTION reject_search_insert() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.source_username='reject_norm' THEN RAISE EXCEPTION 'forced search failure'; END IF; RETURN NEW; END $$; CREATE TRIGGER reject_search BEFORE INSERT ON astra_user_search FOR EACH ROW EXECUTE FUNCTION reject_search_insert();").execute(&db).await.unwrap();
+    assert_eq!(
+        register(app.clone(), "reject_norm").await.0,
+        StatusCode::INTERNAL_SERVER_ERROR
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM users WHERE username='reject_norm'")
+            .fetch_one(&db)
+            .await
+            .unwrap(),
+        0
     );
     db.close().await;
     sqlx::query(&format!("DROP SCHEMA {schema} CASCADE"))

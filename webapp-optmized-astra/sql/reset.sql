@@ -2,7 +2,7 @@ SET session_replication_role = replica;
 
 BEGIN;
 
-TRUNCATE ip_bans, login_sessions, administrator_sessions, friendships, friend_requests, follows, block_relations;
+TRUNCATE astra_user_search, ip_bans, login_sessions, administrator_sessions, friendships, friend_requests, follows, block_relations;
 
 DELETE FROM notifications WHERE created_at > (SELECT created_at FROM initial_data_boundary);
 DELETE FROM comments WHERE created_at > (SELECT created_at FROM initial_data_boundary);
