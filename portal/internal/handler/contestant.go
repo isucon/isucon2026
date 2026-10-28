@@ -65,8 +65,8 @@ func (h *Handler) ContestantJobsIndex(w http.ResponseWriter, r *http.Request) er
 	}
 	q := r.URL.Query()
 
-	query := `SELECT ` + jobColumnsWithScore + `
-		FROM benchmark_jobs LEFT JOIN benchmark_results ON benchmark_results.benchmark_job_id = benchmark_jobs.id
+	query := `SELECT ` + jobListColumns + `
+		FROM benchmark_jobs LEFT JOIN benchmark_results ON benchmark_results.benchmark_job_id = benchmark_jobs.id` + jobEnqueuedByJoin + `
 		WHERE benchmark_jobs.post_validation = false AND benchmark_jobs.team_id = $1`
 	args := []any{team.ID}
 	if status := q.Get("status"); status != "" {
@@ -85,13 +85,13 @@ func (h *Handler) ContestantJobsIndex(w http.ResponseWriter, r *http.Request) er
 		}
 	}
 
-	jobs, scores, err := queryJobsWithScore(ctx, h.db, query, args...)
+	jobs, options, err := queryJobList(ctx, h.db, query, args...)
 	if err != nil {
 		return err
 	}
 	res := &pbcontestant.ListBenchmarkJobsResponse{}
 	for i, j := range jobs {
-		res.Jobs = append(res.Jobs, j.ToPB(model.JobToPBOptions{Score: scores[i]}))
+		res.Jobs = append(res.Jobs, j.ToPB(options[i]))
 	}
 	renderPB(w, http.StatusOK, res)
 	return nil

@@ -29,6 +29,11 @@ def triggered(workflow, event, branch, path):
 
 
 class WorkflowRoutingTest(unittest.TestCase):
+    def test_shared_ci_uses_available_runner_pool(self):
+        for name, job in workflows()["ci.yml"]["jobs"].items():
+            with self.subTest(job=name):
+                self.assertEqual(job["runs-on"], "actions-runner-processor")
+
     def test_feature_push_does_not_duplicate_pr(self):
         for name, workflow in workflows().items():
             if "pull_request" in workflow["on"]:
