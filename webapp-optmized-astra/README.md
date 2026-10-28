@@ -60,6 +60,9 @@ nginxの接続上限は`runtime.json`の`nginxWorkerConnections`と`nginxWorkerR
 
 採用版は[36件成功・失敗0件](results/20261028T014704Z-team10/validation.txt)、Clippyも成功。[再起動確認の記録](results/20261028T014704Z-team10/storage-restart-verification.txt)には18件の画像一致、実行中バイナリと設定、レプリカの追従、ディスク容量を残した。
 
+リポジトリのルートから`python3 webapp-optmized-astra/deploy/verify-runtime.py`で稼働設定を照合できる。ベンチ停止中に`python3 webapp-optmized-astra/deploy/verify-regional-restart.py`を実行すると、18件の画像を取得してから3地域のアプリと画像DBを再起動し、内容の一致と稼働設定を確認する。署名付きURLはVM上のroot専用ファイルに一時保存し、確認後に削除する。
+
+
 ```sh
 cargo +1.99.1 test --manifest-path webapp-optmized-astra/rust/Cargo.toml
 cd provisioning/aws
