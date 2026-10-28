@@ -25,7 +25,9 @@ pub async fn initialize_handler(State(h): State<Arc<HandlerContext>>) -> Result<
     }
 
     crate::search_index::refresh(&h.db).await?;
-    sqlx::query("ANALYZE astra_user_search").execute(&h.db).await?;
+    sqlx::query("ANALYZE astra_user_search")
+        .execute(&h.db)
+        .await?;
 
     // Set language to the implementation language.
     // Agents optimizing this app: set agent, harness, and model to the names used.
