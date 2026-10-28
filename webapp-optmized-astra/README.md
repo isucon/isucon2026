@@ -375,3 +375,4 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261028T183654Z-team10 | split small-write admission into 64 auth and 64 general slots | PASS | 177,380 |
 | 20261028T184239Z-team10 | restore shared small-write admission and disable auth timing | PASS | 179,960 |
 | 20261028T185322Z-team10 | diagnose post admission storage SQL and replay phases | PASS | 180,913 |
+| 20261028T190234Z-team10 | release image body slots before bounded replay response wait | PASS | 177,680 |
