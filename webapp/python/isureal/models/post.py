@@ -1,3 +1,4 @@
+from collections import Counter
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -131,6 +132,7 @@ class Viewer:
     blocked: set[str]
     friends: set[str] = field(default_factory=set)
     friends_of_friends: set[str] = field(default_factory=set)
+    mutual_friends: Counter[str] = field(default_factory=Counter)
 
     @property
     def id(self) -> str:
@@ -196,8 +198,12 @@ async def load_viewer(db: Connection, viewer_id: str) -> Viewer | None:
         low, high = friendship["user_low_id"], friendship["user_high_id"]
         if low in viewer.friends:
             viewer.friends_of_friends.add(high)
+            if high != viewer.id:
+                viewer.mutual_friends[high] += 1
         if high in viewer.friends:
             viewer.friends_of_friends.add(low)
+            if low != viewer.id:
+                viewer.mutual_friends[low] += 1
     return viewer
 
 

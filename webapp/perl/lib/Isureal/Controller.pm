@@ -96,6 +96,16 @@ sub query_time ($c, $name) {
     return parse_rfc3339($value) // Isureal::APIError->bad_request;
 }
 
+sub query_int ($c, $name) {
+    my $value = first_param($c->req->query_params, $name);
+    return undef unless defined $value;
+    return 0 if $value eq '';
+    my ($sign, $digits) = $value =~ /\A([+-]?)0*([0-9]+)\z/ or Isureal::APIError->bad_request;
+    Isureal::APIError->bad_request
+        if length $digits > 19 || (length $digits == 19 && $digits gt ($sign eq '-' ? '9223372036854775808' : '9223372036854775807'));
+    return $sign eq '-' ? -(0 + $digits) : 0 + $digits;
+}
+
 sub query_string ($c, $name) {
     return first_param($c->req->query_params, $name) // '';
 }
