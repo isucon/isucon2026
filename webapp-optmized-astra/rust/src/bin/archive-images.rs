@@ -270,12 +270,36 @@ async fn restore(
     Ok(())
 }
 
+async fn verify_source(db: &mut PgConnection, report: &Report) -> Result<()> {
+    let query = format!(
+        "SELECT data FROM {} WHERE asset_key IS NULL AND created_at<=(SELECT created_at FROM initial_data_boundary) ORDER BY id,created_at",
+        report.partition
+    );
+    let mut rows = sqlx::query(&query).fetch(db);
+    let mut hash = Sha256::new();
+    let mut count = 0;
+    let mut length = 0;
+    while let Some(row) = rows.try_next().await? {
+        let bytes: Vec<u8> = row.try_get("data")?;
+        count += 1;
+        length += bytes.len() as u64;
+        hash.update(bytes);
+    }
+    ensure!(
+        count == report.rows
+            && length == report.bytes
+            && hex::encode(hash.finalize()) == report.sha256,
+        "restored SQL contents do not match original archive"
+    );
+    Ok(())
+}
+
 #[tokio::main(worker_threads = 2)]
 async fn main() -> Result<()> {
     let args: Vec<_> = std::env::args().collect();
     ensure!(
         args.len() == 4,
-        "expected build|verify|apply|restore PARTITION ARCHIVE_UUID_HEX"
+        "expected build|verify|apply|restore|verify-source PARTITION ARCHIVE_UUID_HEX"
     );
     let (mode, partition, archive) = (&args[1], &args[2], &args[3]);
     ensure!(
@@ -327,6 +351,10 @@ async fn main() -> Result<()> {
             "restore" => {
                 let mut db = PgConnection::connect(&config_from_env().database_dsn()).await?;
                 restore(&mut db, &manifest, &report, &root.join("packs")).await?;
+            }
+            "verify-source" => {
+                let mut db = PgConnection::connect(&config_from_env().database_dsn()).await?;
+                verify_source(&mut db, &report).await?;
             }
             _ => anyhow::bail!("unknown mode"),
         }
@@ -426,6 +454,7 @@ mod tests {
         // Repeating apply cannot accidentally publish a different mapping.
         assert!(apply(&mut db, &manifest, &report).await.is_err());
         restore(&mut db, &manifest, &report, &root.join("packs")).await?;
+        verify_source(&mut db, &report).await?;
         for (id, expected) in ids.iter().zip(images) {
             let (bytes, key): (Vec<u8>, Option<String>) =
                 sqlx::query_as("SELECT data,asset_key FROM image_objects_202510 WHERE id=$1")
