@@ -101,11 +101,14 @@ type Model struct {
 	// comments は投稿ごとの bench が書いたコメント、pendingComments は ID のわからない作成。
 	comments        map[string][]*Comment
 	commentByID     map[string]*Comment
-	pendingComments map[string][]*timeline[bool]
+	pendingComments map[string][]pendingComment
 	// reactions は投稿とリアクションした人の組ごとの、有効な RealMoji の ID（なければ ""、
 	// 置き換えの応答を待つ間は "?"）。
 	reactions    map[[2]string]*timeline[string]
 	reactionsFor map[string][]string
+
+	// ranking は友達の友達フィードで確かめた点数の記録。
+	ranking rankingRecorder
 }
 
 func New() *Model {
@@ -127,7 +130,7 @@ func New() *Model {
 		followCandidates: map[string]map[string]bool{},
 		comments:         map[string][]*Comment{},
 		commentByID:      map[string]*Comment{},
-		pendingComments:  map[string][]*timeline[bool]{},
+		pendingComments:  map[string][]pendingComment{},
 		reactions:        map[[2]string]*timeline[string]{},
 		reactionsFor:     map[string][]string{},
 	}

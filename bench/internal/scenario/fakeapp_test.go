@@ -9,6 +9,7 @@ import (
 	"io"
 	"maps"
 	"net/http"
+	"net/url"
 	"slices"
 	"strconv"
 	"strings"
@@ -210,6 +211,92 @@ func (a *fakeApp) inFeed(viewer *fakeUser, p *fakePost, feed string) bool {
 	default:
 		return false
 	}
+}
+
+// mutualFriends は x と y の共通の友達の数。
+func (a *fakeApp) mutualFriends(x, y string) int64 {
+	n := int64(0)
+	for id := range a.users {
+		if id != x && id != y && a.friends[key(x, id)] && a.friends[key(id, y)] {
+			n++
+		}
+	}
+	return n
+}
+
+// score はおすすめ順の点数（10 × 友達の反応 + 3 × 共通の友達 + 3 歩の道の数（30 まで））。
+func (a *fakeApp) score(viewer string, p *fakePost) int64 {
+	author := p.Author.ID
+	connections := int64(0)
+	for id := range a.users {
+		if a.friends[key(author, id)] {
+			connections += a.mutualFriends(viewer, id)
+		}
+	}
+	score := 3*a.mutualFriends(viewer, author) + min(connections, 30)
+	engaged := map[string]bool{}
+	for _, reaction := range a.reactions {
+		if reaction.postID == p.ID && !reaction.replaced && !reaction.gone {
+			engaged[reaction.reactorID] = true
+		}
+	}
+	for _, c := range a.comments {
+		if c.postID == p.ID && !c.deleted {
+			engaged[c.Author.ID] = true
+		}
+	}
+	for id := range engaged {
+		if a.friends[key(viewer, id)] && a.active(id) {
+			score += 10
+		}
+	}
+	return score
+}
+
+// recommended は友達の友達フィードの 1 ページ（おすすめ順）。
+func (a *fakeApp) recommended(viewer *fakeUser, query url.Values, size int) map[string]any {
+	type item struct {
+		client.Post
+		Score int64 `json:"score"`
+	}
+	items := []item{}
+	for _, p := range a.posts {
+		if a.inFeed(viewer, p, "friends-of-friends") {
+			items = append(items, item{Post: p.Post, Score: a.score(viewer.id, p)})
+		}
+	}
+	less := func(x, y item) bool {
+		if x.Score != y.Score {
+			return x.Score < y.Score
+		}
+		if !x.PostedAt.Equal(y.PostedAt) {
+			return x.PostedAt.Before(y.PostedAt)
+		}
+		return x.ID < y.ID
+	}
+	slices.SortFunc(items, func(x, y item) int {
+		switch {
+		case less(y, x):
+			return -1
+		case less(x, y):
+			return 1
+		}
+		return 0
+	})
+	if query.Get("beforeScore") != "" {
+		score, _ := strconv.ParseInt(query.Get("beforeScore"), 10, 64)
+		postedAt, _ := time.Parse(time.RFC3339Nano, query.Get("beforePostedAt"))
+		cursor := item{Post: client.Post{ID: query.Get("beforeId"), PostedAt: postedAt}, Score: score}
+		items = slices.DeleteFunc(items, func(x item) bool { return !less(x, cursor) })
+	}
+	hasMore := len(items) > size
+	if hasMore {
+		items = items[:size]
+	}
+	for _, extra := range a.extraFeed {
+		items = append(items, item{Post: extra})
+	}
+	return map[string]any{"items": items, "hasMore": hasMore}
 }
 
 func (a *fakeApp) signed(owner *fakeUser, imageID string) string {
@@ -586,6 +673,8 @@ func (a *fakeApp) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		respond(http.StatusOK, map[string]any{"items": items, "hasMore": false})
 	case path[0] == "feeds" && a.dropFeeds && path[1] != "friends":
 		respond(http.StatusOK, map[string]any{"items": []client.Post{}, "hasMore": false})
+	case path[0] == "feeds" && path[1] == "friends-of-friends":
+		respond(http.StatusOK, a.recommended(viewer, r.URL.Query(), cmp.Or(a.pageSize, 50)))
 	case path[0] == "feeds":
 		size := cmp.Or(a.pageSize, 50)
 		var before time.Time
