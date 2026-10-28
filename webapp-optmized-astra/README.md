@@ -321,3 +321,4 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261028T113727Z-team10 | repeat precomputed signatures after image GC and restart verification | PASS | 176,753 |
 | 20261028T114208Z-team10 | 512 MiB image byte cache with precomputed signatures | PASS | 177,049 |
 | 20261028T114538Z-team10 | repeat 512 MiB image byte cache with precomputed signatures | FAIL | 0 |
+| 20261028T115320Z-team10 | recheck 512 MiB cache after preparation registration timeout audit | PASS | 182,703 |
