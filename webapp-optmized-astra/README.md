@@ -266,3 +266,4 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261028T055622Z-team10 | buffer Nginx access log writes while preserving application debug logs | PASS | 147,769 |
 | 20261028T061211Z-team10 | filesystem reader control with PostgreSQL image writes | PASS | 144,909 |
 | 20261028T061638Z-team10 | durable regional filesystem images instead of PostgreSQL blob writes | PASS | 80,972 |
+| 20261028T062146Z-team10 | filesystem image writes with corrected regional reference validation | PASS | 150,931 |
