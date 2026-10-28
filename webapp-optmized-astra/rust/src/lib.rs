@@ -56,3 +56,5 @@ pub mod upload_proxy;
 
 pub mod regional_upload;
 pub mod stored_upload;
+
+pub mod db_pool;
