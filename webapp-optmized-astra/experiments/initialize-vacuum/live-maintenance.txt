@@ -1,0 +1,124 @@
+Timing is on.
+INFO:  vacuuming "isureal.public.posts"
+INFO:  launched 2 parallel vacuum workers for index vacuuming (planned: 2)
+INFO:  table "posts": truncated 22263 to 19116 pages
+INFO:  finished vacuuming "isureal.public.posts": index scans: 1
+pages: 3147 removed, 19116 remain, 900 scanned (4.04% of total)
+tuples: 9035 removed, 609875 remain, 0 are dead but not yet removable
+removable cutoff: 2536705, which was 1 XIDs old when operation ended
+frozen: 0 pages from table (0.00% of total) had 0 tuples frozen
+index scan needed: 717 pages from table (3.22% of total) had 16384 dead item identifiers removed
+index "posts_pkey": pages: 7358 in total, 0 newly deleted, 0 currently deleted, 0 reusable
+index "posts_author_id": pages: 1401 in total, 1 newly deleted, 1 currently deleted, 0 reusable
+index "posts_posting_window_id": pages: 1043 in total, 4 newly deleted, 56 currently deleted, 52 reusable
+index "astra_posts_author_window": pages: 12118 in total, 36 newly deleted, 134 currently deleted, 98 reusable
+index "astra_posts_author_page": pages: 13091 in total, 51 newly deleted, 275 currently deleted, 224 reusable
+index "astra_posts_window_page": pages: 14469 in total, 313 newly deleted, 4771 currently deleted, 4458 reusable
+index "astra_posts_public_page": pages: 1112 in total, 2 newly deleted, 60 currently deleted, 58 reusable
+index "astra_posts_image": pages: 15968 in total, 0 newly deleted, 0 currently deleted, 0 reusable
+avg read rate: 187.697 MB/s, avg write rate: 71.033 MB/s
+buffer usage: 19278 hits, 61983 misses, 23457 dirtied
+WAL usage: 27709 records, 15544 full page images, 46417645 bytes
+system usage: CPU: user: 0.10 s, system: 0.13 s, elapsed: 2.57 s
+INFO:  vacuuming "isureal.pg_toast.pg_toast_16901"
+INFO:  finished vacuuming "isureal.pg_toast.pg_toast_16901": index scans: 0
+pages: 0 removed, 0 remain, 0 scanned (100.00% of total)
+tuples: 0 removed, 0 remain, 0 are dead but not yet removable
+removable cutoff: 2536705, which was 1 XIDs old when operation ended
+new relfrozenxid: 2536705, which is 2535916 XIDs ahead of previous value
+new relminmxid: 176654, which is 176653 MXIDs ahead of previous value
+frozen: 0 pages from table (100.00% of total) had 0 tuples frozen
+index scan not needed: 0 pages from table (100.00% of total) had 0 dead item identifiers removed
+avg read rate: 11.306 MB/s, avg write rate: 0.000 MB/s
+buffer usage: 32 hits, 1 misses, 0 dirtied
+WAL usage: 1 records, 0 full page images, 188 bytes
+system usage: CPU: user: 0.00 s, system: 0.00 s, elapsed: 0.00 s
+INFO:  analyzing "public.posts"
+INFO:  "posts": scanned 19116 of 19116 pages, containing 630222 live rows and 0 dead rows; 30000 rows in sample, 630222 estimated total rows
+INFO:  vacuuming "isureal.public.realmojis"
+INFO:  launched 2 parallel vacuum workers for index vacuuming (planned: 2)
+INFO:  finished vacuuming "isureal.public.realmojis": index scans: 1
+pages: 0 removed, 33807 remain, 4555 scanned (13.47% of total)
+tuples: 79027 removed, 1053265 remain, 0 are dead but not yet removable
+removable cutoff: 2536705, which was 2 XIDs old when operation ended
+frozen: 1 pages from table (0.00% of total) had 16 tuples frozen
+index scan needed: 4546 pages from table (13.45% of total) had 125156 dead item identifiers removed
+index "realmojis_pkey": pages: 12379 in total, 0 newly deleted, 0 currently deleted, 0 reusable
+index "realmojis_one_active": pages: 19764 in total, 1 newly deleted, 1 currently deleted, 0 reusable
+index "realmojis_post_id": pages: 6597 in total, 0 newly deleted, 0 currently deleted, 0 reusable
+index "astra_realmojis_post_page": pages: 18355 in total, 11 newly deleted, 11 currently deleted, 0 reusable
+index "astra_realmojis_image": pages: 29578 in total, 0 newly deleted, 0 currently deleted, 0 reusable
+avg read rate: 92.967 MB/s, avg write rate: 81.664 MB/s
+buffer usage: 7034 hits, 93542 misses, 82169 dirtied
+WAL usage: 87292 records, 73962 full page images, 314977197 bytes
+system usage: CPU: user: 0.76 s, system: 0.48 s, elapsed: 7.86 s
+INFO:  vacuuming "isureal.pg_toast.pg_toast_16939"
+INFO:  finished vacuuming "isureal.pg_toast.pg_toast_16939": index scans: 0
+pages: 0 removed, 0 remain, 0 scanned (100.00% of total)
+tuples: 0 removed, 0 remain, 0 are dead but not yet removable
+removable cutoff: 2536705, which was 2 XIDs old when operation ended
+new relfrozenxid: 2536705, which is 2535912 XIDs ahead of previous value
+new relminmxid: 176654, which is 176653 MXIDs ahead of previous value
+frozen: 0 pages from table (100.00% of total) had 0 tuples frozen
+index scan not needed: 0 pages from table (100.00% of total) had 0 dead item identifiers removed
+avg read rate: 9.729 MB/s, avg write rate: 0.000 MB/s
+buffer usage: 25 hits, 1 misses, 0 dirtied
+WAL usage: 1 records, 0 full page images, 188 bytes
+system usage: CPU: user: 0.00 s, system: 0.00 s, elapsed: 0.00 s
+INFO:  analyzing "public.realmojis"
+INFO:  "realmojis": scanned 30000 of 33807 pages, containing 1066782 live rows and 0 dead rows; 30000 rows in sample, 1202157 estimated total rows
+INFO:  vacuuming "isureal.public.comments"
+INFO:  launched 2 parallel vacuum workers for index vacuuming (planned: 2)
+INFO:  finished vacuuming "isureal.public.comments": index scans: 1
+pages: 0 removed, 13816 remain, 2992 scanned (21.66% of total)
+tuples: 52734 removed, 441340 remain, 0 are dead but not yet removable
+removable cutoff: 2536705, which was 3 XIDs old when operation ended
+frozen: 0 pages from table (0.00% of total) had 0 tuples frozen
+index scan needed: 2986 pages from table (21.61% of total) had 101504 dead item identifiers removed
+index "comments_pkey": pages: 5963 in total, 0 newly deleted, 0 currently deleted, 0 reusable
+index "comments_post_id": pages: 4221 in total, 0 newly deleted, 0 currently deleted, 0 reusable
+index "astra_comments_post_page": pages: 10602 in total, 5 newly deleted, 5 currently deleted, 0 reusable
+avg read rate: 105.558 MB/s, avg write rate: 100.137 MB/s
+buffer usage: 4409 hits, 25468 misses, 24160 dirtied
+WAL usage: 27507 records, 19962 full page images, 73241809 bytes
+system usage: CPU: user: 0.13 s, system: 0.09 s, elapsed: 1.88 s
+INFO:  vacuuming "isureal.pg_toast.pg_toast_16958"
+INFO:  finished vacuuming "isureal.pg_toast.pg_toast_16958": index scans: 0
+pages: 0 removed, 0 remain, 0 scanned (100.00% of total)
+tuples: 0 removed, 0 remain, 0 are dead but not yet removable
+removable cutoff: 2536707, which was 1 XIDs old when operation ended
+new relfrozenxid: 2536707, which is 2535911 XIDs ahead of previous value
+new relminmxid: 176654, which is 176653 MXIDs ahead of previous value
+frozen: 0 pages from table (100.00% of total) had 0 tuples frozen
+index scan not needed: 0 pages from table (100.00% of total) had 0 dead item identifiers removed
+avg read rate: 9.717 MB/s, avg write rate: 0.000 MB/s
+buffer usage: 25 hits, 1 misses, 0 dirtied
+WAL usage: 1 records, 0 full page images, 188 bytes
+system usage: CPU: user: 0.00 s, system: 0.00 s, elapsed: 0.00 s
+INFO:  analyzing "public.comments"
+INFO:  "comments": scanned 13816 of 13816 pages, containing 547400 live rows and 0 dead rows; 30000 rows in sample, 547400 estimated total rows
+INFO:  vacuuming "isureal.public.notifications"
+INFO:  launched 2 parallel vacuum workers for index vacuuming (planned: 2)
+INFO:  table "notifications": truncated 39921 to 38349 pages
+INFO:  finished vacuuming "isureal.public.notifications": index scans: 1
+pages: 1572 removed, 38349 remain, 5348 scanned (13.40% of total)
+tuples: 34402 removed, 1614400 remain, 0 are dead but not yet removable
+removable cutoff: 2536707, which was 3 XIDs old when operation ended
+frozen: 0 pages from table (0.00% of total) had 0 tuples frozen
+index scan needed: 4748 pages from table (11.89% of total) had 260725 dead item identifiers removed
+index "notifications_pkey": pages: 30678 in total, 3377 newly deleted, 9761 currently deleted, 6384 reusable
+index "notifications_user_id_posting_window_id_key": pages: 42817 in total, 5801 newly deleted, 16708 currently deleted, 10907 reusable
+index "astra_notifications_user": pages: 3362 in total, 0 newly deleted, 0 currently deleted, 0 reusable
+avg read rate: 203.110 MB/s, avg write rate: 42.384 MB/s
+buffer usage: 108816 hits, 87423 misses, 18243 dirtied
+WAL usage: 41647 records, 13162 full page images, 23709996 bytes
+system usage: CPU: user: 0.12 s, system: 0.23 s, elapsed: 3.36 s
+INFO:  analyzing "public.notifications"
+INFO:  "notifications": scanned 30000 of 38349 pages, containing 1455126 live rows and 0 dead rows; 30000 rows in sample, 1860088 estimated total rows
+VACUUM
+Time: 20306.258 ms (00:20.306)
+ANALYZE
+Time: 325.514 ms
+ANALYZE
+Time: 26.168 ms
+{"maintenance_seconds": 20.964}
