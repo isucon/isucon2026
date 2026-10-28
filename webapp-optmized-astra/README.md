@@ -215,3 +215,4 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261027T234548Z-team10 | Compare four Tokio workers per application with unchanged validation and write fences | PASS | 93,852 |
 | 20261027T234936Z-team10 | Compare regional post-only ingress caching with two workers and larger signature cache | PASS | 92,594 |
 | 20261027T235343Z-team10 | Final verification of selected two-worker regional image and signature caching configuration | PASS | 93,597 |
+| 20261028T004046Z-team10 | regional image DB readers; Asia-write control | PASS | 92,830 |
