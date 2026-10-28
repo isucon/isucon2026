@@ -361,3 +361,4 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261028T172332Z-team10 | 1 MiB Nginx upload buffer after verified GC and restart | PASS | 195,259 |
 | 20261028T172715Z-team10 | repeat 1 MiB upload buffer without restart | PASS | 162,498 |
 | 20261028T173911Z-team10 | 1 MiB upload buffer with fixed Nginx malloc thresholds | PASS | 174,417 |
+| 20261028T174335Z-team10 | repeat fixed Nginx malloc thresholds without restart | PASS | 174,674 |
