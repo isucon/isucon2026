@@ -320,3 +320,4 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261028T113246Z-team10 | precomputed image signatures from actual current DB owners | PASS | 163,334 |
 | 20261028T113727Z-team10 | repeat precomputed signatures after image GC and restart verification | PASS | 176,753 |
 | 20261028T114208Z-team10 | 512 MiB image byte cache with precomputed signatures | PASS | 177,049 |
+| 20261028T114538Z-team10 | repeat 512 MiB image byte cache with precomputed signatures | FAIL | 0 |
