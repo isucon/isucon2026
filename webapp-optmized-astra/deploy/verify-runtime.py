@@ -27,6 +27,8 @@ def inspect(app):
         regional=service=='webapp-optmized-astra' and app['region']!='asia'
         expected[service]={
             'TOKIO_WORKER_THREADS':str(runtime['tokioWorkerThreads']),
+            'ISUREAL_FILE_IMAGE_ROOT':runtime.get('fileImageStore',{}).get('root','') if runtime.get('fileImageStore',{}).get('enabled') else '',
+            'ISUREAL_FILE_IMAGE_WRITES':str(int(runtime.get('fileImageStore',{}).get('writesEnabled',False))),
             'ISUREAL_IMAGE_STORE_HOST':runtime['imageStore']['host'],
             'ISUREAL_IMAGE_STORE_WRITES':str(int(runtime['imageStore']['writesEnabled'])),
             'ISUREAL_REGIONAL_IMAGE_WRITES':str(int(runtime.get('regionalImageWritesEnabled',False))),

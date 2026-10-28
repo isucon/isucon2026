@@ -22,7 +22,7 @@ def capture(app):
  return app['region']+' '+remote(app,'sudo bash -c '+shlex.quote(command)).strip()
 def units(app):return 'webapp-optmized-astra webapp-optmized-astra-writer' if app['region']=='asia' else 'webapp-optmized-astra'
 def stop(app):remote(app,'sudo systemctl stop '+units(app));return app['region']+' applications stopped'
-def storage(app):remote(app,'sudo systemctl restart postgresql@16-astraassets && systemctl is-active --quiet postgresql@16-astraassets');return app['region']+' durable image DB restarted'
+def storage(app):remote(app,'sudo systemctl restart postgresql@16-astraassets nginx && systemctl is-active --quiet postgresql@16-astraassets nginx');return app['region']+' durable image DB restarted'
 def start(app):
  remote(app,'sudo systemctl start '+units(app))
  endpoints=[('127.0.0.1',8080)]+([('192.168.145.10',8081)] if app['region']=='asia' else [])

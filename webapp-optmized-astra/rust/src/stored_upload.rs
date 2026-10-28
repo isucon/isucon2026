@@ -127,7 +127,12 @@ impl UploadAuthenticator {
         {
             return false;
         }
-        let Some((stored_region, id)) = image.asset_key.split_once(':') else {
+        let Some((stored_region, id)) = image
+            .asset_key
+            .strip_prefix("fs:")
+            .unwrap_or(&image.asset_key)
+            .split_once(':')
+        else {
             return false;
         };
         if stored_region != region
@@ -224,7 +229,7 @@ mod tests {
             bytes: 1234,
             expires: Utc::now().timestamp() + 60,
         };
-        for case in 0..10 {
+        for case in 0..12 {
             let mut reference = image.clone();
             if case == 5 {
                 reference.expires = Utc::now().timestamp() - 1;
@@ -237,6 +242,12 @@ mod tests {
             }
             if case == 8 {
                 reference.expires = Utc::now().timestamp() + 300;
+            }
+            if case == 10 {
+                reference.asset_key = format!("fs:{}", reference.asset_key);
+            }
+            if case == 11 {
+                reference.asset_key = reference.asset_key.replace("europe:", "fs:america:");
             }
             let proof = sign(&key, reference, "/api/posts", &headers, &body);
             let mut request = Request::builder()
@@ -275,7 +286,7 @@ mod tests {
             ));
             assert_eq!(
                 app.clone().oneshot(request).await.unwrap().status(),
-                if case == 0 {
+                if matches!(case, 0 | 10) {
                     StatusCode::CREATED
                 } else {
                     StatusCode::FORBIDDEN
