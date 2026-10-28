@@ -2,14 +2,13 @@ import type { Handler } from "hono";
 import { jsonResponse } from "./response.ts";
 import type { Env, HandlerContext } from "./server.ts";
 import { getSession } from "./session.ts";
-import { Timestamp } from "./time.ts";
 
 type CurrentPostingWindowResponse = {
   id: string;
   region: string;
   localDate: string;
-  startsAt: Timestamp;
-  onTimeDeadline: Timestamp;
+  startsAt: Temporal.Instant;
+  onTimeDeadline: Temporal.Instant;
 };
 
 type GetCurrentPostingWindowResponse = {
@@ -34,11 +33,11 @@ export function getCurrentPostingWindowHandler(h: HandlerContext): Handler<Env> 
   `,
       getSession(c)!.userID,
     );
-    if (state === undefined) {
+    if (!state) {
       const response: GetCurrentPostingWindowResponse = { window: null, hasPosted: false, canPost: false, deletionCount: 0 };
       return jsonResponse(c, 200, response);
     }
-    const startsAt: Timestamp = state.starts_at;
+    const startsAt: Temporal.Instant = state.starts_at;
     const response: GetCurrentPostingWindowResponse = {
       window: {
         id: state.id,
@@ -48,7 +47,7 @@ export function getCurrentPostingWindowHandler(h: HandlerContext): Handler<Env> 
         onTimeDeadline: state.on_time_deadline,
       },
       hasPosted: state.active > 0,
-      canPost: state.active === 0 && state.deleted < 2 && !Timestamp.now().before(startsAt),
+      canPost: state.active === 0 && state.deleted < 2 && Temporal.Instant.compare(Temporal.Now.instant(), startsAt) >= 0,
       deletionCount: state.deleted,
     };
     return jsonResponse(c, 200, response);

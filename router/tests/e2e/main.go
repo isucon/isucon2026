@@ -1,7 +1,10 @@
 package main
 
 import (
+	"archive/zip"
+	"bytes"
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,6 +16,7 @@ import (
 	"net/url"
 	"os"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -20,6 +24,7 @@ import (
 	portalv1 "github.com/isucon/isucon2026/gen/go/portal/v1"
 	portalmockv1 "github.com/isucon/isucon2026/gen/go/portal_mock/v1"
 	"github.com/isucon/isucon2026/gen/go/portal_mock/v1/portal_mockv1connect"
+	"github.com/zeebo/xxh3"
 )
 
 const (
@@ -80,7 +85,7 @@ type httpResult struct {
 func main() {
 	log.SetFlags(log.Ltime | log.Lmicroseconds)
 	if len(os.Args) != 2 {
-		log.Fatalf("usage: router-e2e <full|verify-initial>")
+		log.Fatalf("usage: router-e2e <full|verify-initial|digest-fallback>")
 	}
 
 	transport := &http.Transport{
@@ -101,6 +106,8 @@ func main() {
 		err = r.full(ctx)
 	case "verify-initial":
 		err = r.verifyInitial(ctx)
+	case "digest-fallback":
+		err = r.assertDigestFallback(ctx)
 	default:
 		err = fmt.Errorf("unknown mode %q", os.Args[1])
 	}
@@ -125,6 +132,9 @@ func (r *runner) full(ctx context.Context) error {
 	}
 	if err := r.assertHTTPTrafficProfile(ctx); err != nil {
 		return err
+	}
+	if err := r.assertDigest(ctx); err != nil {
+		return fmt.Errorf("digest: %w", err)
 	}
 
 	distinct := expectedConfig{
@@ -559,6 +569,143 @@ func (r *runner) send(ctx context.Context, host string, countries []string, clie
 		return httpResult{}, err
 	}
 	return httpResult{status: response.StatusCode, body: body, duration: time.Since(started), localIP: localIP}, nil
+}
+
+// digestMarker starts an export entry that isureal-digest replaced: the marker,
+// then the seed, the XXH3-64 and the length as big-endian uint64.
+const digestMarker = "\x00isureal-xxh3:"
+
+// fixtureImage and fixturePosts are what the fixture servers serve.
+func fixtureImage(id string, size int) []byte {
+	image := make([]byte, size)
+	for i := range image {
+		image[i] = id[i%len(id)] ^ byte(i>>10)
+	}
+	return image
+}
+
+const fixturePosts = `[{"id":"export","imagePath":"images/export.jpg"}]`
+
+type download struct {
+	status   int
+	header   http.Header
+	body     []byte
+	duration time.Duration
+}
+
+// download fetches path as the benchmark does when seed is not zero.
+func (r *runner) download(ctx context.Context, host, country, path string, seed uint64) (download, error) {
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, routerEndpoint+path, nil)
+	if err != nil {
+		return download{}, err
+	}
+	request.Host = host
+	request.Header.Set("X-Country-Code", country)
+	if seed != 0 {
+		request.Header.Set("X-Benchmark-Request-Id", strconv.FormatUint(seed, 10))
+	}
+	started := time.Now()
+	response, err := r.api.Do(request)
+	if err != nil {
+		return download{}, err
+	}
+	defer response.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(response.Body, 9<<20))
+	if err != nil {
+		return download{}, err
+	}
+	return download{status: response.StatusCode, header: response.Header, body: body, duration: time.Since(started)}, nil
+}
+
+func checkDigest(got download, image []byte, seed uint64) error {
+	want := fmt.Sprintf("%016x", xxh3.HashSeed(image, seed))
+	if got.status != http.StatusOK || len(got.body) != 0 || got.header.Get("X-Body-Xxh3") != want ||
+		got.header.Get("X-Body-Length") != strconv.Itoa(len(image)) || got.header.Get("X-Fixture-Saw") != "" {
+		return fmt.Errorf("status %d, %d bytes, X-Body-Xxh3 %q (want %q), X-Body-Length %q, app saw %q",
+			got.status, len(got.body), got.header.Get("X-Body-Xxh3"), want, got.header.Get("X-Body-Length"), got.header.Get("X-Fixture-Saw"))
+	}
+	return nil
+}
+
+// assertDigest checks that the benchmark's image and export downloads get
+// digests limited like the route, and that browsers still get the bytes.
+func (r *runner) assertDigest(ctx context.Context) error {
+	const seed = 0x1234_5678_9abc_def0
+	image := fixtureImage("photo", 200_000)
+	got, err := r.download(ctx, appHost, "JP", "/api/images/photo?bytes=200000", seed)
+	if err != nil {
+		return err
+	}
+	if err := checkDigest(got, image, seed); err != nil {
+		return fmt.Errorf("image: %w", err)
+	}
+	got, err = r.download(ctx, appHost, "JP", "/api/images/photo?bytes=200000", 0)
+	if err != nil {
+		return err
+	}
+	if got.status != http.StatusOK || !bytes.Equal(got.body, image) || got.header.Get("X-Body-Xxh3") != "" {
+		return fmt.Errorf("browser image: status %d, %d bytes, X-Body-Xxh3 %q", got.status, len(got.body), got.header.Get("X-Body-Xxh3"))
+	}
+
+	got, err = r.download(ctx, appHost, "JP", "/api/me/export", seed)
+	if err != nil {
+		return err
+	}
+	archive, err := zip.NewReader(bytes.NewReader(got.body), int64(len(got.body)))
+	if err != nil {
+		return fmt.Errorf("export: %w", err)
+	}
+	files := map[string][]byte{}
+	for _, f := range archive.File {
+		rc, err := f.Open()
+		if err != nil {
+			return fmt.Errorf("export %s: %w", f.Name, err)
+		}
+		files[f.Name], err = io.ReadAll(rc)
+		rc.Close()
+		if err != nil {
+			return fmt.Errorf("export %s: %w", f.Name, err)
+		}
+	}
+	exported := fixtureImage("export", 300_000)
+	want := binary.BigEndian.AppendUint64([]byte(digestMarker), seed)
+	want = binary.BigEndian.AppendUint64(want, xxh3.HashSeed(exported, seed))
+	want = binary.BigEndian.AppendUint64(want, uint64(len(exported)))
+	if string(files["posts.json"]) != fixturePosts || !bytes.Equal(files["images/export.jpg"], want) || got.header.Get("X-Fixture-Saw") != "" {
+		return fmt.Errorf("export: posts.json %q, image %q, app saw %q", files["posts.json"], files["images/export.jpg"], got.header.Get("X-Fixture-Saw"))
+	}
+
+	// app2/AP is limited to 1 Mbps here: after one second of burst, the rest of
+	// 400 kB takes about 2.2 s although HAProxy forwards only the digest.
+	slow := fixtureImage("slow", 400_000)
+	got, err = r.download(ctx, app2Host, "JP", "/api/images/slow?bytes=400000", seed)
+	if err != nil {
+		return err
+	}
+	if err := checkDigest(got, slow, seed); err != nil {
+		return fmt.Errorf("limited image: %w", err)
+	}
+	if got.duration < 1500*time.Millisecond || got.duration > 15*time.Second {
+		return fmt.Errorf("limited image took %s, want about 2.3s", got.duration)
+	}
+	log.Printf("PASS digest image/export/browser; 400 kB at 1 Mbps took %s", got.duration)
+	return nil
+}
+
+// assertDigestFallback runs while isureal-digest is stopped: the app answers the
+// benchmark itself, without the headers meant for the Router.
+func (r *runner) assertDigestFallback(ctx context.Context) error {
+	image := fixtureImage("photo", 200_000)
+	return waitFor(ctx, 15*time.Second, "app answers the benchmark while isureal-digest is down", func() error {
+		got, err := r.download(ctx, appHost, "JP", "/api/images/photo?bytes=200000", 7)
+		if err != nil {
+			return err
+		}
+		if got.status != http.StatusOK || !bytes.Equal(got.body, image) || got.header.Get("X-Fixture-Saw") != "" {
+			return fmt.Errorf("status %d, %d bytes, app saw %q", got.status, len(got.body), got.header.Get("X-Fixture-Saw"))
+		}
+		return nil
+	})
 }
 
 func bitsPerSecond(bytes int, duration time.Duration) float64 {

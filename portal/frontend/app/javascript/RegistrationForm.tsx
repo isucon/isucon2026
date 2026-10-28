@@ -172,15 +172,18 @@ export class RegistrationForm extends React.Component<Props, State> {
     );
   }
 
-  uploadAvatar(url: string, data: Blob) {
+  async uploadAvatar(url: string, data: Blob) {
     // url に対して PUT リクエストを送信する
-    return fetch(url, {
+    const response = await fetch(url, {
       method: "PUT",
       body: data,
       headers: {
         "Content-Type": "image/png",
       },
     });
+    if (!response.ok) {
+      throw new Error("アイコンのアップロードに失敗しました。時間をおいて再度保存してください。");
+    }
   }
 
   isEditing() {
@@ -238,6 +241,8 @@ export class RegistrationForm extends React.Component<Props, State> {
               <input
                 className="input"
                 disabled
+                maxLength={255}
+                aria-describedby="fieldTeamNameHelp"
                 id="fieldTeamName"
                 value={this.props.registrationSession.team.name || ""}
               />
@@ -264,12 +269,17 @@ export class RegistrationForm extends React.Component<Props, State> {
               <input
                 className="input"
                 required
+                maxLength={255}
+                aria-describedby="fieldTeamNameHelp"
                 id="fieldTeamName"
                 name="teamName"
                 value={this.state.teamName}
                 onChange={this.onChange.bind(this)}
               />
             </div>
+            <p className="help" id="fieldTeamNameHelp">
+              255文字以内で入力してください。
+            </p>
             {this.isEditing() ? (
               <p className="help"></p>
             ) : (
@@ -338,12 +348,17 @@ export class RegistrationForm extends React.Component<Props, State> {
             <input
               className="input"
               required
+              maxLength={255}
+              aria-describedby="fieldNameHelp"
               id="fieldName"
               name="name"
               value={this.state.name}
               onChange={this.onChange.bind(this)}
             />
           </div>
+          <p className="help" id="fieldNameHelp">
+            255文字以内で入力してください。
+          </p>
           <p className="help">
             公開されます。本名でなくて構いません (id, HN,
             その他匿名な記入でも問題ありません)。複数名の名前を記載することはできません (2

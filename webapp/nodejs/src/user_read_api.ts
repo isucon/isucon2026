@@ -79,7 +79,7 @@ export function getUserHandler(h: HandlerContext): Handler<Env> {
     const input = await bind(c, getUserRequest);
     const viewer = getSession(c)!.userID;
     const user = await getUser(h.db, input.userId);
-    if (user === undefined) {
+    if (!user) {
       throw new APIError(404, "relationship_not_found");
     }
     const blocked = await isBlocked(h.db, viewer, user.id);

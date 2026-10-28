@@ -1,4 +1,5 @@
 import { createHmac } from "node:crypto";
+import { unix } from "./time.ts";
 import type { User } from "./user.ts";
 
 export const imageURLLifetime = 24 * 60 * 60;
@@ -20,7 +21,7 @@ export function imageSignature(key: Buffer, imageID: string, exp: number | strin
 }
 
 export function signedImageURL(user: User, imageID: string): string {
-  const exp = Math.floor(Date.now() / 1000) + imageURLLifetime;
+  const exp = unix(Temporal.Now.instant()) + imageURLLifetime;
   const sig = imageSignature(user.imageKey, imageID, exp).toString("base64url");
   return `/api/images/${pathEscape(imageID)}?exp=${exp}&sig=${sig}`;
 }
