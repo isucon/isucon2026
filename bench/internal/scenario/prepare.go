@@ -52,6 +52,8 @@ func (r *Runner) prepareUsers(ctx context.Context) string {
 			a.Username = username
 			u := r.newUser(a, activityOf(r.seed, username))
 			u.registered = true
+			// 最初からいる人も、毎日の投稿のあとで少しずつ友達を増やす。
+			u.circleLeft = u.persona.circle
 			influencer := i >= users
 			if influencer {
 				u.activity = browser
