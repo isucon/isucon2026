@@ -36,6 +36,29 @@ class CleanupTests(unittest.TestCase):
         self.assertFalse(any("DELETE FROM" in cmd for _, cmd in calls))
 
     @unittest.skipUnless(os.getenv("ASTRA_GC_TEST_CONTAINER"), "requires isolated PostgreSQL test container")
+    def test_archive_snapshot_checks_every_range_and_keeps_the_furthest_real_reference(self):
+        container = os.environ["ASTRA_GC_TEST_CONTAINER"]
+        schema = "astra_gc_" + uuid.uuid4().hex
+        first, second = uuid.uuid4().hex, uuid.uuid4().hex
+        file_key = "fs:asia:" + str(uuid.uuid4())
+        def sql(source, check=True):
+            return subprocess.run(["docker", "exec", "-i", container, "psql", "-XqAt", "-U", "postgres", "-v", "ON_ERROR_STOP=1"],
+                input=f"SET search_path={schema};\n{source}", text=True, capture_output=True, check=check)
+        sql(f"CREATE SCHEMA {schema}; CREATE TABLE image_objects(asset_key text); INSERT INTO image_objects VALUES ('pack:{first}:0:40'),('pack:{first}:10:90'),('pack:{first}:80:10'),('pack:{second}:0:20'),('{file_key}'),(NULL);")
+        try:
+            keys = sql(gc.snapshot_sql()).stdout.splitlines()
+            self.assertCountEqual(keys, [f"pack:{first}:10:90", f"pack:{second}:0:20", file_key])
+            for invalid in [f"pack:{first}:1:0", f"pack:{first}:00:1", f"pack:{first}:0:33554433", f"pack:{first}:8589934592:1", f"pack:{first}:999999999999999999999999999:1"]:
+                sql(f"INSERT INTO image_objects VALUES ('{invalid}')")
+                result = sql(gc.snapshot_sql(), check=False)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("Invalid published archive range", result.stderr)
+                self.assertEqual(result.stdout.strip(), "")
+                sql(f"DELETE FROM image_objects WHERE asset_key='{invalid}'")
+        finally:
+            sql(f"DROP SCHEMA {schema} CASCADE")
+
+    @unittest.skipUnless(os.getenv("ASTRA_GC_TEST_CONTAINER"), "requires isolated PostgreSQL test container")
     def test_gc_preserves_live_bytes_and_aborts_on_missing_or_miscounted_refs(self):
         container = os.environ["ASTRA_GC_TEST_CONTAINER"]
         schema = "astra_gc_" + uuid.uuid4().hex
