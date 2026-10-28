@@ -622,14 +622,13 @@ async fn independent_bytes_publish_atomically_and_preserve_visibility_export_and
 
     // Reset removes references while preserving initial images; it never races
     // in-flight publication by deleting independent immutable bytes.
-    sqlx::raw_sql(include_str!("../../sql/reset.sql"))
-        .execute(&db)
-        .await
-        .unwrap();
-    sqlx::query("SET session_replication_role=origin")
-        .execute(&db)
-        .await
-        .unwrap();
+    sqlx::raw_sql(&format!(
+        "{}\nSET session_replication_role=origin;",
+        include_str!("../../sql/reset.sql")
+    ))
+    .execute(&db)
+    .await
+    .unwrap();
     assert_eq!(count(&db, "posts").await, 1);
     assert_eq!(count(&db, "image_objects").await, 1);
     assert_eq!(count(&assets, "astra_image_data").await, 2);
@@ -1327,6 +1326,119 @@ async fn independent_bytes_publish_atomically_and_preserve_visibility_export_and
             .unwrap();
         region_admin.close().await;
     }
+    // Files use the same metadata authority and publication order as the SQL
+    // stores, while image bytes no longer enter an asset table or its WAL.
+    sqlx::raw_sql("UPDATE users SET region='asia',status='active',secret_key_hash=repeat('ab',32) WHERE id='owner'; UPDATE posts SET deleted_at=now() WHERE author_id='owner';").execute(&db).await.unwrap();
+    next_window(&db, 1000).await;
+    let file_root =
+        std::env::temp_dir().join(format!("astra-published-files-{}", uuid::Uuid::new_v4()));
+    let files = isureal::file_store::FileStore::new(
+        file_root.clone(),
+        "asia".into(),
+        Default::default(),
+        true,
+    );
+    files.prepare().await.unwrap();
+    let file_store = ImageStore::new(assets.clone(), true, None)
+        .with_cache_enabled(false)
+        .with_file_store(Some(files.clone()));
+    let file_app = app(db.clone(), Some(file_store));
+    let asset_count = count(&assets, "astra_image_data").await;
+    let (status, response) = request(file_app.clone(), upload(original)).await;
+    assert_eq!(
+        status,
+        StatusCode::CREATED,
+        "{}",
+        String::from_utf8_lossy(&response)
+    );
+    let response: Value = serde_json::from_slice(&response).unwrap();
+    let file_post = response["id"].as_str().unwrap();
+    let file_image: String = sqlx::query_scalar("SELECT image_id FROM posts WHERE id=$1")
+        .bind(file_post)
+        .fetch_one(&db)
+        .await
+        .unwrap();
+    let (length, key): (i32, String) =
+        sqlx::query_as("SELECT octet_length(data),asset_key FROM image_objects WHERE id=$1")
+            .bind(&file_image)
+            .fetch_one(&db)
+            .await
+            .unwrap();
+    assert_eq!(length, 0);
+    assert!(key.starts_with("fs:asia:"));
+    assert_eq!(count(&assets, "astra_image_data").await, asset_count);
+    assert_eq!(files.get(&key).await.unwrap(), original);
+    let url = image_url(&file_image, &[0xab; 32]);
+    assert_eq!(
+        request(
+            file_app.clone(),
+            Request::get(&url).body(Body::empty()).unwrap()
+        )
+        .await,
+        (StatusCode::OK, original.to_vec())
+    );
+    let (status, archive) = request(
+        file_app.clone(),
+        Request::get("/api/me/export").body(Body::empty()).unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let mut zip = zip::ZipArchive::new(Cursor::new(archive)).unwrap();
+    let mut exported = Vec::new();
+    zip.by_name("images/000001.jpg")
+        .unwrap()
+        .read_to_end(&mut exported)
+        .unwrap();
+    assert_eq!(exported, original);
+    next_window(&db, 1001).await;
+    sqlx::raw_sql("CREATE FUNCTION reject_file_post() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'forced file publication failure'; END $$; CREATE TRIGGER reject_file_post BEFORE INSERT ON posts FOR EACH ROW EXECUTE FUNCTION reject_file_post();").execute(&db).await.unwrap();
+    let before = count(&db, "image_objects").await;
+    assert_eq!(
+        request(file_app.clone(), upload(original)).await.0,
+        StatusCode::INTERNAL_SERVER_ERROR
+    );
+    assert_eq!(count(&db, "image_objects").await, before);
+    sqlx::query("DROP TRIGGER reject_file_post ON posts")
+        .execute(&db)
+        .await
+        .unwrap();
+    let restored = isureal::file_store::FileStore::new(
+        file_root.clone(),
+        "asia".into(),
+        Default::default(),
+        false,
+    );
+    restored.prepare().await.unwrap();
+    assert_eq!(restored.get(&key).await.unwrap(), original);
+    sqlx::query("UPDATE posts SET deleted_at=now() WHERE id=$1")
+        .bind(file_post)
+        .execute(&db)
+        .await
+        .unwrap();
+    assert_eq!(
+        request(
+            file_app.clone(),
+            Request::get(&url).body(Body::empty()).unwrap()
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    sqlx::raw_sql(&format!(
+        "{}\nSET session_replication_role=origin;",
+        include_str!("../../sql/reset.sql")
+    ))
+    .execute(&db)
+    .await
+    .unwrap();
+    assert_eq!(
+        request(file_app, Request::get(&url).body(Body::empty()).unwrap())
+            .await
+            .0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(restored.get(&key).await.unwrap(), original);
+    std::fs::remove_dir_all(file_root).unwrap();
     drop(routed);
     drop(local);
     drop(store);

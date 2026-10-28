@@ -72,14 +72,18 @@ SELECT count(*) AS retained_assets,pg_database_size(current_database()) AS datab
 """
 
 
-
-def split_references(keys, regions):
+def split_references(keys, regions, file_regions=()):
     """Validate every published key before deleting from any configured store."""
     grouped = {region: [] for region in regions}
+    grouped.update({"fs:"+region: [] for region in file_regions})
     if len(keys) != len(set(keys)):
         raise ValueError("Duplicate reference snapshot")
     for key in keys:
-        region, raw = key.split(":", 1) if ":" in key else ("asia", key)
+        if key.startswith("fs:"):
+            kind, region, raw = key.split(":")
+            region = kind+":"+region
+        else:
+            region, raw = key.split(":", 1) if ":" in key else ("asia", key)
         if region not in grouped or str(uuid.UUID(raw)) != raw:
             raise ValueError("Unknown region or invalid asset reference")
         grouped[region].append(raw)
@@ -119,7 +123,25 @@ def main():
                        "sudo -u postgres psql -XqAt -v ON_ERROR_STOP=1 -d isureal -c " + shlex.quote(snapshot),
                        stdout=output)
             grouped = split_references(snapshot_path.read_text().splitlines(),
-                                       [app["region"] for app in stores])
+                                       [app["region"] for app in stores],
+                                       [app["region"] for app in apps] if runtime.get("fileImageStore",{}).get("enabled") else [])
+            file_stores = apps if runtime.get("fileImageStore",{}).get("enabled") else []
+
+            def file_command(app, mode):
+                count = len(grouped["fs:"+app["region"]])
+                return f"sudo python3 {incoming}/file-gc.py {mode} {remote_dir}/file-refs {count}"
+
+            # Validate every published file before any store begins deleting.
+            for app in file_stores:
+                region, instance = app["region"], app["instanceId"]
+                refs = Path(directory) / ("file-refs-"+region)
+                refs.write_text("".join(key+"\n" for key in grouped["fs:"+region]))
+                refs.chmod(0o600)
+                remote(instance, "mkdir -p -m700 " + shlex.quote(incoming))
+                subprocess.run([SSH,instance,"--copy",str(refs),incoming+"/file-refs"],check=True)
+                subprocess.run([SSH,instance,"--copy",str(DEPLOY/"file-gc.py"),incoming+"/file-gc.py"],check=True)
+                remote(instance, f"sudo install -d -o postgres -g postgres -m700 {remote_dir} && sudo install -o postgres -g postgres -m600 {incoming}/file-refs {remote_dir}/file-refs")
+                remote(instance, file_command(app,"check"))
 
             def collect(app):
                 region, instance = app["region"], app["instanceId"]
@@ -131,7 +153,7 @@ def main():
                                      "SELECT coalesce(sum(octet_length(a.data)),0) FROM astra_image_data a JOIN live_assets l ON l.id=a.id; COMMIT;\n")
                 for path in (refs, preflight):
                     path.chmod(0o600)
-                remote(instance, "mkdir -m700 " + shlex.quote(incoming))
+                remote(instance, "mkdir -p -m700 " + shlex.quote(incoming))
                 for path in (refs, preflight):
                     subprocess.run([SSH, instance, "--copy", str(path), incoming + "/" + path.name], check=True)
                 remote(instance,
@@ -153,6 +175,8 @@ def main():
                 remote(instance, f"sudo install -o postgres -g postgres -m600 {incoming}/cleanup.sql {remote_dir}/cleanup.sql")
                 print(f"{region}: preserving {len(grouped[region])} references; live bytes={live_bytes}; free bytes={available}; compact={compact}", flush=True)
                 remote(instance, f"sudo -u postgres psql -X -p 5433 -d isureal_assets -f {remote_dir}/cleanup.sql")
+                if app in file_stores:
+                    remote(instance, file_command(app,"apply"))
                 print(f"{region}: cleanup and vacuum complete", flush=True)
 
             # Each region owns an independent database. Keep all producers
