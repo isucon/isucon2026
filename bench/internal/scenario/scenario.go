@@ -343,6 +343,8 @@ func (r *Runner) progress() {
 }
 
 func (r *Runner) closeConnections() {
+	// 管理者と不正な利用者もこの接続プールを共有している。
+	r.api.CloseIdleConnections()
 	for _, u := range r.usersSnapshot() {
 		u.API.CloseIdleConnections()
 	}

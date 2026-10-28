@@ -138,8 +138,28 @@ type Client struct {
 
 // NewTransport は 1 台の端末に相当する Transport を返す。実際の端末は
 // HTTP/2 で他人とリクエストを多重化しないので HTTP/1.1 に固定する。
+// 接続を閉じるときは RST を送り、タスク終了後に Router に LAST_ACK が残るのを防ぐ。
 func NewTransport() *http.Transport {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
+	dial := transport.DialContext
+	transport.DialContext = func(ctx context.Context, network, address string) (net.Conn, error) {
+		conn, err := dial(ctx, network, address)
+		if err != nil {
+			return nil, err
+		}
+		tcp, ok := conn.(*net.TCPConn)
+		if !ok {
+			_ = conn.Close()
+			return nil, fmt.Errorf("benchmark transport requires a TCP connection, got %T", conn)
+		}
+		// context のキャンセルやプロセス終了でも Close されるため、接続時に設定する。
+		// keep-alive の再利用には影響せず、未完了の SSE などを閉じる際にも RST を送る。
+		if err := tcp.SetLinger(0); err != nil {
+			_ = conn.Close()
+			return nil, fmt.Errorf("set benchmark TCP linger: %w", err)
+		}
+		return conn, nil
+	}
 	transport.ForceAttemptHTTP2 = false
 	transport.MaxIdleConnsPerHost = maxIdleConnsPerUser
 	transport.TLSNextProto = map[string]func(string, *tls.Conn) http.RoundTripper{}
