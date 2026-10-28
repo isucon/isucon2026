@@ -134,11 +134,7 @@ pub async fn create_post_handler(
         .join(", ");
     let store = h.image_store.as_ref().filter(|store| store.writes_enabled);
     let asset_key = if let Some(image) = &stored {
-        let (region, _) = image
-            .asset_key
-            .split_once(':')
-            .ok_or_else(|| anyhow::anyhow!("invalid stored image reference"))?;
-        if !store.is_some_and(|store| store.has_region(region)) {
+        if !store.is_some_and(|store| store.can_read_regional_reference(&image.asset_key)) {
             return Err(anyhow::anyhow!("regional image readers unavailable").into());
         }
         Some(image.asset_key.clone())
