@@ -44,11 +44,22 @@ struct CachedImage {
     recently_used: bool,
 }
 
-#[derive(Default)]
 struct ImageCache {
     images: HashMap<String, CachedImage>,
     order: VecDeque<String>,
     bytes: usize,
+    capacity: usize,
+}
+
+impl Default for ImageCache {
+    fn default() -> Self {
+        Self {
+            images: HashMap::new(),
+            order: VecDeque::new(),
+            bytes: 0,
+            capacity: 1024 * 1024 * 1024,
+        }
+    }
 }
 
 #[derive(Default)]
@@ -78,9 +89,25 @@ pub fn remember_image_timestamp(image_id: &str, timestamp: DateTime<Utc>) {
     hints.timestamps.insert(image_id.to_owned(), timestamp);
 }
 
-static IMAGE_CACHE: LazyLock<Mutex<ImageCache>> = LazyLock::new(Mutex::default);
-const IMAGE_CACHE_BYTES: usize = 1024 * 1024 * 1024;
+static IMAGE_CACHE: LazyLock<Mutex<ImageCache>> = LazyLock::new(|| {
+    let mib: usize = std::env::var("ISUREAL_IMAGE_CACHE_MIB")
+        .unwrap_or_else(|_| "1024".into())
+        .parse()
+        .expect("image cache capacity must be an integer MiB value");
+    assert!(
+        (64..=1024).contains(&mib),
+        "image cache must be 64–1024 MiB"
+    );
+    Mutex::new(ImageCache {
+        capacity: mib * 1024 * 1024,
+        ..ImageCache::default()
+    })
+});
 const IMAGE_CACHE_ENTRIES: usize = 16384;
+
+pub(crate) fn initialize_image_cache() {
+    LazyLock::force(&IMAGE_CACHE);
+}
 
 // Keep only weak references here: completed reads retain no image bytes or
 // permanent locks. Cap retained keys even when many distinct images are read.
@@ -196,14 +223,14 @@ impl ImageCache {
     }
 
     fn insert(&mut self, id: String, image: CachedImage) {
-        if image.data.len() > IMAGE_CACHE_BYTES {
+        if image.data.len() > self.capacity {
             return;
         }
         if let Some(old) = self.images.remove(&id) {
             self.bytes -= old.data.len();
             self.order.retain(|key| key != &id);
         }
-        while self.bytes + image.data.len() > IMAGE_CACHE_BYTES
+        while self.bytes + image.data.len() > self.capacity
             || self.images.len() >= IMAGE_CACHE_ENTRIES
         {
             if !self.evict() {
@@ -479,5 +506,24 @@ mod cache_tests {
         assert!(cache.evict());
         assert_eq!(cache.bytes, 0);
         assert!(!cache.evict());
+    }
+
+    #[test]
+    fn byte_budget_evicts_cold_entries_and_retained_responses_survive() {
+        let mut cache = ImageCache {
+            capacity: 6,
+            ..ImageCache::default()
+        };
+        cache.insert("a".into(), entry(b"aaa"));
+        cache.insert("b".into(), entry(b"bbb"));
+        let response = cache.get("a").unwrap().data;
+        cache.insert("c".into(), entry(b"ccc"));
+        assert!(cache.get("b").is_none());
+        assert_eq!(cache.bytes, 6);
+        cache.insert("too-large".into(), entry(b"1234567"));
+        assert_eq!(cache.bytes, 6);
+        cache.insert("a".into(), entry(b"aaaa"));
+        assert_eq!(cache.bytes, 4);
+        assert_eq!(response.as_ref(), b"aaa");
     }
 }

@@ -34,6 +34,7 @@ def inspect(app):
         expected[service]={
             'ISUREAL_LISTEN_BACKLOG':str(runtime['listenBacklog']),
             'TOKIO_WORKER_THREADS':str(runtime['tokioWorkerThreads']),
+            'ISUREAL_IMAGE_CACHE_MIB':str(runtime['imageCacheMiB']),
             'ISUREAL_FILE_IMAGE_ROOT':runtime.get('fileImageStore',{}).get('root','') if runtime.get('fileImageStore',{}).get('enabled') else '',
             'ISUREAL_FILE_IMAGE_ARCHIVES':str(int(runtime.get('fileImageStore',{}).get('archiveReadsEnabled',False))),
             'ISUREAL_FILE_IMAGE_WRITES':str(int(runtime.get('fileImageStore',{}).get('writesEnabled',False))),
