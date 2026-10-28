@@ -225,3 +225,4 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261028T011022Z-team10 | atomic post and image-reference insertion; debug logs restored | PASS | 127,015 |
 | 20261028T011428Z-team10 | stream uploads through nginx without request temp files | PASS | 117,664 |
 | 20261028T011841Z-team10 | 262144 signatures with inline cache keys; request buffering restored | PASS | 126,761 |
+| 20261028T012306Z-team10 | ASCII search prefilter with full Unicode and literal semantics | PASS | 133,279 |
