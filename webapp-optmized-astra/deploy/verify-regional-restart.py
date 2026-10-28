@@ -45,6 +45,9 @@ if sys.argv[1:] == ['--gc']:
 try:
  parallel(stop)
  parallel(storage)
+ if runtime.get('archivePeer',{}).get('enabled',False):
+  remote(runtime['database'],'sudo systemctl restart nginx && systemctl is-active --quiet nginx')
+  print('db1 archive-serving Nginx restarted',flush=True)
 finally:
  parallel(start)
 parallel(verify)

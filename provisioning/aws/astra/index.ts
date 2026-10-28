@@ -148,3 +148,17 @@ if (typeof runtime.notificationBatchWritesEnabled !== "boolean") {
 if (!Number.isInteger(runtime.primarySharedBuffersMiB) || runtime.primarySharedBuffersMiB < 128 || runtime.primarySharedBuffersMiB > 1536) {
     throw new Error("Invalid primary PostgreSQL shared buffer capacity");
 }
+
+if (runtime.archivePeer) {
+    const peer = runtime.archivePeer;
+    if (typeof peer.enabled !== "boolean" || typeof peer.readsEnabled !== "boolean"
+        || (peer.readsEnabled && !peer.enabled)
+        || peer.host !== runtime.database.host || peer.instanceId !== runtime.database.instanceId
+        || peer.host !== "192.168.148.10" || peer.port !== 8082
+        || peer.root !== "/var/lib/astra-images/packs"
+        || (peer.enabled && !runtime.fileImageStore?.archiveReadsEnabled)) {
+        throw new Error("Archive peer must use existing db1 with verified immutable packs");
+    }
+}
+export const archivePeerManifestSha256 = runtime.archivePeer?.enabled
+    ? createHash("sha256").update(readFileSync("../../../webapp-optmized-astra/deploy/archive-peer-manifest.json")).digest("hex") : "";

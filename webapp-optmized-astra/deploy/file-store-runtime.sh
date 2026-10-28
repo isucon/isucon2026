@@ -16,7 +16,9 @@ root=config.get('root','/var/lib/astra-images');port=config.get('port',8082)
 assert root=='/var/lib/astra-images' and port==8082
 apps=runtime['applications'];host=next(a['host'] for a in apps if a['region']==region)
 peers={a['region']:a['host']+':8082' for a in apps} if enabled else {}
-lines=['[Service]',f'Environment=ISUREAL_FILE_IMAGE_ROOT={root if enabled else ""}',f'Environment=ISUREAL_FILE_IMAGE_WRITES={int(writes)}',f'Environment=ISUREAL_FILE_IMAGE_ARCHIVES={int(archives)}',"Environment='ISUREAL_FILE_IMAGE_HOSTS_JSON="+json.dumps(peers,separators=(',',':'))+"'"]
+peer=runtime.get('archivePeer',{})
+archive_peer='192.168.148.10:8082' if peer.get('readsEnabled',False) and region=='asia' and service=='webapp-optmized-astra' else ''
+lines=['[Service]',f'Environment=ISUREAL_ARCHIVE_PEER={archive_peer}',f'Environment=ISUREAL_FILE_IMAGE_ROOT={root if enabled else ""}',f'Environment=ISUREAL_FILE_IMAGE_WRITES={int(writes)}',f'Environment=ISUREAL_FILE_IMAGE_ARCHIVES={int(archives)}',"Environment='ISUREAL_FILE_IMAGE_HOSTS_JSON="+json.dumps(peers,separators=(',',':'))+"'"]
 Path(f'/etc/systemd/system/{service}.service.d/file-store.conf').write_text('\n'.join(lines)+'\n')
 text='# File image readers disabled by the Pulumi runtime.\n'
 if enabled:
@@ -29,6 +31,18 @@ if enabled:
   try:os.fsync(fd)
   finally:os.close(fd)
  allow='\n'.join('    allow '+a['host']+';' for a in apps+[runtime['database']])
+ pack_location=''
+ if peer.get('enabled',False):
+  pack_location=f'''    location ~ "^/internal/astra/packs/([0-9a-f]{{32}})$" {{
+        alias {root}/packs/$1;
+        default_type application/octet-stream;
+        gzip off;
+        max_ranges 1;
+        open_file_cache max=64 inactive=60s;
+        open_file_cache_errors off;
+        limit_except GET {{ deny all; }}
+    }}
+'''
  text=f'''# Managed by provisioning/aws/astra. Private VM-to-VM immutable image reads.
 server {{
     listen {host}:{port};
@@ -48,7 +62,7 @@ server {{
         open_file_cache_errors off;
         limit_except GET {{ deny all; }}
     }}
-    location / {{ return 404; }}
+{pack_location}    location / {{ return 404; }}
 }}
 '''
 Path('/etc/nginx/conf.d/astra-files.conf.new').write_text(text)
