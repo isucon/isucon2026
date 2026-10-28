@@ -16,6 +16,13 @@ print('true' if runtime.get('regionalUploadCacheEnabled',False) else 'false')
 print('true' if runtime.get('regionalReactionCacheEnabled',True) else 'false')
 print('true' if runtime.get('asiaUpstreamKeepaliveEnabled',False) else 'false')
 print('true' if runtime['nginxJsonGzipEnabled'] else 'false')
+print('true' if runtime.get('authTimingEnabled', False) else 'false')
+standard_log = ''
+if runtime['nginxAccessLogEnabled']:
+    standard_log = '/var/log/nginx/access.log combined'
+    if runtime['nginxAccessLogBufferBytes']:
+        standard_log += ' buffer=' + str(runtime['nginxAccessLogBufferBytes']) + ' flush=' + str(runtime['nginxAccessLogFlushSeconds']) + 's'
+print(standard_log)
 PY
 )
 enabled=${values[0]}
@@ -27,6 +34,8 @@ upload_cache=${values[5]}
 reaction_cache=${values[6]}
 asia_keepalive=${values[7]}
 json_gzip=${values[8]}
+auth_timing=${values[9]}
+standard_log=${values[10]}
 if [ "$role" = backend ]; then
     if [ "$enabled" = true ]; then
         # Public topology only; the existing env.sh provides DB credentials.
@@ -74,9 +83,22 @@ elif [ "$role" = frontend ]; then
     [ "$region" != asia ] || enabled=false
     # The frontend remains in its original region. Only write requests cross
     # the existing, shaped data-plane route to the private worker.
-    python3 - "$enabled" "$backend_host" "$upload_cache" "$reaction_cache" "$region" "$asia_keepalive" "$json_gzip" > /etc/nginx/sites-available/isureal.conf.astra-new <<'PY'
+    python3 - "$enabled" "$backend_host" "$upload_cache" "$reaction_cache" "$region" "$asia_keepalive" "$json_gzip" "$auth_timing" "$standard_log" > /etc/nginx/sites-available/isureal.conf.astra-new <<'PY'
 import sys
-enabled, host, upload_cache, reaction_cache, region, asia_keepalive, json_gzip = sys.argv[1:]
+enabled, host, upload_cache, reaction_cache, region, asia_keepalive, json_gzip, auth_timing, standard_log = sys.argv[1:]
+auth_log = ''
+if auth_timing == 'true':
+    # Match fixed actions only. Never record headers, identities, query strings
+    # or bodies. A server-level log overrides the disabled global access log.
+    print('''map "$request_method:$uri" $astra_auth_action {
+  default "";
+  "POST:/api/auth/register" register;
+  "POST:/api/auth/login" login;
+}
+log_format astra_auth escape=json '{"metric":"auth_ingress","at_s":$msec,"action":"$astra_auth_action","status":$status,"request_s":$request_time,"connect_s":"$upstream_connect_time","header_s":"$upstream_header_time","upstream_s":"$upstream_response_time","request_bytes":$request_length,"response_bytes":$bytes_sent,"complete":"$request_completion"}';''')
+    auth_log = '  access_log /var/log/nginx/astra-auth-timing.log astra_auth buffer=32k flush=1s if=$astra_auth_action;\n'
+    if standard_log:
+        auth_log += '  access_log ' + standard_log + ';\n'
 keepalive=region!='asia' or asia_keepalive=='true'
 http_version='1.1' if keepalive else '1.0'
 connection='""' if keepalive else 'close'
@@ -97,6 +119,7 @@ upstream = '$astra_upstream' if enabled == 'true' else 'astra_local'
 print('''server {
   listen 80 default_server;
   server_name _;
+'''+auth_log+'''
   client_max_body_size 32m;
   root /home/isucon/webapp/public;
 
