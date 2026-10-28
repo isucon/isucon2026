@@ -69,6 +69,8 @@ struct SignatureStats {
     pending: AtomicU64,
     computations: AtomicU64,
     evictions: AtomicU64,
+    url_hits: AtomicU64,
+    url_misses: AtomicU64,
 }
 
 struct SignatureMemo {
@@ -144,6 +146,7 @@ static SIGNATURE_MEMO: LazyLock<SignatureMemo> =
 
 pub(crate) fn initialize_signature_cache() {
     LazyLock::force(&SIGNATURE_MEMO);
+    LazyLock::force(&ISSUED_URLS_ENABLED);
     static METRICS_STARTED: OnceLock<()> = OnceLock::new();
     if enabled("ISUREAL_SIGNATURE_METRICS", "0") && METRICS_STARTED.set(()).is_ok() {
         tokio::spawn(async {
@@ -154,12 +157,14 @@ pub(crate) fn initialize_signature_cache() {
                 use std::io::Write;
                 let _ = writeln!(
                     std::io::stdout().lock(),
-                    "{{\"level\":\"info\",\"metric\":\"signature_cache\",\"hits\":{},\"misses\":{},\"pending\":{},\"computations\":{},\"evictions\":{}}}",
+                    "{{\"level\":\"info\",\"metric\":\"signature_cache\",\"hits\":{},\"misses\":{},\"pending\":{},\"computations\":{},\"evictions\":{},\"url_hits\":{},\"url_misses\":{}}}",
                     stats.hits.load(Ordering::Relaxed),
                     stats.misses.load(Ordering::Relaxed),
                     stats.pending.load(Ordering::Relaxed),
                     stats.computations.load(Ordering::Relaxed),
-                    stats.evictions.load(Ordering::Relaxed)
+                    stats.evictions.load(Ordering::Relaxed),
+                    stats.url_hits.load(Ordering::Relaxed),
+                    stats.url_misses.load(Ordering::Relaxed)
                 );
             }
         });
@@ -192,19 +197,137 @@ fn calculate_signature(key: &[u8], image_id: &str, exp: i64) -> [u8; 32] {
     value
 }
 
+struct IssuedUrl {
+    expires: i64,
+    url: String,
+}
+
+#[derive(Default)]
+struct IssuedUrlCache {
+    values: HashMap<SignatureKey, IssuedUrl>,
+    order: VecDeque<SignatureKey>,
+}
+
+impl IssuedUrlCache {
+    fn get_or_issue(
+        &mut self,
+        key: SignatureKey,
+        now: i64,
+        capacity: usize,
+        issue: impl FnOnce(i64) -> String,
+    ) -> String {
+        if let Some(entry) = self.values.get(&key)
+            && entry.expires > now + 60
+        {
+            SIGNATURE_MEMO
+                .stats
+                .url_hits
+                .fetch_add(1, Ordering::Relaxed);
+            return entry.url.clone();
+        }
+        SIGNATURE_MEMO
+            .stats
+            .url_misses
+            .fetch_add(1, Ordering::Relaxed);
+        // Renew near expiry. Reusing a URL never extends its original lifetime.
+        if self.values.remove(&key).is_some() {
+            self.order.retain(|entry| entry != &key);
+        }
+        if self.values.len() >= capacity
+            && let Some(old) = self.order.pop_front()
+        {
+            self.values.remove(&old);
+        }
+        let expires = now + IMAGE_URL_LIFETIME.num_seconds();
+        let url = issue(expires);
+        self.order.push_back(key.clone());
+        self.values.insert(
+            key,
+            IssuedUrl {
+                expires,
+                url: url.clone(),
+            },
+        );
+        url
+    }
+}
+
+static ISSUED_URLS: LazyLock<[Mutex<IssuedUrlCache>; 16]> =
+    LazyLock::new(|| std::array::from_fn(|_| Mutex::default()));
+static ISSUED_URLS_ENABLED: LazyLock<bool> =
+    LazyLock::new(|| enabled("ISUREAL_ISSUED_URL_CACHE", "1"));
+
 pub fn signed_image_url(user: &User, image_id: &str) -> String {
-    let exp = (Utc::now() + IMAGE_URL_LIFETIME).timestamp();
-    format!(
-        "/api/images/{}?exp={}&sig={}",
-        utf8_percent_encode(image_id, PATH_SEGMENT),
-        exp,
-        URL_SAFE_NO_PAD.encode(image_signature(&user.image_key, image_id, exp))
-    )
+    let now = Utc::now().timestamp();
+    let issue = |exp| {
+        format!(
+            "/api/images/{}?exp={}&sig={}",
+            utf8_percent_encode(image_id, PATH_SEGMENT),
+            exp,
+            URL_SAFE_NO_PAD.encode(image_signature(&user.image_key, image_id, exp))
+        )
+    };
+    if !*ISSUED_URLS_ENABLED {
+        return issue(now + IMAGE_URL_LIFETIME.num_seconds());
+    }
+    // This separate cache keys an already-issued URL by the current owner key
+    // and image ID. Every caller still performs fresh authorization first.
+    let lookup = SignatureKey {
+        key: MemoBytes::new(&user.image_key),
+        image_id: MemoBytes::new(image_id.as_bytes()),
+        exp: 0,
+    };
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    lookup.hash(&mut hasher);
+    // Compute under a small shard lock so simultaneous first issuances agree.
+    // No signature-cache path takes this lock in the opposite order.
+    ISSUED_URLS[hasher.finish() as usize % ISSUED_URLS.len()]
+        .lock()
+        .unwrap()
+        .get_or_issue(lookup, now, 4096, issue)
 }
 
 #[cfg(test)]
 mod cache_tests {
     use super::*;
+
+    #[test]
+    fn issued_urls_preserve_original_expiry_and_renew_at_boundary() {
+        let mut cache = IssuedUrlCache::default();
+        let key = SignatureKey {
+            key: MemoBytes::new(&[1; 32]),
+            image_id: MemoBytes::new(b"image"),
+            exp: 0,
+        };
+        let issue = |exp: i64| exp.to_string();
+        assert_eq!(cache.get_or_issue(key.clone(), 1000, 2, issue), "87400");
+        assert_eq!(
+            cache.get_or_issue(key.clone(), 2000, 2, |_| panic!("reuse")),
+            "87400"
+        );
+        assert_eq!(
+            cache.get_or_issue(key.clone(), 87339, 2, |_| panic!("reuse")),
+            "87400"
+        );
+        assert_eq!(cache.get_or_issue(key.clone(), 87340, 2, issue), "173740");
+        assert_eq!(cache.order.len(), 1);
+        let changed = SignatureKey {
+            key: MemoBytes::new(&[2; 32]),
+            ..key.clone()
+        };
+        assert_eq!(cache.get_or_issue(changed, 87341, 2, issue), "173741");
+        assert_eq!(cache.values.len(), 2);
+        for i in 0..20 {
+            let key = SignatureKey {
+                image_id: MemoBytes::new(format!("other{i}").as_bytes()),
+                ..key.clone()
+            };
+            cache.get_or_issue(key, 1000, 2, issue);
+            assert_eq!(cache.values.len(), 2);
+            assert_eq!(cache.order.len(), 2);
+        }
+    }
 
     #[test]
     fn simultaneous_requests_share_one_calculation() {
