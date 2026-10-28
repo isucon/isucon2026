@@ -245,3 +245,4 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261028T045638Z-team10 | repeat normalized Unicode search candidate | PASS | 124,030 |
 | 20261028T050352Z-team10 | reuse metadata-validated image bytes in ZIP exports | PASS | 128,791 |
 | 20261028T050801Z-team10 | eight replica visibility batches with unchanged small-write admission | PASS | 133,754 |
+| 20261028T051306Z-team10 | 128 bounded small writes with eight replica visibility batches | PASS | 147,184 |
