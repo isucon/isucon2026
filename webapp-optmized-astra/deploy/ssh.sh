@@ -18,10 +18,14 @@ options=(-i "$key" -o 'ProxyCommand=aws ec2-instance-connect open-tunnel --insta
 if ! ssh "${options[@]}" -O check "isucon@$instance" >/dev/null 2>&1; then
     aws ec2-instance-connect send-ssh-public-key --instance-id "$instance" --instance-os-user isucon --ssh-public-key "file://$key.pub" >/dev/null
 fi
-if [ "${1:-}" = --copy ]; then
+if [ "${1:-}" = --copy ] || [ "${1:-}" = --fetch ]; then
+    direction=$1
     shift
     source=${1:?source required}
-    target=${2:?remote target required}
+    target=${2:?target required}
+    if [ "$direction" = --fetch ]; then
+        exec scp -q "${options[@]}" "isucon@$instance:$source" "$target"
+    fi
     exec scp -q "${options[@]}" "$source" "isucon@$instance:$target"
 fi
 exec ssh "${options[@]}" -o ServerAliveInterval=30 "isucon@$instance" "$@"

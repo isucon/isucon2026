@@ -35,6 +35,18 @@ experiment = {
 # history: restoring a partition can leave older reports in the repository.
 root = Path(__file__).resolve().parents[2]
 runtime = json.loads((root / "webapp-optmized-astra/deploy/runtime.json").read_text())
+if runtime.get("signatureFileCacheEnabled"):
+    cache = root / runtime["signatureFileCachePath"]
+    with cache.open("rb") as file:
+        header = file.read(16)
+    assert header[:8] == b"ASTRAS01"
+    with cache.open("rb") as file:
+        digest = hashlib.file_digest(file, "sha256").hexdigest()
+    experiment["signature_file_cache"] = {
+        "sha256": digest,
+        "expires": int.from_bytes(header[8:], "little", signed=True),
+        "rows": (cache.stat().st_size - 16) // 80,
+    }
 query = """SELECT coalesce(json_agg(row_to_json(t)), '[]'::json) FROM (
  SELECT tableoid::regclass::text AS partition,
         split_part(asset_key, ':', 2) AS archive, count(*) AS rows
