@@ -6,7 +6,8 @@ started again in a finally block; snapshots and signed URLs stay on the VMs.
 """
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-import fcntl,json,os,shlex,subprocess
+import fcntl,json,os,shlex,subprocess,sys
+assert sys.argv[1:] in ([], ['--gc']), 'Only --gc is supported'
 root=Path.cwd();runtime=json.loads(Path('webapp-optmized-astra/deploy/runtime.json').read_text())
 lock=open(root/'var/astra/operation.lock','w');fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
 env=dict(os.environ,AWS_CONFIG_FILE=str(root/'provisioning/aws-sdk.config'),AWS_SDK_LOAD_CONFIG='1')
@@ -22,7 +23,7 @@ def capture(app):
  return app['region']+' '+remote(app,'sudo bash -c '+shlex.quote(command)).strip()
 def units(app):return 'webapp-optmized-astra webapp-optmized-astra-writer' if app['region']=='asia' else 'webapp-optmized-astra'
 def stop(app):remote(app,'sudo systemctl stop '+units(app));return app['region']+' applications stopped'
-def storage(app):remote(app,'sudo systemctl restart postgresql@16-astraassets nginx && systemctl is-active --quiet postgresql@16-astraassets nginx');return app['region']+' durable image DB restarted'
+def storage(app):remote(app,'sudo systemctl restart postgresql@16-astraassets nginx && systemctl is-active --quiet postgresql@16-astraassets nginx');return app['region']+' image database and file-serving Nginx restarted'
 def start(app):
  remote(app,'sudo systemctl start '+units(app))
  endpoints=[('127.0.0.1',8080)]+([('192.168.145.10',8081)] if app['region']=='asia' else [])
@@ -39,6 +40,8 @@ for endpoint in endpoints:
  remote(app,'python3 -c '+shlex.quote(program));return app['region']+' applications ready'
 def verify(app):return app['region']+' '+remote(app,'sudo python3 /home/isucon/astra-verify-regional-image-restart.py verify').strip()
 parallel(capture)
+if sys.argv[1:] == ['--gc']:
+ subprocess.run(['python3','webapp-optmized-astra/deploy/asset-gc.py'],env=env,check=True)
 try:
  parallel(stop)
  parallel(storage)

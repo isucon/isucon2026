@@ -1,7 +1,7 @@
 """Collect unreferenced asset rows with every application stopped.
 
-Run only through apply.sh image-gc, which shares a local operation lock with the
-benchmark wrapper. Existing ECS tasks are also checked before stopping services.
+Run only through apply.sh image-gc or verify-regional-restart.py --gc; both hold
+the same local operation lock as the benchmark wrapper. Existing ECS tasks are also checked before stopping services.
 Published assets and legacy image bytes are never removed.
 """
 from concurrent.futures import ThreadPoolExecutor
