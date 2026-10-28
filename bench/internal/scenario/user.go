@@ -2,7 +2,6 @@ package scenario
 
 import (
 	"context"
-	"crypto/sha256"
 	"errors"
 	"math/rand/v2"
 	"net/http"
@@ -341,7 +340,8 @@ func (r *Runner) post(ctx context.Context, u *user, windowID string) (client.Pos
 		return client.Post{}, "", false
 	}
 	visibility := r.visibilityOf(u)
-	image, caption := r.photos.Post(u.Region, hashOf(r.seed, "post", u.Username, itoa(r.dayOfWindow(windowID))))
+	region, key := u.Region, hashOf(r.seed, "post", u.Username, itoa(r.dayOfWindow(windowID)))
+	image, caption := r.photos.Post(region, key)
 	creation := r.model.BeginCreatePost(u.ID)
 	post, err := u.API.CreatePost(ctx, u.Token, image, caption, visibility)
 	if err != nil {
@@ -365,7 +365,8 @@ func (r *Runner) post(ctx context.Context, u *user, windowID string) (client.Pos
 	}
 	r.model.Created(creation, model.Post{
 		ID: post.ID, AuthorID: u.ID, WindowID: post.PostingWindowID, ImageID: imageurl.ImageID(post.ImageURL),
-		ImageHash: sha256.Sum256(image), Caption: post.Caption, PostedAt: post.PostedAt,
+		Caption: post.Caption, PostedAt: post.PostedAt,
+		ImageBytes: func() []byte { data, _ := r.photos.Post(region, key); return data },
 	}, visibility)
 	return post, visibility, true
 }
@@ -469,7 +470,7 @@ func (r *Runner) checkImage(ctx context.Context, u *user, post client.FeedPost) 
 		r.board.Criticalf("%s: 削除から %s 以上経った投稿 %s の画像が取得できました", u.Username, deletedImageGrace, post.ID)
 		return false
 	}
-	if sha256.Sum256(image) != known.ImageHash {
+	if !client.SameImage(image, known.ImageBytes()) {
 		r.invalid(ctx, u, "%s: 投稿 %s の画像が投稿した画像と違います", u.Username, post.ID)
 		return false
 	}

@@ -817,7 +817,7 @@ func (r *Runner) pretestRules(ctx context.Context, a *agent.Agent) string {
 		return fmt.Sprintf("プロフィール画像の URL を取得できません: %v", err)
 	}
 	url := *profile.ProfileImageURL
-	if data, err := a.API.Image(ctx, url); err != nil || !bytes.Equal(data, image) {
+	if data, err := a.API.Image(ctx, url); err != nil || !client.SameImage(data, image) {
 		return fmt.Sprintf("プロフィール画像を取得できません: %v", err)
 	}
 	imageID := imageurl.ImageID(url)
