@@ -39,7 +39,7 @@ impl NativeWriteFence {
             primary,
             timeout,
             pending: Mutex::default(),
-            in_flight: Semaphore::new(4),
+            in_flight: Semaphore::new(8),
             mutations: Semaphore::new(WRITE_SLOTS as usize),
             small_mutations: Semaphore::new(SMALL_WRITE_SLOTS),
             control_mutations: Semaphore::new(4),
