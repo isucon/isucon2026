@@ -79,6 +79,11 @@ print(json.dumps(result))
     if app['region']!='asia' or runtime.get('asiaReplicaEnabled',False):
         assert remote(app['instanceId'],'sudo -u postgres psql -XAtc "SELECT pg_is_in_recovery()"').strip()=='t'
         result['metadata']='standby'
+    else:
+        disabled=remote(app['instanceId'], 'if test -f /var/lib/postgresql/16/astra/.astra-basebackup-complete; then systemctl is-active postgresql@16-main || true; cat /etc/postgresql/16/main/start.conf; fi').strip()
+        if disabled:
+            assert disabled=='inactive\nmanual', 'Disabled Asia standby must stay stopped across reboot'
+            result['metadata']='derived standby stopped; primary reads'
     if app['region']=='asia' or runtime.get('regionalImageStoresEnabled',False):
         state=remote(app['instanceId'],"sudo -u postgres psql -X -p 5433 -d isureal_assets -Atc \"SELECT pg_is_in_recovery(),current_setting('fsync'),current_setting('full_page_writes'),current_setting('synchronous_commit'),pg_database_size(current_database())\"").strip()
         assert state.startswith('f|on|on|on|')
