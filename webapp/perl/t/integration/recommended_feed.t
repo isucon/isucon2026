@@ -14,7 +14,7 @@ my $t  = test_app();
 insert_user(id => $_, username => $_) for qw(viewer f1 f2 a1 a2 x);
 my $token = login_token('viewer');
 $db->query(q{INSERT INTO posting_windows (id, region, local_date, starts_at, on_time_deadline, ended_at) VALUES ('w', 'asia', '2026-09-23', '2026-09-23T00:00:00Z', '2026-09-23T00:02:00Z', NULL)});
-for my ($i, $author) (builtin::indexed qw(viewer a1 a2 x)) {
+for my ($i, $author) (builtin::indexed qw(viewer a1 a2 x f1)) {
     $db->query(q{INSERT INTO image_objects (id, owner_user_id, data, media_type) VALUES ($1, $2, 'image', 'image/jpeg')}, "$author-image", $author);
     $db->query(
         q{INSERT INTO posts (id, author_id, posting_window_id, image_id, caption, visibility, location_kind, posted_at) VALUES ($1, $2, 'w', $3, 'caption', 'friends_of_friends', 'none', $4)},
@@ -50,6 +50,8 @@ $t->get_ok("$feed?beforePostedAt=2026-09-23T00:01:01Z&beforeId=a1" => bearer($to
 $t->get_ok("$feed?beforeScore=x&beforePostedAt=2026-09-23T00:01:01Z&beforeId=a1" => bearer($token))->status_is(400);
 
 $t->get_ok('/api/feeds/friends' => bearer($token))->status_is(200);
-ok !exists $_->{score}, "friends feed has no score for $_->{id}" for $t->tx->res->json('/items')->@*;
+is [map { $_->{id} } $t->tx->res->json('/items')->@*], ['f1'], 'friends feed has the post of the friend';
+ok !exists $t->tx->res->json('/items/0')->{score}, 'friends feed has no score';
+$t->get_ok('/api/feeds/friends?beforeScore=abc' => bearer($token))->status_is(400);
 
 done_testing;

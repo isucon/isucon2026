@@ -85,7 +85,7 @@ async fn recommended_feed_integration() {
         .execute(&db)
         .await
         .unwrap();
-    for (i, author) in ["viewer", "a1", "a2", "x"].into_iter().enumerate() {
+    for (i, author) in ["viewer", "a1", "a2", "x", "f1"].into_iter().enumerate() {
         sqlx::query("INSERT INTO image_objects (id, owner_user_id, data, media_type) VALUES ($1, $2, $3, 'image/jpeg')")
             .bind(format!("{author}-image"))
             .bind(author)
@@ -176,11 +176,18 @@ async fn recommended_feed_integration() {
     .await;
 
     let friends = request(&app, token, "/api/feeds/friends", StatusCode::OK).await;
-    for item in friends["items"].as_array().unwrap() {
-        assert!(
-            item.get("score").is_none(),
-            "friends feed returned a score for {}",
-            item["id"]
-        );
-    }
+    let items = friends["items"].as_array().unwrap();
+    assert_eq!(items.len(), 1, "friends feed: {friends}");
+    assert_eq!(items[0]["id"], "f1");
+    assert!(
+        items[0].get("score").is_none(),
+        "friends feed returned a score for f1"
+    );
+    request(
+        &app,
+        token,
+        "/api/feeds/friends?beforeScore=abc",
+        StatusCode::BAD_REQUEST,
+    )
+    .await;
 }

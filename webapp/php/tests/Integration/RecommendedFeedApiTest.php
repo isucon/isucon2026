@@ -23,7 +23,7 @@ final class RecommendedFeedApiTest extends IntegrationTestCase
             "INSERT INTO posting_windows (id, region, local_date, starts_at, on_time_deadline, ended_at)
              VALUES ('w', 'asia', '2026-09-23', '2026-09-23T00:00:00Z', '2026-09-23T00:02:00Z', NULL)",
         );
-        foreach (['viewer', 'a1', 'a2', 'x'] as $i => $author) {
+        foreach (['viewer', 'a1', 'a2', 'x', 'f1'] as $i => $author) {
             $this->db->execute(
                 "INSERT INTO image_objects (id, owner_user_id, data, media_type) VALUES (:id, :owner, convert_to('image', 'UTF8'), 'image/jpeg')",
                 ['id' => "{$author}-image", 'owner' => $author],
@@ -64,10 +64,13 @@ final class RecommendedFeedApiTest extends IntegrationTestCase
         $this->get(self::FEED . '?beforePostedAt=2026-09-23T00:01:01Z&beforeId=a1', 400);
         $this->get(self::FEED . '?beforeScore=x&beforePostedAt=2026-09-23T00:01:01Z&beforeId=a1', 400);
 
-        foreach (self::json($this->get('/api/feeds/friends', 200))['items'] as $item) {
-            self::assertIsArray($item);
-            self::assertArrayNotHasKey('score', $item);
-        }
+        $items = self::json($this->get('/api/feeds/friends', 200))['items'];
+        self::assertIsArray($items);
+        self::assertCount(1, $items);
+        self::assertIsArray($items[0]);
+        self::assertSame('f1', $items[0]['id']);
+        self::assertArrayNotHasKey('score', $items[0]);
+        $this->get('/api/feeds/friends?beforeScore=abc', 400);
     }
 
     private function get(string $path, int $status): ResponseInterface

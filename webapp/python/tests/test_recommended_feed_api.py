@@ -31,7 +31,7 @@ def test_recommended_feed(client: TestClient, db: psycopg.Connection) -> None:
         VALUES ('w', 'asia', '2026-09-23', '2026-09-23T00:00:00Z', '2026-09-23T00:02:00Z', NULL)
         """
     )
-    for i, author in enumerate(["viewer", "a1", "a2", "x"]):
+    for i, author in enumerate(["viewer", "a1", "a2", "x", "f1"]):
         db.execute(
             """
             INSERT INTO image_objects (id, owner_user_id, data, media_type)
@@ -118,5 +118,7 @@ def test_recommended_feed(client: TestClient, db: psycopg.Connection) -> None:
     request(f"{FEED}?beforeScore=7", 400)
     request(f"{FEED}?beforePostedAt=2026-09-23T00:01:01Z&beforeId=a1", 400)
 
-    for item in request("/api/feeds/friends", 200)["items"]:
-        assert "score" not in item, item["id"]
+    items = request("/api/feeds/friends", 200)["items"]
+    assert [item["id"] for item in items] == ["f1"]
+    assert "score" not in items[0]
+    request("/api/feeds/friends?beforeScore=abc", 400)
