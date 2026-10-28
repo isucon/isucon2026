@@ -65,3 +65,7 @@ if (runtime.regionalImageStoresEnabled && !runtime.imageStore?.enabled) {
 if (runtime.regionalImageWritesEnabled && (!runtime.regionalImageStoresEnabled || !runtime.regionalUploadCacheEnabled || !runtime.imageStore?.writesEnabled || runtime.regionalUploadEnvPath !== "var/astra/.regional-upload.env")) {
     throw new Error("Regional image writes require deployed readers, the upload proxy, and a private SCP environment file");
 }
+
+if (typeof runtime.asiaUpstreamKeepaliveEnabled !== "boolean") {
+    throw new Error("Asia upstream connection reuse must be explicitly configured");
+}
