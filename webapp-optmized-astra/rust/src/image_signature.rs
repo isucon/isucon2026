@@ -72,6 +72,7 @@ struct SignatureStats {
     url_hits: AtomicU64,
     url_misses: AtomicU64,
     url_evictions: AtomicU64,
+    file_hits: AtomicU64,
 }
 
 struct SignatureMemo {
@@ -146,6 +147,7 @@ static SIGNATURE_MEMO: LazyLock<SignatureMemo> =
     LazyLock::new(|| SignatureMemo::new(16384, enabled("ISUREAL_SIGNATURE_COALESCE", "1")));
 
 pub(crate) fn initialize_signature_cache() {
+    LazyLock::force(&crate::signature_file::SIGNATURE_FILE);
     LazyLock::force(&SIGNATURE_MEMO);
     LazyLock::force(&ISSUED_URLS_ENABLED);
     LazyLock::force(&ISSUED_URL_CAPACITY);
@@ -159,7 +161,7 @@ pub(crate) fn initialize_signature_cache() {
                 use std::io::Write;
                 let _ = writeln!(
                     std::io::stdout().lock(),
-                    "{{\"level\":\"info\",\"metric\":\"signature_cache\",\"hits\":{},\"misses\":{},\"pending\":{},\"computations\":{},\"evictions\":{},\"url_hits\":{},\"url_misses\":{},\"url_evictions\":{}}}",
+                    "{{\"level\":\"info\",\"metric\":\"signature_cache\",\"hits\":{},\"misses\":{},\"pending\":{},\"computations\":{},\"evictions\":{},\"url_hits\":{},\"url_misses\":{},\"url_evictions\":{},\"file_hits\":{}}}",
                     stats.hits.load(Ordering::Relaxed),
                     stats.misses.load(Ordering::Relaxed),
                     stats.pending.load(Ordering::Relaxed),
@@ -167,7 +169,8 @@ pub(crate) fn initialize_signature_cache() {
                     stats.evictions.load(Ordering::Relaxed),
                     stats.url_hits.load(Ordering::Relaxed),
                     stats.url_misses.load(Ordering::Relaxed),
-                    stats.url_evictions.load(Ordering::Relaxed)
+                    stats.url_evictions.load(Ordering::Relaxed),
+                    stats.file_hits.load(Ordering::Relaxed)
                 );
             }
         });
@@ -175,6 +178,16 @@ pub(crate) fn initialize_signature_cache() {
 }
 
 pub fn image_signature(key: &[u8], image_id: &str, exp: i64) -> [u8; 32] {
+    if let Some(file) = &*crate::signature_file::SIGNATURE_FILE
+        && let Some((expires, signature)) = file.lookup(key, image_id)
+        && expires == exp
+    {
+        SIGNATURE_MEMO
+            .stats
+            .file_hits
+            .fetch_add(1, Ordering::Relaxed);
+        return signature;
+    }
     // Memoize only the pure function; current credentials, visibility and
     // expiration remain checked by callers on every request.
     SIGNATURE_MEMO.get_or_compute(
@@ -217,7 +230,7 @@ impl IssuedUrlCache {
         key: SignatureKey,
         now: i64,
         capacity: usize,
-        issue: impl FnOnce(i64) -> String,
+        issue: impl FnOnce(i64) -> IssuedUrl,
     ) -> String {
         if let Some(entry) = self.values.get(&key)
             && entry.expires > now + 60
@@ -246,15 +259,10 @@ impl IssuedUrlCache {
                 .fetch_add(1, Ordering::Relaxed);
         }
         let expires = now + IMAGE_URL_LIFETIME.num_seconds();
-        let url = issue(expires);
+        let entry = issue(expires);
+        let url = entry.url.clone();
         self.order.push_back(key.clone());
-        self.values.insert(
-            key,
-            IssuedUrl {
-                expires,
-                url: url.clone(),
-            },
-        );
+        self.values.insert(key, entry);
         url
     }
 }
@@ -276,15 +284,27 @@ static ISSUED_URL_CAPACITY: LazyLock<usize> = LazyLock::new(|| {
 pub fn signed_image_url(user: &User, image_id: &str) -> String {
     let now = Utc::now().timestamp();
     let issue = |exp| {
-        format!(
+        let (exp, signature) = crate::signature_file::SIGNATURE_FILE
+            .as_ref()
+            .and_then(|file| file.lookup(&user.image_key, image_id))
+            .filter(|(expires, _)| *expires > now + 60)
+            .inspect(|_| {
+                SIGNATURE_MEMO
+                    .stats
+                    .file_hits
+                    .fetch_add(1, Ordering::Relaxed);
+            })
+            .unwrap_or_else(|| (exp, image_signature(&user.image_key, image_id, exp)));
+        let url = format!(
             "/api/images/{}?exp={}&sig={}",
             utf8_percent_encode(image_id, PATH_SEGMENT),
             exp,
-            URL_SAFE_NO_PAD.encode(image_signature(&user.image_key, image_id, exp))
-        )
+            URL_SAFE_NO_PAD.encode(signature)
+        );
+        IssuedUrl { expires: exp, url }
     };
     if !*ISSUED_URLS_ENABLED {
-        return issue(now + IMAGE_URL_LIFETIME.num_seconds());
+        return issue(now + IMAGE_URL_LIFETIME.num_seconds()).url;
     }
     // This separate cache keys an already-issued URL by the current owner key
     // and image ID. Every caller still performs fresh authorization first.
@@ -316,7 +336,10 @@ mod cache_tests {
             image_id: MemoBytes::new(b"image"),
             exp: 0,
         };
-        let issue = |exp: i64| exp.to_string();
+        let issue = |exp: i64| IssuedUrl {
+            expires: exp,
+            url: exp.to_string(),
+        };
         assert_eq!(cache.get_or_issue(key.clone(), 1000, 2, issue), "87400");
         assert_eq!(
             cache.get_or_issue(key.clone(), 2000, 2, |_| panic!("reuse")),
@@ -343,6 +366,31 @@ mod cache_tests {
             assert_eq!(cache.values.len(), 2);
             assert_eq!(cache.order.len(), 2);
         }
+    }
+
+    #[test]
+    fn file_issued_url_keeps_its_older_expiry_when_cached() {
+        let mut cache = IssuedUrlCache::default();
+        let key = SignatureKey {
+            key: MemoBytes::new(&[1; 32]),
+            image_id: MemoBytes::new(b"image"),
+            exp: 0,
+        };
+        cache.get_or_issue(key.clone(), 1000, 2, |_| IssuedUrl {
+            expires: 5000,
+            url: "file".into(),
+        });
+        assert_eq!(
+            cache.get_or_issue(key.clone(), 4939, 2, |_| panic!("reuse")),
+            "file"
+        );
+        assert_eq!(
+            cache.get_or_issue(key, 4940, 2, |expires| IssuedUrl {
+                expires,
+                url: "renewed".into()
+            }),
+            "renewed"
+        );
     }
 
     #[test]

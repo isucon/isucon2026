@@ -17,4 +17,10 @@ print('ISUREAL_ISSUED_URL_CACHE_ENTRIES='+str(entries))
 PY_CONFIG
 chmod 644 /etc/astra-application-log.env
 mkdir -p "/etc/systemd/system/$service.service.d"
+python3 - "$(dirname "$0")/runtime.json" "$service" > "/etc/systemd/system/$service.service.d/signature-file.conf" <<'PY_SIGNATURE'
+import json,sys
+runtime=json.load(open(sys.argv[1]))
+path='/home/isucon/.astra-signatures.bin' if runtime['signatureFileCacheEnabled'] and sys.argv[2]=='webapp-optmized-astra' else ''
+print('[Service]\nEnvironment=ISUREAL_SIGNATURE_FILE='+path)
+PY_SIGNATURE
 printf '[Service]\nEnvironmentFile=/etc/astra-application-log.env\n' > "/etc/systemd/system/$service.service.d/logging.conf"
