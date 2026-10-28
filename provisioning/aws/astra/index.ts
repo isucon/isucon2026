@@ -117,3 +117,7 @@ if (typeof runtime.signatureCacheCoalescing !== "boolean" || typeof runtime.sign
 if (typeof runtime.issuedImageUrlCacheEnabled !== "boolean") {
     throw new Error("Issued image URL caching must be explicitly configured");
 }
+
+if (typeof runtime.nginxJsonGzipEnabled !== "boolean") {
+    throw new Error("JSON response compression must be explicitly configured");
+}
