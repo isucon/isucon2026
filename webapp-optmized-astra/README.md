@@ -370,3 +370,4 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261028T181011Z-team10 | repeat application fixed malloc thresholds without restart | PASS | 164,303 |
 | 20261028T182059Z-team10 | diagnose slow auth admission handler and replay phases | PASS | 188,002 |
 | 20261028T182924Z-team10 | separate authentication admission from general small writes | PASS | 166,616 |
+| 20261028T183654Z-team10 | split small-write admission into 64 auth and 64 general slots | PASS | 177,380 |
