@@ -82,3 +82,13 @@ if (!Number.isInteger(runtime.nginxAccessLogBufferBytes) || ![0, 16384, 32768, 6
     || !Number.isInteger(runtime.nginxAccessLogFlushSeconds) || runtime.nginxAccessLogFlushSeconds < 1 || runtime.nginxAccessLogFlushSeconds > 5) {
     throw new Error("Invalid bounded Nginx access log buffering");
 }
+
+if (runtime.fileImageStore) {
+    const files = runtime.fileImageStore;
+    if (typeof files.enabled !== "boolean" || typeof files.writesEnabled !== "boolean"
+        || files.root !== "/var/lib/astra-images" || files.port !== 8082
+        || (files.enabled && !runtime.regionalImageStoresEnabled)
+        || (files.writesEnabled && (!files.enabled || !runtime.regionalImageWritesEnabled || !runtime.imageStore?.writesEnabled))) {
+        throw new Error("File images require deployed readers and the existing regional write flow");
+    }
+}

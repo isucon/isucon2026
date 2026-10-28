@@ -41,6 +41,7 @@ systemctl disable isureal-go isureal-rust
 bash "$(dirname "$0")/tokio-runtime.sh" webapp-optmized-astra
 bash "$(dirname "$0")/logging-runtime.sh" webapp-optmized-astra
 bash "$(dirname "$0")/image-store-runtime.sh" webapp-optmized-astra
+bash "$(dirname "$0")/file-store-runtime.sh" webapp-optmized-astra "$region"
 bash "$(dirname "$0")/upload-proxy-runtime.sh" webapp-optmized-astra "$region"
 systemctl daemon-reload
 systemctl enable webapp-optmized-astra
