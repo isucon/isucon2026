@@ -144,3 +144,7 @@ if (!Number.isInteger(runtime.metadataPoolConnections) || runtime.metadataPoolCo
 if (typeof runtime.notificationBatchWritesEnabled !== "boolean") {
     throw new Error("Notification batch writes must be explicitly configured");
 }
+
+if (!Number.isInteger(runtime.primarySharedBuffersMiB) || runtime.primarySharedBuffersMiB < 128 || runtime.primarySharedBuffersMiB > 1536) {
+    throw new Error("Invalid primary PostgreSQL shared buffer capacity");
+}
