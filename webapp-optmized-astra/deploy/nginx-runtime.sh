@@ -20,6 +20,11 @@ content, count = re.subn(r"(?m)^\s*worker_rlimit_nofile\s+\d+\s*;", f"worker_rli
 assert count <= 1, "Multiple nginx worker_rlimit_nofile directives"
 if count == 0:
     content = f"worker_rlimit_nofile {descriptors};\n" + content
+buffering = runtime['nginxRequestBuffering']
+assert isinstance(buffering, bool)
+content = re.sub(r"(?m)^    proxy_request_buffering (?:on|off); # astra-managed\n", "", content)
+content, count = re.subn(r"(?m)^http[ \t]*\{[ \t]*$", "http {\n    proxy_request_buffering " + ('on' if buffering else 'off') + "; # astra-managed", content)
+assert count == 1, "Expected one global nginx http block"
 configuration.with_suffix(".conf.astra-new").write_text(content)
 PY
 if cmp -s "$configuration" "$configuration.astra-new"; then
