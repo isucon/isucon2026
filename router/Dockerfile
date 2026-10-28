@@ -26,6 +26,27 @@ USER haproxy
 
 ENTRYPOINT ["/bin/sh", "-c", "isureal-router haproxy-config && exec haproxy -W -db -f /run/isureal-haproxy/haproxy.cfg"]
 
+# isureal-digest answers the benchmark's image and export downloads with their
+# digests (router/digest). The binary is static (musl), so the same file runs in
+# the container and on the Router AMI.
+FROM rust:1.95.0-alpine3.23 AS digest-build
+
+WORKDIR /src
+COPY router/digest/ ./
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/src/target \
+    cargo build --release --locked && install -D target/release/isureal-digest /out/isureal-digest
+
+# The AMI build exports the binary with --target digest-artifact --output.
+FROM scratch AS digest-artifact
+COPY --from=digest-build /out/isureal-digest /isureal-digest
+
+# It runs next to HAProxy in the Router's network namespace.
+FROM alpine:3.23 AS digest
+COPY --from=digest-build /out/isureal-digest /usr/local/bin/isureal-digest
+USER nobody
+ENTRYPOINT ["/usr/local/bin/isureal-digest"]
+
 FROM alpine:3.23 AS router
 
 RUN apk add --no-cache ca-certificates iproute2 nftables tzdata
