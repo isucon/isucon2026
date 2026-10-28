@@ -69,6 +69,8 @@ func cohortActivity(seed uint64, username string, active float64) activity {
 type user struct {
 	*agent.Agent
 	activity activity
+	// persona は好みと癖。
+	persona persona
 	// registered は bench が登録したユーザー。プロフィール画像を変えてよい（初期データの
 	// ユーザーの画像を消すと initialize で戻せない）。
 	registered bool
@@ -79,6 +81,9 @@ type user struct {
 	stopped atomic.Bool
 	// banned は BAN されて止まったか。BAN されたユーザーは使えなかった人として成長に数え続ける。
 	banned atomic.Bool
+	// stranded は所属リージョンの変更の結果を確かめられず、止まったユーザー。BAN と同じく、
+	// 使えなかった人として成長に数え続ける（変更をエラーにして人を減らすことはできない）。
+	stranded atomic.Bool
 	// returning は思い出を見返すユーザー（成長の判定に数えない）。
 	returning bool
 	// leaveOn はこの日に投稿したあとで退会する（0 なら退会しない）。
@@ -96,7 +101,7 @@ type user struct {
 func (r *Runner) newUser(a *agent.Agent, act activity) *user {
 	key := hashOf(r.seed, "user", a.Username)
 	a.API = a.API.WithClientIP(r.ips.Next())
-	return &user{Agent: a, activity: act, rng: rand.New(rand.NewPCG(key, key^0x75736572)), follows: map[string]bool{}}
+	return &user{Agent: a, activity: act, persona: newPersona(r.seed, a.Username), rng: rand.New(rand.NewPCG(key, key^0x75736572)), follows: map[string]bool{}}
 }
 
 // session はユーザーのある 1 日（投稿期間）の状態。
@@ -106,6 +111,8 @@ type session struct {
 	postID   string
 	// budget は残りの閲覧の回数。使い切ったら次の日まで何もしない。
 	budget int
+	// done はその日を過ごし終えたか（閲覧の回数を使い切ったあとの行動を 1 回だけにする）。
+	done bool
 	// 加点した回数。上限を超えて閲覧しても加点しない。
 	feeds, images, details, lists, profiles int
 	realMojis, comments                     int
@@ -144,7 +151,8 @@ func (r *Runner) runUser(ctx context.Context, u *user, join bool, subscribed cha
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	notifications := make(chan notice, 1)
-	go r.listen(ctx, u, notifications, subscribed)
+	stopListening := r.startListening(ctx, u, notifications, subscribed)
+	defer func() { stopListening() }()
 	var s *session
 	var previous *client.Post
 	if join {
@@ -162,6 +170,37 @@ func (r *Runner) runUser(ctx context.Context, u *user, join bool, subscribed cha
 			s, previous = r.enterWindow(ctx, u, n.PostingWindowID, previous, n.received, notifications)
 			continue
 		default:
+		}
+		if s != nil && s.budget <= 0 && !s.done {
+			// その日を過ごし終えた。旅に出る人は、ここで別のリージョンへ移る。
+			s.done = true
+			if r.wandersOff(u, s.day) {
+				stopListening = r.move(ctx, u, stopListening, notifications)
+				if u.stopped.Load() {
+					continue
+				}
+				if status, err := u.API.CurrentWindow(ctx, u.Token); err == nil && status.Window != nil && status.CanPost && r.model.HasWindow(status.Window.ID) {
+					// 移った先でまだ投稿していない日付の投稿期間が開いていれば、通知を待たずに投稿する。
+					s, previous = r.enterWindow(ctx, u, status.Window.ID, previous, time.Time{}, notifications)
+				} else if err != nil {
+					r.requestError(ctx, u, "%s: 現在の投稿期間を取得できません: %v", u.Username, err)
+				}
+				continue
+			}
+			if r.signsOff(u, s.day) {
+				stopListening = r.closeApp(ctx, u, s.day, stopListening, notifications)
+				if u.Token == "" {
+					// ログインし直せなかった。通知も受けないので、走行の終わりまで何もしない。
+					<-ctx.Done()
+					continue
+				}
+				if status, err := u.API.CurrentWindow(ctx, u.Token); err == nil && status.Window != nil && status.CanPost && r.model.HasWindow(status.Window.ID) {
+					s, previous = r.enterWindow(ctx, u, status.Window.ID, previous, time.Time{}, notifications)
+				} else if err != nil {
+					r.requestError(ctx, u, "%s: 現在の投稿期間を取得できません: %v", u.Username, err)
+				}
+				continue
+			}
 		}
 		if s == nil || s.budget <= 0 {
 			select {
@@ -245,7 +284,7 @@ func (r *Runner) listen(ctx context.Context, u *user, out chan notice, subscribe
 // 快適かどうかは、通知がすぐに届いていたら投稿を始めたはずの時刻（投稿期間を開いた時刻 +
 // 待ち）から数える。通知の遅れも、投稿とフィードの遅れと同じくユーザーを待たせる。
 func (r *Runner) enterWindow(ctx context.Context, u *user, windowID string, previous *client.Post, notified time.Time, notifications chan notice) (*session, *client.Post) {
-	if _, err := r.model.WaitForWindow(ctx, u.Region, windowID); err != nil {
+	if _, err := r.model.WaitForNotifiedWindow(ctx, u.Region, windowID, notified); err != nil {
 		// 開いた結果のわからなかった投稿期間（ErrMaybeWindow）の通知は正しいかもしれないが、
 		// bench はその投稿期間を知らないので投稿しない。
 		if errors.Is(err, model.ErrUnknownWindow) {
@@ -257,7 +296,13 @@ func (r *Runner) enterWindow(ctx context.Context, u *user, windowID string, prev
 	intended := time.Now()
 	if !notified.IsZero() {
 		day := r.dayOfWindow(windowID)
-		delay = r.tt.postDelay(unit(r.seed, "delay", u.Username, itoa(day)))
+		if !r.attends(u, day) {
+			// 今日は投稿しない（休む）。投稿しないとほかの人の投稿は見えないので、何もしない。
+			// 自分で休んだ人は、通過できなかった人には数えない。
+			r.books.Load().excuse(u.Region, day, u.ID)
+			return nil, previous
+		}
+		delay = r.postDelayOf(u, day)
 		intended = r.windowOpenedAt(windowID, intended).Add(delay)
 		// 一部のユーザーは投稿する前にフィードを覗く。今日まだ投稿していないので、ほかの
 		// 人の投稿は見えてはいけない（見えれば読み取りの検証が違反にする）。
@@ -296,13 +341,19 @@ func (r *Runner) enterWindow(ctx context.Context, u *user, windowID string, prev
 		r.checkMemory(ctx, u, previous)
 	}
 	if !r.afterPost(ctx, u, post, visibility) {
-		// 削除した投稿は Memories に残らないので、前回の投稿は変えない。
-		return nil, previous
+		// 撮り直す人は、消したあとでもう一度だけ投稿する（同じ日付の再投稿は 1 回まで）。
+		// 撮り直さなければ、削除した投稿は Memories に残らないので、前回の投稿は変えない。
+		if u.rng.Float64() >= u.persona.retake {
+			return nil, previous
+		}
+		retaken, _, ok := r.post(ctx, u, post.PostingWindowID)
+		if !ok {
+			return nil, previous
+		}
+		r.checkMyCurrentPost(ctx, u, retaken)
+		post = retaken
 	}
-	s := &session{windowID: post.PostingWindowID, day: day, postID: post.ID, budget: dailyBudget(u.activity)}
-	if u.certified.Load() {
-		s.budget = min(s.budget, 10)
-	}
+	s := &session{windowID: post.PostingWindowID, day: day, postID: post.ID, budget: budgetOf(u)}
 	if u.activity == postOnly && u.rng.Float64() < 0.5 {
 		// 投稿だけするユーザーも、ときどき届いた友達申請を見る。
 		r.acceptRequests(ctx, u)
@@ -322,7 +373,7 @@ func (r *Runner) visibilityOf(u *user) string {
 	if u.certified.Load() {
 		return "public"
 	}
-	if u.rng.IntN(2) == 0 {
+	if u.rng.Float64() < u.persona.friendsOnly {
 		return "friends"
 	}
 	return "friends_of_friends"
@@ -342,14 +393,24 @@ func (r *Runner) post(ctx context.Context, u *user, windowID string) (client.Pos
 	visibility := r.visibilityOf(u)
 	region, key := u.Region, hashOf(r.seed, "post", u.Username, itoa(r.dayOfWindow(windowID)))
 	image, caption := r.photos.Post(region, key)
+	location := r.locationOf(u, r.dayOfWindow(windowID))
 	creation := r.model.BeginCreatePost(u.ID)
-	post, err := u.API.CreatePost(ctx, u.Token, image, caption, visibility)
+	post, err := u.API.CreatePost(client.MayFailWith(ctx, http.StatusConflict), u.Token, image, caption, visibility, location)
+	if isStatus(err, http.StatusConflict) {
+		creation.Rejected()
+		// 確かめてから送るまでに次の投稿期間が開き、その日付にはもう投稿していた（リージョンを
+		// 移った人に起きる）なら、投稿できないのが正しい。
+		if r.currentWindowID(u.Region) == windowID {
+			r.invalid(ctx, u, "%s: 投稿できるはずの投稿期間で投稿が拒否されました: %v", u.Username, err)
+		}
+		return client.Post{}, "", false
+	}
 	if err != nil {
 		settle(creation.Write, err)
 		r.requestError(ctx, u, "%s: 投稿できません: %v", u.Username, err)
 		return client.Post{}, "", false
 	}
-	if post.ID == "" || post.Author.ID != u.ID || post.Visibility != visibility || post.Caption != caption || post.PostedAt.IsZero() {
+	if post.ID == "" || post.Author.ID != u.ID || post.Visibility != visibility || post.Caption != caption || post.PostedAt.IsZero() || !sameLocation(location, post.Location) {
 		creation.Unknown()
 		r.invalid(ctx, u, "%s: 投稿の応答が投稿した内容と違います", u.Username)
 		return client.Post{}, "", false
@@ -535,6 +596,13 @@ func (r *Runner) checkMemory(ctx context.Context, u *user, previous *client.Post
 	}
 }
 
+// currentWindowID は bench が region で最後に開いた投稿期間。
+func (r *Runner) currentWindowID(region string) string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.lastWindow[region]
+}
+
 // dayOfWindow は投稿期間がどの日のものか（bench が開いた期間でなければ 0）。
 func (r *Runner) dayOfWindow(windowID string) int {
 	r.mu.Lock()
@@ -582,12 +650,14 @@ func (r *Runner) recheckDeletedImage(ctx context.Context, u *user, post client.P
 	if r.wg == nil {
 		return
 	}
+	// ユーザーはリージョンを移ると API を差し替えるので、送る前に取っておく。
+	api := u.API.WithObserver(nil)
 	r.wg.Go(func() {
 		if sleepUntil(ctx, time.Now().Add(deletedImageGrace+time.Second)) != nil {
 			return
 		}
 		sent := time.Now()
-		_, err := u.API.WithObserver(nil).Image(client.MayFailWith(ctx, http.StatusForbidden, http.StatusNotFound), post.ImageURL)
+		_, err := api.Image(client.MayFailWith(ctx, http.StatusForbidden, http.StatusNotFound), post.ImageURL)
 		if err != nil {
 			return
 		}

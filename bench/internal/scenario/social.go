@@ -47,17 +47,20 @@ func (r *Runner) social(ctx context.Context, u *user, s *session) {
 func (r *Runner) chooseFriends(u *user, n int) []*user {
 	now := r.model.Now()
 	var home, asia, others []*user
-	for _, c := range r.usersSnapshot() {
-		if c.ID == u.ID || c.stopped.Load() || r.model.Friend(u.ID, c.ID, now) != model.False || r.model.Blocked(u.ID, c.ID, now) != model.False {
-			continue
-		}
-		switch {
-		case c.Region == u.Region:
-			home = append(home, c)
-		case c.Region == geo.Asia:
-			asia = append(asia, c)
-		default:
-			others = append(others, c)
+	byRegion := r.usersByRegion()
+	for _, region := range geo.Regions {
+		for _, c := range byRegion[region] {
+			if c.ID == u.ID || c.stopped.Load() || r.model.Friend(u.ID, c.ID, now) != model.False || r.model.Blocked(u.ID, c.ID, now) != model.False {
+				continue
+			}
+			switch {
+			case region == u.Region:
+				home = append(home, c)
+			case region == geo.Asia:
+				asia = append(asia, c)
+			default:
+				others = append(others, c)
+			}
 		}
 	}
 	var targets []*user
@@ -254,9 +257,12 @@ func (r *Runner) unfriend(ctx context.Context, u *user) {
 func (r *Runner) groom(ctx context.Context, u *user, s *session) {
 	switch u.rng.IntN(6) {
 	case 0:
-		if u.registered {
+		switch {
+		case u.registered && u.rng.Float64() < 0.3:
+			r.rename(ctx, u)
+		case u.registered:
 			r.updateBio(ctx, u)
-		} else {
+		default:
 			r.toggleFollow(ctx, u)
 		}
 	case 1:
@@ -277,6 +283,20 @@ func (r *Runner) groom(ctx context.Context, u *user, s *session) {
 }
 
 // updateBio は自己紹介を変える。
+// rename は表示名を変える。
+func (r *Runner) rename(ctx context.Context, u *user) {
+	name := dataset.DisplayName(u.rng)
+	profile, err := u.API.UpdateMe(ctx, u.Token, &name, nil, nil)
+	switch {
+	case err != nil:
+		r.requestError(ctx, u, "%s: 表示名を変えられません: %v", u.Username, err)
+	case profile.ID != u.ID || profile.DisplayName != name:
+		r.invalid(ctx, u, "%s: 表示名を変えた応答が違います", u.Username)
+	default:
+		r.award(u, r.dayNow(u.Region), score.TagProfileUpdate)
+	}
+}
+
 func (r *Runner) updateBio(ctx context.Context, u *user) {
 	bio := dataset.Bio(u.rng)
 	profile, err := u.API.UpdateMe(ctx, u.Token, nil, &bio, nil)
@@ -446,9 +466,11 @@ func (r *Runner) toggleBlock(ctx context.Context, u *user) {
 	}
 	now := r.model.Now()
 	var candidates []*user
-	for _, c := range r.usersSnapshot() {
+	// 同じリージョンの人から選ぶ。ほかのユーザーのリージョンは移動と競合しないよう、ロックの
+	// 中で取った一覧で見る。
+	for _, c := range r.usersByRegion()[u.Region] {
 		// 退会した人は選ばない（Visible は相手が有効で、どちら向きにもブロックしていないこと）。
-		if c.ID != u.ID && c.Region == u.Region && !c.certified.Load() && r.model.Friend(u.ID, c.ID, now) == model.False && r.model.Visible(u.ID, c.ID, now) == model.True {
+		if c.ID != u.ID && !c.certified.Load() && r.model.Friend(u.ID, c.ID, now) == model.False && r.model.Visible(u.ID, c.ID, now) == model.True {
 			candidates = append(candidates, c)
 		}
 	}
