@@ -2,8 +2,19 @@
 
 現在はEU・USへの反映を更新応答前に待ち、Asiaの追加レプリカには検索・フィードだけを振っている。Asiaでレプリカを読むときは主DBのWAL位置を取得して反映を確認する。全読み取りを主DBから移す以前の比較は、この読み取り前確認を伴い、スコア改善を確認できなかった。
 
-次の候補は既存Asiaレプリカを更新応答前の確認対象に加え、全読み取りを地域内へ移すもの。PostgreSQLの[同期対象設定](https://www.postgresql.org/docs/16/runtime-config-replication.html#GUC-SYNCHRONOUS-STANDBY-NAMES)をFIRST 3の3台に限定し、[remote_apply](https://www.postgresql.org/docs/16/runtime-config-wal.html#GUC-SYNCHRONOUS-COMMIT)で全台への反映を待つ。応答後の読み取りはAsiaでも反映済みになるため、読み取りごとのWAL確認を省くことを狙う。まだ実装・実機適用しておらず、効果は未測定。
+次の候補は既存Asiaレプリカを更新応答前の確認対象に加え、全読み取りを地域内へ移すもの。PostgreSQLの[同期対象設定](https://www.postgresql.org/docs/16/runtime-config-replication.html#GUC-SYNCHRONOUS-STANDBY-NAMES)をFIRST 3の3台に限定し、[remote_apply](https://www.postgresql.org/docs/16/runtime-config-wal.html#GUC-SYNCHRONOUS-COMMIT)で全台への反映を待つ。応答後の読み取りはAsiaでも反映済みになるため、読み取りごとのWAL確認を省くことを狙う。互換版の実装とローカル検証を完了した。実機は切替前であり、効果は未測定。
 
 配備は互換版アプリ、主DBの3台同期化、Asiaの全読み取り切替の順に進める。切り戻すときはAsiaの読み取り前確認を先に戻し、その後で主DBを2台同期へ戻す。アプリ起動時にも、Asiaの確認なし読み取りには3台同期が必須であることを検証する。既存VMと既存レプリカのみを使い、変更はruntimeとPulumi・配備スクリプトに反映する。
 
 ローカルで3台目のレプリカを用意し、その反映だけを停止した場合に応答が返らず、再開後は3台とも同じ更新結果を読めることを検証する。その後、実機設定照合・固定seed反復・GCと再起動後の画像照合で比較する。AsiaのCPU・I/O負荷が増え、同期反映の遅延が全地域へ影響する可能性もあるため、採用は実測で判断する。
+
+
+実装では `asiaReplicaSynchronous` を追加した。falseの既定値は既存構成を維持する。trueではnative write fenceとAsiaレプリカ、読み取り範囲allを必須にし、主DBは `FIRST 3 (astra_europe, astra_america, astra_asia)`、Asiaのread fenceは無効にする。既存の `ISUREAL_WRITE_FENCE_HOSTS` はpoll方式のEU・US接続先として維持する。native方式の反映確認対象は主DBの同期対象設定から決まり、起動時と実機照合でも確認する。
+
+切替は、false/feed_searchのまま互換版をapplication配備し、true/allへ変更してreplication配備、続けてapplication配備する。切り戻しはfalse/feed_searchへ変更してapplication配備を先に行い、その後replication配備する。配備処理は、Asiaが確認なしでレプリカを読んでいる間の同期対象削減を拒否する。主DB設定ファイルはストリーミング確認後に置換する。
+
+ローカルのPostgreSQL 16では既存standbyのapplication_nameをastra_europe、astra_americaとし、3台目astra-local-standby3をポート26215に追加した。3台目はpg_basebackupで作り、application_nameと物理スロット名をastra_asiaにした。既存のテスト用主DBとレプリカだけを利用し、AWSリソースは作成していない。
+
+既存回帰と3台目停止のテストは53件PASS、1件ignore。追加した実APIテスト1件もPASS。実APIでは、2台同期時のAsia確認なし読み取りの起動拒否、3台同期時の登録・ログイン・地域内読み取り、主DBに新しいWALがあっても読み取り前確認を待たないこと、Asia反映停止中のログアウト応答待機、応答後の401を検証した。Clippy全targetの警告ゼロ、Pythonの経路設定5件、シェル構文、TypeScript型検査も通過した。
+
+追加テストの環境変数は `ISUREAL_FENCE_REPLICA3_DSN=postgres://postgres@127.0.0.1:26215/postgres` と `ISUREAL_THIRD_REPLICA_HOST`（3台目コンテナのIP）。既存のFENCE/SELECTIVE用変数も設定する。2台同期のテストも、3台目が接続した状態で意図した2台だけを選ぶため、fixtureのapplication_nameを明示するよう変更した。

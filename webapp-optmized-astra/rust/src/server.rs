@@ -59,6 +59,9 @@ use crate::user_read_api::{get_user_handler, search_users_handler};
 use crate::write_fence::{WriteFence, write_fence_middleware};
 use crate::write_ingress::{WriteIngress, write_ingress_middleware};
 
+const TWO_STANDBYS: &str = "FIRST 2 (astra_europe, astra_america)";
+const THREE_STANDBYS: &str = "FIRST 3 (astra_europe, astra_america, astra_asia)";
+
 pub struct HandlerContext {
     pub db: PgPool,
     pub config: Config,
@@ -139,9 +142,9 @@ pub async fn new_server(config: Config) -> Router {
                     .fetch_one(&handler_context.db)
                     .await
                     .expect("read synchronous standbys");
-                assert_eq!(
-                    standbys, "FIRST 2 (astra_europe, astra_america)",
-                    "native write fences require both synchronous standbys"
+                assert!(
+                    matches!(standbys.as_str(), TWO_STANDBYS | THREE_STANDBYS),
+                    "native write fences require all configured synchronous standbys"
                 );
                 let table_exists: bool = sqlx::query_scalar(
                     "SELECT to_regclass('astra_visibility_barriers') IS NOT NULL",
@@ -219,8 +222,8 @@ pub async fn new_server(config: Config) -> Router {
                     mode, "remote_apply",
                     "unfenced local reads require remote_apply"
                 );
-                assert_eq!(
-                    standbys, "FIRST 2 (astra_europe, astra_america)",
+                assert!(
+                    matches!(standbys.as_str(), TWO_STANDBYS | THREE_STANDBYS),
                     "unfenced local reads require both regional standbys"
                 );
             }
@@ -244,7 +247,10 @@ pub async fn new_server(config: Config) -> Router {
                 .await
                 .expect("read standby slot identity");
             assert!(
-                fenced || matches!(slot.as_str(), "astra_europe" | "astra_america"),
+                fenced || matches!(slot.as_str(), "astra_europe" | "astra_america")
+                    || (slot == "astra_asia" && standbys == THREE_STANDBYS
+                        && (matches!(&write_fence, Some(WriteFence::Native(_)))
+                            || mode == "remote_apply")),
                 "a standby outside the regional write barrier requires a fresh read fence"
             );
             let read_fence = fenced.then(|| {

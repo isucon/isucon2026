@@ -1,5 +1,26 @@
 """Metadata replica roles on the existing Team 10 application VMs."""
 
+def asia_synchronous(runtime):
+    enabled = runtime.get("asiaReplicaSynchronous", False)
+    assert isinstance(enabled, bool)
+    assert not enabled or (runtime.get("asiaReplicaEnabled", False)
+                           and runtime["replicasEnabled"]
+                           and runtime.get("writeFenceEnabled", False)
+                           and runtime.get("writeFenceMode") == "native"
+                           and (not runtime.get("asiaReplicaReads", False)
+                                or runtime.get("asiaReplicaReadScope") == "all"))
+    return enabled
+
+
+def synchronous_standby_names(runtime):
+    if asia_synchronous(runtime):
+        return "FIRST 3 (astra_europe, astra_america, astra_asia)"
+    if runtime["replicasSynchronous"] or (
+            runtime.get("writeFenceEnabled", False) and runtime.get("writeFenceMode") == "native"):
+        return "FIRST 2 (astra_europe, astra_america)"
+    return ""
+
+
 def metadata_replicas(runtime):
     replicas = [dict(app) for app in runtime["applications"] if "replicaName" in app]
     assert {app["replicaName"] for app in replicas} == {"astra_europe", "astra_america"}
@@ -18,9 +39,8 @@ def read_settings(runtime, app, *, writer=False):
         if not runtime.get("asiaReplicaReads", False):
             return "", False
         assert runtime.get("asiaReplicaEnabled", False)
-        # The remote write barrier still waits only for Europe and America.
-        # Capture/replay a fresh primary WAL position before every Asia read.
-        return "127.0.0.1", True
+        # An asynchronous Asia standby needs a fresh WAL barrier per read.
+        return "127.0.0.1", not asia_synchronous(runtime)
     return "127.0.0.1", runtime.get("readFenceEnabled", False)
 
 

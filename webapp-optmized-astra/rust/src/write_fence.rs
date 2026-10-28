@@ -184,6 +184,79 @@ mod tests {
         check_released_locks(true).await;
     }
 
+    #[tokio::test]
+    async fn native_commit_waits_when_only_third_replica_is_paused() {
+        let (Ok(primary_dsn), Ok(first_dsn), Ok(second_dsn), Ok(third_dsn)) = (
+            std::env::var("ISUREAL_FENCE_PRIMARY_DSN"),
+            std::env::var("ISUREAL_FENCE_REPLICA_DSN"),
+            std::env::var("ISUREAL_FENCE_REPLICA2_DSN"),
+            std::env::var("ISUREAL_FENCE_REPLICA3_DSN"),
+        ) else {
+            return;
+        };
+        let _serial = crate::read_fence::TEST_REPLICA_LOCK.lock().await;
+        let primary = PgPoolOptions::new().connect_with(
+            PgConnectOptions::from_str(&primary_dsn).unwrap()
+                .options([("synchronous_commit", "local")]),
+        ).await.unwrap();
+        let first = PgPool::connect(&first_dsn).await.unwrap();
+        let second = PgPool::connect(&second_dsn).await.unwrap();
+        let third = PgPool::connect(&third_dsn).await.unwrap();
+        let previous: String = sqlx::query_scalar("SHOW synchronous_standby_names")
+            .fetch_one(&primary).await.unwrap();
+        assert_eq!(previous, "", "requires an asynchronous test primary");
+        let table = format!("astra_third_fence_{}", uuid::Uuid::new_v4().simple());
+        let fence = WriteFence::Native(NativeWriteFence::new(primary.clone(), Duration::from_secs(5)));
+        let result = AssertUnwindSafe(async {
+            sqlx::raw_sql(&format!(
+                "CREATE TABLE IF NOT EXISTS astra_visibility_barriers (id text PRIMARY KEY); \
+                 CREATE TABLE {table} (value integer); INSERT INTO {table} VALUES (0);"
+            )).execute(&primary).await.unwrap();
+            sqlx::query("ALTER SYSTEM SET synchronous_standby_names = 'FIRST 3 (astra_europe, astra_america, astra_asia)'")
+                .execute(&primary).await.unwrap();
+            sqlx::query("SELECT pg_reload_conf()").execute(&primary).await.unwrap();
+            timeout(Duration::from_secs(3), async {
+                while sqlx::query_scalar::<_, i64>("SELECT count(*) FROM pg_stat_replication WHERE sync_state='sync'")
+                    .fetch_one(&primary).await.unwrap() != 3 {
+                    sleep(Duration::from_millis(10)).await;
+                }
+            }).await.unwrap();
+            fence.wait().await.unwrap();
+            sqlx::query("SELECT pg_wal_replay_pause()").execute(&third).await.unwrap();
+            timeout(Duration::from_secs(3), async {
+                while sqlx::query_scalar::<_, String>("SELECT pg_get_wal_replay_pause_state()")
+                    .fetch_one(&third).await.unwrap() != "paused" {
+                    sleep(Duration::from_millis(10)).await;
+                }
+            }).await.unwrap();
+            let app = app(primary.clone(), table.clone(), fence);
+            let response = tokio::spawn(app.oneshot(HttpRequest::builder()
+                .method("POST").uri("/write").body(Body::empty()).unwrap()));
+            wait_value(&primary, &table, 1).await;
+            wait_value(&first, &table, 1).await;
+            wait_value(&second, &table, 1).await;
+            sleep(Duration::from_millis(100)).await;
+            assert!(!response.is_finished(), "Asia replay must precede the response");
+            assert_eq!(value(&third, &table).await, 0);
+            sqlx::query("SELECT pg_wal_replay_resume()").execute(&third).await.unwrap();
+            assert_eq!(timeout(Duration::from_secs(3), response).await.unwrap().unwrap().unwrap().status(), StatusCode::NO_CONTENT);
+            for replica in [&first, &second, &third] {
+                assert_eq!(value(replica, &table).await, 1);
+            }
+        }).catch_unwind().await;
+        sqlx::query("SELECT pg_wal_replay_resume()").execute(&third).await.unwrap();
+        sqlx::query("ALTER SYSTEM SET synchronous_standby_names = ''").execute(&primary).await.unwrap();
+        sqlx::query("SELECT pg_reload_conf()").execute(&primary).await.unwrap();
+        sqlx::query(&format!("DROP TABLE IF EXISTS {table}")).execute(&primary).await.unwrap();
+        sqlx::query("DROP TABLE IF EXISTS astra_visibility_barriers").execute(&primary).await.unwrap();
+        for pool in [first, second, third, primary] {
+            pool.close().await;
+        }
+        if let Err(panic) = result {
+            std::panic::resume_unwind(panic);
+        }
+    }
+
     async fn check_released_locks(native: bool) {
         let (Ok(primary_dsn), Ok(replica_dsn), Ok(replica2_dsn)) = (
             std::env::var("ISUREAL_FENCE_PRIMARY_DSN"),
@@ -243,7 +316,7 @@ mod tests {
                 .execute(&primary)
                 .await
                 .unwrap();
-                sqlx::query("ALTER SYSTEM SET synchronous_standby_names = 'FIRST 2 (*)'")
+                sqlx::query("ALTER SYSTEM SET synchronous_standby_names = 'FIRST 2 (astra_europe, astra_america)'")
                     .execute(&primary)
                     .await
                     .unwrap();
