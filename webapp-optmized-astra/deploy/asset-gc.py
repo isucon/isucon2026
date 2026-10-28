@@ -43,7 +43,7 @@ def ensure_idle():
                 raise RuntimeError("Team 10 benchmark is still running; leave it undisturbed")
 
 
-def cleanup_sql(reference_path, expected_count):
+def reference_sql(reference_path, expected_count):
     # The file is written by this script, consists only of validated UUIDs and
     # lives in a private, postgres-owned directory on the asset VM.
     assert re.fullmatch(r"/var/lib/astra-maint/[a-f0-9]+/refs", reference_path)
@@ -60,11 +60,17 @@ DO $$ BEGIN
     RAISE EXCEPTION 'a published image is missing; abort cleanup';
   END IF;
 END $$;
-DELETE FROM astra_image_data a WHERE NOT EXISTS (SELECT 1 FROM live_assets l WHERE l.id=a.id);
+"""
+
+
+def cleanup_sql(reference_path, expected_count, compact=False):
+    vacuum = "FULL, ANALYZE" if compact else "ANALYZE"
+    return reference_sql(reference_path, expected_count) + f"""DELETE FROM astra_image_data a WHERE NOT EXISTS (SELECT 1 FROM live_assets l WHERE l.id=a.id);
 COMMIT;
-VACUUM (ANALYZE) astra_image_data;
+VACUUM ({vacuum}) astra_image_data;
 SELECT count(*) AS retained_assets,pg_database_size(current_database()) AS database_bytes FROM astra_image_data;
 """
+
 
 
 def split_references(keys, regions):
@@ -119,20 +125,33 @@ def main():
                 region, instance = app["region"], app["instanceId"]
                 folder = Path(directory) / region
                 folder.mkdir(mode=0o700)
-                refs, sql = folder / "refs", folder / "cleanup.sql"
+                refs, preflight, sql = folder / "refs", folder / "preflight.sql", folder / "cleanup.sql"
                 refs.write_text("".join(key + "\n" for key in grouped[region]))
-                sql.write_text(cleanup_sql(remote_dir + "/refs", len(grouped[region])))
-                for path in (refs, sql):
+                preflight.write_text(reference_sql(remote_dir + "/refs", len(grouped[region])) +
+                                     "SELECT coalesce(sum(octet_length(a.data)),0) FROM astra_image_data a JOIN live_assets l ON l.id=a.id; COMMIT;\n")
+                for path in (refs, preflight):
                     path.chmod(0o600)
                 remote(instance, "mkdir -m700 " + shlex.quote(incoming))
-                for path in (refs, sql):
+                for path in (refs, preflight):
                     subprocess.run([SSH, instance, "--copy", str(path), incoming + "/" + path.name], check=True)
                 remote(instance,
                        "sudo install -d -o root -g root -m711 /var/lib/astra-maint && "
                        f"sudo install -d -o postgres -g postgres -m700 {remote_dir} && "
                        f"sudo install -o postgres -g postgres -m600 {incoming}/refs {remote_dir}/refs && "
-                       f"sudo install -o postgres -g postgres -m600 {incoming}/cleanup.sql {remote_dir}/cleanup.sql")
-                print(f"{region}: collecting orphan assets; preserving {len(grouped[region])} references", flush=True)
+                       f"sudo install -o postgres -g postgres -m600 {incoming}/preflight.sql {remote_dir}/preflight.sql")
+                live_bytes = int(remote(instance,
+                    f"sudo -u postgres psql -XqAt -p 5433 -d isureal_assets -f {remote_dir}/preflight.sql",
+                    capture_output=True, text=True).stdout.strip())
+                available = int(remote(instance, "df -B1 --output=avail /var/lib/postgresql | tail -n1",
+                                       capture_output=True, text=True).stdout.strip())
+                # A rewrite needs a second copy and WAL headroom. Without that
+                # room, ordinary VACUUM still makes deleted pages reusable.
+                compact = available > live_bytes * 2 + 1024**3
+                sql.write_text(cleanup_sql(remote_dir + "/refs", len(grouped[region]), compact))
+                sql.chmod(0o600)
+                subprocess.run([SSH, instance, "--copy", str(sql), incoming + "/cleanup.sql"], check=True)
+                remote(instance, f"sudo install -o postgres -g postgres -m600 {incoming}/cleanup.sql {remote_dir}/cleanup.sql")
+                print(f"{region}: preserving {len(grouped[region])} references; live bytes={live_bytes}; free bytes={available}; compact={compact}", flush=True)
                 remote(instance, f"sudo -u postgres psql -X -p 5433 -d isureal_assets -f {remote_dir}/cleanup.sql")
                 print(f"{region}: cleanup and vacuum complete", flush=True)
 
