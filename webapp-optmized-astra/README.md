@@ -46,6 +46,14 @@ nginxの接続上限は`runtime.json`の`nginxWorkerConnections`と`nginxWorkerR
 検索改善版の負荷試験で従来の768接続を使い切り、AsiaでEOF・502が増えてFAILしたため、
 各ワーカー8,192接続・65,536ファイル記述子へ変更する。反映前に`nginx -t`で検証する。
 
+## ファイルによる画像保存
+
+画像本体をSQLに保存する必要はない。`fileImageStore.enabled`で全アプリにファイル読み取りを配備し、その確認後に`writesEnabled`を有効にする。新規画像は受信地域の`/var/lib/astra-images/<先頭2文字>/<UUID>`に保存する。一時ファイルの内容をfsyncし、上書きしないhard linkで公開してディレクトリもfsyncしてから、SQLに`fs:<region>:<UUID>`を記録する。途中失敗は参照を公開せず、孤立ファイルは後で回収する。
+
+SQLには所有者と公開状態、保存先を残す。画像APIは毎回、現在の公開状態・鍵・署名期限を検証する。他地域の画像本体は既存VMのプライベートIP・8082番ポートのNginxから取得し、外部向けルートでは直接配信しない。従来のSQL画像も引き続き読める。書き込みだけをSQLへ戻すことはできるが、ファイル参照が残る間は読み取り機能を外せない。
+
+`verify-file-peers.py`は3地域間の画像一致とアクセス制限を確認する。`apply.sh image-gc`は全アプリ停止中の参照一覧を検証し、SQLとファイル両方の孤立画像を整理する。参照先の欠落や不明なファイルがあれば処理を中止する。
+
 ## 地域別の独立画像DB
 
 `regionalImageStoresEnabled`で欧州・米州の既存アプリVMにもポート5433の独立PostgreSQLを用意する。既存5432のメタデータレプリカは維持する。`apply.sh image-store`でクラスタを作成し、`apply.sh database`で画像参照列を64文字へ広げ、書き込み無効のまま`apply.sh application`で全プロセスへ読み取り対応を配置する。
