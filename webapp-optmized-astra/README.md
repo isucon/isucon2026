@@ -356,3 +356,4 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261028T165446Z-team10 | db1 archive peer with threaded Nginx file reads after GC | PASS | 179,400 |
 | 20261028T165836Z-team10 | repeat threaded db1 archive peer without restart | PASS | 187,288 |
 | 20261028T170519Z-team10 | restore local archive reads after db1 peer comparison | PASS | 183,790 |
+| 20261028T171110Z-team10 | 256 KiB Nginx upload buffer with request buffering enabled | PASS | 188,737 |
