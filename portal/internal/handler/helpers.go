@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"database/sql"
 	"io"
 	"net/http"
 
@@ -31,31 +32,37 @@ func chiParam(r *http.Request, name string) string {
 
 const jobColumns = `benchmark_jobs.id, benchmark_jobs.team_id, benchmark_jobs.status, benchmark_jobs.instance_name, benchmark_jobs.handle, benchmark_jobs.started_at, benchmark_jobs.finished_at, benchmark_jobs.created_at, benchmark_jobs.updated_at, benchmark_jobs.target_id, benchmark_jobs.enqueued_by_id, benchmark_jobs.post_validation`
 
-// jobColumnsWithScore は joins_score 相当（benchmark_results.score を左結合で読む）。
-const jobColumnsWithScore = jobColumns + `, benchmark_results.score`
+// jobListColumns は一覧で表示するスコアと投入者情報を含む。
+const jobListColumns = jobColumns + `, benchmark_results.score, contestants.name, contestants.avatar_url`
+
+const jobEnqueuedByJoin = ` LEFT JOIN contestants ON contestants.id = benchmark_jobs.enqueued_by_id`
 
 const clarColumnsSQL = `clarifications.id, clarifications.team_id, clarifications.disclosed, clarifications.question, clarifications.answer, clarifications.original_question, clarifications.answered_at, clarifications.admin, clarifications.created_at, clarifications.updated_at`
 
-// queryJobsWithScore は jobColumnsWithScore の SELECT を実行して (jobs, scores) を返す。
-func queryJobsWithScore(ctx context.Context, db model.DBTX, query string, args ...any) ([]*model.BenchmarkJob, []*int64, error) {
+// queryJobList は jobListColumns の SELECT を実行し、一覧用の変換オプションとともに返す。
+func queryJobList(ctx context.Context, db model.DBTX, query string, args ...any) ([]*model.BenchmarkJob, []model.JobToPBOptions, error) {
 	rows, err := db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, nil, err
 	}
 	defer rows.Close()
 	var jobs []*model.BenchmarkJob
-	var scores []*int64
+	var options []model.JobToPBOptions
 	for rows.Next() {
 		j := &model.BenchmarkJob{}
-		var score *int64
+		var option model.JobToPBOptions
+		var name, avatarURL sql.NullString
 		if err := rows.Scan(&j.ID, &j.TeamID, &j.Status, &j.InstanceName, &j.Handle, &j.StartedAt, &j.FinishedAt,
-			&j.CreatedAt, &j.UpdatedAt, &j.TargetID, &j.EnqueuedByID, &j.PostValidation, &score); err != nil {
+			&j.CreatedAt, &j.UpdatedAt, &j.TargetID, &j.EnqueuedByID, &j.PostValidation, &option.Score, &name, &avatarURL); err != nil {
 			return nil, nil, err
 		}
 		jobs = append(jobs, j)
-		scores = append(scores, score)
+		if name.Valid {
+			option.EnqueuedBy = &pbresources.BenchmarkJob_EnqueuedBy{Name: name.String, AvatarUrl: avatarURL.String}
+		}
+		options = append(options, option)
 	}
-	return jobs, scores, rows.Err()
+	return jobs, options, rows.Err()
 }
 
 // parseJobStatus はクエリパラメータの status（enum 整数値）を検証する。
