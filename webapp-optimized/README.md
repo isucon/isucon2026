@@ -84,6 +84,9 @@ team 11 の seed 1 で 171,674 点から 297,384 点になった変更です。�
   ログインとログアウトは本拠地の app にだけ同期で反映し、他地域へは非同期で送ります。
 - friends と friends-of-friends のフィードは対象の人の投稿だけを集めて並べます。コメントと RealMoji の一覧は、
   開いている投稿期間の投稿なら閲覧の可否を hot state で決め、DB からは一覧だけを読みます。
+- friends-of-friends のおすすめ順の点数は hot state で計算します。共通の友達の数と 3 歩の道の数は友達関係から、
+  反応した友達の数は、開いている投稿期間の投稿に付いた有効な RealMoji とコメントを hot state に持って数えます。
+  そのため、それらの投稿へのコメントと RealMoji の作成・削除も、ほかの書き込みと同じく全 app に同期で送ります。
 - nginx を外し、app が 80 番を直接受けます（`ISUREAL_PUBLIC_LISTEN=:80`、フロントエンドは
   `ISUREAL_PUBLIC_DIR`）。80 番を開くための systemd の drop-in が `deploy/isureal-go.service.d/public.conf` です。
 

@@ -41,6 +41,8 @@ type createPostResponse struct {
 	PostedAt        time.Time          `json:"postedAt"`
 	OnTime          bool               `json:"onTime"`
 	LateSeconds     int64              `json:"lateSeconds"`
+	// Score is the recommendation score of a friends-of-friends feed item.
+	Score *int64 `json:"score,omitempty"`
 }
 
 func createPostHandler(h *HandlerContext) echo.HandlerFunc {
