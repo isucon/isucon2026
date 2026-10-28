@@ -297,12 +297,12 @@ export class ApiClient {
 
       const ats = a.latestScore?.markedAt?.seconds ?? 0n;
       const bts = b.latestScore?.markedAt?.seconds ?? 0n;
-      const timeSecondsComparison = bts - ats;
+      const timeSecondsComparison = ats - bts;
       if (timeSecondsComparison !== 0n) return Number(timeSecondsComparison);
 
       const atn = a.latestScore?.markedAt?.nanos ?? 0;
       const btn = b.latestScore?.markedAt?.nanos ?? 0;
-      const timeNanosComparison = btn - atn;
+      const timeNanosComparison = atn - btn;
       if (timeNanosComparison !== 0) return timeNanosComparison;
 
       return 0;
