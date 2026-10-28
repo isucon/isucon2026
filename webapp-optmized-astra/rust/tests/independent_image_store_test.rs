@@ -1371,7 +1371,8 @@ async fn independent_bytes_publish_atomically_and_preserve_visibility_export_and
         "asia".into(),
         Default::default(),
         true,
-    );
+    )
+    .with_archives(true);
     files.prepare().await.unwrap();
     let file_store = ImageStore::new(assets.clone(), true, None)
         .with_cache_enabled(false)
@@ -1411,6 +1412,27 @@ async fn independent_bytes_publish_atomically_and_preserve_visibility_export_and
         .await,
         (StatusCode::OK, original.to_vec())
     );
+    // Historical archives preserve the same public metadata and cache rules.
+    let pack_id = uuid::Uuid::new_v4().simple().to_string();
+    let pack_key = format!("pack:{pack_id}:7:{}", original.len());
+    let mut packed = b"prefix:".to_vec();
+    packed.extend_from_slice(original);
+    packed.extend_from_slice(b":suffix");
+    std::fs::write(file_root.join("packs").join(&pack_id), packed).unwrap();
+    sqlx::query("UPDATE image_objects SET asset_key=$2 WHERE id=$1")
+        .bind(&file_image)
+        .bind(&pack_key)
+        .execute(&db)
+        .await
+        .unwrap();
+    assert_eq!(
+        request(
+            file_app.clone(),
+            Request::get(&url).body(Body::empty()).unwrap()
+        )
+        .await,
+        (StatusCode::OK, original.to_vec())
+    );
     let (status, archive) = request(
         file_app.clone(),
         Request::get("/api/me/export").body(Body::empty()).unwrap(),
@@ -1441,9 +1463,11 @@ async fn independent_bytes_publish_atomically_and_preserve_visibility_export_and
         "asia".into(),
         Default::default(),
         false,
-    );
+    )
+    .with_archives(true);
     restored.prepare().await.unwrap();
     assert_eq!(restored.get(&key).await.unwrap(), original);
+    assert_eq!(restored.get(&pack_key).await.unwrap(), original);
     sqlx::query("UPDATE posts SET deleted_at=now() WHERE id=$1")
         .bind(file_post)
         .execute(&db)
@@ -1472,6 +1496,7 @@ async fn independent_bytes_publish_atomically_and_preserve_visibility_export_and
         StatusCode::FORBIDDEN
     );
     assert_eq!(restored.get(&key).await.unwrap(), original);
+    assert_eq!(restored.get(&pack_key).await.unwrap(), original);
     std::fs::remove_dir_all(file_root).unwrap();
     drop(routed);
     drop(local);

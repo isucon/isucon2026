@@ -98,7 +98,10 @@ if regional_writes:
 
 files = runtime.get("fileImageStore", {})
 if not files.get("enabled", False):
-    check = "SELECT 1 / (NOT EXISTS(SELECT 1 FROM image_objects WHERE asset_key LIKE 'fs:%'))::int"
+    check = "SELECT 1 / (NOT EXISTS(SELECT 1 FROM image_objects WHERE asset_key LIKE 'fs:%' OR asset_key LIKE 'pack:%'))::int"
+    remote(database, "sudo -u postgres psql -X -v ON_ERROR_STOP=1 -d isureal -c " + shlex.quote(check))
+if not files.get("archiveReadsEnabled",False):
+    check = "SELECT 1 / (NOT EXISTS(SELECT 1 FROM image_objects WHERE asset_key LIKE 'pack:%'))::int"
     remote(database, "sudo -u postgres psql -X -v ON_ERROR_STOP=1 -d isureal -c " + shlex.quote(check))
 if files.get("writesEnabled", False):
     assert files.get("enabled", False) and regional_writes
