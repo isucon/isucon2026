@@ -140,3 +140,7 @@ if (!Number.isInteger(runtime.imageCacheMiB) || runtime.imageCacheMiB < 64 || ru
 if (!Number.isInteger(runtime.metadataPoolConnections) || runtime.metadataPoolConnections < 4 || runtime.metadataPoolConnections > 64) {
     throw new Error("Invalid metadata connection pool capacity");
 }
+
+if (typeof runtime.notificationBatchWritesEnabled !== "boolean") {
+    throw new Error("Notification batch writes must be explicitly configured");
+}
