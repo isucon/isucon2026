@@ -1,6 +1,6 @@
 //! Batch completed mutations behind a separate synchronous commit.
 //! Application transactions use durable local commits; this transaction owns
-//! only disposable barrier rows while waiting for both replicas to apply WAL.
+//! only disposable barrier rows while waiting for the configured replicas to apply WAL.
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 

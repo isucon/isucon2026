@@ -7,7 +7,7 @@ from pathlib import Path
 import shlex
 import subprocess
 import tarfile
-from runtime_topology import metadata_replicas, read_settings, read_scope
+from runtime_topology import metadata_replicas, read_settings, read_scope, synchronous_standby_names, asia_synchronous
 
 root=Path.cwd()
 runtime=json.loads((root/'webapp-optmized-astra/deploy/runtime.json').read_text())
@@ -133,6 +133,9 @@ with ThreadPoolExecutor(max_workers=3) as pool:
     for region,result in pool.map(inspect,runtime['applications']):print(region,json.dumps(result),flush=True)
 query="SELECT application_name,state,sync_state,pg_wal_lsn_diff(pg_current_wal_lsn(),replay_lsn)::bigint FROM pg_stat_replication ORDER BY application_name"
 rows=remote(runtime['database']['instanceId'],'sudo -u postgres psql -X -d isureal -Atc '+shlex.quote(query)).strip().splitlines()
+actual_standbys=remote(runtime['database']['instanceId'], 'sudo -u postgres psql -XAtc "SHOW synchronous_standby_names"').strip()
+assert actual_standbys==synchronous_standby_names(runtime), 'Primary synchronous acknowledgement set mismatch'
+print('primary synchronous standbys='+actual_standbys)
 primary_cache=int(remote(runtime['database']['instanceId'], "sudo -u postgres psql -XAtc \"SELECT pg_size_bytes(current_setting('shared_buffers'))\"").strip())
 assert primary_cache==runtime['primarySharedBuffersMiB']*1024**2
 print('primary shared buffers MiB='+str(primary_cache//1024**2))
@@ -155,7 +158,8 @@ expected_replicas={app["replicaName"] for app in metadata_replicas(runtime)}
 assert len(rows)==len(expected_replicas) and {row.split("|")[0] for row in rows}==expected_replicas
 for row in rows:
     name,state,sync,lag=row.split('|')
-    assert state=='streaming' and sync==('async' if name=='astra_asia' else 'sync') and 0<=int(lag)<=1024*1024
+    expected_sync='sync' if synchronous_standby_names(runtime) and (name!='astra_asia' or asia_synchronous(runtime)) else 'async'
+    assert state=='streaming' and sync==expected_sync and 0<=int(lag)<=1024*1024
     print(name,'streaming; replay backlog bytes='+lag)
 outputs=json.loads(subprocess.check_output(['pulumi','stack','output','-C',str(root/'provisioning/aws/astra'),'--stack','dev','--json'],env=env,text=True))
 assert outputs['runtime']==runtime and outputs['artifactSha256']==expected_artifact

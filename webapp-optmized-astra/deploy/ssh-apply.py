@@ -13,7 +13,7 @@ import shlex
 import subprocess
 import sys
 import tarfile
-from runtime_topology import metadata_replicas, read_settings, read_scope
+from runtime_topology import metadata_replicas, read_settings, read_scope, asia_synchronous
 
 ROOT = Path(__file__).resolve().parents[2]
 DEPLOY = ROOT / "webapp-optmized-astra/deploy"
@@ -31,6 +31,10 @@ ssh = str(DEPLOY / "ssh.sh")
 database = runtime["database"]["instanceId"]
 applications = runtime["applications"]
 replicas = metadata_replicas(runtime)
+asia_sync = asia_synchronous(runtime)
+# Native fences use PostgreSQL's synchronous_standby_names, including Asia
+# when enabled. Keep this list as the two legacy polling targets so changing
+# the primary's native acknowledgement set does not require a host-list rollout.
 write_replicas = [app for app in replicas if app["region"] != "asia"]
 write_fence_hosts = ",".join(app["host"] for app in write_replicas) if write_fence else ""
 assert not write_fence or (runtime["replicasEnabled"] and len(write_replicas) == 2)
@@ -221,6 +225,8 @@ if mode in ("all", "database", "upgrade"):
     remote(database, "sudo bash /home/isucon/astra-deploy/database.sh")
 
 if mode in ("all", "replication") and runtime["replicasEnabled"]:
+    if not asia_sync:
+        remote(write_host, "if systemctl show webapp-optmized-astra -p Environment --value | grep -q ISUREAL_DB_READ_HOST=127.0.0.1 && ! systemctl show webapp-optmized-astra -p Environment --value | grep -q ISUREAL_READ_FENCE=1; then echo 'Restore Asia read fences with an application deployment before removing Asia synchronous acknowledgement' >&2; exit 1; fi")
     secret_file = ROOT / runtime["replicationEnvPath"]
     if not secret_file.exists():
         raise RuntimeError("Missing private replication env file; restore it from a Team 10 VM before deploying")
@@ -239,7 +245,7 @@ if mode in ("all", "replication") and runtime["replicasEnabled"]:
     elif not runtime["replicasSynchronous"]:
         for app in replicas:
             remote(app["instanceId"], "if systemctl show webapp-optmized-astra -p Environment --value | grep -q ISUREAL_DB_READ_HOST=127.0.0.1 && ! systemctl show webapp-optmized-astra -p Environment --value | grep -q ISUREAL_READ_FENCE=1; then echo 'Enable read fences or disable local reads before disabling synchronous replication' >&2; exit 1; fi")
-    remote(database, "sudo bash /home/isucon/astra-deploy/replication-primary.sh " + synchronous + " " + str(native_fence).lower() + " " + str(runtime.get("asiaReplicaEnabled", False)).lower())
+    remote(database, "sudo bash /home/isucon/astra-deploy/replication-primary.sh " + synchronous + " " + str(native_fence).lower() + " " + str(runtime.get("asiaReplicaEnabled", False)).lower() + " " + str(asia_sync).lower())
 
     database_bytes = int(subprocess.check_output([ssh, database,
         "sudo -u postgres psql -XAt -d postgres -c 'SELECT sum(pg_database_size(oid))::bigint FROM pg_database'"], text=True).strip())

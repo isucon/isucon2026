@@ -3,9 +3,14 @@ set -euo pipefail
 synchronous=$1
 native=${2:-false}
 asia_replica=${3:-false}
+asia_synchronous=${4:-false}
+case "$asia_synchronous" in true|false) ;; *) exit 2 ;; esac
 case "$asia_replica" in true|false) ;; *) exit 2 ;; esac
 case "$native" in true|false) ;; *) exit 2 ;; esac
 case "$synchronous" in true|false) ;; *) exit 2 ;; esac
+if [ "$asia_synchronous" = true ]; then
+    [ "$asia_replica" = true ] && [ "$native" = true ] || exit 2
+fi
 if [ "$synchronous" = false ] && [ "$native" = false ]; then
     # Permit rollback when a previously synchronous standby is unavailable.
     cat >/etc/postgresql/16/main/conf.d/astra-replication.conf <<'CONF'
@@ -41,26 +46,36 @@ for ip in "${replica_ips[@]}"; do
     rule="host replication astra_repl $ip/32 scram-sha-256"
     grep -qxF "$rule" /etc/postgresql/16/main/pg_hba.conf || printf '%s\n' "$rule" >>/etc/postgresql/16/main/pg_hba.conf
 done
-cat >/etc/postgresql/16/main/conf.d/astra-replication.conf <<'CONF'
+pending_config=$(mktemp /etc/postgresql/16/main/conf.d/.astra-replication.XXXXXX)
+trap 'rm -f "$pending_config"' EXIT
+cat >"$pending_config" <<'CONF'
 wal_keep_size = '2GB'
 max_slot_wal_keep_size = '4GB'
 CONF
 if [ "$synchronous" = true ] || [ "$native" = true ]; then
-    count=$(sudo -u postgres psql -Atc "SELECT count(*) FROM pg_stat_replication WHERE application_name IN ('astra_europe','astra_america') AND state='streaming'")
-    [ "$count" = 2 ] || { echo "Both replicas must be streaming before synchronous activation" >&2; exit 1; }
-    cat >>/etc/postgresql/16/main/conf.d/astra-replication.conf <<'CONF'
-synchronous_standby_names = 'FIRST 2 (astra_europe, astra_america)'
-CONF
+    names="'astra_europe','astra_america'"
+    expected=2
+    standbys='FIRST 2 (astra_europe, astra_america)'
+    if [ "$asia_synchronous" = true ]; then
+        names="$names,'astra_asia'"
+        expected=3
+        standbys='FIRST 3 (astra_europe, astra_america, astra_asia)'
+    fi
+    count=$(sudo -u postgres psql -Atc "SELECT count(DISTINCT application_name) FROM pg_stat_replication WHERE application_name IN ($names) AND state='streaming'")
+    [ "$count" = "$expected" ] || { echo "All $expected replicas must be streaming before synchronous activation" >&2; exit 1; }
+    printf "synchronous_standby_names = '%s'\n" "$standbys" >>"$pending_config"
     if [ "$synchronous" = true ]; then
-        echo 'synchronous_commit = remote_apply' >>/etc/postgresql/16/main/conf.d/astra-replication.conf
+        echo 'synchronous_commit = remote_apply' >>"$pending_config"
     else
-        echo 'synchronous_commit = local' >>/etc/postgresql/16/main/conf.d/astra-replication.conf
+        echo 'synchronous_commit = local' >>"$pending_config"
     fi
 else
-    cat >>/etc/postgresql/16/main/conf.d/astra-replication.conf <<'CONF'
+    cat >>"$pending_config" <<'CONF'
 synchronous_standby_names = ''
 synchronous_commit = on
 CONF
 fi
+chmod 644 "$pending_config"
+mv "$pending_config" /etc/postgresql/16/main/conf.d/astra-replication.conf
 sudo -u postgres psql -Atc 'SELECT pg_reload_conf()'
-echo "Primary replication configuration installed; synchronous=$synchronous native=$native"
+echo "Primary replication configuration installed; synchronous=$synchronous native=$native asia_synchronous=$asia_synchronous"
