@@ -1,7 +1,7 @@
 # webapp-optmized-astra
 
 Team 10向けのRust最適化実装。`webapp/rust`と`webapp/sql`を2335d5fから複製した。
-作業期限は2026年10月28日11:00 JST。各ベンチ結果をこのディレクトリに記録し、コミットしてpushする。
+作業期限は2026年10月28日15:00 JST。各ベンチ結果をこのディレクトリに記録し、コミットしてpushする。
 
 <!-- astra-final-summary-start -->
 ## 採用構成と最終確認
@@ -52,7 +52,7 @@ nginxの接続上限は`runtime.json`の`nginxWorkerConnections`と`nginxWorkerR
 
 地域間の認証鍵はgit管理外の`var/astra/.regional-upload.env`に生成し、既存3台へ`/home/isucon/.astra-upload.env`としてscpで配る。いずれも権限600。Pulumiにはファイルパスと機能フラグだけを記録し、AWSリソースは追加しない。
 
-参照は`europe:<UUID>`または`america:<UUID>`。従来のUUID参照はAsiaへ接続する。書き込みを無効化しても地域別の読み取り対応と保存DBは残す。公開中の地域別参照がある状態で読み取りを外すデプロイは拒否する。旧バイナリへの復帰は、対応バイナリで初期化して地域別参照がなくなったことを確認した後に行う。既存GCはAsiaの孤立画像だけを対象とし、地域別DBのデータは削除しない。
+参照は`europe:<UUID>`または`america:<UUID>`。従来のUUID参照はAsiaへ接続する。書き込みを無効化しても地域別の読み取り対応と保存DBは残す。公開中の地域別参照がある状態で読み取りを外すデプロイは拒否する。旧バイナリへの復帰は、対応バイナリで初期化して地域別参照がなくなったことを確認した後に行う。`apply.sh image-gc`は全アプリを停止して公開参照を地域別に検証し、各独立DBの孤立画像だけを削除する。未知の地域・不正な参照があれば削除を中止する。
 
 地域別の永続化・取得・ZIP・削除確認は、独立した3個目のローカルPostgreSQLを`ISUREAL_REGIONAL_ASSET_TEST_DSN`で指定して実行する。署名は本文、認証ヘッダー、Content-Type、クライアントIP、URL、画像参照を束ね、実際の接続元IPと地域が一致した場合だけ受け入れる。
 
