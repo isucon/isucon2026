@@ -3,12 +3,13 @@ import copy
 import json
 from pathlib import Path
 import unittest
-from runtime_topology import metadata_replicas, read_settings, read_scope
+from runtime_topology import metadata_replicas, read_settings, read_scope, synchronous_standby_names, asia_synchronous
 
 
 class ReplicaRoutingTest(unittest.TestCase):
     def setUp(self):
         self.runtime = json.loads(Path(__file__).with_name('runtime.json').read_text())
+        self.runtime['asiaReplicaSynchronous'] = False
         self.asia = next(a for a in self.runtime['applications'] if a['region'] == 'asia')
 
     def test_stage_before_routing_and_rollback_preserve_remote_barrier(self):
@@ -47,6 +48,29 @@ class ReplicaRoutingTest(unittest.TestCase):
         self.runtime.update(asiaReplicaEnabled=False, asiaReplicaReads=True)
         with self.assertRaises(AssertionError):
             read_settings(self.runtime, self.asia)
+
+    def test_three_native_targets_allow_asia_reads_without_per_read_barrier(self):
+        self.runtime.update(asiaReplicaEnabled=True, asiaReplicaReads=True,
+                            asiaReplicaSynchronous=True, asiaReplicaReadScope='all',
+                            writeFenceEnabled=True, writeFenceMode='native')
+        self.assertEqual(synchronous_standby_names(self.runtime),
+                         'FIRST 3 (astra_europe, astra_america, astra_asia)')
+        self.assertEqual(read_settings(self.runtime, self.asia), ('127.0.0.1', False))
+        self.assertEqual(read_settings(self.runtime, self.asia, writer=True), ('', False))
+        self.assertEqual(read_scope(self.runtime, self.asia), 'all')
+        self.runtime['asiaReplicaSynchronous'] = False
+        self.assertEqual(read_settings(self.runtime, self.asia), ('127.0.0.1', True))
+        self.assertEqual(synchronous_standby_names(self.runtime),
+                         'FIRST 2 (astra_europe, astra_america)')
+
+    def test_polling_or_missing_standby_cannot_remove_asia_read_fence(self):
+        self.runtime.update(asiaReplicaSynchronous=True, asiaReplicaReadScope='all')
+        for changes in ({'writeFenceMode': 'poll'}, {'writeFenceEnabled': False},
+                        {'asiaReplicaEnabled': False}, {'replicasEnabled': False},
+                        {'asiaReplicaReadScope': 'feed_search'}):
+            runtime = {**self.runtime, **changes}
+            with self.assertRaises(AssertionError):
+                asia_synchronous(runtime)
 
 
 if __name__ == '__main__':

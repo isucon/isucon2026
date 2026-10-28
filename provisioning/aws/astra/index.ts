@@ -29,6 +29,12 @@ if (typeof runtime.asiaReplicaEnabled !== "boolean" || typeof runtime.asiaReplic
 if (!["all", "feed_search"].includes(runtime.asiaReplicaReadScope)) {
     throw new Error("Unknown Asia replica read scope");
 }
+if (typeof (runtime.asiaReplicaSynchronous ?? false) !== "boolean"
+    || (runtime.asiaReplicaSynchronous && (!runtime.asiaReplicaEnabled || !runtime.replicasEnabled
+        || !runtime.writeFenceEnabled || runtime.writeFenceMode !== "native"
+        || (runtime.asiaReplicaReads && runtime.asiaReplicaReadScope !== "all")))) {
+    throw new Error("Synchronous Asia reads require the existing standby and native write response fences");
+}
 export const artifactSha256 = createHash("sha256")
 	.update(readFileSync("../../../" + runtime.archivePath))
 	.digest("hex");
