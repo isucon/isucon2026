@@ -67,6 +67,22 @@ SELECT count(*) AS retained_assets,pg_database_size(current_database()) AS datab
 """
 
 
+def split_references(keys, regions):
+    """Validate every published key before deleting from any configured store."""
+    grouped = {region: [] for region in regions}
+    if len(keys) != len(set(keys)):
+        raise ValueError("Duplicate reference snapshot")
+    for key in keys:
+        region, raw = key.split(":", 1) if ":" in key else ("asia", key)
+        if region not in grouped or str(uuid.UUID(raw)) != raw:
+            raise ValueError("Unknown region or invalid asset reference")
+        grouped[region].append(raw)
+    for values in grouped.values():
+        if len(values) != len(set(values)):
+            raise ValueError("Aliased reference snapshot")
+    return grouped
+
+
 def main():
     runtime = json.loads((DEPLOY / "runtime.json").read_text())
     store = runtime["imageStore"]
@@ -74,6 +90,7 @@ def main():
     apps = runtime["applications"]
     asia = next(app for app in apps if app["region"] == "asia")
     assert store["instanceId"] == asia["instanceId"]
+    stores = apps if runtime.get("regionalImageStoresEnabled", False) else [asia]
     services = [(app["instanceId"], "webapp-optmized-astra") for app in apps]
     if runtime.get("writeProxyEnabled"):
         services.append((asia["instanceId"], "webapp-optmized-astra-writer"))
@@ -83,38 +100,47 @@ def main():
     incoming = f"/home/isucon/.astra-gc-{token}"
     stopped = []
     try:
-        # Stop all producers before taking the reference snapshot. Taking the
-        # image table lock also waits for any backend commit still in progress.
+        # Stop every producer, then wait for in-flight metadata transactions.
         for instance, service in services:
             stopped.append((instance, service))
             remote(instance, f"sudo systemctl stop {service}")
         with tempfile.TemporaryDirectory(prefix="astra-asset-gc-") as directory:
-            refs = Path(directory) / "refs"
-            fd = os.open(refs, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-            snapshot = "BEGIN; LOCK TABLE image_objects IN ACCESS EXCLUSIVE MODE; COPY (SELECT DISTINCT asset_key FROM image_objects WHERE asset_key IS NOT NULL AND position(':' IN asset_key)=0 ORDER BY asset_key) TO STDOUT; COMMIT;"
+            snapshot_path = Path(directory) / "snapshot"
+            fd = os.open(snapshot_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            snapshot = "BEGIN; LOCK TABLE image_objects IN ACCESS EXCLUSIVE MODE; COPY (SELECT DISTINCT asset_key FROM image_objects WHERE asset_key IS NOT NULL ORDER BY asset_key) TO STDOUT; COMMIT;"
             with os.fdopen(fd, "wb") as output:
                 remote(runtime["database"]["instanceId"],
                        "sudo -u postgres psql -XqAt -v ON_ERROR_STOP=1 -d isureal -c " + shlex.quote(snapshot),
                        stdout=output)
-            keys = refs.read_text().splitlines()
-            if len(keys) != len(set(keys)) or any(str(uuid.UUID(key)) != key for key in keys):
-                raise RuntimeError("Invalid reference snapshot; no assets were removed")
-            sql = Path(directory) / "cleanup.sql"
-            sql.write_text(cleanup_sql(remote_dir + "/refs", len(keys)))
-            sql.chmod(0o600)
-            remote(store["instanceId"], "mkdir -m700 " + shlex.quote(incoming))
-            for path in (refs, sql):
-                subprocess.run([SSH, store["instanceId"], "--copy", str(path), incoming + "/" + path.name], check=True)
-            remote(store["instanceId"],
-                   "sudo install -d -o root -g root -m711 /var/lib/astra-maint && "
-                   f"sudo install -d -o postgres -g postgres -m700 {remote_dir} && "
-                   f"sudo install -o postgres -g postgres -m600 {incoming}/refs {remote_dir}/refs && "
-                   f"sudo install -o postgres -g postgres -m600 {incoming}/cleanup.sql {remote_dir}/cleanup.sql")
-            print(f"Collecting orphan assets while preserving {len(keys)} published references", flush=True)
-            remote(store["instanceId"],
-                   f"sudo -u postgres psql -X -p 5433 -d isureal_assets -f {remote_dir}/cleanup.sql")
+            grouped = split_references(snapshot_path.read_text().splitlines(),
+                                       [app["region"] for app in stores])
+
+            def collect(app):
+                region, instance = app["region"], app["instanceId"]
+                folder = Path(directory) / region
+                folder.mkdir(mode=0o700)
+                refs, sql = folder / "refs", folder / "cleanup.sql"
+                refs.write_text("".join(key + "\n" for key in grouped[region]))
+                sql.write_text(cleanup_sql(remote_dir + "/refs", len(grouped[region])))
+                for path in (refs, sql):
+                    path.chmod(0o600)
+                remote(instance, "mkdir -m700 " + shlex.quote(incoming))
+                for path in (refs, sql):
+                    subprocess.run([SSH, instance, "--copy", str(path), incoming + "/" + path.name], check=True)
+                remote(instance,
+                       "sudo install -d -o root -g root -m711 /var/lib/astra-maint && "
+                       f"sudo install -d -o postgres -g postgres -m700 {remote_dir} && "
+                       f"sudo install -o postgres -g postgres -m600 {incoming}/refs {remote_dir}/refs && "
+                       f"sudo install -o postgres -g postgres -m600 {incoming}/cleanup.sql {remote_dir}/cleanup.sql")
+                print(f"{region}: collecting orphan assets; preserving {len(grouped[region])} references", flush=True)
+                remote(instance, f"sudo -u postgres psql -X -p 5433 -d isureal_assets -f {remote_dir}/cleanup.sql")
+                print(f"{region}: cleanup and vacuum complete", flush=True)
+
+            # Each region owns an independent database. Keep all producers
+            # stopped until every deletion/vacuum has finished, even on failure.
+            with ThreadPoolExecutor(max_workers=len(stores)) as pool:
+                list(pool.map(collect, stores))
     finally:
-        # A failed copy, SQL check or cleanup must not leave applications down.
         def start(item):
             instance, service = item
             host, port = (asia["host"], 8081) if service.endswith("-writer") else ("127.0.0.1", 8080)
@@ -129,10 +155,13 @@ while True:
         time.sleep(0.2)
 """
             remote(instance, f"sudo systemctl start {service} && systemctl is-active {service} && python3 -c " + shlex.quote(ready))
-        with ThreadPoolExecutor(max_workers=4) as pool:
-            list(pool.map(start, reversed(stopped)))
-        remote(store["instanceId"], f"sudo rm -rf -- {remote_dir} {incoming}")
-    print("Asset cleanup complete; all application processes restarted", flush=True)
+        try:
+            with ThreadPoolExecutor(max_workers=4) as pool:
+                list(pool.map(start, reversed(stopped)))
+        finally:
+            for app in stores:
+                remote(app["instanceId"], f"sudo rm -rf -- {remote_dir} {incoming}")
+    print("All regional asset cleanup complete; application processes restarted", flush=True)
 
 
 if __name__ == "__main__":
