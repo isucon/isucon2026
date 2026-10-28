@@ -132,3 +132,7 @@ if (typeof runtime.signatureFileCacheEnabled !== "boolean" || runtime.signatureF
 }
 export const signatureFileSha256 = runtime.signatureFileCacheEnabled
     ? createHash("sha256").update(readFileSync("../../../" + runtime.signatureFileCachePath)).digest("hex") : "";
+
+if (!Number.isInteger(runtime.imageCacheMiB) || runtime.imageCacheMiB < 64 || runtime.imageCacheMiB > 1024) {
+    throw new Error("Invalid image byte cache capacity");
+}

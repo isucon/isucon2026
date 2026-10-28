@@ -70,6 +70,7 @@ pub struct HandlerContext {
 
 pub async fn new_server(config: Config) -> Router {
     crate::image_signature::initialize_signature_cache();
+    crate::image_api::initialize_image_cache();
     if !valid_region(&config.region) {
         panic!("invalid server region: {}", config.region);
     }
