@@ -7,3 +7,5 @@
 Pulumi runtimeのnginxClientBodyBufferKiBに容量を記録し、既存3アプリVMのNginxへ反映する。省略時は8KiB。実機比較は未実施。
 
 ローカルでは生成スクリプトを256KiB・同値再適用・8KiBへの復帰の順に実行し、重複設定が増えないことと、リクエストバッファリングが有効のままであることを確認した。各段階のNginx構文検査、Pulumi型検査、Bash/Python構文検査は成功した。
+
+2026-10-28 16:59 UTCごろ、実機Asiaのnginx -Tでclient_body_buffer_sizeとproxy_bufferingの明示設定がないこと、proxy_request_buffering on、client_max_body_size 32mを確認した。比較対象は既定容量からの変更になる。
