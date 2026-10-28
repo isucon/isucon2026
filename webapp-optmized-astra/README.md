@@ -50,7 +50,7 @@ nginxの接続上限は`runtime.json`の`nginxWorkerConnections`と`nginxWorkerR
 
 ## ファイルによる画像保存
 
-画像本体をSQLに保存する必要はない。`fileImageStore.enabled`で全アプリにファイル読み取りを配備し、その確認後に`writesEnabled`を有効にする。新規画像は受信地域の`/var/lib/astra-images/<先頭2文字>/<UUID>`に保存する。一時ファイルの内容をfsyncし、上書きしないhard linkで公開してディレクトリもfsyncしてから、SQLに`fs:<region>:<UUID>`を記録する。途中失敗は参照を公開せず、孤立ファイルは後で回収する。
+画像本体をSQLに保存する必要はない。`fileImageStore.enabled`で全アプリにファイル読み取りを配備し、その確認後に`writesEnabled`を有効にする。新規画像は受信地域の`/var/lib/astra-images/<先頭2文字>/<UUID>`に保存する。create_newで最終名を排他的に作成し、内容とディレクトリをfsyncしてから、SQLに`fs:<region>:<UUID>`を記録する。途中失敗は参照を公開せず、孤立ファイルは後で回収する。
 
 SQLには所有者と公開状態、保存先を残す。画像APIは毎回、現在の公開状態・鍵・署名期限を検証する。他地域の画像本体は既存VMのプライベートIP・8082番ポートのNginxから取得し、外部向けルートでは直接配信しない。従来のSQL画像も引き続き読める。書き込みだけをSQLへ戻すことはできるが、ファイル参照が残る間は読み取り機能を外せない。
 
