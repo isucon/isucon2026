@@ -43,10 +43,12 @@ fn io_failure(error: io::Error) -> sqlx::Error {
     }
 }
 
-struct Temporary(PathBuf);
-impl Drop for Temporary {
+struct UnpublishedFile(Option<PathBuf>);
+impl Drop for UnpublishedFile {
     fn drop(&mut self) {
-        let _ = fs::remove_file(&self.0);
+        if let Some(path) = &self.0 {
+            let _ = fs::remove_file(path);
+        }
     }
 }
 
@@ -172,19 +174,20 @@ impl FileStore {
             .map_err(|_| failure("file writer closed"))?;
         tokio::task::spawn_blocking(move || {
             let _permit = permit;
-            let temporary = Temporary(directory.join(format!(".{}.tmp", uuid::Uuid::new_v4())));
+            // SQL metadata is the authority for public visibility. The key is
+            // returned only after both the new file and directory are durable.
+            // create_new refuses collisions without touching an existing file.
             let mut file = OpenOptions::new()
                 .write(true)
                 .create_new(true)
                 .mode(0o444)
-                .open(&temporary.0)?;
+                .open(&target)?;
+            // Arm cleanup only after this call has created its own file.
+            let mut unpublished = UnpublishedFile(Some(target));
             file.write_all(&data)?;
             file.sync_all()?;
-            // hard_link publishes complete bytes atomically and refuses to
-            // replace an existing immutable ID, unlike an overwriting rename.
-            fs::hard_link(&temporary.0, &target)?;
-            fs::remove_file(&temporary.0)?;
             File::open(&directory)?.sync_all()?;
+            unpublished.0 = None;
             Ok::<_, io::Error>(())
         })
         .await
