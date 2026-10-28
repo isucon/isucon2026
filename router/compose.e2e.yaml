@@ -129,6 +129,23 @@ services:
       - no-new-privileges:true
     init: true
 
+  digest:
+    build:
+      context: ..
+      dockerfile: router/Dockerfile
+      target: digest
+    network_mode: service:router
+    environment: *router-environment
+    depends_on:
+      router:
+        condition: service_healthy
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    init: true
+
   app1:
     build: &fixture_build
       context: ..

@@ -125,7 +125,7 @@ clone identityの一意性を確認します。合格レポートは
 
 ## 試し解き用Supervisor
 
-実ポータルからベンチジョブを受け取るチーム専用Fargate環境は、[Supervisor構築手順](aws/supervisor/README.md)を参照してください。
+実ポータルからベンチジョブを受け取る Fargate の共有プールと基盤は、[Supervisor の構成と配備手順](aws/supervisor/README.md)を参照してください。
 `provisioning/aws/supervisor`の独立Pulumi stackで管理します。
 
 ### 既存環境を保持した追加構築

@@ -10,7 +10,6 @@ import type { RelationshipUserResponse } from "./relationship_list_api.ts";
 import { jsonResponse, noContent } from "./response.ts";
 import type { Env, HandlerContext } from "./server.ts";
 import { getSession } from "./session.ts";
-import type { Timestamp } from "./time.ts";
 import { getUser, validUserText, type User } from "./user.ts";
 import { newRelationshipUserResponse } from "./user_read_api.ts";
 
@@ -23,7 +22,7 @@ export type CommentResponse = {
   id: string;
   author: RelationshipUserResponse;
   body: string;
-  createdAt: Timestamp;
+  createdAt: Temporal.Instant;
 };
 
 export function newCommentResponse(comment: Comment, user: User): CommentResponse {
@@ -38,7 +37,7 @@ export function createCommentHandler(h: HandlerContext): Handler<Env> {
     }
     const actor = getSession(c)!.userID;
     const post = await getPost(h.db, input.postId);
-    if (post === undefined) {
+    if (!post) {
       throw new APIError(403, "interaction_forbidden");
     }
     await using tx = await h.db.begin();
@@ -110,7 +109,7 @@ export function deleteCommentHandler(h: HandlerContext): Handler<Env> {
       `SELECT c.author_id,p.author_id AS post_author_id FROM comments c JOIN posts p ON p.id=c.post_id WHERE c.id=$1 AND c.deleted_at IS NULL FOR UPDATE OF c`,
       input.commentId,
     );
-    if (record === undefined) {
+    if (!record) {
       throw new APIError(404, "interaction_not_found");
     }
     if (actor !== record.author_id && actor !== record.post_author_id) {

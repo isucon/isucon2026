@@ -1,6 +1,8 @@
 package main
 
 import (
+	"archive/zip"
+	"bytes"
 	"context"
 	"encoding/json"
 	"io"
@@ -112,5 +114,27 @@ func TestBlobRejectsInvalidSize(t *testing.T) {
 		if recorder.Code != http.StatusBadRequest {
 			t.Errorf("%s status = %d", target, recorder.Code)
 		}
+	}
+}
+
+func TestImageAndExportReportRouterHeaders(t *testing.T) {
+	t.Parallel()
+	handler := newHandler(serverConfig{ID: "app1", MaxBlobBytes: 1 << 20, MaxFetchBytes: 1024})
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/images/photo?bytes=5000", nil)
+	request.Header.Set("X-Benchmark-Request-Id", "1")
+	request.Header.Set("X-Isureal-Limit", "1")
+	handler.ServeHTTP(recorder, request)
+	if saw := recorder.Header().Get("X-Fixture-Saw"); saw != "X-Benchmark-Request-Id,X-Isureal-Limit" || !bytes.Equal(recorder.Body.Bytes(), fixtureImage("photo", 5000)) {
+		t.Fatalf("image: saw %q, %d bytes", saw, recorder.Body.Len())
+	}
+
+	recorder = httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/me/export", nil))
+	data := recorder.Body.Bytes()
+	archive, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	if err != nil || len(archive.File) != 2 || recorder.Header().Get("X-Fixture-Saw") != "" {
+		t.Fatalf("export: %v, saw %q", err, recorder.Header().Get("X-Fixture-Saw"))
 	}
 }

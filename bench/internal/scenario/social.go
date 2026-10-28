@@ -312,6 +312,7 @@ func (r *Runner) updateBio(ctx context.Context, u *user) {
 
 // changeProfileImage はプロフィール画像を変えるか消し、自分のプロフィールで確かめる。
 func (r *Runner) changeProfileImage(ctx context.Context, u *user) {
+	var image []byte
 	if u.profileImage != nil && u.rng.IntN(3) == 0 {
 		if err := u.API.DeleteProfileImage(ctx, u.Token); err != nil {
 			r.requestError(ctx, u, "%s: プロフィール画像を消せません: %v", u.Username, err)
@@ -319,7 +320,7 @@ func (r *Runner) changeProfileImage(ctx context.Context, u *user) {
 		}
 		u.profileImage = nil
 	} else {
-		image := r.photos.Profile(hashOf(r.seed, "profile", u.Username, itoa(u.rng.IntN(1<<30))))
+		image = r.photos.Profile(hashOf(r.seed, "profile", u.Username, itoa(u.rng.IntN(1<<30))))
 		if err := u.API.PutProfileImage(ctx, u.Token, image); err != nil {
 			r.requestError(ctx, u, "%s: プロフィール画像を変えられません: %v", u.Username, err)
 			return
@@ -345,7 +346,7 @@ func (r *Runner) changeProfileImage(ctx context.Context, u *user) {
 			r.requestError(ctx, u, "%s: プロフィール画像を取得できません: %v", u.Username, err)
 			return
 		}
-		if sha256.Sum256(data) != *u.profileImage {
+		if !client.SameImage(data, image) {
 			r.invalid(ctx, u, "%s: プロフィール画像が送った画像と違います", u.Username)
 			return
 		}

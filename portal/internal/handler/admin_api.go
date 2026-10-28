@@ -195,6 +195,14 @@ func (h *Handler) AdminTeamsUpdate(w http.ResponseWriter, r *http.Request) error
 	if req.Team.Id != id {
 		return errBadRequest("")
 	}
+	if err := validateNameLength(req.Team.Name, "チーム名"); err != nil {
+		return err
+	}
+	for _, c := range req.Contestants {
+		if err := validateNameLength(c.Name, "選手名"); err != nil {
+			return err
+		}
+	}
 
 	tx, err := h.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -334,7 +342,7 @@ func (h *Handler) AdminJobsIndex(w http.ResponseWriter, r *http.Request) error {
 	}
 	maxPage := int64(math.Ceil(float64(count) / float64(adminJobsPerPage)))
 
-	query := `SELECT ` + jobColumnsWithScore + ` FROM benchmark_jobs ` + join + ` WHERE ` + where + ` ORDER BY benchmark_jobs.id DESC`
+	query := `SELECT ` + jobListColumns + ` FROM benchmark_jobs ` + join + jobEnqueuedByJoin + ` WHERE ` + where + ` ORDER BY benchmark_jobs.id DESC`
 	if v := q.Get("page"); v != "" {
 		page, err := parseInt64(v)
 		if err == nil && page >= 0 {
@@ -342,7 +350,7 @@ func (h *Handler) AdminJobsIndex(w http.ResponseWriter, r *http.Request) error {
 		}
 	}
 
-	jobs, scores, err := queryJobsWithScore(ctx, h.db, query, args...)
+	jobs, options, err := queryJobList(ctx, h.db, query, args...)
 	if err != nil {
 		return err
 	}
@@ -356,7 +364,9 @@ func (h *Handler) AdminJobsIndex(w http.ResponseWriter, r *http.Request) error {
 		if team != nil {
 			teamPB = team.ToPB(false, nil, false)
 		}
-		res.Jobs = append(res.Jobs, j.ToPB(model.JobToPBOptions{Admin: true, Team: teamPB, Score: scores[i]}))
+		options[i].Admin = true
+		options[i].Team = teamPB
+		res.Jobs = append(res.Jobs, j.ToPB(options[i]))
 	}
 	renderPB(w, http.StatusOK, res)
 	return nil

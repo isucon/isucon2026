@@ -66,6 +66,18 @@ func TestRenderRouteMatrix(t *testing.T) {
 		"backend app2\n    server app2 172.31.2.10:8080",
 		"backend app2_stream\n    option http-no-delay\n    server app2 172.31.2.10:8080",
 		"timeout server 60s",
+		// The benchmark's image and export downloads go to isureal-digest with the
+		// app's address and the route's limit, and to the app while it is down.
+		"acl bench_digest req.fhdr_cnt(x-benchmark-request-id) -m int gt 0",
+		"acl digest_path path_beg /api/images/\n    acl digest_path path /api/me/export",
+		"use_backend app1_digest if { method GET } bench_digest digest_path { var(txn.pair) -m str app/AP app1/AP app1/EU app1/US }",
+		"backend app1_digest\n    acl digest_up srv_is_up(app1_digest/digest)\n    http-request del-header x-benchmark-request-id unless digest_up",
+		"http-request set-header X-Isureal-Upstream 172.31.1.10:8080 if digest_up",
+		"http-request set-header X-Isureal-Route %[var(txn.route)] if digest_up",
+		"http-request set-header X-Isureal-Limit 100000 if digest_up { var(txn.pair) -m str app1/EU app1/US }",
+		"http-request set-header X-Isureal-Limit 10000000 if digest_up { var(txn.pair) -m str app/AP app1/AP }",
+		"http-request set-header X-Isureal-Limit 200000 if digest_up { var(txn.pair) -m str app2/US }",
+		"server digest 127.0.0.1:18010 check inter 1s fall 2 rise 2\n    server app3 172.31.3.10:8080 backup",
 	} {
 		if !strings.Contains(text, want+"\n") {
 			t.Errorf("config is missing %q", want)
@@ -79,7 +91,7 @@ func TestRenderRouteMatrix(t *testing.T) {
 	}
 	// The checks that answer without an upstream must come before routing, and
 	// the stream backend must be chosen before the general one of each server.
-	order := []string{"return status 503", "return status 404", "return status 400 if", "return status 400 unless", "lua.isureal_delay", "use_backend app1_stream", "use_backend app1 if"}
+	order := []string{"return status 503", "return status 404", "return status 400 if", "return status 400 unless", "lua.isureal_delay", "acl bench_digest", "use_backend app1_digest", "use_backend app1_stream", "use_backend app1 if"}
 	last := -1
 	for _, marker := range order {
 		index := strings.Index(text, marker)
@@ -111,6 +123,17 @@ func TestRenderWithoutDelayOrHTTPS(t *testing.T) {
 		if !strings.Contains(files[ConfigFile], want) {
 			t.Errorf("config is missing %q", want)
 		}
+	}
+}
+
+func TestRenderWithoutDigest(t *testing.T) {
+	t.Parallel()
+	files, err := Render(testConfig(t, map[string]string{"ROUTER_DIGEST_ADDRESS": ""}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(files[ConfigFile], "digest") || strings.Contains(files[ConfigFile], "X-Isureal") {
+		t.Fatalf("digest routing without an address:\n%s", files[ConfigFile])
 	}
 }
 

@@ -17,19 +17,18 @@ export class NoRowsError extends Error {
   }
 }
 
-export function must<T>(value: T): Exclude<T, undefined> {
+export function must<T>(value: T | undefined): T {
   if (value === undefined) {
     throw new NoRowsError();
   }
-  return value as Exclude<T, undefined>;
+  return value;
 }
 
-const typeParsers: Record<number, (value: string) => unknown> = {
-  [pg.types.builtins.INT8]: Number,
-  [pg.types.builtins.NUMERIC]: Number,
-  [pg.types.builtins.DATE]: (value) => value,
-  [pg.types.builtins.TIMESTAMPTZ]: parsePostgresTimestamp,
-};
+const types = new pg.TypeOverrides();
+types.setTypeParser(pg.types.builtins.INT8, Number);
+types.setTypeParser(pg.types.builtins.NUMERIC, Number);
+types.setTypeParser(pg.types.builtins.DATE, (value) => value);
+types.setTypeParser(pg.types.builtins.TIMESTAMPTZ, parsePostgresTimestamp);
 
 const statementNames = new Map<string, string>();
 
@@ -39,7 +38,7 @@ function statement(sql: string, args: unknown[]): pg.QueryConfig {
     name = `isureal_${statementNames.size + 1}`;
     statementNames.set(sql, name);
   }
-  return { name, text: sql, values: args };
+  return { name, text: sql, values: args.map((arg) => (arg instanceof Temporal.Instant ? arg.toString() : arg)) };
 }
 
 export class DB implements Queryer {
@@ -53,10 +52,7 @@ export class DB implements Queryer {
       password: config.dbPassword,
       database: config.dbName,
       max: size,
-      types: {
-        getTypeParser: ((oid: number, format?: "text" | "binary") =>
-          typeParsers[oid] ?? pg.types.getTypeParser(oid, format)) as typeof pg.types.getTypeParser,
-      },
+      types,
     });
     this.#pool.on("error", (err) => logError("database connection failed", err));
   }
@@ -85,7 +81,7 @@ export class DB implements Queryer {
     try {
       await client.query("BEGIN");
     } catch (err) {
-      client.release(err as Error);
+      client.release(true);
       throw err;
     }
     return new Tx(client);
@@ -138,7 +134,7 @@ export class Tx implements Queryer {
     try {
       await this.#client.query(command);
     } catch (err) {
-      this.#client.release(err as Error);
+      this.#client.release(true);
       throw err;
     }
     this.#client.release();
