@@ -1,6 +1,6 @@
 # DB構成と既存4台の役割の比較
 
-現時点では、メタデータの物理レプリケーションを維持し、新規画像のバイト列を独立DBへ保存する構成を使っている。同じバイナリ・seedで投稿画像の保存先だけを変えた比較では61,313点から74,309点へ上がった。地域ごとにメタデータも分割する方式は未計測であり、独立DB全般が有利だと結論づける結果ではない。
+メタデータの物理レプリケーションを維持し、投稿画像のバイト列は受信地域の独立DBへ保存する構成を採用した。同じバイナリ・seedで、画像をAsiaへ保存した92,830点に対し、地域別に保存した場合は112,367点だった。アプリ側の改善を重ねた最高点は133,279点。地域ごとにメタデータも分割する方式は未計測であり、独立DB全般が有利だと結論づける結果ではない。以下の前半はAsiaに画像DBを分けた段階の比較記録で、最終構成の比較は末尾にまとめる。
 
 新しいAWSリソースは作成せず、秘密情報は既存VM間へscpで共有する。Asiaのdb1も役割を固定せず、アプリ処理や画像配信を担う候補に含める。ルーターの遅延・帯域制限と地域の判定は維持する。
 
@@ -44,7 +44,7 @@
 
 成功した更新の直後に結果が見えること、全地域で整合した初期状態へ戻ること、初期の履歴・画像を維持することは、[アプリケーションマニュアル](../docs/application-manual.md#データの反映)と[競技マニュアル](../docs/manual.md)に合わせる。古い設計検討資料の「地域内だけのread-your-writes」を根拠に、現行の反映要件を緩めない。
 
-db1の役割変更はまだ実施していない。画像DBには既存のAsiaアプリVMを使っている。22:57 UTCの測定ではdb1の平均CPU使用率は56.6%、Asiaアプリは53.4%だった。両方に負荷があるため、DBを退避してdb1へアプリを集約する方が有利とは判断していない。db1のI/O待ちは平均11.9%で、履歴画像の読み取りも残る。役割変更は選択肢として維持しつつ、地域内キャッシュとアプリの実行待ちを先に改善する。
+db1の役割変更はまだ実施していない。22:57 UTC時点では画像DBに既存のAsiaアプリVMを使っていた。この測定ではdb1の平均CPU使用率は56.6%、Asiaアプリは53.4%だった。両方に負荷があるため、DBを退避してdb1へアプリを集約する方が有利とは判断していない。db1のI/O待ちは平均11.9%で、履歴画像の読み取りも残る。役割変更は選択肢として維持しつつ、地域内キャッシュとアプリの実行待ちを先に改善する。
 
 ## 独立した画像DBの比較手順
 
@@ -96,23 +96,52 @@ db1の役割変更はまだ実施していない。画像DBには既存のAsia�
 容量整理の実機検証では、公開参照3,497件を保持して孤立した32,732件を削除した。全アプリの再起動後、3地域で各5枚の既存画像を再取得し、計15枚のバイト列とJPEGのContent-Typeが停止前と一致することを確認した。systemdのactive直後にはHTTP待受けがまだ始まっていない場合があったため、整理処理の復帰確認では待受け開始まで待つ。
 
 <!-- astra-final-comparison-start -->
-## 最終比較
+## 11:00 JST締切までの追加比較
 
 | 実行 | 変更 | 結果 |
 | --- | --- | ---: |
-| [20261027T225742Z-team10](results/20261027T225742Z-team10/result.json) | 欧州・米州の投稿画像を受信時に保持 | 90,104 PASS |
-| [20261027T230256Z-team10](results/20261027T230256Z-team10/result.json) | リアルモジも受信時に保持 | 87,734 PASS |
-| [20261027T232844Z-team10](results/20261027T232844Z-team10/result.json) | 容量整理後、画像キャッシュの件数上限を16,384へ変更 | 87,642 PASS |
-| [20261027T233258Z-team10](results/20261027T233258Z-team10/result.json) | 小さい画像をアカウント操作の待ち列から分離 | 89,592 PASS |
-| [20261027T233712Z-team10](results/20261027T233712Z-team10/result.json) | Asiaでも投稿画像を保持 | 89,306 PASS |
-| [20261027T234159Z-team10](results/20261027T234159Z-team10/result.json) | 署名計算のキャッシュを65,536件へ拡大 | 95,017 PASS |
-| [20261027T234548Z-team10](results/20261027T234548Z-team10/result.json) | Tokioを4スレッドで比較 | 93,852 PASS |
-| [20261027T234936Z-team10](results/20261027T234936Z-team10/result.json) | 2スレッドで投稿画像だけを地域内保持 | 92,594 PASS |
-| [20261027T235343Z-team10](results/20261027T235343Z-team10/result.json) | 採用構成の再測定 | 93,597 PASS |
+| [20261028T004046Z-team10](results/20261028T004046Z-team10/result.json) | regional image DB readers; Asia-write control | 92,830 PASS |
+| [20261028T004433Z-team10](results/20261028T004433Z-team10/result.json) | regional durable post images with signed reference handoff | 112,367 PASS |
+| [20261028T004825Z-team10](results/20261028T004825Z-team10/result.json) | regional images; reuse recently active DB connections | 119,333 PASS |
+| [20261028T005258Z-team10](results/20261028T005258Z-team10/result.json) | regional images; local preflight with authoritative writer reauthentication | 121,353 PASS |
+| [20261028T005720Z-team10](results/20261028T005720Z-team10/result.json) | documented JPEG header validation without pixel decoding | 120,988 PASS |
+| [20261028T010144Z-team10](results/20261028T010144Z-team10/result.json) | Asia upstream HTTP keepalive with regional images and header validation | 129,521 PASS |
+| [20261028T010533Z-team10](results/20261028T010533Z-team10/result.json) | info action logs; preserve login guard and server errors | 118,394 PASS |
+| [20261028T011022Z-team10](results/20261028T011022Z-team10/result.json) | atomic post and image-reference insertion; debug logs restored | 127,015 PASS |
+| [20261028T011428Z-team10](results/20261028T011428Z-team10/result.json) | stream uploads through nginx without request temp files | 117,664 PASS |
+| [20261028T011841Z-team10](results/20261028T011841Z-team10/result.json) | 262144 signatures with inline cache keys; request buffering restored | 126,761 PASS |
+| [20261028T012306Z-team10](results/20261028T012306Z-team10/result.json) | ASCII search prefilter with full Unicode and literal semantics | 133,279 PASS |
+| [20261028T012958Z-team10](results/20261028T012958Z-team10/result.json) | repeat full candidate after application and independent image DB restarts | 128,427 PASS |
+| [20261028T013453Z-team10](results/20261028T013453Z-team10/result.json) | repeat 129521-point application paths; same regional storage and HTTP settings | 128,375 PASS |
+| [20261028T013924Z-team10](results/20261028T013924Z-team10/result.json) | final selected regional application; atomic publication, signature cache and ASCII search | 122,278 PASS |
+| [20261028T014307Z-team10](results/20261028T014307Z-team10/result.json) | selected regional application with alternate seed 20261028 | 0 FAIL |
+| [20261028T014704Z-team10](results/20261028T014704Z-team10/result.json) | repeat alternate seed after registration timeout investigation | 120,515 PASS |
 
-最高点は95,017点。採用構成の再測定は93,597点でPASSした。直近の比較は同じseed `12453240012606038961`と同じベンチイメージを使っているが、各差を統計的に確定する反復回数は取れていない。特に小さいスコア差だけで一般的な優劣は断定しない。
+別seedの確認は[120,515点・PASS](results/20261028T014704Z-team10/result.json)。
 
-次の比較候補は、メタデータのレプリケーションを維持し、画像DBだけを地域ごとに分ける方式である。現行では地域内に画像を保持しても、投稿本文は一度Asiaへ転送する。受信地域で画像を永続化してからAsiaへ参照を公開できれば、この転送を減らせる可能性がある。公開前の永続化、地域間の画像取得、削除・初期化、失敗時の孤立画像を扱う仕組みが必要であり、今回は未実装・未計測である。全メタデータを地域ごとに分ける方式とも区別して比較する。
+最高点は133,279点、採用構成の確認走行は122,278点でPASSした。比較走行は原則としてseed `12453240012606038961`と同じベンチイメージを使う。各変更の差が小さい場合は、単発のスコアだけで一般的な優劣を断定しない。
 
-Asiaのdb1はアプリや画像配信への転用も可能な候補として扱った。ただし、現在はdb1とAsiaアプリの両方にCPU・I/O負荷があるため、測定した構成では役割を維持した。独立画像DBが有利だった実測結果を、db1の役割変更や全メタデータ分割の効果へ一般化しない。
+地域別画像DBは、同じバイナリ・seedのAsia保存92,830点に対して112,367点となった。これは画像の保存先とJPEG検証処理を地域へ移す比較であり、メタデータも地域別に分割した結果ではない。その後、接続の再利用、事前確認の地域内実行、仕様上不要な全体デコードの削除、AsiaのHTTP接続再利用を比較した。
+
+最初の地域別保存の比較では、AsiaアプリのCPU平均使用率は約60%から52%へ下がり、欧州は約33%から46%、米州は約28%から41%へ上がった。処理は分散できたが、画像取得のp90は増えたため、全APIが速くなったわけではない。JPEG全体のデコードを省いた比較では、AsiaのCPU平均は約53%から40%へ下がった一方、スコアはほぼ同じだった。
+
+Asia db1をアプリ処理や画像配信に使う案も検討した。現在のdb1にはメタデータ処理と読み取りI/Oの負荷があり、画像は3地域の既存アプリVMへ分散できている。db1は6,000 IOPS・200 MiB/s、app1は3,000 IOPS・125 MiB/sのため、DBをapp1へ移すだけではI/Oの条件が下がる。今回はdb1の役割を維持した。役割の入れ替えや全メタデータの地域分割は未計測であり、不利だと確定したわけではない。
+
+採用した画像公開処理は投稿と画像参照を1回のDB呼び出しで確定する方式。検索はASCII候補をDB側で絞り込み、Unicodeの正規化・ケースフォールドをRustで照合する方式。署名キャッシュは262,144件。
+
+アプリと独立画像DBの再起動後、3地域で各保存先から2件ずつ、計18件の画像についてバイト列とJPEG Content-Typeの一致を確認した。稼働バイナリ、実際の環境設定、Pulumiのruntimeと配布物のSHA-256も照合した。秘密情報は非公開envファイルをscpで共有し、値はコミットしていない。
+
+地域別の公開参照がある間は、その地域のDBと読み取り対応を残す。書き込みを止めるだけなら`regionalImageWritesEnabled=false`へ切り替える。旧バイナリへ戻す場合は、対応バイナリで初期化して地域別参照がなくなったことを確認してから戻す。既存GCはAsiaの孤立画像だけを対象とし、地域別DBの行は削除しない。
 <!-- astra-final-comparison-end -->
+
+## 最終確認で残った点
+
+採用版の同一seedの結果は133,279点、128,427点、122,278点だった。旧アプリ処理との比較は129,521点と128,375点であり、最後に加えた公開処理・署名キャッシュ・検索の差を、反復結果から確定できる状況ではない。最高点を記録した版を残したが、最高点の再現性は未確定である。
+
+別seed `20261028`の[初回](results/20261028T014307Z-team10/result.json)は、負荷開始前の登録タイムアウトで0点・FAILとなった。準備用登録20件に対してNginxに残った201応答はAsia 9件、欧州5件、米州5件だった。確認時にDBの待機中の処理と未反映WALはなく、当該時間帯のアプリエラーも見つからなかった。コード・設定を変えず、[同じseedで再実行](results/20261028T014704Z-team10/result.json)すると120,515点・PASSとなった。原因は未確定であり、単に解決済みとは扱わない。
+
+次に全メタデータの独立DB化を検証するなら、ユーザー名の一意性、地域変更、友達・ブロックの更新先を先に決める必要がある。他地域のフィードや通知は複数DBへの問い合わせが増え、成功応答直後に全地域から更新結果を読める条件も維持する必要がある。画像本体の転送は今回分離できたので、残る負荷がメタデータの複製・更新なのか、履歴の読み取りなのかを切り分けてから判断する。
+
+最高点の[リソース統計](results/20261028T012306Z-team10/report.txt)では、db1は平均CPU 58.2%、I/O待ち17%、読み取り約2,432 IOPSだった。db1へのアプリ追加は、このCPUとI/Oの余裕を確認して比較する。役割を固定する必要はないが、現時点で空いているサーバーとして扱うこともできない。
+
+最終再起動確認時の空き容量はAsia 3.7GiB、欧州4.8GiB、米州7.7GiBだった。初期化後も独立画像DBの孤立行は保持するため、今後ベンチを反復する前に容量を確認する。`apply.sh image-gc`はAsiaの孤立画像だけを対象とする。欧州・米州のGCは未実装で、地域別の公開参照を保持したままDBを削除してはいけない。
