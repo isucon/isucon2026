@@ -368,6 +368,10 @@ func (h *Handler) RegistrationUpdate(w http.ResponseWriter, r *http.Request) err
 	if err := tx.Commit(); err != nil {
 		return err
 	}
+	if team.LeaderID.Valid && team.LeaderID.Int64 == c.ID && team.Name != req.TeamName {
+		// Keep visibility-specific scores intact if the job runs after the freeze time.
+		h.jobs.Enqueue(ctx, "update_contestant_dashboard", job.UpdateDashboardArgs{TeamID: team.ID, Frozen: true})
+	}
 	renderPB(w, http.StatusOK, &pbregistration.UpdateRegistrationResponse{})
 	return nil
 }
