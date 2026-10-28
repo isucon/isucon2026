@@ -26,6 +26,7 @@ def inspect(app):
     for service in services:
         regional=service=='webapp-optmized-astra' and app['region']!='asia'
         expected[service]={
+            'ISUREAL_LISTEN_BACKLOG':str(runtime['listenBacklog']),
             'TOKIO_WORKER_THREADS':str(runtime['tokioWorkerThreads']),
             'ISUREAL_FILE_IMAGE_ROOT':runtime.get('fileImageStore',{}).get('root','') if runtime.get('fileImageStore',{}).get('enabled') else '',
             'ISUREAL_FILE_IMAGE_ARCHIVES':str(int(runtime.get('fileImageStore',{}).get('archiveReadsEnabled',False))),
@@ -74,6 +75,11 @@ print(json.dumps(result))
         available=int(remote(app['instanceId'],"df -B1 --output=avail /var/lib/postgresql | tail -n1").strip())
         assert available>1024**3
         result['available_disk_gib']=round(available/1024**3,1)
+    listeners=[line.split() for line in remote(app['instanceId'],'ss -lntH').splitlines()]
+    for port in ([8080,8081] if app['region']=='asia' else [8080]):
+        sockets=[entry for entry in listeners if entry[3].rsplit(':',1)[-1]==str(port)]
+        assert sockets and all(int(entry[2])==runtime['listenBacklog'] for entry in sockets)
+    result['listen_backlog']=runtime['listenBacklog']
     keepalive=app['region']!='asia' or runtime.get('asiaUpstreamKeepaliveEnabled',False)
     site=remote(app['instanceId'],'cat /etc/nginx/sites-available/isureal.conf')
     assert ('proxy_http_version 1.1;' in site)==keepalive

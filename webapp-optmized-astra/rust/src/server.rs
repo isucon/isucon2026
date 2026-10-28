@@ -350,8 +350,39 @@ pub async fn new_server(config: Config) -> Router {
     }
 }
 
+async fn bind_listener(address: &str, backlog: u32) -> io::Result<TcpListener> {
+    let mut error = io::Error::new(io::ErrorKind::InvalidInput, "no listen addresses");
+    for address in tokio::net::lookup_host(address).await? {
+        let bind = || {
+            let socket = if address.is_ipv4() {
+                tokio::net::TcpSocket::new_v4()?
+            } else {
+                tokio::net::TcpSocket::new_v6()?
+            };
+            socket.set_reuseaddr(true)?;
+            socket.bind(address)?;
+            socket.listen(backlog)
+        };
+        match bind() {
+            Ok(listener) => return Ok(listener),
+            Err(err) => error = err,
+        }
+    }
+    Err(error)
+}
+
 pub async fn start(server: Router, address: &str) -> io::Result<()> {
-    let listener = TcpListener::bind(address).await?.tap_io(|tcp| {
+    let backlog = std::env::var("ISUREAL_LISTEN_BACKLOG")
+        .unwrap_or_else(|_| "128".into())
+        .parse::<u32>()
+        .map_err(|error| io::Error::new(io::ErrorKind::InvalidInput, error))?;
+    if !(128..=4096).contains(&backlog) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "listen backlog out of range",
+        ));
+    }
+    let listener = bind_listener(address, backlog).await?.tap_io(|tcp| {
         let _ = tcp.set_nodelay(true);
     });
     axum::serve(
@@ -388,4 +419,22 @@ fn recover(err: Box<dyn Any + Send + 'static>) -> Response {
         "panic".to_owned()
     };
     Error::Internal(anyhow::anyhow!("[PANIC RECOVER] {message}")).into_response()
+}
+
+#[cfg(test)]
+mod listen_tests {
+    #[tokio::test]
+    async fn configured_backlog_accepts_a_burst_before_the_application_polls() {
+        let listener = super::bind_listener("127.0.0.1:0", 4096).await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let clients = tokio::time::timeout(
+            std::time::Duration::from_secs(2),
+            futures_util::future::join_all(
+                (0..256).map(|_| tokio::net::TcpStream::connect(address)),
+            ),
+        )
+        .await
+        .unwrap();
+        assert!(clients.iter().all(Result::is_ok));
+    }
 }

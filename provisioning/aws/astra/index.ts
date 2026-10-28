@@ -93,3 +93,7 @@ if (runtime.fileImageStore) {
         throw new Error("File images require deployed readers and the existing regional write flow");
     }
 }
+
+if (!Number.isInteger(runtime.listenBacklog) || runtime.listenBacklog < 128 || runtime.listenBacklog > 4096) {
+    throw new Error("Invalid application listen backlog");
+}
