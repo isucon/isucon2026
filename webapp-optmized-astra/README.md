@@ -6,7 +6,7 @@ Team 10向けのRust最適化実装。`webapp/rust`と`webapp/sql`を2335d5fか�
 <!-- astra-final-summary-start -->
 ## 現在の構成と検証状況
 
-2026年10月28日23:00 JSTまで比較を継続中。実機最高はファイル保存版の[150,931点・PASS](results/20261028T062146Z-team10/result.json)。直前のSQL保存は[144,909点・PASS](results/20261028T061211Z-team10/result.json)。同じseedでもスコアの振れがあるため、単発の差だけで各変更の効果とは判断しない。全走行のソース、配布物SHA-256、ベンチイメージを各`experiment.json`に保存している。
+2026年10月28日23:00 JSTまで比較を継続中。ファイル保存版の同一seed再計測は[163,405点・PASS](results/20261028T062953Z-team10/result.json)、別seedは[164,533点・PASS](results/20261028T063417Z-team10/result.json)。直前のSQL保存は[144,909点・PASS](results/20261028T061211Z-team10/result.json)。同じseedでもスコアの振れがあるため、単発の差だけで各変更の効果とは判断しない。全走行のソース、配布物SHA-256、ベンチイメージを各`experiment.json`に保存している。
 
 メタデータはAsiaのプライマリから欧州・米州へ複製し、新規の投稿画像は受信地域のファイルシステムへ永続化する。既存VMだけを利用し、AWSリソースは追加しない。秘密情報は非公開envをscpで共有する。SQLには画像の所有者・公開状態・保存先を残し、従来のSQL画像も引き続き取得できる。
 
