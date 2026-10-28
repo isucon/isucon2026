@@ -141,4 +141,16 @@ async fn action_log_middleware_entries() {
     let lines = output.lines();
     assert_eq!(lines.len(), 1, "{lines:?}");
     assert_eq!(lines[0]["action"], "create_post");
+    send(
+        &app,
+        "POST",
+        "/api/auth/login",
+        r#"{"username":"alice","secretKey":"wrong"}"#,
+    )
+    .await;
+    let lines = output.lines();
+    assert_eq!(lines.len(), 2);
+    assert_eq!(lines[1]["action"], "login");
+    assert_eq!(lines[1]["status"], 401);
+    assert_eq!(lines[1]["ip"], "203.0.113.7");
 }
