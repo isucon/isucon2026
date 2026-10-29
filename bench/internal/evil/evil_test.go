@@ -28,7 +28,7 @@ func TestPlans(t *testing.T) {
 		if p.at != time.Duration(i)*arrivalInterval/2 || p.kind != i%2+1 {
 			t.Fatalf("plan %d: %+v", i, p)
 		}
-		if p.kind == 1 && (p.rate < 20 || p.rate > 100 || !strings.HasPrefix(p.password, "password_dummy_")) {
+		if p.kind == 1 && (p.rate < 40 || p.rate > 160 || !strings.HasPrefix(p.password, "password_dummy_")) {
 			t.Fatalf("invalid login actor: %+v", p)
 		}
 	}
