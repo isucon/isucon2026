@@ -1,3 +1,4 @@
+import { parseResourceId } from "../IdInput";
 import { AdminApiClient } from "./AdminApiClient";
 
 import React from "react";
@@ -219,8 +220,9 @@ export interface Props {
 
 export const AdminClarificationDetail = (props: Omit<Props, "id">) => {
   const { id } = useParams();
-  if (!id) throw new Error("id is required");
-  return <AdminClarificationDetailInternal {...props} id={id} />;
+  const parsedId = parseResourceId(id);
+  if (parsedId === null) return <ErrorMessage error={new Error("無効な ID です。")} />;
+  return <AdminClarificationDetailInternal {...props} id={parsedId.toString()} />;
 };
 
 const AdminClarificationDetailInternal: React.FC<Props> = (props: Props) => {

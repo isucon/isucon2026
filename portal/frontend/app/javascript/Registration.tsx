@@ -1,3 +1,4 @@
+import { parseResourceId } from "./IdInput";
 import { ApiClient } from "./ApiClient";
 
 import React from "react";
@@ -51,13 +52,15 @@ export class Registration extends React.Component<Props, State> {
   constructor(props: Props) {
     super(props);
     const params = new URLSearchParams(document.location.search);
+    const rawTeamId = params.get("team_id");
+    const teamId = rawTeamId === null ? 0n : parseResourceId(rawTeamId);
     this.state = {
       session: this.props.session,
       registrationSession: null,
-      teamId: BigInt(params.get("team_id") || "0"),
+      teamId: teamId ?? undefined,
       inviteToken: params.get("invite_token") || undefined,
       edit: false,
-      error: null,
+      error: teamId === null ? new Error("無効な招待 URL です。") : null,
     };
   }
 
@@ -66,6 +69,7 @@ export class Registration extends React.Component<Props, State> {
   }
 
   async updateRegistrationSession() {
+    if (this.state.teamId === undefined) return;
     try {
       const registrationSession = await this.props.client.getRegistrationSession(
         create(GetRegistrationSessionQuerySchema, {

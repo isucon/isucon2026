@@ -18,6 +18,7 @@ async function renderForm(role, client) {
   const require = createRequire(url);
   new Function("require", "exports", outputText)((name) => {
     if (name === "react-hook-form") return { useForm: (options) => (methods = useForm(options)) };
+    if (name === "../IdInput") return {}; // Only ClarForm is exercised here.
     if (name === "../Clarification") return { Clarification: () => null };
     if (name === "../ErrorMessage") return { ErrorMessage: () => null };
     if (name === "@bufbuild/protobuf") return { create: (_schema, fields) => fields };

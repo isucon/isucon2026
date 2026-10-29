@@ -1,3 +1,4 @@
+import { parseResourceId } from "../IdInput";
 import { AdminApiClient } from "./AdminApiClient";
 
 import React, { useState } from "react";
@@ -28,8 +29,9 @@ export interface State {
 
 export const AdminTeamDetail = (props: Omit<Props, "teamId">) => {
   const { id: teamId } = useParams();
-  if (!teamId) throw new Error("teamId is required");
-  return <AdminTeamDetailInternal {...props} teamId={BigInt(teamId)} />;
+  const parsedId = parseResourceId(teamId);
+  if (parsedId === null) return <ErrorMessage error={new Error("無効な ID です。")} />;
+  return <AdminTeamDetailInternal {...props} teamId={parsedId} />;
 };
 
 class AdminTeamDetailInternal extends React.Component<Props, State> {
