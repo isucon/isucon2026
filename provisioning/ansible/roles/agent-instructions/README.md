@@ -31,6 +31,11 @@ those edits.
 
 ## Validation
 
+The instruction source preserves the supplied `fujiwara-agent.md` verbatim,
+followed by an HTML comment marking the appended language and daily-life notes.
+The regression test checks the original document's SHA-256 without depending on
+the contributor's Downloads directory. Do not reformat the imported portion.
+
 With Ansible and its Python dependencies available in the active environment:
 
 ```sh
