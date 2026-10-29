@@ -1,3 +1,4 @@
+import { requireResourceId } from "../IdInput";
 import { ApiError, ApiClient } from "../ApiClient";
 import { AdminApiClient } from "./AdminApiClient";
 
@@ -107,9 +108,9 @@ class AdminContestantInstanceListInternal extends React.Component<Props, State> 
   async updateList() {
     try {
       const list = await this.props.client.listContestantInstances(
-        this.props.teamId ? BigInt(this.props.teamId) : null,
+        this.props.teamId ? requireResourceId(this.props.teamId) : null,
       );
-      this.setState({ list });
+      this.setState({ list, error: null });
     } catch (error) {
       this.setState({ error });
     }
