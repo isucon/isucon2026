@@ -49,6 +49,9 @@ class WorkflowRoutingTest(unittest.TestCase):
             "portal/internal/handler/admin.go": {"portal-ci.yml", "supervisor-ci.yml"},
             "supervisor/src/main.rs": {"supervisor-ci.yml"},
             "bench/main.go": {"supervisor-ci.yml"},
+            "router/internal/config/config.go": {"router-ci.yml"},
+            "portal-mock/web/src/App.tsx": {"portal-mock-ci.yml"},
+            "gen/go/portal/v1/config.pb.go": {"portal-mock-ci.yml", "router-ci.yml"},
             "specs/001-isureal-social-app/contracts/openapi.yaml": {
                 "backend-ci.yml",
                 "frontend-ci.yml",
