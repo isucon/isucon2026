@@ -89,6 +89,7 @@ func getRealMojisHandler(h *HandlerContext) echo.HandlerFunc {
 			return NewAPIError(http.StatusBadRequest, "invalid_pagination")
 		}
 		ctx := c.Request().Context()
+		hotSessionUser(c, h)
 		reactions, allowed, err := readInteractions(ctx, h.DB, GetSession(c).UserID, input.PostID, false, input.BeforeCreatedAt, input.BeforeID)
 		if err != nil {
 			return err

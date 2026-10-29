@@ -67,6 +67,26 @@ func getImageHandler(h *HandlerContext) echo.HandlerFunc {
 			// Deleted images may still be served for a few seconds, so a recent
 			// liveness check is reused without a database round trip.
 			object = imageObject{SecretKeyHash: cached.secretKeyHash, Version: cached.version, MediaType: cached.mediaType, Live: true, Data: cached.data}
+		} else if entry, ok := pack.lookup(input.ImageID); ok {
+			checkedAt := time.Now()
+			var known bool
+			if object, known = historyImageObject(input.ImageID); !known {
+				object, err = loadPackImageObject(ctx, h.DB, input.ImageID, entry)
+				if errors.Is(err, sql.ErrNoRows) {
+					return NewAPIError(http.StatusForbidden, "image_forbidden")
+				}
+				if err != nil {
+					return err
+				}
+			}
+			if object.Live {
+				if hit {
+					object.Data = cached.data
+				} else if object.Data, err = pack.read(entry); err != nil {
+					return err
+				}
+				cache.put(input.ImageID, object, checkedAt)
+			}
 		} else {
 			var version *string
 			if hit && cached.version != "" {

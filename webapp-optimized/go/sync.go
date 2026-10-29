@@ -21,14 +21,16 @@ import (
 // stateEvent is a versioned change to the hot state. It carries the new state
 // of one key, never a delta, so applying events in any order converges.
 type stateEvent struct {
-	Version int64      `json:"v"`
-	Kind    string     `json:"k"`
-	A       string     `json:"a,omitempty"`
-	B       string     `json:"b,omitempty"`
-	Exists  bool       `json:"e,omitempty"`
-	User    *eventUser `json:"u,omitempty"`
-	Post    *Post      `json:"p,omitempty"`
-	Window  *hotWindow `json:"w,omitempty"`
+	Version  int64      `json:"v"`
+	Kind     string     `json:"k"`
+	A        string     `json:"a,omitempty"`
+	B        string     `json:"b,omitempty"`
+	Exists   bool       `json:"e,omitempty"`
+	User     *eventUser `json:"u,omitempty"`
+	Post     *Post      `json:"p,omitempty"`
+	Window   *hotWindow `json:"w,omitempty"`
+	Comment  *Comment   `json:"c,omitempty"`
+	Reaction *RealMoji  `json:"r,omitempty"`
 }
 
 // eventUser is User with the fields User hides from API responses.
@@ -156,6 +158,7 @@ func registerSyncHandlers(e *echo.Echo, h *HandlerContext) {
 		if err := hot.load(c.Request().Context(), h.DB); err != nil {
 			return err
 		}
+		history.refresh(c.Request().Context(), h.DB)
 		warmConnections(c.Request().Context(), h.DB)
 		return c.NoContent(http.StatusNoContent)
 	})
@@ -167,6 +170,7 @@ func reloadEverywhere(ctx context.Context, db *sqlx.DB) error {
 	if err := hot.load(ctx, db); err != nil {
 		return err
 	}
+	history.refresh(ctx, db)
 	sendToPeers(ctx, "/internal/state-reload", struct{}{})
 	return nil
 }
@@ -213,6 +217,24 @@ func eventsFor(ctx context.Context, db *sqlx.DB, action, actor string, args any,
 		}
 	case "post_delete":
 		return []stateEvent{{Version: version, Kind: "post_deleted", A: argString(args, "id")}}
+	case "comment_create", "comment_delete":
+		comment := result.Comment
+		if result.InitialPost {
+			return []stateEvent{{Version: version, Kind: "history_dirty", A: comment.PostID}}
+		}
+		if hot.tracksPost(comment.PostID) {
+			return []stateEvent{{Version: version, Kind: "comment", Comment: &comment, Exists: action == "comment_create"}}
+		}
+	case "reaction_create", "reaction_delete":
+		reaction := result.Reaction
+		if result.InitialPost {
+			return []stateEvent{{Version: version, Kind: "history_dirty", A: reaction.PostID}}
+		}
+		// Deleting a RealMoji that was already replaced leaves the reactor's
+		// live one in place.
+		if hot.tracksPost(reaction.PostID) && (action == "reaction_create" || reaction.ReplacedAt == nil) {
+			return []stateEvent{{Version: version, Kind: "reaction", Reaction: &reaction, Exists: action == "reaction_create"}}
+		}
 	case "friend_create", "friend_transition":
 		if r := result.Request; r.Status == "accepted" {
 			return []stateEvent{{Version: version, Kind: "friend", A: r.RequesterID, B: r.RecipientID, Exists: true}}
