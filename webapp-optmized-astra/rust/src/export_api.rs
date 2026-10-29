@@ -1,12 +1,13 @@
-use std::io::{Cursor, Write};
+use std::io::{self, Write};
 use std::sync::Arc;
 
 use axum::Extension;
+use axum::body::Body;
 use axum::extract::State;
 use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::Response;
 use bytes::Bytes;
-use futures_util::StreamExt;
+use futures_util::{StreamExt, TryStreamExt};
 use serde::Serialize;
 use sqlx::postgres::PgRow;
 use sqlx::{FromRow, Row};
@@ -17,7 +18,6 @@ use zip::{CompressionMethod, ZipWriter};
 use crate::api_error::Error;
 use crate::post::{POST_COLUMNS, Post};
 use crate::post_api::{CreatePostResponse, new_post_response};
-use crate::response::blob;
 use crate::server::HandlerContext;
 use crate::session::Session;
 use crate::user::{User, get_user};
@@ -40,14 +40,9 @@ pub async fn export_posts_handler(
         .acquire()
         .await
         .expect("export semaphore is never closed");
-    let (sender, receiver) = mpsc::channel(4);
-    let archive = tokio::task::spawn_blocking(move || {
-        let _permit = permit;
-        build_archive(receiver, author)
-    });
     let cached = crate::image_api::cached_export_images(user_id);
     let query = export_query();
-    let mut rows = sqlx::query_as::<_, ExportPost>(&query)
+    let rows = sqlx::query_as::<_, ExportPost>(&query)
         .bind(user_id)
         .bind(&cached.ids)
         .bind(&cached.versions)
@@ -68,19 +63,30 @@ pub async fn export_posts_handler(
                     .ok_or_else(|| sqlx::Error::Protocol("image store unavailable".into()))?;
                 row.image_data = store.get(key).await?.into();
             }
-            Ok(row)
+            Ok::<_, sqlx::Error>(row)
         })
-        .buffered(8);
-    while let Some(row) = rows.next().await {
-        let failed = row.is_err();
-        if sender.send(row).await.is_err() || failed {
-            break;
+        .buffered(8)
+        .try_collect::<Vec<_>>()
+        .await?;
+    // Finish SQL/immutable-file reads before sending a successful response.
+    // Keep only the image buffers; do not allocate another complete ZIP.
+    let (sender, receiver) = mpsc::channel(2);
+    tokio::task::spawn_blocking(move || {
+        let _permit = permit;
+        let output = ZipChunks::new(sender.clone());
+        if let Err(err) = write_archive(rows, author, output) {
+            let _ = sender.blocking_send(Err(io::Error::other(err.to_string())));
         }
-    }
-    drop(rows);
-    drop(sender);
-    let body = archive.await.map_err(anyhow::Error::from)??;
-    let mut response = blob(StatusCode::OK, "application/zip", body)?;
+    });
+    let stream = futures_util::stream::unfold(receiver, |mut receiver| async {
+        receiver.recv().await.map(|chunk| (chunk, receiver))
+    });
+    let mut response = Response::new(Body::from_stream(stream));
+    *response.status_mut() = StatusCode::OK;
+    response.headers_mut().insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("application/zip"),
+    );
     response.headers_mut().insert(
         header::CONTENT_DISPOSITION,
         HeaderValue::from_static(r#"attachment; filename="isureal-posts.zip""#),
@@ -143,14 +149,50 @@ impl FromRow<'_, PgRow> for ExportPost {
     }
 }
 
-fn build_archive(
-    mut receiver: mpsc::Receiver<Result<ExportPost, sqlx::Error>>,
-    author: User,
-) -> Result<Vec<u8>, Error> {
-    let mut writer = ZipWriter::new(Cursor::new(Vec::new()));
+const ZIP_CHUNK_BYTES: usize = 64 * 1024;
+
+/// Bounded chunks propagate HTTP backpressure to the blocking ZIP encoder.
+struct ZipChunks {
+    sender: mpsc::Sender<io::Result<Bytes>>,
+    buffer: Vec<u8>,
+}
+
+impl ZipChunks {
+    fn new(sender: mpsc::Sender<io::Result<Bytes>>) -> Self {
+        Self {
+            sender,
+            buffer: Vec::with_capacity(ZIP_CHUNK_BYTES),
+        }
+    }
+}
+
+impl Write for ZipChunks {
+    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+        let count = bytes.len().min(ZIP_CHUNK_BYTES - self.buffer.len());
+        self.buffer.extend_from_slice(&bytes[..count]);
+        if self.buffer.len() == ZIP_CHUNK_BYTES {
+            self.flush()?;
+        }
+        Ok(count)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        if !self.buffer.is_empty() {
+            let buffer = std::mem::replace(&mut self.buffer, Vec::with_capacity(ZIP_CHUNK_BYTES));
+            self.sender
+                .blocking_send(Ok(Bytes::from(buffer)))
+                .map_err(|_| {
+                    io::Error::new(io::ErrorKind::BrokenPipe, "export client disconnected")
+                })?;
+        }
+        Ok(())
+    }
+}
+
+fn write_archive<W: Write>(posts: Vec<ExportPost>, author: User, output: W) -> Result<(), Error> {
+    let mut writer = ZipWriter::new_stream(output);
     let mut items = Vec::new();
-    while let Some(post) = receiver.blocking_recv() {
-        let post = post?;
+    for post in posts {
         let image_path = format!("images/{:06}.jpg", items.len() + 1);
         writer.start_file(
             image_path.as_str(),
@@ -166,7 +208,8 @@ fn build_archive(
     let mut manifest = serde_json::to_vec(&items)?;
     manifest.push(b'\n');
     writer.write_all(&manifest)?;
-    Ok(writer.finish()?.into_inner())
+    writer.finish()?.flush()?;
+    Ok(())
 }
 
 #[cfg(test)]
@@ -174,7 +217,7 @@ mod tests {
     use super::*;
     use crate::post::PostLocation;
     use chrono::Utc;
-    use std::io::Read;
+    use std::io::{Cursor, Read};
 
     fn author() -> User {
         let mut user = User {
@@ -216,22 +259,23 @@ mod tests {
 
     #[tokio::test]
     async fn streamed_export_preserves_images_order_and_manifest() {
-        let (sender, receiver) = mpsc::channel(1);
-        let archive = tokio::task::spawn_blocking(move || build_archive(receiver, author()));
         let images = [
             include_bytes!("../tests/fixtures/small.jpg").as_slice(),
             include_bytes!("../tests/fixtures/wide.jpg").as_slice(),
         ];
-        sender
-            .send(Ok(post("first", images[0].to_vec())))
-            .await
-            .unwrap();
-        sender
-            .send(Ok(post("second", images[1].to_vec())))
-            .await
-            .unwrap();
-        drop(sender);
-        let data = archive.await.unwrap().unwrap();
+        let posts = vec![
+            post("first", images[0].to_vec()),
+            post("second", images[1].to_vec()),
+        ];
+        let (sender, mut receiver) = mpsc::channel(2);
+        let archive = tokio::task::spawn_blocking(move || {
+            write_archive(posts, author(), ZipChunks::new(sender))
+        });
+        let mut data = Vec::new();
+        while let Some(chunk) = receiver.recv().await {
+            data.extend_from_slice(&chunk.unwrap());
+        }
+        archive.await.unwrap().unwrap();
         let mut zip = zip::ZipArchive::new(Cursor::new(data)).unwrap();
         assert_eq!(zip.len(), 3);
         for (index, expected) in images.into_iter().enumerate() {
@@ -261,19 +305,37 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn export_rejects_partial_database_results_and_supports_empty_history() {
-        let (sender, receiver) = mpsc::channel(1);
-        let archive = tokio::task::spawn_blocking(move || build_archive(receiver, author()));
-        sender.send(Ok(post("first", vec![1, 2, 3]))).await.unwrap();
-        sender.send(Err(sqlx::Error::RowNotFound)).await.unwrap();
-        drop(sender);
-        assert!(archive.await.unwrap().is_err());
-        let (sender, receiver) = mpsc::channel(1);
-        drop(sender);
-        let data = tokio::task::spawn_blocking(move || build_archive(receiver, author()))
-            .await
-            .unwrap()
-            .unwrap();
+    async fn slow_or_disconnected_export_bounds_output_and_releases_writer() {
+        let (sender, mut receiver) = mpsc::channel(2);
+        let mut worker = tokio::task::spawn_blocking(move || {
+            write_archive(
+                vec![post("large", vec![7; 8 * ZIP_CHUNK_BYTES])],
+                author(),
+                ZipChunks::new(sender),
+            )
+        });
+        let first = receiver.recv().await.unwrap().unwrap();
+        assert_eq!(first.len(), ZIP_CHUNK_BYTES);
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(30), &mut worker)
+                .await
+                .is_err()
+        );
+        assert!(receiver.len() <= 2);
+        drop(receiver);
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_secs(2), worker)
+                .await
+                .unwrap()
+                .unwrap()
+                .is_err()
+        );
+    }
+
+    #[tokio::test]
+    async fn export_supports_empty_history() {
+        let mut data = Vec::new();
+        write_archive(Vec::new(), author(), &mut data).unwrap();
         let mut zip = zip::ZipArchive::new(Cursor::new(data)).unwrap();
         assert_eq!(zip.len(), 1);
         let mut manifest = String::new();
