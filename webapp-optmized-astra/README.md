@@ -414,3 +414,4 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261029T102534Z-team12 | team 12 repeat final runtime without restart | PASS | 167,869 |
 | 20261029T102856Z-team12 | team 12 repeat final runtime; previous run hit a 9,790 MiB bench host | PASS | 159,007 |
 | 20261029T112444Z-team12 | Team 12 baseline before grouped export image reads; fixed seed 1 | PASS | 164,297 |
+| 20261029T113254Z-team12 | Team 12 bounded streaming ZIP response; fixed seed 1 | PASS | 180,280 |
