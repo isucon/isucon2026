@@ -3,6 +3,7 @@ package main
 import (
 	"archive/zip"
 	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/binary"
 	"encoding/json"
@@ -617,6 +618,14 @@ func (r *runner) download(ctx context.Context, host, country, path string, seed 
 	return download{status: response.StatusCode, header: response.Header, body: body, duration: time.Since(started)}, nil
 }
 
+func gunzip(data []byte) ([]byte, error) {
+	gz, err := gzip.NewReader(bytes.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
+	return io.ReadAll(gz)
+}
+
 func checkDigest(got download, image []byte, seed uint64) error {
 	want := fmt.Sprintf("%016x", xxh3.HashSeed(image, seed))
 	if got.status != http.StatusOK || len(got.body) != 0 || got.header.Get("X-Body-Xxh3") != want ||
@@ -645,6 +654,18 @@ func (r *runner) assertDigest(ctx context.Context) error {
 	}
 	if got.status != http.StatusOK || !bytes.Equal(got.body, image) || got.header.Get("X-Body-Xxh3") != "" {
 		return fmt.Errorf("browser image: status %d, %d bytes, X-Body-Xxh3 %q", got.status, len(got.body), got.header.Get("X-Body-Xxh3"))
+	}
+	// An encoded body is passed through: its digest would not match the image
+	// the benchmark expects, while the benchmark decodes the body itself.
+	got, err = r.download(ctx, appHost, "JP", "/api/images/photo?bytes=200000&encoding=gzip", seed)
+	if err != nil {
+		return err
+	}
+	decoded, err := gunzip(got.body)
+	if got.status != http.StatusOK || got.header.Get("Content-Encoding") != "gzip" || got.header.Get("X-Body-Xxh3") != "" ||
+		err != nil || !bytes.Equal(decoded, image) {
+		return fmt.Errorf("gzip image: status %d, Content-Encoding %q, X-Body-Xxh3 %q, %d bytes (%v)",
+			got.status, got.header.Get("Content-Encoding"), got.header.Get("X-Body-Xxh3"), len(decoded), err)
 	}
 
 	got, err = r.download(ctx, appHost, "JP", "/api/me/export", seed)
@@ -688,7 +709,7 @@ func (r *runner) assertDigest(ctx context.Context) error {
 	if got.duration < 1500*time.Millisecond || got.duration > 15*time.Second {
 		return fmt.Errorf("limited image took %s, want about 2.3s", got.duration)
 	}
-	log.Printf("PASS digest image/export/browser; 400 kB at 1 Mbps took %s", got.duration)
+	log.Printf("PASS digest image/export/browser/gzip; 400 kB at 1 Mbps took %s", got.duration)
 	return nil
 }
 

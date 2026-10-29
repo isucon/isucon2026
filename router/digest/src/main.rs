@@ -7,8 +7,9 @@
 //! removes those headers, reads the app's whole response and answers 200 with
 //! X-Body-Xxh3 (the XXH3-64 of the body, seeded by the request id) and
 //! X-Body-Length instead of the body. In an export ZIP every entry except the
-//! JSON files is replaced by its digest (zip::MARKER). Other statuses pass
-//! through unchanged.
+//! JSON files is replaced by its digest (zip::MARKER). Other statuses, and
+//! bodies with a Content-Encoding (which the benchmark decodes before comparing),
+//! pass through unchanged.
 //!
 //! Configuration comes from the Router's environment:
 //! ROUTER_DIGEST_ADDRESS (where to listen, default 127.0.0.1:18010) and
@@ -230,6 +231,7 @@ async fn exchange(
 
         let code;
         let mut framing = Framing::Close;
+        let mut encoded = false;
         let mut reusable;
         c.out.clear();
         {
@@ -269,6 +271,11 @@ async fn exchange(
                 if is_hop(h.name) {
                     continue;
                 }
+                if h.name.eq_ignore_ascii_case("content-encoding")
+                    && !h.value.trim_ascii().eq_ignore_ascii_case(b"identity")
+                {
+                    encoded = true;
+                }
                 c.out.extend_from_slice(h.name.as_bytes());
                 c.out.extend_from_slice(b": ");
                 c.out.extend_from_slice(h.value);
@@ -287,8 +294,9 @@ async fn exchange(
             c.upstream.limit = Some(limit.clone());
         }
 
+        let digest = code == 200 && !encoded;
         match req.seed {
-            Some(seed) if code == 200 && !req.export => {
+            Some(seed) if digest && !req.export => {
                 let mut hash = Xxh3::with_seed(seed);
                 let mut n = 0u64;
                 read_body(
@@ -318,7 +326,7 @@ async fn exchange(
                 )
                 .await?;
                 let mut payload: &[u8] = &c.body;
-                if let Some(seed) = req.seed.filter(|_| code == 200) {
+                if let Some(seed) = req.seed.filter(|_| digest) {
                     if zip::rewrite(&c.body, seed, &mut c.zip).is_some() {
                         DIGESTED_BYTES.fetch_add(c.body.len() as u64, Ordering::Relaxed);
                         c.out.extend_from_slice(
