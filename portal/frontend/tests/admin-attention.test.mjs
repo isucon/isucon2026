@@ -64,11 +64,25 @@ const component = ts.transpileModule(
     },
   },
 );
+const sound = ts.transpileModule(
+  await readFile(new URL("../app/javascript/admin/AdminAttentionSound.tsx", import.meta.url), "utf8"),
+  {
+    compilerOptions: {
+      module: ts.ModuleKind.CommonJS,
+      target: ts.ScriptTarget.ES2020,
+      jsx: ts.JsxEmit.React,
+      esModuleInterop: true,
+    },
+  },
+);
+const soundComponents = {};
+new Function("require", "exports", sound.outputText)(() => React, soundComponents);
 const components = {};
 new Function("require", "exports", component.outputText)((name) => {
   if (name === "react") return React;
   if (name === "react-router-dom") return Router;
   if (name === "./attentionLevel") return exports;
+  if (name === "./AdminAttentionSound") return soundComponents;
   throw new Error(name);
 }, components);
 
@@ -145,4 +159,12 @@ test("polling retains warnings on failure, recovers, and cleans up on unmount", 
     delete globalThis.window;
     delete globalThis.document;
   }
+});
+
+test("attention flashes every half second and respects reduced motion", async () => {
+  const { compileString } = await import("sass");
+  const source = await readFile(new URL("../app/javascript/application.scss", import.meta.url), "utf8");
+  const { css } = compileString(source.slice(source.indexOf("body.isux-admin-attention-warning")));
+  assert.match(css, /animation: isux-admin-attention 0\.5s ease-in-out infinite/);
+  assert.match(css, /@media \(prefers-reduced-motion: reduce\)[\s\S]*animation: none/);
 });
