@@ -37,10 +37,14 @@ func plans(env scenario.EvilEnv) []actorPlan {
 	rng := rand.New(rand.NewPCG(seed, seed^0x6576696c))
 	var out []actorPlan
 	for n := 0; time.Duration(n)*arrivalInterval < env.Length; n++ {
+		rate := 40 + rng.IntN(121)
+		if time.Duration(n+1)*arrivalInterval >= env.Length {
+			rate = 300
+		}
 		out = append(out, actorPlan{
 			at: time.Duration(n) * arrivalInterval, kind: 1,
 			username: fmt.Sprintf("evil_login_%x_%d", seed, n),
-			rate:     40 + rng.IntN(121), password: fmt.Sprintf("password_dummy_%d", rng.IntN(1_000_000)),
+			rate:     rate, password: fmt.Sprintf("password_dummy_%d", rng.IntN(1_000_000)),
 		})
 		if at := time.Duration(n)*arrivalInterval + arrivalInterval/2; at < env.Length {
 			out = append(out, actorPlan{at: at, kind: 2, username: fmt.Sprintf("evil_upload_%x_%d", seed, n)})
@@ -78,7 +82,7 @@ func isBan(err error) bool {
 	return errors.As(err, &e) && e.Status == http.StatusForbidden && e.Code == "ip_banned"
 }
 
-// runLoginActor schedules 40-160 requests per second. In-flight requests are bounded;
+// runLoginActor schedules 40-160 requests per second, or 300 for the last actor. In-flight requests are bounded;
 // a missed slot is discarded rather than replayed after congestion clears.
 func runLoginActor(parent context.Context, env scenario.EvilEnv, api *client.Client, p actorPlan) {
 	ctx, cancel := context.WithCancel(parent)
