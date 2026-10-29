@@ -3,8 +3,7 @@ package dataset
 import "fmt"
 
 // language is a curated translation catalog, not a live translation service.
-// Invented nicknames follow the same inspiration order in every language.
-// Original team names are not used; see README.md for the transformations.
+// Invented nicknames follow the same order in every language.
 type language struct {
 	code                                                 string
 	names, handles, bios, captions, comments, localities []string
