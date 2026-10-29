@@ -1,3 +1,4 @@
+import { parseResourceId } from "../IdInput";
 import { ApiError, ApiClient } from "../ApiClient";
 
 import React from "react";
@@ -28,8 +29,9 @@ export interface State {
 
 export const ContestantBenchmarkJobDetail = (props: Omit<Props, "id">) => {
   const { id } = useParams();
-  if (!id) throw new Error("id is required");
-  return <ContestantBenchmarkJobDetailInternal {...props} id={BigInt(id)} />;
+  const parsedId = parseResourceId(id);
+  if (parsedId === null) return <ErrorMessage error={new Error("無効な ID です。")} />;
+  return <ContestantBenchmarkJobDetailInternal {...props} id={parsedId} />;
 };
 
 export class ContestantBenchmarkJobDetailInternal extends React.Component<Props, State> {

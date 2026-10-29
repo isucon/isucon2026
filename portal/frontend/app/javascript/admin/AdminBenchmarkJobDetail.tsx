@@ -1,3 +1,4 @@
+import { parseResourceId } from "../IdInput";
 import { AdminApiClient } from "./AdminApiClient";
 
 import React from "react";
@@ -25,8 +26,9 @@ export interface State {
 
 export const AdminBenchmarkJobDetail = (props: Omit<Props, "id">) => {
   const { id } = useParams();
-  if (!id) throw new Error("id is required");
-  return <AdminBenchmarkJobDetailInternal {...props} id={BigInt(id)} />;
+  const parsedId = parseResourceId(id);
+  if (parsedId === null) return <ErrorMessage error={new Error("無効な ID です。")} />;
+  return <AdminBenchmarkJobDetailInternal {...props} id={parsedId} />;
 };
 
 class AdminBenchmarkJobDetailInternal extends React.Component<Props, State> {
