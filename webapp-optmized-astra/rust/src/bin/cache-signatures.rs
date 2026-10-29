@@ -29,22 +29,42 @@ async fn main() -> Result<()> {
         "SELECT i.id, u.secret_key_hash FROM image_objects i JOIN users u ON u.id=i.owner_user_id",
     )
     .fetch(&mut connection);
-    let mut records: Vec<[u8; RECORD_BYTES]> = Vec::new();
+    let mut sources: Vec<(String, uuid::Uuid, Vec<u8>)> = Vec::new();
     while let Some(row) = rows.try_next().await? {
         let image_id: String = row.try_get("id")?;
         let id = uuid::Uuid::parse_str(&image_id)?;
         ensure!(id.to_string() == image_id, "noncanonical source image ID");
         let key = hex::decode(row.try_get::<String, _>("secret_key_hash")?)?;
         ensure!(key.len() == 32, "invalid source signing key");
-        let mut record = [0; RECORD_BYTES];
-        record[..32].copy_from_slice(&key);
-        record[32..48].copy_from_slice(id.as_bytes());
-        record[48..].copy_from_slice(&image_signature(&key, &image_id, expires));
-        records.push(record);
-        if records.len().is_multiple_of(100000) {
-            eprintln!("computed {} signatures", records.len());
-        }
+        sources.push((image_id, id, key));
     }
+    eprintln!("loaded {} source rows", sources.len());
+    // Signatures are independent; spread the key stretching over all cores.
+    let threads = std::thread::available_parallelism().map_or(1, |n| n.get());
+    let chunk = sources.len().div_ceil(threads).max(1);
+    let mut records: Vec<[u8; RECORD_BYTES]> = std::thread::scope(|scope| {
+        let workers: Vec<_> = sources
+            .chunks(chunk)
+            .map(|part| {
+                scope.spawn(move || {
+                    part.iter()
+                        .map(|(image_id, id, key)| {
+                            let mut record = [0; RECORD_BYTES];
+                            record[..32].copy_from_slice(key);
+                            record[32..48].copy_from_slice(id.as_bytes());
+                            record[48..].copy_from_slice(&image_signature(key, image_id, expires));
+                            record
+                        })
+                        .collect::<Vec<_>>()
+                })
+            })
+            .collect();
+        workers
+            .into_iter()
+            .flat_map(|worker| worker.join().expect("signature worker"))
+            .collect()
+    });
+    eprintln!("computed {} signatures", records.len());
     records.sort_unstable_by(|a, b| a[..48].cmp(&b[..48]));
     records.dedup_by(|a, b| a[..48] == b[..48]);
     let mut file = BufWriter::new(
