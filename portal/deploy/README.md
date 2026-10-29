@@ -59,27 +59,30 @@ LTS のマイナーバージョンを維持するため、自動マイナー更�
 
 1. [Pulumi README](pulumi/README.md) に従って AWS 基盤を作成します。
 2. [外部連携設定](external-integrations.md) に従って Secrets Manager の値を登録します。
-3. GitHub の `portal-develop` / `portal-production` Environment に、以下の Variables を登録します。
-4. `Deploy portal` workflow を `main` ブランチから手動実行します。
+3. 対象コミットの ARM64 イメージを ECR に push し、`deploy.sh` でデプロイします。
 
-| GitHub Variable | 値 |
-|---|---|
-| `PORTAL_DEPLOY_ENABLED` | Repository Variable に `true` |
-| `AWS_REGION` | `ap-northeast-1` |
-| `PORTAL_DEPLOY_ROLE_ARN` | Pulumi output `deployRoleArn` |
-| `PORTAL_ECR_REPOSITORY` | Pulumi output `ecrRepositoryUrl` |
-| `PORTAL_CONFIG_URI` | Pulumi output `ecspressoConfigUri` |
+```sh
+export AWS_REGION=ap-northeast-1
+export PORTAL_ECR_REPOSITORY=<Pulumi output ecrRepositoryUrl>
+export PORTAL_CONFIG_URI=<Pulumi output ecspressoConfigUri>
+aws ecr get-login-password --region "$AWS_REGION" \
+  | docker login --username AWS --password-stdin "${PORTAL_ECR_REPOSITORY%%/*}"
+tag="$(git rev-parse HEAD)-$(date -u +%Y%m%d%H%M%S)"
+docker buildx build --platform linux/arm64 --push \
+  -f portal/deploy/Dockerfile --build-arg REVISION="$(git rev-parse HEAD)" \
+  -t "$PORTAL_ECR_REPOSITORY:$tag" portal
+export IMAGE_DIGEST="$(aws ecr describe-images --region "$AWS_REGION" \
+  --repository-name "${PORTAL_ECR_REPOSITORY#*/}" --image-ids imageTag="$tag" \
+  --query 'imageDetails[0].imageDigest' --output text)"
+sh portal/deploy/deploy.sh
+```
 
-Environment の deployment branch を `main` に制限してください。
-本番 Environment には required reviewers を設定します。
-OIDC の trust policy はリポジトリ名と Environment 名の完全一致に制限しています。
-AWS access key、レジストリパスワード、デプロイ用 SSH 鍵は不要です。
-
-workflow は対象コミットを ARM64 でビルドし、ECR に一意の immutable tag で push します。
-その後、digest を固定して `migrate` タスクを 1 回実行します。
+ECR のタグは immutable なので、コミットと時刻を組み合わせた一意のタグで push します。
+x86_64 のホストでビルドする場合は QEMU によるエミュレーションを有効にしてください。
+`deploy.sh` は digest を固定して `migrate` タスクを 1 回実行します。
 `ecspresso run --wait --watch-container migrate` が終了コードを検査します。
 成功した場合だけ各サービスを `ecspresso deploy --wait --wait-until deployed` で更新します。
-ECS の circuit breaker が旧 revision に戻した場合も、workflow は失敗します。
+ECS の circuit breaker が旧 revision に戻した場合も、`deploy.sh` は失敗します。
 初回サービス作成時は過去の正常 revision がないため、自動ロールバック先はありません。
 
 `portal` は既定 2 タスク、`worker` と `notifyloop` は 1 タスクです。
@@ -103,8 +106,7 @@ Botを確実に停止するときは `enableBot: false` と `enableBotInStandby:
 `bot` と `notifyloop` は新旧の重複実行を避けるため、一度停止してから更新します。
 これらの desired count は 1 以下を維持してください。
 
-ローカルからも同じ経路を使えます。
-事前に対象 ECR に ARM64 イメージを push し、取得した digest を指定します。
+ECR に push 済みのイメージを再デプロイするときは、ビルドを省いて digest だけを指定します。
 
 ```sh
 export PORTAL_CONFIG_URI=s3://<config-bucket>/infra.json
@@ -112,8 +114,7 @@ export IMAGE_DIGEST=sha256:<64桁のdigest>
 sh portal/deploy/deploy.sh
 ```
 
-同じ環境へのローカル実行と workflow 実行を重ねないでください。
-workflow 同士は環境単位の concurrency で直列化します。
+同じ環境に対して `deploy.sh` を同時に実行しないでください。
 
 本番移行時のデータ保全、DNS確認、通常稼働への切替、切り戻しは [ポータル切替手順](../../docs/research/portal-cutover.md) を参照してください。
 
@@ -126,7 +127,7 @@ Aurora 管理の DB パスワードは自動ローテーションされます。
 ローテーション後は新しい接続に新パスワードが必要になるため、運用で全サービスの再デプロイを行います。
 競技中のローテーションを避けるスケジュールを Secrets Manager で設定してください。
 
-アプリケーションを切り戻す場合は、workflow の `digest` に以前の正常な digest を指定します。
+アプリケーションを切り戻す場合は、`IMAGE_DIGEST` に以前の正常な digest を指定して `deploy.sh` を実行します。
 タスク単位のログは `/ecs/<name>` の `portal` / `worker` / `bot` / `notifyloop` / `migrate` ストリームに出力されます。
 途中で失敗した場合、先に更新済みのサービスは新 revision のままです。
 修正後の再実行、または旧 digest での全サービス再デプロイで揃えてください。
