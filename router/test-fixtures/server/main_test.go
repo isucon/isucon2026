@@ -3,6 +3,7 @@ package main
 import (
 	"archive/zip"
 	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"io"
@@ -128,6 +129,17 @@ func TestImageAndExportReportRouterHeaders(t *testing.T) {
 	handler.ServeHTTP(recorder, request)
 	if saw := recorder.Header().Get("X-Fixture-Saw"); saw != "X-Benchmark-Request-Id,X-Isureal-Limit" || !bytes.Equal(recorder.Body.Bytes(), fixtureImage("photo", 5000)) {
 		t.Fatalf("image: saw %q, %d bytes", saw, recorder.Body.Len())
+	}
+
+	recorder = httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/images/photo?bytes=5000&encoding=gzip", nil))
+	gz, err := gzip.NewReader(recorder.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := io.ReadAll(gz)
+	if err != nil || recorder.Header().Get("Content-Encoding") != "gzip" || !bytes.Equal(decoded, fixtureImage("photo", 5000)) {
+		t.Fatalf("gzip image: %v, Content-Encoding %q, %d bytes", err, recorder.Header().Get("Content-Encoding"), len(decoded))
 	}
 
 	recorder = httptest.NewRecorder()

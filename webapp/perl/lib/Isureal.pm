@@ -29,6 +29,7 @@ sub startup ($self) {
         pid_file          => $self->home->child('hypnotoad.pid')->to_string,
     });
     $self->max_request_size(64 * 1024 * 1024);
+    $self->renderer->compress(0);
     $self->types->type(json => 'application/json');
     $self->secrets(['isureal']);
     $self->controller_class('Isureal::Controller');
