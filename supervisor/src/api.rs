@@ -18,6 +18,7 @@ use isuxportal::proto::services::bench::*;
 pub struct Client {
     base_url: reqwest::Url,
     http: reqwest::Client,
+    benchmark_class: crate::config::BenchmarkClass,
 }
 
 impl Client {
@@ -26,14 +27,24 @@ impl Client {
             .timeout(std::time::Duration::from_secs(15))
             .build()
             .expect("failed to build reqwest client");
-        Self { base_url, http }
+        Self { base_url, http, benchmark_class: Default::default() }
+    }
+
+    pub fn with_benchmark_class(mut self, class: crate::config::BenchmarkClass) -> Self {
+        self.benchmark_class = class;
+        self
     }
 
     pub async fn receive_benchmark_job(
         &self,
         input: &ReceiveBenchmarkJobRequest,
     ) -> Result<ReceiveBenchmarkJobResponse, Error> {
-        let req = encode_pb(self.http.post(self.base_url.join("/api/bench/receive").unwrap()), input)?;
+        let req = encode_pb(
+            self.http
+                .post(self.base_url.join("/api/bench/receive").unwrap())
+                .header("X-Isux-Benchmark-Class", self.benchmark_class.as_str()),
+            input,
+        )?;
 
         decode_pb(self.http.execute(req).await?).await
     }

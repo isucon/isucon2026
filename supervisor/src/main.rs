@@ -19,7 +19,8 @@ fn main() {
 
 #[tokio::main]
 async fn run(config: Config, command_exec: String, command_args: Vec<String>) {
-    let client = api::Client::new(reqwest::Url::parse(&config.endpoint_url).unwrap());
+    let client = api::Client::new(reqwest::Url::parse(&config.endpoint_url).unwrap())
+        .with_benchmark_class(config.benchmark_class);
 
     let (shutdown_tx, mut shutdown_rx) = tokio::sync::oneshot::channel();
     tokio::spawn(async {

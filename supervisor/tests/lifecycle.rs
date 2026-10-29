@@ -55,6 +55,9 @@ async fn run_case(case: &str) {
                 let completion = completion.clone();
                 async move {
                     let path = req.uri().path().to_owned();
+                    if path == "/api/bench/receive" {
+                        assert_eq!(req.headers().get("X-Isux-Benchmark-Class").unwrap(), "large");
+                    }
                     let bytes = hyper::body::to_bytes(req.into_body()).await.unwrap();
                     let body = match path.as_str() {
                         "/api/bench/receive" => {
@@ -97,7 +100,8 @@ async fn run_case(case: &str) {
         }
     });
     let server_task = tokio::spawn(server.serve(service));
-    let client = api::Client::new(format!("http://{addr}").parse().unwrap());
+    let client = api::Client::new(format!("http://{addr}").parse().unwrap())
+        .with_benchmark_class(isuxportal_supervisor::config::BenchmarkClass::Large);
     let job = client
         .receive_benchmark_job(&ReceiveBenchmarkJobRequest {
             token: "test-token".into(),
@@ -111,6 +115,7 @@ async fn run_case(case: &str) {
     let dir = std::env::temp_dir().join(format!("supervisor-test-{}-{case}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let config = Config {
+        benchmark_class: isuxportal_supervisor::config::BenchmarkClass::Large,
         endpoint_url: format!("http://{addr}"),
         token: "test-token".into(),
         team_id: Some(1),

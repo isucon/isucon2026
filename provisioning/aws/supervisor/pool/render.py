@@ -1,7 +1,7 @@
 """共有プールの Supervisor の ecspresso 用の定義を作る。Pulumi が設定を保持し、ecspresso が配備する。
 
   python3 render.py build pool.json task.json service.json   pool.json と雛形（稼働中のタスク定義とサービス）から
-                                                             deployments（1 件の配列）の JSON を標準出力に書く
+                                                             deployments（通常用と任意の大型用の配列）の JSON を標準出力に書く
   python3 render.py config pool.json [stack]                 雛形を AWS から取り、build の結果を stack の設定 deployments に書く
   python3 render.py generated                                pulumi stack output の JSON を標準入力から読み、
                                                              generated/<service>/ に ecspresso の JSON を書く
@@ -38,6 +38,19 @@ def build(task, service, config):
         raise ValueError("invalid service name")
     if not isinstance(config["desiredCount"], int) or config["desiredCount"] < 1:
         raise ValueError("desiredCount must be positive")
+    benchmark_class = config.get("benchmarkClass", "standard")
+    if benchmark_class not in ("standard", "large"):
+        raise ValueError("benchmarkClass must be standard or large")
+    # Deliberately support a small set of tested task sizes (CPU units, MiB).
+    if ("cpu" in config or "memory" in config) and (
+        config.get("cpu"),
+        config.get("memory"),
+    ) not in (
+        ("4096", "8192"),
+        ("8192", "16384"),
+        ("16384", "32768"),
+    ):
+        raise ValueError("cpu/memory must be 4096/8192, 8192/16384 or 16384/32768")
     bench_timeout = config.get("benchTimeout")
     if bench_timeout is not None and not DURATION.fullmatch(bench_timeout):
         raise ValueError("benchTimeout must be a Go duration such as 300s")
@@ -62,6 +75,9 @@ def build(task, service, config):
         "containerDefinitions",
     ]
     result = {k: copy.deepcopy(task[k]) for k in keys if k in task}
+    if "cpu" in config:
+        result["cpu"] = config["cpu"]
+        result["memory"] = config["memory"]
     result["runtimePlatform"] = {
         "cpuArchitecture": "ARM64",
         "operatingSystemFamily": "LINUX",
@@ -73,6 +89,7 @@ def build(task, service, config):
     # 共有プールはチームも AZ も絞らない
     env.pop("ISUXPORTAL_SUPERVISOR_TEAM_ID", None)
     env["ISUXPORTAL_SUPERVISOR_INSTANCE_NAME"] = ""
+    env["ISUXPORTAL_SUPERVISOR_BENCHMARK_CLASS"] = benchmark_class
     env["ISUXPORTAL_SUPERVISOR_ENDPOINT_URL"] = config["endpoint"]
     if hard_timeout is not None:
         env["ISUXPORTAL_SUPERVISOR_HARD_TIMEOUT"] = hard_timeout
@@ -112,6 +129,32 @@ def build(task, service, config):
             "timeout": "10m",
         },
     }
+
+
+def build_deployments(task, service, config):
+    """Render both pools from one template so image and network settings stay in sync."""
+    deployments = [build(task, service, {**config, "benchmarkClass": "standard"})]
+    if "largePool" in config:
+        large = config["largePool"]
+        if not isinstance(large, dict) or set(large) != {
+            "cpu",
+            "memory",
+            "desiredCount",
+        }:
+            raise ValueError("largePool requires cpu, memory and desiredCount only")
+        deployments.append(
+            build(
+                task,
+                service,
+                {
+                    **config,
+                    **large,
+                    "name": config["name"] + "-large",
+                    "benchmarkClass": "large",
+                },
+            )
+        )
+    return deployments
 
 
 def export(deployments, directory):
@@ -201,11 +244,15 @@ def templates(config):
 def main(argv):
     if argv[:1] == ["build"] and len(argv) == 4:
         config = load(argv[1])
-        print(json.dumps([build(load(argv[2]), load(argv[3]), config)], indent=2))
+        print(
+            json.dumps(
+                build_deployments(load(argv[2]), load(argv[3]), config), indent=2
+            )
+        )
     elif argv[:1] == ["config"] and len(argv) in (2, 3):
         config = load(argv[1])
         task, service = templates(config)
-        value = json.dumps([build(task, service, config)])
+        value = json.dumps(build_deployments(task, service, config))
         stack = argv[2] if len(argv) == 3 else "portal-dev"
         subprocess.run(
             ["pulumi", "config", "set", "--stack", stack, "--plaintext", "deployments"],

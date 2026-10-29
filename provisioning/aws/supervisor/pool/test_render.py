@@ -6,7 +6,7 @@ import subprocess
 import tempfile
 import unittest
 
-from render import build, export
+from render import build, build_deployments, export
 
 TASK = {
     "cpu": "4096",
@@ -56,6 +56,63 @@ def run_proxy(script, address, *args):
 
 
 class SharedTest(unittest.TestCase):
+    def test_two_pools_share_image_and_network(self):
+        deployments = build_deployments(
+            TASK,
+            SERVICE,
+            {
+                **CONFIG,
+                "largePool": {"desiredCount": 1, "cpu": "8192", "memory": "16384"},
+            },
+        )
+        self.assertEqual(len(deployments), 2)
+        self.assertEqual(deployments[0]["ecspressoConfig"]["service"], "shared-test")
+        self.assertEqual(
+            deployments[1]["ecspressoConfig"]["service"], "shared-test-large"
+        )
+        self.assertEqual(deployments[1]["taskDefinition"]["cpu"], "8192")
+        self.assertEqual(deployments[1]["serviceDefinition"]["desiredCount"], 1)
+        self.assertEqual(
+            deployments[0]["serviceDefinition"]["networkConfiguration"],
+            deployments[1]["serviceDefinition"]["networkConfiguration"],
+        )
+        self.assertEqual(len(build_deployments(TASK, SERVICE, CONFIG)), 1)
+
+    def test_large_pool_resources_and_class(self):
+        result = build(
+            TASK,
+            SERVICE,
+            {**CONFIG, "benchmarkClass": "large", "cpu": "8192", "memory": "16384"},
+        )["taskDefinition"]
+        self.assertEqual(result["cpu"], "8192")
+        self.assertEqual(result["memory"], "16384")
+        env = {
+            e["name"]: e["value"]
+            for e in result["containerDefinitions"][0]["environment"]
+        }
+        self.assertEqual(env["ISUXPORTAL_SUPERVISOR_BENCHMARK_CLASS"], "large")
+
+    def test_default_class_overwrites_template(self):
+        task = copy.deepcopy(TASK)
+        task["containerDefinitions"][0]["environment"].append(
+            {"name": "ISUXPORTAL_SUPERVISOR_BENCHMARK_CLASS", "value": "large"}
+        )
+        result = build(task, SERVICE, CONFIG)["taskDefinition"]
+        env = {
+            e["name"]: e["value"]
+            for e in result["containerDefinitions"][0]["environment"]
+        }
+        self.assertEqual(env["ISUXPORTAL_SUPERVISOR_BENCHMARK_CLASS"], "standard")
+
+    def test_invalid_pool_size_or_class(self):
+        for override in (
+            {"benchmarkClass": "typo"},
+            {"cpu": "8192"},
+            {"cpu": "8192", "memory": "8192"},
+        ):
+            with self.subTest(override=override), self.assertRaises(ValueError):
+                build(TASK, SERVICE, {**CONFIG, **override})
+
     def test_runtime_platform_is_arm64_even_with_x86_template(self):
         for platform in (
             None,
