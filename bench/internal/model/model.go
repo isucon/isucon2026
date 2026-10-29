@@ -19,10 +19,13 @@ type User struct {
 	ID        string
 	Username  string
 	SecretKey string
-	Region    string
+	// Region は登録したときのリージョン。走行中に移ったあとのリージョンは region に記録する。
+	Region string
 
 	// active はユーザーが有効か（退会していないか）。
 	active *timeline[bool]
+	// region は所属するリージョンの履歴。
+	region *timeline[string]
 }
 
 // Window は投稿期間。LocalDate が同じ日の投稿で、他人の投稿のゲートが開く。
@@ -37,11 +40,12 @@ type Post struct {
 	AuthorID string
 	WindowID string
 	ImageID  string
-	// ImageHash は投稿した画像の SHA-256。
-	ImageHash [32]byte
-	Caption   string
-	PostedAt  time.Time
-	LocalDate time.Time
+	// ImageBytes は投稿した画像を作り直す。Router が返すダイジェストは要求ごとに種が違うので、
+	// 比べるたびに画像そのものが要る（写真のアーカイブから作り直せるので持たない）。
+	ImageBytes func() []byte
+	Caption    string
+	PostedAt   time.Time
+	LocalDate  time.Time
 
 	caption    *timeline[string]
 	visibility *timeline[string]
@@ -97,11 +101,14 @@ type Model struct {
 	// comments は投稿ごとの bench が書いたコメント、pendingComments は ID のわからない作成。
 	comments        map[string][]*Comment
 	commentByID     map[string]*Comment
-	pendingComments map[string][]*timeline[bool]
+	pendingComments map[string][]pendingComment
 	// reactions は投稿とリアクションした人の組ごとの、有効な RealMoji の ID（なければ ""、
 	// 置き換えの応答を待つ間は "?"）。
 	reactions    map[[2]string]*timeline[string]
 	reactionsFor map[string][]string
+
+	// ranking は友達の友達フィードで確かめた点数の記録。
+	ranking rankingRecorder
 }
 
 func New() *Model {
@@ -123,7 +130,7 @@ func New() *Model {
 		followCandidates: map[string]map[string]bool{},
 		comments:         map[string][]*Comment{},
 		commentByID:      map[string]*Comment{},
-		pendingComments:  map[string][]*timeline[bool]{},
+		pendingComments:  map[string][]pendingComment{},
 		reactions:        map[[2]string]*timeline[string]{},
 		reactionsFor:     map[string][]string{},
 	}
@@ -135,7 +142,7 @@ func (m *Model) LoadDataset(world *dataset.World) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for _, u := range world.Users {
-		m.users[u.ID] = &User{ID: u.ID, Username: u.Username, SecretKey: u.SecretKey, Region: u.Region, active: newTimeline(u.Status == "active")}
+		m.users[u.ID] = &User{ID: u.ID, Username: u.Username, SecretKey: u.SecretKey, Region: u.Region, active: newTimeline(u.Status == "active"), region: newTimeline(u.Region)}
 	}
 	for _, f := range world.Friendships {
 		m.friendship(f.UserLowID, f.UserHighID).initial = true
@@ -153,7 +160,17 @@ func (m *Model) AddUser(u User) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	u.active = newTimeline(true)
+	u.region = newTimeline(u.Region)
 	m.users[u.ID] = &u
+}
+
+// BeginMoveUser はユーザーが所属するリージョンを region に変える書き込みを始める。
+func (m *Model) BeginMoveUser(userID, region string) *Write {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	w := m.newWrite()
+	begin(w, m.users[userID].region, region)
+	return w
 }
 
 func (m *Model) User(id string) *User {
@@ -260,16 +277,37 @@ var ErrMaybeWindow = errors.New("posting window whose opening timed out")
 // WaitForWindow は region の投稿期間 id が記録されるまで待つ。通知は、投稿期間を開いた
 // 管理者への応答より先に届くことがあるので、その投稿期間に投稿する前に呼ぶ。id を知らず、
 // region で開いている最中の投稿期間もなければ ErrUnknownWindow を返す。region で最後に
-// 開こうとした投稿期間の結果がわからなければ ErrMaybeWindow を返す。
+// 開こうとした投稿期間か、待ち始めたときに開いている最中だった投稿期間の結果がわからなければ
+// ErrMaybeWindow を返す。
 func (m *Model) WaitForWindow(ctx context.Context, region, id string) (*Window, error) {
+	return m.WaitForNotifiedWindow(ctx, region, id, time.Time{})
+}
+
+// WaitForNotifiedWindow は WaitForWindow と同じだが、received に受け取った通知の投稿期間を
+// 待つ。受け取るより前に送った開く要求の結果がわからなければ、そのあとで次の投稿期間が
+// 開いていても ErrMaybeWindow を返す（ユーザーが通知を受けてから処理するまでに次の日が
+// 始まることがある）。
+func (m *Model) WaitForNotifiedWindow(ctx context.Context, region, id string, received time.Time) (*Window, error) {
 	ticker := time.NewTicker(10 * time.Millisecond)
 	defer ticker.Stop()
-	for {
+	// 待ち始めたときに開いている最中だった要求。待つ間に次の投稿期間が開いても、これらの
+	// どれかの結果がわからなければ、通知はその投稿期間のものだったかもしれない。
+	var waitedFor []*change[string]
+	for first := true; ; first = false {
 		m.mu.RLock()
 		window := m.windows[id]
 		changes := m.currentWindowOf(region).changes
+		if first {
+			for _, c := range changes {
+				if c.outcome == inFlight {
+					waitedFor = append(waitedFor, c)
+				}
+			}
+		}
 		opening := slices.ContainsFunc(changes, func(c *change[string]) bool { return c.outcome == inFlight })
-		maybe := len(changes) > 0 && changes[len(changes)-1].outcome == unknown
+		maybe := len(changes) > 0 && changes[len(changes)-1].outcome == unknown ||
+			slices.ContainsFunc(waitedFor, func(c *change[string]) bool { return c.outcome == unknown }) ||
+			!received.IsZero() && slices.ContainsFunc(changes, func(c *change[string]) bool { return c.outcome == unknown && !c.sent.After(received) })
 		m.mu.RUnlock()
 		if window != nil {
 			return window, nil

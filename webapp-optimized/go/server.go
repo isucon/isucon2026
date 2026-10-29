@@ -2,6 +2,7 @@ package isureal
 
 import (
 	"context"
+	"log/slog"
 	"os"
 	"strconv"
 	"time"
@@ -15,18 +16,27 @@ import (
 
 type HandlerContext struct {
 	DB *sqlx.DB
-	// ReadDB serves read-only requests. With a regional standby it avoids the
-	// round trip to the primary. The primary commits with remote_apply on every
-	// standby, so a read that starts after a write's response observes the write.
-	ReadDB *sqlx.DB
-	Config *Config
-	IPBans *IPBanList
+	// AdminDB is a small separate pool for the administrator's operations.
+	// Opening a posting window must not queue behind hundreds of user writes
+	// waiting for DB (the bench gives the opening 8 s of a 9 s day); nil
+	// means DB.
+	AdminDB *sqlx.DB
+	Config  *Config
+	IPBans  *IPBanList
+}
+
+func (h *HandlerContext) adminDB() *sqlx.DB {
+	if h.AdminDB != nil {
+		return h.AdminDB
+	}
+	return h.DB
 }
 
 func NewServer(config *Config) *echo.Echo {
 	if !validRegion(config.Region) {
 		panic("invalid server region: " + config.Region)
 	}
+	homeRegion = config.Region
 	e := echo.New()
 	e.IPExtractor = extractClientIP
 
@@ -55,33 +65,52 @@ func NewServer(config *Config) *echo.Echo {
 		panic("failed to ping database: " + err.Error())
 	}
 
-	readDB := db
-	if config.DBReadHost != "" {
-		readDB, err = sqlx.Open("pgx-auth", config.ReadDatabaseDSN())
-		if err != nil {
-			panic("failed to open read database: " + err.Error())
+	if dir := os.Getenv("ISUREAL_IMAGE_DIR"); dir != "" {
+		if p, err := openImagePack(context.Background(), db, dir); err != nil {
+			slog.Warn("image pack not used", "error", err)
+		} else {
+			pack = p
+			slog.Info("image pack", "images", len(p.entries))
 		}
-		readDB.SetMaxOpenConns(64)
-		readDB.SetMaxIdleConns(64)
 	}
 
+	adminDB, err := sqlx.Open("pgx-auth", config.DatabaseDSN())
+	if err != nil {
+		panic("failed to open database: " + err.Error())
+	}
+	adminDB.SetMaxOpenConns(4)
+	adminDB.SetMaxIdleConns(4)
+
 	handlerContext := &HandlerContext{
-		DB:     db,
-		ReadDB: readDB,
-		Config: config,
-		IPBans: &IPBanList{},
+		DB:      db,
+		AdminDB: adminDB,
+		Config:  config,
+		IPBans:  &IPBanList{},
 	}
 	// Load once before serving so bans apply from the first request.
-	_ = handlerContext.IPBans.reload(context.Background(), readDB)
-	go handlerContext.IPBans.run(context.Background(), readDB)
+	_ = handlerContext.IPBans.reload(context.Background(), db)
+	go handlerContext.IPBans.run(context.Background(), db)
 	e.Use(IPBanMiddleware(handlerContext))
 
 	registerSyncHandlers(e, handlerContext)
+	// ISUREAL_HOT_STATE=off keeps the regional state unloaded, so every read
+	// goes to the database (for tests that edit the database directly).
 	go func() {
 		for {
 			if err := hot.load(context.Background(), db); err == nil {
+				break
+			}
+			time.Sleep(time.Second)
+		}
+		if os.Getenv("ISUREAL_HOT_STATE") == "off" {
+			return
+		}
+		for {
+			err := history.load(context.Background(), db, config.Region)
+			if err == nil {
 				return
 			}
+			slog.Error("history store", "error", err)
 			time.Sleep(time.Second)
 		}
 	}()
@@ -128,6 +157,10 @@ func NewServer(config *Config) *echo.Echo {
 	e.PUT("/api/admin/users/:userId/certification", certifyUserHandler(handlerContext), AdminSessionMiddleware(handlerContext, true))
 	e.DELETE("/api/admin/users/:userId/certification", deleteUserCertificationHandler(handlerContext), AdminSessionMiddleware(handlerContext, true))
 	e.POST("/api/admin/posting-window", openPostingWindowHandler(handlerContext), AdminSessionMiddleware(handlerContext, true))
+	// Without nginx in front (ISUREAL_PUBLIC_LISTEN), the app serves the front end.
+	if dir := os.Getenv("ISUREAL_PUBLIC_DIR"); dir != "" {
+		e.GET("/*", staticHandler(dir))
+	}
 
 	return e
 }

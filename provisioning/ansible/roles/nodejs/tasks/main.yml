@@ -1,5 +1,9 @@
 ---
 # Node.js は公式のバイナリを /home/isucon/local/node に置く（webapp/nodejs 用）
+- name: Install libatomic for the Node.js binary
+  ansible.builtin.apt:
+    name: libatomic1
+
 - name: Read installed Node.js version
   ansible.builtin.command:
     argv: [/home/isucon/local/node/bin/node, --version]

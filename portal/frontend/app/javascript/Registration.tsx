@@ -1,6 +1,8 @@
+import { parseResourceId } from "./IdInput";
 import { ApiClient } from "./ApiClient";
 
 import React from "react";
+import { timestampDate, type Timestamp } from "@bufbuild/protobuf/wkt";
 
 import { ErrorMessage } from "./ErrorMessage";
 
@@ -15,6 +17,22 @@ import { RegistrationRecordPanel } from "./RegistrationRecordPanel";
 import { RegistrationForm } from "./RegistrationForm";
 import { RegistrationLogin } from "./RegistrationLogin";
 import { RegistrationStatus } from "./RegistrationStatus";
+
+function deadlineLabel(deadline: Timestamp | undefined): string {
+  if (!deadline) return "締切は設定されていません。受付状況はこの画面で確認してください。";
+  const parts = new Intl.DateTimeFormat("ja-JP", {
+    timeZone: "Asia/Tokyo",
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+    weekday: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(timestampDate(deadline));
+  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((p) => p.type === type)!.value;
+  return `${part("year")}年${part("month")}月${part("day")}日（${part("weekday")}）${part("hour")}:${part("minute")}（日本時間）が締切です。`;
+}
 
 export interface Props {
   session: GetCurrentSessionResponse;
@@ -34,13 +52,15 @@ export class Registration extends React.Component<Props, State> {
   constructor(props: Props) {
     super(props);
     const params = new URLSearchParams(document.location.search);
+    const rawTeamId = params.get("team_id");
+    const teamId = rawTeamId === null ? 0n : parseResourceId(rawTeamId);
     this.state = {
       session: this.props.session,
       registrationSession: null,
-      teamId: BigInt(params.get("team_id") || "0"),
+      teamId: teamId ?? undefined,
       inviteToken: params.get("invite_token") || undefined,
       edit: false,
-      error: null,
+      error: teamId === null ? new Error("無効な招待 URL です。") : null,
     };
   }
 
@@ -49,6 +69,7 @@ export class Registration extends React.Component<Props, State> {
   }
 
   async updateRegistrationSession() {
+    if (this.state.teamId === undefined) return;
     try {
       const registrationSession = await this.props.client.getRegistrationSession(
         create(GetRegistrationSessionQuerySchema, {
@@ -123,7 +144,9 @@ export class Registration extends React.Component<Props, State> {
               への同意が必要です。
             </li>
             <li>・ISUCON2026 への参加は1〜3名を1チームとします。</li>
-            <li>・参加メンバーの追加・変更は11月7日(木)19:00まで可能です。</li>
+            <li>・チームの新規登録：{deadlineLabel(this.state.session.contest?.registrationClosesAt)}</li>
+            <li>・参加メンバーの追加：{deadlineLabel(this.state.session.contest?.registrationInvitationClosesAt)}</li>
+            <li>・登録内容の変更：{deadlineLabel(this.state.session.contest?.registrationUpdateClosesAt)}</li>
             <li>・選手の皆さんご自身で用意したDiscord・AWSのアカウントを用いて参加・実施します。</li>
             <li>・AWSアカウントは代表者のみ必要で、メンバー全員は必要ありません。</li>
             <li>・AWSはクレジットカードの登録が必要となりますので、学生の方は特にご注意ください。</li>

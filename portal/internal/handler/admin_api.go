@@ -24,7 +24,7 @@ const adminJobsPerPage = 15
 func (h *Handler) AdminDashboard(w http.ResponseWriter, r *http.Request) error {
 	ri := info(r)
 	ctx := r.Context()
-	w.Header().Set("Cache-Control", "max-age=15, private")
+	w.Header().Set("Cache-Control", "no-store")
 
 	var lb *pbresources.Leaderboard
 	if _, wire, ok, err := h.cache.Read(ctx, "leaderboard-v2:admin"); err != nil {
@@ -42,19 +42,31 @@ func (h *Handler) AdminDashboard(w http.ResponseWriter, r *http.Request) error {
 	}
 
 	var clarCount int64
-	var latestClarAt sql.NullTime
+	var earliestClarAt sql.NullTime
 	if err := h.db.QueryRowContext(ctx,
-		`SELECT COUNT(*), MAX(created_at) FROM clarifications WHERE answered_at IS NULL AND admin = false`,
-	).Scan(&clarCount, &latestClarAt); err != nil {
+		`SELECT COUNT(*), MIN(created_at) FROM clarifications WHERE answered_at IS NULL AND admin = false`,
+	).Scan(&clarCount, &earliestClarAt); err != nil {
+		return err
+	}
+
+	var pendingCount int64
+	var earliestPendingAt sql.NullTime
+	if err := h.db.QueryRowContext(ctx,
+		`SELECT COUNT(*), MIN(created_at) FROM benchmark_jobs WHERE status = $1`, model.JobPending,
+	).Scan(&pendingCount, &earliestPendingAt); err != nil {
 		return err
 	}
 
 	res := &pbadmin.DashboardResponse{
 		Leaderboard:                  lb,
+		PendingBenchmarkJobCount:     pendingCount,
 		UnansweredClarificationCount: clarCount,
 	}
-	if latestClarAt.Valid {
-		res.EarliestUnansweredClarificationAt = timestamppb.New(latestClarAt.Time)
+	if earliestClarAt.Valid {
+		res.EarliestUnansweredClarificationAt = timestamppb.New(earliestClarAt.Time)
+	}
+	if earliestPendingAt.Valid {
+		res.EarliestPendingBenchmarkJobAt = timestamppb.New(earliestPendingAt.Time)
 	}
 	renderPB(w, http.StatusOK, res)
 	return nil
@@ -109,7 +121,7 @@ func (h *Handler) AdminSoloDashboard(w http.ResponseWriter, r *http.Request) err
 func (h *Handler) AdminTeamsIndex(w http.ResponseWriter, r *http.Request) error {
 	ctx := r.Context()
 	rows, err := h.db.QueryContext(ctx, `
-		SELECT t.id, t.name, t.final_participation, t.is_hidden, t.student, t.withdrawn, t.disqualified, c.name
+		SELECT t.id, t.name, t.final_participation, t.is_hidden, t.student, t.withdrawn, t.disqualified, t.onsite_support_excluded, c.name
 		FROM teams t LEFT JOIN contestants c ON c.team_id = t.id
 		ORDER BY t.id ASC, c.id ASC`)
 	if err != nil {
@@ -122,20 +134,21 @@ func (h *Handler) AdminTeamsIndex(w http.ResponseWriter, r *http.Request) error 
 	for rows.Next() {
 		var teamID int64
 		var name string
-		var finalParticipation, hidden, student, withdrawn, disqualified bool
+		var finalParticipation, hidden, student, withdrawn, disqualified, onsiteSupportExcluded bool
 		var memberName *string
-		if err := rows.Scan(&teamID, &name, &finalParticipation, &hidden, &student, &withdrawn, &disqualified, &memberName); err != nil {
+		if err := rows.Scan(&teamID, &name, &finalParticipation, &hidden, &student, &withdrawn, &disqualified, &onsiteSupportExcluded, &memberName); err != nil {
 			return err
 		}
 		if current == nil || current.TeamId != teamID {
 			current = &pbadmin.ListTeamsResponse_TeamListItem{
-				TeamId:             teamID,
-				Name:               name,
-				FinalParticipation: finalParticipation,
-				Hidden:             hidden,
-				IsStudent:          student,
-				Withdrawn:          withdrawn,
-				Disqualified:       disqualified,
+				TeamId:                teamID,
+				Name:                  name,
+				FinalParticipation:    finalParticipation,
+				Hidden:                hidden,
+				IsStudent:             student,
+				Withdrawn:             withdrawn,
+				Disqualified:          disqualified,
+				OnsiteSupportExcluded: onsiteSupportExcluded,
 			}
 			items = append(items, current)
 		}
@@ -194,6 +207,14 @@ func (h *Handler) AdminTeamsUpdate(w http.ResponseWriter, r *http.Request) error
 	if req.Team.Id != id {
 		return errBadRequest("")
 	}
+	if err := validateNameLength(req.Team.Name, "チーム名"); err != nil {
+		return err
+	}
+	for _, c := range req.Contestants {
+		if err := validateNameLength(c.Name, "選手名"); err != nil {
+			return err
+		}
+	}
 
 	tx, err := h.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -223,11 +244,11 @@ func (h *Handler) AdminTeamsUpdate(w http.ResponseWriter, r *http.Request) error
 	}
 
 	if _, err := tx.ExecContext(ctx, `
-		UPDATE teams SET name = $1, leader_id = $2, final_participation = $3, is_hidden = $4, withdrawn = $5, disqualified = $6, email_address = $7, updated_at = now()
+		UPDATE teams SET name = $1, leader_id = $2, final_participation = $3, is_hidden = $4, withdrawn = $5, disqualified = $6, email_address = $7, onsite_support_excluded = $9, updated_at = now()
 		WHERE id = $8`,
 		req.Team.Name, sql.NullInt64{Int64: req.Team.LeaderId, Valid: req.Team.LeaderId != 0},
 		req.Team.FinalParticipation, req.Team.Hidden, req.Team.Withdrawn, req.Team.Disqualified,
-		req.Team.Detail.EmailAddress, id); err != nil {
+		req.Team.Detail.EmailAddress, id, req.Team.OnsiteSupportExcluded); err != nil {
 		return err
 	}
 	for _, c := range req.Contestants {
@@ -244,6 +265,10 @@ func (h *Handler) AdminTeamsUpdate(w http.ResponseWriter, r *http.Request) error
 	}
 	if err := tx.Commit(); err != nil {
 		return err
+	}
+	if team.Name != req.Team.Name {
+		// Always rebuild each visibility separately, even if the queue crosses the freeze time.
+		h.jobs.Enqueue(ctx, "update_contestant_dashboard", job.UpdateDashboardArgs{TeamID: id, Frozen: true})
 	}
 	renderPB(w, http.StatusOK, &pbadmin.UpdateTeamResponse{})
 	return nil
@@ -333,7 +358,7 @@ func (h *Handler) AdminJobsIndex(w http.ResponseWriter, r *http.Request) error {
 	}
 	maxPage := int64(math.Ceil(float64(count) / float64(adminJobsPerPage)))
 
-	query := `SELECT ` + jobColumnsWithScore + ` FROM benchmark_jobs ` + join + ` WHERE ` + where + ` ORDER BY benchmark_jobs.id DESC`
+	query := `SELECT ` + jobListColumns + ` FROM benchmark_jobs ` + join + jobEnqueuedByJoin + ` WHERE ` + where + ` ORDER BY benchmark_jobs.id DESC`
 	if v := q.Get("page"); v != "" {
 		page, err := parseInt64(v)
 		if err == nil && page >= 0 {
@@ -341,7 +366,7 @@ func (h *Handler) AdminJobsIndex(w http.ResponseWriter, r *http.Request) error {
 		}
 	}
 
-	jobs, scores, err := queryJobsWithScore(ctx, h.db, query, args...)
+	jobs, options, err := queryJobList(ctx, h.db, query, args...)
 	if err != nil {
 		return err
 	}
@@ -355,7 +380,9 @@ func (h *Handler) AdminJobsIndex(w http.ResponseWriter, r *http.Request) error {
 		if team != nil {
 			teamPB = team.ToPB(false, nil, false)
 		}
-		res.Jobs = append(res.Jobs, j.ToPB(model.JobToPBOptions{Admin: true, Team: teamPB, Score: scores[i]}))
+		options[i].Admin = true
+		options[i].Team = teamPB
+		res.Jobs = append(res.Jobs, j.ToPB(options[i]))
 	}
 	renderPB(w, http.StatusOK, res)
 	return nil
@@ -966,7 +993,7 @@ func (h *Handler) AdminEnvCheckStats(w http.ResponseWriter, r *http.Request) err
 
 func (h *Handler) visibleActiveTeams(r *http.Request) ([]*model.Team, error) {
 	rows, err := h.db.QueryContext(r.Context(), `
-		SELECT teams.id, teams.name, teams.leader_id, teams.is_hidden, teams.final_participation, teams.email_address, teams.invite_token, teams.withdrawn, teams.disqualified, teams.student, teams.availability_zone
+		SELECT teams.id, teams.name, teams.leader_id, teams.is_hidden, teams.final_participation, teams.email_address, teams.invite_token, teams.withdrawn, teams.disqualified, teams.onsite_support_excluded, teams.student, teams.availability_zone
 		FROM teams WHERE withdrawn = false AND disqualified = false AND is_hidden = false ORDER BY id ASC`)
 	if err != nil {
 		return nil, err
@@ -975,7 +1002,7 @@ func (h *Handler) visibleActiveTeams(r *http.Request) ([]*model.Team, error) {
 	var out []*model.Team
 	for rows.Next() {
 		t := &model.Team{}
-		if err := rows.Scan(&t.ID, &t.Name, &t.LeaderID, &t.IsHidden, &t.FinalParticipation, &t.EmailAddress, &t.InviteToken, &t.Withdrawn, &t.Disqualified, &t.Student, &t.AvailabilityZone); err != nil {
+		if err := rows.Scan(&t.ID, &t.Name, &t.LeaderID, &t.IsHidden, &t.FinalParticipation, &t.EmailAddress, &t.InviteToken, &t.Withdrawn, &t.Disqualified, &t.OnsiteSupportExcluded, &t.Student, &t.AvailabilityZone); err != nil {
 			return nil, err
 		}
 		out = append(out, t)

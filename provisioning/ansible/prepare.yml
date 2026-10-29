@@ -115,6 +115,21 @@
       changed_when: true
       when: "'router' in prepare_components"
 
+    # 静的リンク（musl）の isureal-digest を router/Dockerfile で作る。開発用のコンテナと同じものになる
+    - name: Build digest proxy
+      ansible.builtin.command:
+        argv:
+          - docker
+          - buildx
+          - build
+          - --platform=linux/amd64
+          - --file={{ repo_root }}/router/Dockerfile
+          - --target=digest-artifact
+          - --output=type=local,dest={{ build_dir }}
+          - "{{ repo_root }}"
+      changed_when: true
+      when: "'router' in prepare_components"
+
     - name: Build validation Portal
       ansible.builtin.command:
         argv:

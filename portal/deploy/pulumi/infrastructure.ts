@@ -199,7 +199,8 @@ export function createPortal(c: PortalConfig) {
   }, opts);
   const ssh = new aws.secretsmanager.Secret("ssh", {
     name: `${c.name}/admin-ssh-key`,
-    description: "Raw PEM SSH key; worker only",
+    description:
+      "SSH private key; portal derives public key, worker authenticates",
     recoveryWindowInDays: 30,
   }, opts);
   function bucket(name: string, publicRead: boolean) {
@@ -391,7 +392,7 @@ export function createPortal(c: PortalConfig) {
           Resource: [
             databaseSecretArn,
             ...(name === "migrate" ? [] : [application.arn]),
-            ...(name === "worker" ? [ssh.arn] : []),
+            ...(name === "portal" || name === "worker" ? [ssh.arn] : []),
           ],
         }],
       }),

@@ -17,6 +17,7 @@ from starlette.formparsers import MultiPartException
 from .errors import APIError
 from .timeutil import parse_rfc3339
 
+_INT = re.compile(r"[+-]?\d+", re.ASCII)
 _FLOAT = re.compile(
     r"[+-]?(?:(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?|inf(?:inity)?|nan)",
     re.ASCII | re.IGNORECASE,
@@ -134,5 +135,21 @@ def cursor_time(value: str | None) -> datetime | None:
         return None
     parsed = parse_rfc3339(value)
     if parsed is None:
+        raise bad_request()
+    return parsed
+
+
+def cursor_int(value: str | None) -> int | None:
+    if value is None:
+        return None
+    if value == "":
+        return 0
+    if not _INT.fullmatch(value):
+        raise bad_request()
+    try:
+        parsed = int(value)
+    except ValueError:
+        raise bad_request() from None
+    if not -(2**63) <= parsed < 2**63:
         raise bad_request()
     return parsed

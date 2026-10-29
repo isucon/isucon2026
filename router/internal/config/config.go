@@ -59,13 +59,17 @@ type Config struct {
 	HAProxyDir string
 	// HAProxyRuntimeAddress is the TCP address of the HAProxy runtime API.
 	HAProxyRuntimeAddress string
-	Hosts                 Hostnames
-	Servers               map[domain.ServerID]ServerNetwork
-	Traffic               domain.TrafficProfile
-	CommandTimeout        time.Duration
-	ReportRetryInterval   time.Duration
-	ReconnectMinBackoff   time.Duration
-	ReconnectMaxBackoff   time.Duration
+	// DigestAddress is where isureal-digest listens. HAProxy sends it the
+	// benchmark's image and export downloads, and the apps directly while it is
+	// down. Empty sends them to the apps.
+	DigestAddress       string
+	Hosts               Hostnames
+	Servers             map[domain.ServerID]ServerNetwork
+	Traffic             domain.TrafficProfile
+	CommandTimeout      time.Duration
+	ReportRetryInterval time.Duration
+	ReconnectMinBackoff time.Duration
+	ReconnectMaxBackoff time.Duration
 }
 
 func FromEnv() (Config, error) {
@@ -93,6 +97,7 @@ func Load(lookup LookupFunc) (Config, error) {
 		UpstreamPort:          uint16(upstreamPort),
 		HAProxyDir:            stringValue(lookup, "ROUTER_HAPROXY_DIR", "/run/isureal-haproxy"),
 		HAProxyRuntimeAddress: stringValue(lookup, "ROUTER_HAPROXY_RUNTIME_ADDRESS", "127.0.0.1:18001"),
+		DigestAddress:         stringValue(lookup, "ROUTER_DIGEST_ADDRESS", "127.0.0.1:18010"),
 		Hosts: Hostnames{
 			App:  stringValue(lookup, "ROUTER_APP_HOST", "app.team1-abc123.isucon2026.westens.tokyo"),
 			App1: stringValue(lookup, "ROUTER_APP1_HOST", "app1.team1-abc123.isucon2026.westens.tokyo"),
@@ -183,6 +188,11 @@ func (c Config) Validate() error {
 	for name, address := range map[string]string{"status": c.StatusListenAddress, "HTTP": c.HTTPListenAddress, "HAProxy runtime": c.HAProxyRuntimeAddress} {
 		if _, _, err := net.SplitHostPort(address); err != nil {
 			return fmt.Errorf("%s address: %w", name, err)
+		}
+	}
+	if c.DigestAddress != "" {
+		if _, _, err := net.SplitHostPort(c.DigestAddress); err != nil {
+			return fmt.Errorf("digest address: %w", err)
 		}
 	}
 	if c.HTTPSListenAddress != "" {

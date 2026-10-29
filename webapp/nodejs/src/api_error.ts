@@ -1,5 +1,6 @@
 import type { Context } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
+import { lookup } from "./lookup.ts";
 import { jsonResponse, logError } from "./response.ts";
 
 export class APIError extends Error {
@@ -13,24 +14,27 @@ export class APIError extends Error {
   }
 }
 
-const statusText: Record<number, string> = {
+const statusText = {
   400: "Bad Request",
   404: "Not Found",
   405: "Method Not Allowed",
   415: "Unsupported Media Type",
-};
+} as const;
+
+export function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
 
 export class HTTPError extends Error {
   readonly status: ContentfulStatusCode;
 
-  constructor(status: ContentfulStatusCode, message: string = statusText[status]) {
+  constructor(status: ContentfulStatusCode, message: string = lookup(statusText, status) ?? "") {
     super(message);
     this.status = status;
   }
 
   static badRequest(err: unknown): HTTPError {
-    const message = err instanceof Error ? err.message : String(err);
-    return new HTTPError(400, `code=400, message=Bad Request, err=${message}`);
+    return new HTTPError(400, `code=400, message=Bad Request, err=${errorMessage(err)}`);
   }
 
   static unsupportedMediaType(): HTTPError {

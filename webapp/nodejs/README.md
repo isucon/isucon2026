@@ -2,7 +2,7 @@
 
 `webapp/go` と同じ API を Node.js で実装したものです。
 
-- Node.js 24 / TypeScript / [Hono](https://hono.dev/) / [node-postgres](https://node-postgres.com/)
+- Node.js 26 / TypeScript / [Hono](https://hono.dev/) / [node-postgres](https://node-postgres.com/)
 - 依存パッケージは `package.json` と `package-lock.json` で固定しています
 - TypeScript はビルドせず、Node.js の型の除去（type stripping）でそのまま実行します
 

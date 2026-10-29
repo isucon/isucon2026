@@ -17,7 +17,7 @@ func TestSSHKeyBootstrap(t *testing.T) {
 	for _, kind := range []string{"test", "contest"} {
 		for _, mode := range []string{"http", "empty", "invalid", "mixed", "retry", "valid"} {
 			t.Run(kind+"/"+mode, func(t *testing.T) {
-				cfg := &config.Config{PublicURLHost: "portal.example.invalid", TestAMIID: "ami-test", ContestAMIID: "ami-test", CheckerSecret: []byte("test")}
+				cfg := &config.Config{IsuconAdminSSHKeyPath: adminKey(t), PublicURLHost: "portal.example.invalid", TestAMIID: "ami-test", ContestAMIID: "ami-test", CheckerSecret: []byte("test")}
 				render := TestTemplate
 				if kind == "contest" {
 					render = ContestTemplate
@@ -93,9 +93,12 @@ if [ -n "$output" ]; then emit > "$output"; else emit; fi
 if [ "$mode" = http ] && [ "$fail" = 1 ]; then exit 22; fi
 `, 0700)
 				command = strings.ReplaceAll(command, "/home/isucon/.ssh", keys)
-				cmd := exec.Command("sh", "-c", command)
+				cmd := exec.Command("sh", "-c", command+"\nkey_status=$?\nprintf 'next-cloud-init-command\\n'\nexit \"$key_status\"\n")
 				cmd.Env = append(os.Environ(), "PATH="+bin+":"+os.Getenv("PATH"), "MODE="+mode, "KEY="+key+".pub", "COUNT="+filepath.Join(dir, "count"))
 				out, err := cmd.CombinedOutput()
+				if !strings.Contains(string(out), "next-cloud-init-command") {
+					t.Fatal("SSH key setup must not terminate the remaining cloud-init commands")
+				}
 				actual, _ := os.ReadFile(authorized)
 				success := mode == "valid" || mode == "retry"
 				if success {

@@ -31,12 +31,14 @@ type Team struct {
 	Hidden             bool                   `protobuf:"varint,6,opt,name=hidden,proto3" json:"hidden,omitempty"`
 	Withdrawn          bool                   `protobuf:"varint,7,opt,name=withdrawn,proto3" json:"withdrawn,omitempty"`
 	Disqualified       bool                   `protobuf:"varint,9,opt,name=disqualified,proto3" json:"disqualified,omitempty"`
-	Student            *Team_StudentStatus    `protobuf:"bytes,10,opt,name=student,proto3" json:"student,omitempty"`
-	Detail             *Team_TeamDetail       `protobuf:"bytes,8,opt,name=detail,proto3" json:"detail,omitempty"`
-	Leader             *Contestant            `protobuf:"bytes,16,opt,name=leader,proto3" json:"leader,omitempty"`
-	Members            []*Contestant          `protobuf:"bytes,17,rep,name=members,proto3" json:"members,omitempty"`
-	unknownFields      protoimpl.UnknownFields
-	sizeCache          protoimpl.SizeCache
+	// Support eligibility only; does not affect participation or ranking.
+	OnsiteSupportExcluded bool                `protobuf:"varint,11,opt,name=onsite_support_excluded,json=onsiteSupportExcluded,proto3" json:"onsite_support_excluded,omitempty"`
+	Student               *Team_StudentStatus `protobuf:"bytes,10,opt,name=student,proto3" json:"student,omitempty"`
+	Detail                *Team_TeamDetail    `protobuf:"bytes,8,opt,name=detail,proto3" json:"detail,omitempty"`
+	Leader                *Contestant         `protobuf:"bytes,16,opt,name=leader,proto3" json:"leader,omitempty"`
+	Members               []*Contestant       `protobuf:"bytes,17,rep,name=members,proto3" json:"members,omitempty"`
+	unknownFields         protoimpl.UnknownFields
+	sizeCache             protoimpl.SizeCache
 }
 
 func (x *Team) Reset() {
@@ -121,6 +123,13 @@ func (x *Team) GetWithdrawn() bool {
 func (x *Team) GetDisqualified() bool {
 	if x != nil {
 		return x.Disqualified
+	}
+	return false
+}
+
+func (x *Team) GetOnsiteSupportExcluded() bool {
+	if x != nil {
+		return x.OnsiteSupportExcluded
 	}
 	return false
 }
@@ -253,7 +262,7 @@ var File_isuxportal_resources_team_proto protoreflect.FileDescriptor
 
 const file_isuxportal_resources_team_proto_rawDesc = "" +
 	"\n" +
-	"\x1fisuxportal/resources/team.proto\x12\x1aisuxportal.proto.resources\x1a%isuxportal/resources/contestant.proto\"\x81\x05\n" +
+	"\x1fisuxportal/resources/team.proto\x12\x1aisuxportal.proto.resources\x1a%isuxportal/resources/contestant.proto\"\xb9\x05\n" +
 	"\x04Team\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x1b\n" +
@@ -263,7 +272,8 @@ const file_isuxportal_resources_team_proto_rawDesc = "" +
 	"\x13final_participation\x18\x05 \x01(\bR\x12finalParticipation\x12\x16\n" +
 	"\x06hidden\x18\x06 \x01(\bR\x06hidden\x12\x1c\n" +
 	"\twithdrawn\x18\a \x01(\bR\twithdrawn\x12\"\n" +
-	"\fdisqualified\x18\t \x01(\bR\fdisqualified\x12H\n" +
+	"\fdisqualified\x18\t \x01(\bR\fdisqualified\x126\n" +
+	"\x17onsite_support_excluded\x18\v \x01(\bR\x15onsiteSupportExcluded\x12H\n" +
 	"\astudent\x18\n" +
 	" \x01(\v2..isuxportal.proto.resources.Team.StudentStatusR\astudent\x12C\n" +
 	"\x06detail\x18\b \x01(\v2+.isuxportal.proto.resources.Team.TeamDetailR\x06detail\x12>\n" +

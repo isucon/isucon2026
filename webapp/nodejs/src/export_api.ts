@@ -36,7 +36,7 @@ export function exportPostsHandler(h: HandlerContext): Handler<Env> {
       items.push({ ...newPostResponse(postFromRow(row), author), imagePath });
     }
     zip.file("posts.json", encodeJSON(items), { compression: "DEFLATE" });
-    const body = await zip.generateAsync({ type: "uint8array" });
+    const body = new Uint8Array(await zip.generateAsync({ type: "arraybuffer" }));
     c.header("Content-Disposition", `attachment; filename="isureal-posts.zip"`);
     c.header("Cache-Control", "no-store");
     return blobResponse(c, 200, "application/zip", body);

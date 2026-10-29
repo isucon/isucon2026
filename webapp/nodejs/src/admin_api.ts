@@ -22,7 +22,7 @@ export function adminLoginHandler(h: HandlerContext): Handler<Env> {
       `SELECT id, password_hash FROM administrators WHERE username = $1`,
       input.username,
     );
-    if (administrator === undefined) {
+    if (!administrator) {
       throw new APIError(401, "invalid_credentials");
     }
     if (administrator.password_hash !== sha256Hex(input.password)) {
@@ -36,7 +36,7 @@ export function adminLoginHandler(h: HandlerContext): Handler<Env> {
 export function adminLogoutHandler(h: HandlerContext): Handler<Env> {
   return async (c) => {
     const session = getAdminSession(c);
-    if (session === null) {
+    if (!session) {
       throw new APIError(401, "invalid_administrator_session");
     }
     await invalidateAdminSession(h.db, session.administratorID, session.tokenHash);

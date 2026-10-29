@@ -3,6 +3,10 @@ import { expect, test, vi } from "vitest";
 
 process.env.PULUMI_CONFIG = JSON.stringify({
 	"isucon2026:teamCount": "7",
+	"isucon2026:teamRouterInstanceTypes": JSON.stringify({ 7: "c6i.large" }),
+	"isucon2026:teamServerInstanceTypes": JSON.stringify({
+		7: { app2: "c6i.large" },
+	}),
 	"isucon2026:guardTeams": "[7]",
 	"isucon2026:independentTlsTeams": "[7]",
 	"isucon2026:protectedDatabaseTeams": "[7]",
@@ -62,9 +66,21 @@ test("uses new images only for the selected team and preserves existing instance
 	// ユーザーデータを変えても、既存の Router を止めて起動し直さない
 	for (const instance of instances) {
 		expect(options.get(instance.name)?.ignoreChanges, instance.name).toEqual(
-			instance.name.endsWith("-router") ? ["userDataBase64"] : undefined,
+			instance.name.endsWith("-router")
+				? ["userDataBase64", "associatePublicIpAddress"]
+				: ["associatePublicIpAddress"],
 		);
 	}
+	const instanceType = (name: string) =>
+		instances.find((r) => r.name === name)?.inputs.instanceType;
+	// asia（app1 と db1）は c5.large、海外の app は c7i.large。チームごとの指定がそれより優先される
+	for (const team of [6, 7]) {
+		expect(instanceType(`team${team}-db1-instance`)).toBe("c5.large");
+		expect(instanceType(`team${team}-app1-instance`)).toBe("c5.large");
+		expect(instanceType(`team${team}-app3-instance`)).toBe("c7i.large");
+	}
+	expect(instanceType("team6-app2-instance")).toBe("c7i.large");
+	expect(instanceType("team7-app2-instance")).toBe("c6i.large");
 	expect(options.get("team7-db1-instance")?.protect).toBe(true);
 	expect(options.get("team7-app1-instance")?.protect).not.toBe(true);
 	const certificates = resources.filter(
@@ -129,4 +145,23 @@ test("stops only the instances of stopped teams", async () => {
 			power.name.startsWith("team6-") ? "stopped" : "running",
 		);
 	}
+});
+
+test("registers Router privately with its physical team host", () => {
+	const router = resources.find((r) => r.name === "team7-router");
+	expect(router?.inputs.tags).toMatchObject({
+		Role: "router",
+		IsuconTeamID: "700",
+		IsuconInstanceNum: "5",
+		IsuconBenchmarkHost: "app.team7-aws.127.0.0.1.nip.io",
+	});
+});
+
+test("preserves the explicitly configured Router size", () => {
+	expect(
+		resources.find((r) => r.name === "team7-router")?.inputs.instanceType,
+	).toBe("c6i.large");
+	expect(
+		resources.find((r) => r.name === "team6-router")?.inputs.instanceType,
+	).toBe("c6in.large");
 });

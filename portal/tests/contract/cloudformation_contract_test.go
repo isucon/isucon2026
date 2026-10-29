@@ -3,7 +3,8 @@ package contract_test
 import (
 	"encoding/base64"
 	"encoding/json"
-	"fmt"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -15,12 +16,17 @@ import (
 
 func cfnConfig(t *testing.T) *config.Config {
 	t.Helper()
+	key := filepath.Join(t.TempDir(), "admin")
+	if out, err := exec.Command("ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", key).CombinedOutput(); err != nil {
+		t.Fatalf("keygen: %v %s", err, out)
+	}
 	return &config.Config{
-		PublicURLHost:     "portal.test.invalid",
-		TestAMIID:         "ami-test",
-		ContestAMIID:      "ami-contest",
-		CheckerSecret:     checkerSecret(t),
-		AvailabilityZones: []string{"apne1-az1", "apne1-az2", "apne1-az4"},
+		IsuconAdminSSHKeyPath: key,
+		PublicURLHost:         "portal.test.invalid",
+		TestAMIID:             "ami-test",
+		ContestAMIID:          "ami-contest",
+		CheckerSecret:         checkerSecret(t),
+		AvailabilityZones:     []string{"apne1-az1", "apne1-az2", "apne1-az4"},
 		Timing: config.Timing{
 			ContestStart: timePtr(time.Date(2026, 11, 25, 1, 0, 0, 0, time.UTC)),
 			ContestEnd:   timePtr(time.Date(2026, 11, 25, 9, 0, 0, 0, time.UTC)),
@@ -125,8 +131,9 @@ func TestEnvCheckTemplateUsesISUCON2026(t *testing.T) {
 	}
 	for text, count := range map[string]int{
 		"Type: AWS::EC2::Instance\n":                            5,
-		"InstanceType: c7i.large":                               3,
-		"InstanceType: c6in.large":                              2,
+		"InstanceType: c5.large":                                2,
+		"InstanceType: c7i.large":                               2,
+		"InstanceType: c6in.large":                              1,
 		"Type: AWS::EC2::EIP\n":                                 5,
 		"path: /opt/isucon-env-checker/portal_credentials.json": 5,
 	} {
@@ -179,22 +186,34 @@ func extractPortalCredentials(t *testing.T, template string) []byte {
 	return nil
 }
 
-func TestContestTemplateProvidesFourServers(t *testing.T) {
-	template, err := cloudformation.ContestTemplate(cfnConfig(t), 42, "apne1-az2", time.Now())
+func TestContestTemplateProvides2026Topology(t *testing.T) {
+	cfg := cfnConfig(t)
+	cfg.RouterAMIID = "ami-router"
+	document, err := cloudformation.ContestTemplate(cfg, 42, "apne1-az2", time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := strings.Count(template, "Type: AWS::EC2::Instance\n"); got != 4 {
-		t.Errorf("instance count = %d, want 4", got)
-	}
-	if got := strings.Count(template, "Type: AWS::EC2::EIP\n"); got != 4 {
-		t.Errorf("public IP count = %d, want 4", got)
-	}
-	for n := 1; n <= 4; n++ {
-		for _, want := range []string{fmt.Sprintf("  Instance%d:", n), fmt.Sprintf("InstanceId: !Ref Instance%d", n), fmt.Sprintf("PrivateIpAddress: \"192.168.0.1%d\"", n)} {
-			if !strings.Contains(template, want) {
-				t.Errorf("missing %s", want)
-			}
+	for text, count := range map[string]int{
+		"Type: AWS::EC2::Instance\n":                                5,
+		"InstanceType: c5.large":                                    2,
+		"InstanceType: c7i.large":                                   2,
+		"InstanceType: c6in.large":                                  1,
+		"Type: AWS::EC2::EIP\n":                                     5,
+		"Type: AWS::EC2::Subnet\n":                                  6,
+		"NetworkInterfaceId: !Ref RouterDataInterface":              13,
+		"path: /etc/systemd/system/isucon-register.service\n":       5,
+		"systemctl enable --now --no-block isucon-register.service": 5,
+	} {
+		if got := strings.Count(document, text); got != count {
+			t.Errorf("%q count = %d, want %d", text, got, count)
 		}
+	}
+	for _, want := range []string{"AWS CloudFormation for ISUCON2026", "ImageId: ami-router", "SourceDestCheck: false", "ROUTER_TEAM_NUMBER=42", "app.team42-aws.127.0.0.1.nip.io", "ISUREAL_DB_HOST=192.168.4.10", "Iops: 6000", "Throughput: 200", "RouterPublicIP:", "Value: !Ref RouterIP", "RuleAction: deny"} {
+		if !strings.Contains(document, want) {
+			t.Errorf("missing %q", want)
+		}
+	}
+	if strings.Contains(strings.ToLower(document), "isucon14") {
+		t.Error("legacy template remains")
 	}
 }

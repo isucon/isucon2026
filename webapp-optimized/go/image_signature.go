@@ -16,7 +16,7 @@ const imageURLLifetime = 24 * time.Hour
 // Expiration times are rounded down to this step, so every URL for an image
 // issued within the step shares one signature (and one cache entry). The URL
 // still expires within imageURLLifetime.
-const imageURLExpiryStep = 10 * time.Minute
+const imageURLExpiryStep = 6 * time.Hour
 const imageSignatureIterations = 1000
 
 func imageSigningKey(secretKeyHash string) ([]byte, error) {
@@ -28,6 +28,9 @@ func imageSigningKey(secretKeyHash string) ([]byte, error) {
 }
 
 func imageSignature(key []byte, imageID string, exp int64) []byte {
+	if value, ok := history.imageSignature(imageID, exp); ok {
+		return value[:]
+	}
 	// Cache only the pure cryptographic result. Authorization, deletion and
 	// expiration checks remain in getImageHandler on every request.
 	if len(key) == sha256.Size && len(imageID) <= 128 {
@@ -57,11 +60,19 @@ func computeImageSignature(key []byte, imageID string, exp int64) [sha256.Size]b
 	return result
 }
 
+func imageURLExpiry(now time.Time) int64 {
+	return now.Add(imageURLLifetime).Truncate(imageURLExpiryStep).Unix()
+}
+
 func signedImageURL(user User, imageID string) string {
-	exp := time.Now().Add(imageURLLifetime).Truncate(imageURLExpiryStep).Unix()
+	exp := imageURLExpiry(time.Now())
+	return imageURLWith(imageID, exp, [sha256.Size]byte(imageSignature(user.ImageKey, imageID, exp)))
+}
+
+func imageURLWith(imageID string, exp int64, sig [sha256.Size]byte) string {
 	query := url.Values{
 		"exp": {strconv.FormatInt(exp, 10)},
-		"sig": {base64.RawURLEncoding.EncodeToString(imageSignature(user.ImageKey, imageID, exp))},
+		"sig": {base64.RawURLEncoding.EncodeToString(sig[:])},
 	}
 	return "/api/images/" + url.PathEscape(imageID) + "?" + query.Encode()
 }

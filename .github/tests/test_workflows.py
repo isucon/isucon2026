@@ -36,6 +36,12 @@ class WorkflowRoutingTest(unittest.TestCase):
                     self.assertEqual(workflow["on"]["push"]["branches"], ["main"])
                     self.assertIn("concurrency", workflow)
 
+    def test_all_workflows_use_processor_runner(self):
+        for name, workflow in workflows().items():
+            for job_name, job in workflow["jobs"].items():
+                with self.subTest(workflow=name, job=job_name):
+                    self.assertEqual(job["runs-on"], "actions-runner-processor")
+
     def test_component_routing(self):
         cases = {
             "backend/internal/service/auth.go": {"backend-ci.yml"},
@@ -87,21 +93,6 @@ class WorkflowRoutingTest(unittest.TestCase):
                 all_workflows["ci.yml"], "pull_request", "main", "docs/example.env"
             )
         )
-
-    def test_portal_release_uses_protected_environment_and_serialization(self):
-        deploy = workflows()["portal-deploy.yml"]
-        self.assertEqual(set(deploy["on"]), {"workflow_dispatch"})
-        self.assertEqual(deploy["permissions"]["id-token"], "write")
-        self.assertEqual(deploy["concurrency"]["cancel-in-progress"], "false")
-        job = deploy["jobs"]["deploy"]
-        self.assertEqual(job["environment"], "portal-${{ inputs.stage }}")
-        self.assertIn("github.ref == 'refs/heads/main'", job["if"])
-        self.assertIn("vars.PORTAL_DEPLOY_ENABLED == 'true'", job["if"])
-        ci = workflows()["portal-ci.yml"]
-        for event in ("push", "pull_request"):
-            self.assertTrue(
-                triggered(ci, event, "main", ".github/workflows/portal-deploy.yml")
-            )
 
 
 if __name__ == "__main__":

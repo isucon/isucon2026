@@ -1,13 +1,13 @@
 import type { Context } from "hono";
-import { HTTPError } from "./api_error.ts";
-import { parseRFC3339, type Timestamp } from "./time.ts";
+import { errorMessage, HTTPError } from "./api_error.ts";
+import { parseRFC3339 } from "./time.ts";
 
 type FieldTypes = {
   string: string;
   stringPointer: string | null;
   int: number | null;
   float: number | null;
-  time: Timestamp | null;
+  time: Temporal.Instant | null;
   file: File | null;
 };
 
@@ -72,7 +72,7 @@ export function parseQuery(raw: string): { values: Values; error: string | null 
       key = queryUnescape(separator < 0 ? pair : pair.slice(0, separator));
       value = queryUnescape(separator < 0 ? "" : pair.slice(separator + 1));
     } catch (err) {
-      error ??= (err as Error).message;
+      error ??= errorMessage(err);
       continue;
     }
     const list = values.get(key);
@@ -132,7 +132,7 @@ function bindValues(
     try {
       input[name] = convert(values[0], field.type ?? "string");
     } catch (err) {
-      throw HTTPError.badRequest(`${key}: ${(err as Error).message}`);
+      throw HTTPError.badRequest(`${key}: ${errorMessage(err)}`);
     }
   }
 }
@@ -149,13 +149,23 @@ function convert(value: string, type: FieldType): unknown {
     case "float":
       return parseFloat64(value);
     case "int":
-      if (!/^[+-]?\d+$/.test(value) || BigInt(value) >= 2n ** 63n || BigInt(value) < -(2n ** 63n)) {
-        throw new Error(`strconv.ParseInt: parsing ${JSON.stringify(value)}: invalid syntax`);
-      }
-      return Number(value);
+      return parseInt64(value);
     default:
       throw new Error("unknown type");
   }
+}
+
+function parseInt64(value: string): number {
+  if (value === "") {
+    return 0;
+  }
+  if (!/^[+-]?\d+$/.test(value)) {
+    throw new Error(`strconv.ParseInt: parsing ${JSON.stringify(value)}: invalid syntax`);
+  }
+  if (BigInt(value) >= 2n ** 63n || BigInt(value) < -(2n ** 63n)) {
+    throw new Error(`strconv.ParseInt: parsing ${JSON.stringify(value)}: value out of range`);
+  }
+  return Number(value);
 }
 
 function parseFloat64(value: string): number {
@@ -254,13 +264,13 @@ function bindJSON(input: Record<string, unknown>, spec: BindSpec, text: string):
   if (typeof data !== "object" || Array.isArray(data)) {
     throw HTTPError.badRequest(`json: cannot unmarshal ${jsonType(data)} into request`);
   }
-  const object = data as Record<string, unknown>;
+  const fields = new Map(Object.entries(data));
   for (const [name, field] of Object.entries(spec)) {
     const key = field.json;
-    if (key === undefined || !Object.hasOwn(object, key) || object[key] === null) {
+    const value = key === undefined ? undefined : fields.get(key);
+    if (key === undefined || value === undefined || value === null) {
       continue;
     }
-    const value = object[key];
     switch (field.type ?? "string") {
       case "string":
       case "stringPointer":
