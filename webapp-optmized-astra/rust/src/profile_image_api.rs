@@ -7,7 +7,7 @@ use axum::http::{StatusCode, header};
 use axum::response::Response;
 use uuid::Uuid;
 
-use crate::api_error::{Error, new_api_error};
+use crate::api_error::{Error, new_abuse_error, new_api_error};
 use crate::jpeg;
 use crate::response::no_content;
 use crate::server::HandlerContext;
@@ -32,12 +32,13 @@ pub async fn put_profile_image_handler(
     let data = axum::body::to_bytes(req.into_body(), usize::MAX)
         .await
         .context("failed to read request body")?;
-    let img = match jpeg::decode(data.clone(), 512).await {
+    let img = match jpeg::decode_profile(data.clone()).await {
         Ok(img) => img,
         Err(_) => {
-            return Err(new_api_error(
+            return Err(new_abuse_error(
                 StatusCode::BAD_REQUEST,
                 "invalid_profile_image",
+                "invalid_image",
             ));
         }
     };

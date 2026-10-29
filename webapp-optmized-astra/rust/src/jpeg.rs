@@ -30,3 +30,21 @@ pub async fn decode(data: Bytes, maximum_side: u16) -> Result<Image, Error> {
     }
     Ok(image)
 }
+
+// Profile images must be fully decodable before an invalid_image guard event
+// is emitted. Dimension violations are checked by the handler separately.
+pub async fn decode_profile(data: Bytes) -> Result<Image, Error> {
+    tokio::task::spawn_blocking(move || {
+        let mut decoder = jpeg_decoder::Decoder::new(&data[..]);
+        decoder.decode().map_err(anyhow::Error::from)?;
+        let info = decoder
+            .info()
+            .ok_or_else(|| anyhow!("missing image info"))?;
+        Ok(Image {
+            width: info.width,
+            height: info.height,
+        })
+    })
+    .await
+    .map_err(anyhow::Error::from)?
+}

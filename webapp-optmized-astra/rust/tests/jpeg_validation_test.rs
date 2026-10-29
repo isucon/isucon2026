@@ -1,8 +1,36 @@
 use bytes::Bytes;
-use isureal::jpeg::{Image, decode};
+use isureal::jpeg::{Image, decode, decode_profile};
 
 const SMALL: &[u8] = include_bytes!("fixtures/small.jpg");
 const WIDE: &[u8] = include_bytes!("fixtures/wide.jpg");
+
+#[tokio::test]
+async fn profile_validation_separates_invalid_jpeg_from_dimensions() {
+    assert_eq!(
+        decode_profile(Bytes::from_static(SMALL))
+            .await
+            .unwrap()
+            .width,
+        32
+    );
+    assert_eq!(
+        decode_profile(Bytes::from_static(WIDE))
+            .await
+            .unwrap()
+            .width,
+        600
+    );
+    assert!(
+        decode_profile(Bytes::from_static(b"not a JPEG"))
+            .await
+            .is_err()
+    );
+    assert!(
+        decode_profile(Bytes::copy_from_slice(&SMALL[..SMALL.len() - 32]))
+            .await
+            .is_err()
+    );
+}
 
 #[tokio::test]
 async fn validation_preserves_original_dimensions_and_endpoint_limits() {
