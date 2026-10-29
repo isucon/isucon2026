@@ -6,10 +6,10 @@ one VPC per team and the same service topology as `provisioning/aws`:
 
 | Instance | Type | Private address | Portal server list |
 | --- | --- | --- | --- |
-| App1 (Asia) | c7i.large | 192.168.1.10 | Yes, number 1 |
+| App1 (Asia) | c5.large | 192.168.1.10 | Yes, number 1 |
 | App2 (Europe) | c7i.large | 192.168.2.10 | Yes, number 2 |
 | App3 (America) | c7i.large | 192.168.3.10 | Yes, number 3 |
-| Database | c6in.large | 192.168.4.10 | Yes, number 4 |
+| Database | c5.large | 192.168.4.10 | Yes, number 4 |
 | Router | c6in.large | 192.168.11.10 / 192.168.10.10 | No |
 
 Each service has a separate subnet. Inter-service routes point at the Router's
