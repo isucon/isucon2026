@@ -16,6 +16,7 @@ import (
 )
 
 const arrivalInterval = 5 * time.Second
+const type2UploadCount = 8
 
 var _ scenario.EvilFunc = Run
 
@@ -47,9 +48,12 @@ func plans(env scenario.EvilEnv) []actorPlan {
 			username: fmt.Sprintf("evil_login_%x_%d", seed, n),
 			rate:     rate, password: fmt.Sprintf("password_dummy_%d", rng.IntN(1_000_000)),
 		})
+		if time.Duration(n+1)*arrivalInterval >= env.Length {
+			continue
+		}
 		for variant, offset := range []time.Duration{arrivalInterval / 4, arrivalInterval / 2} {
 			if at := time.Duration(n)*arrivalInterval + offset; at < env.Length {
-				out = append(out, actorPlan{at: at, kind: 2, username: fmt.Sprintf("evil_upload_%x_%d_%d", seed, n, variant), uploadInterval: 2 * time.Second})
+				out = append(out, actorPlan{at: at, kind: 2, username: fmt.Sprintf("evil_upload_%x_%d_%d", seed, n, variant), uploadInterval: 500 * time.Millisecond})
 			}
 		}
 	}
@@ -130,12 +134,16 @@ func runLoginActor(parent context.Context, env scenario.EvilEnv, api *client.Cli
 func runUploadActor(parent context.Context, env scenario.EvilEnv, api *client.Client, p actorPlan) {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
-	var sent, skipped atomic.Int64
+	var sent atomic.Int64
 	var banned atomic.Bool
+	var invalidImage, tooLarge, otherUploadResult atomic.Int64
 	var wg sync.WaitGroup
 	defer func() {
 		wg.Wait()
-		logActor(env, api, p, sent.Load(), skipped.Load(), banned.Load())
+		logActor(env, api, p, sent.Load(), 0, banned.Load())
+		if env.Logger != nil {
+			env.Logger.Info("不正アップロードの応答", "ip", api.ClientIP(), "invalid_image", invalidImage.Load(), "too_large", tooLarge.Load(), "other", otherUploadResult.Load())
+		}
 	}()
 	u, err := api.Register(ctx, p.username, "Evil upload user", "asia")
 	sent.Add(1)
@@ -157,22 +165,24 @@ func runUploadActor(parent context.Context, env scenario.EvilEnv, api *client.Cl
 		return
 	}
 	start := time.Now()
-	slots := make(chan struct{}, 4)
-	for n := 0; waitUntil(ctx, start.Add(time.Duration(n)*p.uploadInterval)); n++ {
-		select {
-		case slots <- struct{}{}:
-		default:
-			skipped.Add(1)
-			continue
-		}
+	for n := 0; n < type2UploadCount && waitUntil(ctx, start.Add(time.Duration(n)*p.uploadInterval)); n++ {
 		wg.Add(1)
 		sent.Add(1)
 		go func() {
 			defer wg.Done()
-			defer func() { <-slots }()
 			reqCtx, done := context.WithTimeout(ctx, 10*time.Second)
 			defer done()
-			if isBan(api.PutNonJPEGStream(reqCtx, loggedIn.Token)) {
+			err := api.PutNonJPEGStream(reqCtx, loggedIn.Token)
+			var apiErr *client.APIError
+			switch {
+			case errors.As(err, &apiErr) && apiErr.Status == http.StatusBadRequest && apiErr.Code == "invalid_profile_image":
+				invalidImage.Add(1)
+			case errors.As(err, &apiErr) && apiErr.Status == http.StatusRequestEntityTooLarge:
+				tooLarge.Add(1)
+			default:
+				otherUploadResult.Add(1)
+			}
+			if isBan(err) {
 				banned.Store(true)
 				cancel()
 			}
