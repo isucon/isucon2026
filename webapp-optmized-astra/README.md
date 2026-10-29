@@ -426,3 +426,4 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261029T124028Z-team12 | owner-ordered image packs and grouped ZIP reads; seed=1 | PASS | 183,352 |
 | 20261029T124542Z-team12 | owner-ordered image packs and grouped ZIP reads repeat without restart; seed=1 | PASS | 171,580 |
 | 20261029T130241Z-team12 | verify using cached issued URL signatures; seed=1 | PASS | 175,968 |
+| 20261029T130802Z-team12 | verify using cached issued URL signatures repeat without restart; seed=1 | PASS | 149,195 |
