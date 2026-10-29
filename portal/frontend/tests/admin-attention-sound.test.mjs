@@ -110,7 +110,7 @@ function setup() {
   };
 }
 
-test("sound requires a gesture, repeats every 30 seconds and stops when resolved", async () => {
+test("sound requires a gesture, repeats continuously every half second and stops when resolved", async () => {
   const f = setup();
   try {
     const view = f.render("warning");
@@ -123,16 +123,20 @@ test("sound requires a gesture, repeats every 30 seconds and stops when resolved
     assert.equal(ctx.tones[0].startAt, 10);
     assert.ok(ctx.tones[0].stopAt > 10 && ctx.tones[0].stopAt < 10.3);
     assert.ok(ctx.gains[0].peak > 0 && ctx.gains[0].peak <= 0.1);
-    TestRenderer.act(() => f.timers.get(30000)());
-    assert.equal(ctx.tones.length, 2);
+    for (let i = 1; i <= 3; i++) {
+      ctx.currentTime += 0.5;
+      TestRenderer.act(() => f.timers.get(500)());
+      assert.equal(ctx.tones.length, i + 1);
+      assert.equal(ctx.tones[i].startAt - ctx.tones[i - 1].startAt, 0.5);
+    }
     f.render("danger");
-    assert.equal(ctx.tones.length, 4);
-    assert.ok(ctx.tones[3].startAt > ctx.tones[2].startAt);
+    assert.equal(ctx.tones.length, 6);
+    assert.ok(ctx.tones[5].startAt > ctx.tones[4].startAt);
     f.render("normal");
     assert.equal(f.timers.size, 0);
-    assert.equal(ctx.tones.length, 4);
+    assert.equal(ctx.tones.length, 6);
     f.render("warning");
-    assert.equal(ctx.tones.length, 5);
+    assert.equal(ctx.tones.length, 7);
     await f.click();
     assert.equal(f.timers.size, 0);
     assert.equal(view.root.findByType("button").props["aria-pressed"], false);
