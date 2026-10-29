@@ -89,7 +89,8 @@ func (w *World) PostOn(user *User, day int) *Post {
 		return nil
 	}
 	window := w.windowOf(user.Region, day)
-	post := &Post{ID: derivedID(seed, "post", day, i), AuthorID: user.ID, WindowID: window.ID, Caption: choose(r, captions)}
+	language := languageFor(user.Region, user.ID)
+	post := &Post{ID: derivedID(seed, "post", day, i), AuthorID: user.ID, WindowID: window.ID, Caption: choose(r, language.captions)}
 	if r.Float64() < 0.8 {
 		post.PostedAt = window.StartsAt.Add(time.Duration(5+r.IntN(115)) * time.Second)
 	} else {
@@ -106,7 +107,7 @@ func (w *World) PostOn(user *User, day int) *Post {
 		latitude, longitude := r.Float64()*180-90, r.Float64()*360-180
 		post.Location = Location{Kind: "exact", Latitude: &latitude, Longitude: &longitude}
 	default:
-		locality := choose(r, localities)
+		locality := choose(r, language.localities)
 		post.Location = Location{Kind: "approximate", Locality: &locality}
 	}
 	if deleted {
@@ -176,7 +177,7 @@ func (w *World) interactions(post *Post, author, day int, window *Window) {
 	for _, commenter := range commenters[:min(len(commenters), poisson(r, popularity))] {
 		comment := &Comment{
 			ID: derivedID(seed, "comment", day, author, len(post.Comments)), PostID: post.ID, AuthorID: w.Users[commenter].ID,
-			Body: choose(r, commentBodies), CreatedAt: between(r, post.PostedAt.Add(time.Minute), window.EndedAt),
+			Body: choose(r, languageFor(w.Users[commenter].Region, w.Users[commenter].ID).comments), CreatedAt: between(r, post.PostedAt.Add(time.Minute), window.EndedAt),
 		}
 		if r.Float64() < 0.03 {
 			deletedAt := comment.CreatedAt.Add(time.Minute)
