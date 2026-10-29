@@ -600,3 +600,41 @@ $studentBackground: #6b7280;
 .isux-word-break-all {
   word-break: break-all;
 }
+
+body.isux-admin-attention-warning {
+  --isux-admin-attention-color: #fff3bf;
+}
+body.isux-admin-attention-danger {
+  --isux-admin-attention-color: #ffd6d6;
+}
+body.isux-admin-attention-warning,
+body.isux-admin-attention-danger {
+  animation: isux-admin-attention 2s ease-in-out infinite;
+}
+@keyframes isux-admin-attention {
+  0%,
+  100% {
+    background-color: #fff;
+  }
+  50% {
+    background-color: var(--isux-admin-attention-color);
+  }
+}
+.isux-admin-attention-summary {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.5rem;
+  padding: 0.75rem 1.5rem;
+  background: #fff;
+  border-bottom: 2px solid #767676;
+}
+@media (prefers-reduced-motion: reduce) {
+  body.isux-admin-attention-warning,
+  body.isux-admin-attention-danger {
+    animation: none;
+    background-color: var(--isux-admin-attention-color);
+  }
+}
