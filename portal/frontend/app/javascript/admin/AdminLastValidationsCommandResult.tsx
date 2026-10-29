@@ -1,3 +1,4 @@
+import { requireResourceId } from "../IdInput";
 import React, { useEffect, useMemo, useState } from "react";
 import type { GetCurrentSessionResponse } from "../../../proto/isuxportal/services/common/me_pb";
 import type { AdminApiClient } from "./AdminApiClient";
@@ -13,7 +14,7 @@ export interface Props {
 
 export const AdminLastValidationsCommandResult: React.FC<Props> = (props: Props) => {
   const { id: requestId } = useParams();
-  if (!requestId) throw new Error("requestId is required");
+  const [error, setError] = React.useState<Error | null>(null);
 
   const [requesting, setRequesting] = React.useState(false);
   const [results, setResults] = React.useState<InstanceCommandExecuteRequestResult[] | null>(null);
@@ -21,16 +22,18 @@ export const AdminLastValidationsCommandResult: React.FC<Props> = (props: Props)
   useEffect(() => {
     (async () => {
       setRequesting(true);
+      setError(null);
       try {
-        const resp = await props.client.getInstanceCommandExecuteRequest(BigInt(requestId));
+        const resp = await props.client.getInstanceCommandExecuteRequest(requireResourceId(requestId));
         setResults(resp.results);
       } catch (e) {
         setResults(null);
+        setError(e);
       } finally {
         setRequesting(false);
       }
     })();
-  }, [props.client]);
+  }, [props.client, requestId]);
 
   const rows = useMemo(() => {
     if (requesting) {
@@ -70,6 +73,7 @@ export const AdminLastValidationsCommandResult: React.FC<Props> = (props: Props)
         <h1 className="title is-1">Command Result (#{requestId})</h1>
       </header>
       <main className="mt-5">
+        {error && <ErrorMessage error={error} />}
         <table className="table is-striped is-fullwidth">
           <thead>
             <tr>

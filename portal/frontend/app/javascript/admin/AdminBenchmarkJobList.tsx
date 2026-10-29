@@ -1,3 +1,4 @@
+import { requireResourceId } from "../IdInput";
 import { AdminApiClient } from "./AdminApiClient";
 
 import React from "react";
@@ -148,13 +149,13 @@ class AdminBenchmarkJobListInternal extends React.Component<Props, State> {
   async updateList(page?: number) {
     try {
       const list = await this.props.client.listBenchmarkJobs(
-        this.props.teamId ? BigInt(this.props.teamId) : null,
+        this.props.teamId ? requireResourceId(this.props.teamId) : null,
         this.props.status ?? undefined,
         this.props.failedOnly,
         page,
       );
       const pageCount = list.maxPage;
-      this.setState({ list, pageCount });
+      this.setState({ list, pageCount, error: null });
     } catch (error) {
       this.setState({ error });
     }
