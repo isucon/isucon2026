@@ -16,7 +16,7 @@ type contestServer struct {
 }
 
 func (params) ContestServers() []contestServer {
-	return []contestServer{{1, "App1", "asia", "c7i.large"}, {2, "App2", "europe", "c7i.large"}, {3, "App3", "america", "c7i.large"}, {4, "Database", "", "c6in.large"}}
+	return []contestServer{{1, "App1", "asia", "c5.large"}, {2, "App2", "europe", "c7i.large"}, {3, "App3", "america", "c7i.large"}, {4, "Database", "", "c5.large"}}
 }
 func (p params) Registration(number int) string {
 	b, _ := json.Marshal(map[string]any{"host": p.PortalHost, "token": p.Token, "number": number})

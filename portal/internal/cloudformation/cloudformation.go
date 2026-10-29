@@ -43,13 +43,14 @@ type envCheckInstance struct {
 }
 
 // EnvCheckInstances matches the production defaults in provisioning/aws/config.ts:
-// three app servers, one database server and one router.
+// App1 (asia) and the database are c5.large, the overseas apps c7i.large and the
+// router c6in.large.
 func (params) EnvCheckInstances() []envCheckInstance {
 	return []envCheckInstance{
-		{"EnvcheckInstance001", "001", "c7i.large"},
+		{"EnvcheckInstance001", "001", "c5.large"},
 		{"EnvcheckInstance002", "002", "c7i.large"},
 		{"EnvcheckInstance003", "003", "c7i.large"},
-		{"EnvcheckInstance004", "004", "c6in.large"},
+		{"EnvcheckInstance004", "004", "c5.large"},
 		{"EnvcheckInstance005", "005", "c6in.large"},
 	}
 }

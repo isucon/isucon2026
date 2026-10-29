@@ -79,10 +79,12 @@ make aws-infra-destroy STACK=dev
 Router の 443/8080 は `clientCidrs`（複数指定可）からしか受け付けないので、手元の IP が変わったら設定し直してください。
 
 任意の設定は `teamCount`（既定 1、最大 15）、`serviceAmiId` / `routerAmiId`（AMI の固定）、
-`serviceInstanceType`（既定 c7i.large）/ `routerInstanceType`（既定 c6in.large）、`availabilityZone` です。
+`serviceInstanceType`（海外の app、既定 c7i.large）/ `asiaInstanceType`（asia の app、既定 c5.large）/
+`databaseInstanceType`（db1、既定 c5.large）/ `routerInstanceType`（既定 c6in.large）、`availabilityZone` です。
+`teamServerInstanceTypes`（`{"9": {"app2": "c6i.large"}}`）でチームのサーバーごとに種別を変えられます。
 チームごとの Router の IP とホスト名は `pulumi stack output teamOutputs` で確認します。
 
-1 チームは 10 vCPU（c7i.large × 4 + c6in.large）を使います。オンデマンドの標準インスタンスの vCPU 上限
+1 チームは 10 vCPU（c5.large × 2 + c7i.large × 2 + c6in.large）を使います。オンデマンドの標準インスタンスの vCPU 上限
 （`L-1216C47A`）に注意してください。EIP は使いません（Router もサーバーも、起動時に割り当てられるパブリック IPv4）。
 
 ## ネットワーク
