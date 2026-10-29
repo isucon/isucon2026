@@ -7,12 +7,15 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"net/http"
+	"net/url"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/isucon/isucon2026/bench/internal/client"
+	"github.com/isucon/isucon2026/bench/internal/imageurl"
 	"github.com/isucon/isucon2026/bench/internal/scenario"
+	"github.com/isucon/isucon2026/dataset"
 )
 
 const arrivalInterval = 5 * time.Second
@@ -27,10 +30,11 @@ type actorPlan struct {
 	rate           int
 	password       string
 	uploadInterval time.Duration
+	targetIndex    int
 }
 
 // plans gives each actor a separate identity and IP. Type 1 arrives every five seconds;
-// two Type 2 actors arrive 1.25 and 2.5 seconds after each Type 1.
+// two Type 2 actors arrive 1.25 and 2.5 seconds later, then Type 3 at 3.75 seconds.
 func plans(env scenario.EvilEnv) []actorPlan {
 	seed := env.Seed
 	if seed == 0 {
@@ -56,6 +60,9 @@ func plans(env scenario.EvilEnv) []actorPlan {
 				out = append(out, actorPlan{at: at, kind: 2, username: fmt.Sprintf("evil_upload_%x_%d_%d", seed, n, variant), uploadInterval: 500 * time.Millisecond})
 			}
 		}
+		if at := time.Duration(n)*arrivalInterval + 3*arrivalInterval/4; at < env.Length {
+			out = append(out, actorPlan{at: at, kind: 3, rate: 50, targetIndex: n})
+		}
 	}
 	return out
 }
@@ -74,10 +81,13 @@ func Run(ctx context.Context, env scenario.EvilEnv) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if p.kind == 1 {
+			switch p.kind {
+			case 1:
 				runLoginActor(ctx, env, api, p)
-			} else {
+			case 2:
 				runUploadActor(ctx, env, api, p)
+			case 3:
+				runSignatureActor(ctx, env, api, p)
 			}
 		}()
 	}
@@ -89,9 +99,50 @@ func isBan(err error) bool {
 	return errors.As(err, &e) && e.Status == http.StatusForbidden && e.Code == "ip_banned"
 }
 
-// runLoginActor schedules 40-160 requests per second, or 300 for the last actor. In-flight requests are bounded;
-// a missed slot is discarded rather than replayed after congestion clears.
+// runLoginActor sends fabricated login attempts at the planned rate.
 func runLoginActor(parent context.Context, env scenario.EvilEnv, api *client.Client, p actorPlan) {
+	runRateActor(parent, env, api, p, func(ctx context.Context, n int) error {
+		_, err := api.Login(ctx, fmt.Sprintf("%s_%d", p.username, n), p.password)
+		return err
+	})
+}
+
+// runSignatureActor sends a syntactically valid but incorrect signature for an existing
+// image. The valid image ID and expiry make the application perform signature verification.
+func runSignatureActor(parent context.Context, env scenario.EvilEnv, api *client.Client, p actorPlan) {
+	path, ok := forgedImageURL(env.Dataset, p.targetIndex)
+	if !ok {
+		return
+	}
+	runRateActor(parent, env, api, p, func(ctx context.Context, _ int) error {
+		_, err := api.Image(ctx, path)
+		return err
+	})
+}
+
+func forgedImageURL(world *dataset.World, index int) (string, bool) {
+	if world == nil {
+		return "", false
+	}
+	var targets []*dataset.User
+	for _, user := range world.Users {
+		if user.Status == "active" && user.ProfileImage != nil {
+			targets = append(targets, user)
+		}
+	}
+	if len(targets) == 0 {
+		return "", false
+	}
+	owner := targets[index%len(targets)]
+	imageID := owner.ProfileImage.ID
+	exp := time.Now().Add(time.Hour).Unix()
+	query := url.Values{"exp": {fmt.Sprint(exp)}, "sig": {imageurl.Sign("wrong-"+owner.SecretKey, imageID, exp)}}
+	return "/api/images/" + url.PathEscape(imageID) + "?" + query.Encode(), true
+}
+
+// runRateActor sends requests at the planned rate and stops when the IP is banned.
+// In-flight requests are bounded; missed slots are discarded after congestion.
+func runRateActor(parent context.Context, env scenario.EvilEnv, api *client.Client, p actorPlan, request func(context.Context, int) error) {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 	var wg sync.WaitGroup
@@ -122,7 +173,7 @@ func runLoginActor(parent context.Context, env scenario.EvilEnv, api *client.Cli
 			defer func() { <-slots }()
 			reqCtx, done := context.WithTimeout(ctx, 2*time.Second)
 			defer done()
-			_, err := api.Login(reqCtx, fmt.Sprintf("%s_%d", p.username, n), p.password)
+			err := request(reqCtx, n)
 			if isBan(err) {
 				banned.Store(true)
 				cancel()

@@ -43,6 +43,7 @@ export type Env = {
     session: Session | null;
     adminSession: AdminSession | null;
     username: string;
+    abuse: string;
   };
 };
 

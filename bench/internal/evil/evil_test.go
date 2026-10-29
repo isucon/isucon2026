@@ -8,29 +8,40 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"reflect"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/isucon/isucon2026/bench/internal/client"
+	"github.com/isucon/isucon2026/bench/internal/imageurl"
 	"github.com/isucon/isucon2026/bench/internal/scenario"
+	"github.com/isucon/isucon2026/dataset"
 )
 
 func TestPlans(t *testing.T) {
 	env := scenario.EvilEnv{Start: time.Unix(42, 0), Length: time.Minute, Seed: 7}
 	a, b := plans(env), plans(env)
-	if !reflect.DeepEqual(a, b) || len(a) != 34 {
+	if !reflect.DeepEqual(a, b) || len(a) != 45 {
 		t.Fatal("plans are not deterministic or arrivals are missing")
 	}
 	for i, p := range a {
-		cycle, slot := i/3, i%3
+		cycle, slot := i/4, i%4
 		wantAt := time.Duration(cycle) * arrivalInterval
 		wantKind := 1
-		if slot > 0 {
+		if slot == 1 || slot == 2 {
 			wantAt += time.Duration(slot) * arrivalInterval / 4
 			wantKind = 2
+		} else if slot == 3 {
+			wantAt += 3 * arrivalInterval / 4
+			wantKind = 3
+		}
+		if i == len(a)-1 {
+			cycle, slot = 11, 0
+			wantAt, wantKind = time.Duration(cycle)*arrivalInterval, 1
 		}
 		if p.at != wantAt || p.kind != wantKind {
 			t.Fatalf("plan %d: %+v", i, p)
@@ -38,11 +49,60 @@ func TestPlans(t *testing.T) {
 		if p.kind == 2 && p.uploadInterval != 500*time.Millisecond {
 			t.Fatalf("invalid upload interval: %+v", p)
 		}
+		if p.kind == 3 && (p.rate != 50 || p.targetIndex != cycle) {
+			t.Fatalf("invalid signature actor: %+v", p)
+		}
 		if p.kind == 1 && (!strings.HasPrefix(p.password, "password_dummy_") ||
 			(i == len(a)-1 && p.rate != 300) ||
 			(i != len(a)-1 && (p.rate < 40 || p.rate > 160))) {
 			t.Fatalf("invalid login actor: %+v", p)
 		}
+	}
+}
+
+func TestSignatureActorUsesExistingImageAndStopsOnBan(t *testing.T) {
+	world := &dataset.World{Users: []*dataset.User{
+		{Status: "deleted", SecretKey: "deleted-secret", ProfileImage: &dataset.Image{ID: "deleted-image"}},
+		{Status: "active", SecretKey: "owner-secret", ProfileImage: &dataset.Image{ID: "real-image"}},
+	}}
+	var count atomic.Int64
+	api := testAPI(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/images/real-image" || r.Header.Get("X-Client-IP") != "192.0.2.3" {
+			t.Errorf("unexpected request: %s %s", r.URL.Path, r.Header.Get("X-Client-IP"))
+		}
+		query := r.URL.Query()
+		exp, err := strconv.ParseInt(query.Get("exp"), 10, 64)
+		if err != nil || exp <= time.Now().Unix() || len(query.Get("sig")) != 43 || query.Get("sig") == imageurl.Sign("owner-secret", "real-image", exp) {
+			t.Errorf("invalid forged signature: %v", query)
+		}
+		if count.Add(1) == 4 {
+			w.WriteHeader(http.StatusForbidden)
+			fmt.Fprint(w, `{"error":"ip_banned"}`)
+			return
+		}
+		w.WriteHeader(http.StatusForbidden)
+		fmt.Fprint(w, `{"error":"image_forbidden"}`)
+	}))
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	runSignatureActor(ctx, scenario.EvilEnv{Start: time.Now(), Dataset: world}, api.WithClientIP("192.0.2.3"), actorPlan{kind: 3, rate: 50})
+	if n := count.Load(); n < 4 || n > 5 {
+		t.Fatalf("continued after ban: %d", n)
+	}
+}
+
+func TestForgedImageURLRejectsMissingTarget(t *testing.T) {
+	if _, ok := forgedImageURL(nil, 0); ok {
+		t.Fatal("nil dataset has image URL")
+	}
+	if _, ok := forgedImageURL(&dataset.World{}, 0); ok {
+		t.Fatal("empty dataset has image URL")
+	}
+	world := &dataset.World{Users: []*dataset.User{{Status: "active", SecretKey: "s", ProfileImage: &dataset.Image{ID: "id with space"}}}}
+	path, ok := forgedImageURL(world, 0)
+	parsed, err := url.Parse(path)
+	if !ok || err != nil || parsed.Path != "/api/images/id with space" {
+		t.Fatalf("invalid image URL: %q %v", path, err)
 	}
 }
 
