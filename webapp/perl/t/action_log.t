@@ -31,6 +31,14 @@ my sub new_app ($min_level) {
         $c->rendered(200);
     })->name('get_feed');
     $r->get('/api/users/<#userId>' => sub ($c) { die "boom\n" })->name('get_user');
+    $r->put('/api/me/profile-image' => sub ($c) {
+        $c->stash('isureal.abuse' => 'invalid_image');
+        $c->render_error(Isureal::APIError->new(400, 'invalid_profile_image'));
+    })->name('put_profile_image');
+    $r->get('/api/images/<#imageId>' => sub ($c) {
+        $c->stash('isureal.abuse' => 'invalid_signature');
+        $c->render_error(Isureal::APIError->new(403, 'image_forbidden'));
+    })->name('get_image');
     return (Test::Mojo->new($app), \$buffer);
 }
 
@@ -68,6 +76,10 @@ is [map { $_->{ip} } entries($buffer)->@*], ['127.0.0.1', '127.0.0.1'];
 ($t, $buffer) = new_app('info');
 $t->get_ok('/api/feeds/friends' => \%headers)->status_is(200);
 $t->post_ok('/api/posts' => \%headers => json => {})->status_is(201);
-is [map { $_->{action} } entries($buffer)->@*], ['create_post'];
+$t->put_ok('/api/me/profile-image' => \%headers)->status_is(400);
+$t->get_ok('/api/images/image-id' => \%headers)->status_is(403);
+is [map { [$_->{action}, $_->{abuse}] } entries($buffer)->@*], [
+    ['create_post', undef], ['put_profile_image', 'invalid_image'], ['get_image', 'invalid_signature'],
+];
 
 done_testing;

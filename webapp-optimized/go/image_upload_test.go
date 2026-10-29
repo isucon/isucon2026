@@ -55,3 +55,22 @@ func TestReadJPEG(t *testing.T) {
 		t.Fatalf("read %d bytes before rejecting", reader.n)
 	}
 }
+
+func TestReadJPEGClassified(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		input []byte
+		want  jpegRejection
+	}{
+		{"invalid JPEG", []byte("not a JPEG"), jpegInvalid},
+		{"oversized JPEG", encodeJPEG(t, 513, 3), jpegTooLarge},
+		{"valid JPEG", encodeJPEG(t, 512, 3), jpegAccepted},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			_, got, err := readJPEGClassified(bytes.NewReader(test.input), 512, int64(len(test.input)))
+			if err != nil || got != test.want {
+				t.Fatalf("rejection = %v, error = %v; want %v", got, err, test.want)
+			}
+		})
+	}
+}

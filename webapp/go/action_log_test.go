@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"image"
+	"image/jpeg"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -38,6 +40,16 @@ func TestActionLogMiddleware(t *testing.T) {
 		})
 		e.GET("/api/users/:userId", func(c *echo.Context) error {
 			return errors.New("boom")
+		})
+		e.PUT("/api/me/profile-image", func(c *echo.Context) error {
+			if c.Request().Header.Get("X-Oversize") == "" {
+				c.Set("abuse", "invalid_image")
+			}
+			return NewAPIError(http.StatusBadRequest, "invalid_profile_image")
+		})
+		e.GET("/api/images/:imageId", func(c *echo.Context) error {
+			c.Set("abuse", "invalid_signature")
+			return NewAPIError(http.StatusForbidden, "image_forbidden")
 		})
 		return e, &output
 	}
@@ -85,7 +97,50 @@ func TestActionLogMiddleware(t *testing.T) {
 	e, output = newServer("info")
 	send(e, http.MethodGet, "/api/feeds/friends", "")
 	send(e, http.MethodPost, "/api/posts", `{}`)
-	if got := lines(output); len(got) != 1 || got[0]["action"] != "create_post" {
+	send(e, http.MethodPut, "/api/me/profile-image", "")
+	send(e, http.MethodGet, "/api/images/image-id", "")
+	large := httptest.NewRequest(http.MethodPut, "/api/me/profile-image", strings.NewReader(""))
+	large.Header.Set("X-Oversize", "1")
+	large.Header.Set("X-Client-IP", "203.0.113.7")
+	large.ContentLength = 31 << 20
+	e.ServeHTTP(httptest.NewRecorder(), large)
+	if got := lines(output); len(got) != 4 || got[0]["action"] != "create_post" || got[1]["abuse"] != "invalid_image" || got[2]["abuse"] != "invalid_signature" || got[2]["level"] != "info" || got[3]["abuse"] != nil {
 		t.Fatalf("info level logs = %v", got)
+	}
+}
+
+func TestProfileImageAbuseRequiresInvalidJPEG(t *testing.T) {
+	var output bytes.Buffer
+	e := echo.New()
+	e.IPExtractor = extractClientIP
+	e.HTTPErrorHandler = APIErrorHandler
+	e.Use(ActionLogMiddleware("info", &output))
+	e.PUT("/api/me/profile-image", putProfileImageHandler(&HandlerContext{}))
+
+	var valid bytes.Buffer
+	if err := jpeg.Encode(&valid, image.NewRGBA(image.Rect(0, 0, 513, 513)), nil); err != nil {
+		t.Fatal(err)
+	}
+	oversize := append(valid.Bytes(), bytes.Repeat([]byte{0}, 1<<20)...)
+	for _, body := range [][]byte{oversize, []byte("not a JPEG")} {
+		req := httptest.NewRequest(http.MethodPut, "/api/me/profile-image", bytes.NewReader(body))
+		req.Header.Set("Content-Type", "image/jpeg")
+		req.Header.Set("X-Client-IP", "203.0.113.7")
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want 400", rec.Code)
+		}
+	}
+	var entries []map[string]any
+	for _, line := range strings.Split(strings.TrimSpace(output.String()), "\n") {
+		var entry map[string]any
+		if err := json.Unmarshal([]byte(line), &entry); err != nil {
+			t.Fatal(err)
+		}
+		entries = append(entries, entry)
+	}
+	if len(entries) != 2 || entries[0]["abuse"] != nil || entries[1]["abuse"] != "invalid_image" {
+		t.Fatalf("logs = %v", entries)
 	}
 }

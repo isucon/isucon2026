@@ -119,6 +119,12 @@ class ActionLogTest < Minitest::Test
         [200, {}, []]
       in ['GET', '/api/users/someone']
         [500, {}, []]
+      in ['PUT', '/api/me/profile-image']
+        env['isureal.abuse'] = 'invalid_image'
+        [400, {}, []]
+      in ['GET', '/api/images/image-id']
+        env['isureal.abuse'] = 'invalid_signature'
+        [403, {}, []]
       else
         [404, {}, []]
       end
@@ -154,6 +160,9 @@ class ActionLogTest < Minitest::Test
     app, output = app_for('info')
     send_request(app, 'GET', '/api/feeds/friends')
     send_request(app, 'POST', '/api/posts', '{}')
-    assert_equal ['create_post'], lines(output).map { |entry| entry['action'] }
+    send_request(app, 'PUT', '/api/me/profile-image')
+    send_request(app, 'GET', '/api/images/image-id')
+    assert_equal [['create_post', nil], ['put_profile_image', 'invalid_image'], ['get_image', 'invalid_signature']],
+                 lines(output).map { |entry| [entry['action'], entry['abuse']] }
   end
 end

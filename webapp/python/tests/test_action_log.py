@@ -59,6 +59,16 @@ def new_server(min_level: str) -> tuple[TestClient, io.StringIO]:
     async def get_user(user_id: str) -> None:
         raise RuntimeError("boom")
 
+    @app.put("/api/me/profile-image")
+    async def put_profile_image(request: Request) -> None:
+        request.state.abuse = "invalid_image"
+        raise APIError(400, "invalid_profile_image")
+
+    @app.get("/api/images/{image_id}")
+    async def get_image(image_id: str, request: Request) -> None:
+        request.state.abuse = "invalid_signature"
+        raise APIError(403, "image_forbidden")
+
     client = TestClient(app, raise_server_exceptions=False)
     client.headers["X-Client-IP"] = "203.0.113.7"
     return client, output
@@ -127,7 +137,13 @@ def test_action_log_middleware() -> None:
     client, output = new_server("info")
     client.get("/api/feeds/friends")
     client.post("/api/posts", json={})
-    assert [entry["action"] for entry in lines(output)] == ["create_post"]
+    client.put("/api/me/profile-image")
+    client.get("/api/images/image-id")
+    assert [(entry["action"], entry.get("abuse"), entry["level"]) for entry in lines(output)] == [
+        ("create_post", None, "info"),
+        ("put_profile_image", "invalid_image", "info"),
+        ("get_image", "invalid_signature", "info"),
+    ]
 
 
 def test_action_log_uses_peer_address_without_client_ip_header() -> None:
