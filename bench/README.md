@@ -101,6 +101,7 @@ go -C bench run . -users 8 -duration 25s
 | `-host` | 空 | HTTP Host の上書き（VM の IP に接続する場合など） |
 | `-users` | `8` | asia の最初の負荷ユーザー数（海外はその 1/2、1 人以上）。初期データのユーザーも地域ごとに同じ人数までログインする |
 | `-images` | `ISUXBENCH_IMAGES`、なければ空 | 投稿に使う写真のアーカイブ（zip のパスか http(s) の URL）。空なら小さな画像を生成して使う |
+| `-image-digests` | `ISUXBENCH_IMAGE_DIGESTS`、なければ空 | 初期データの画像の SHA-256 の表（パスか http(s) の URL）。`-scale` と同じ規模で `cmd/imagedigests` が作ったもの。空なら画像を描き直して比べる。詳しくは「初期データの画像の表」を参照 |
 | `-seed` | `0` | 走行の乱数の種（0 なら無作為に選ぶ）。同じ種なら同じユーザー名、過ごし方、写真の順になる |
 | `-evil` | `true` | 負荷走行で不正な利用者を動かすか |
 | `-quick-share` | `0.111`（1/9） | 通過した人が 1.5 人を誘う、通過までの時間（1 日に対する割合）。誘う人数の折れ線全体がこの値に比例して伸び縮みする。較正用 |
@@ -139,6 +140,23 @@ VM 環境では `make vm-benchmark BENCH_ARGS='-users 2 -duration 25s'` でも�
 
 1 つでも違えば fail とする。履歴は読むだけで書き込まない。初期データの投稿期間と日付が重ならないよう、
 負荷走行の `localDate` は履歴の最終日の翌日以降から始める。
+
+### 初期データの画像の表
+
+画像の中身は、Router が本体の代わりに返すダイジェストで比べる（[Router の設計](../docs/router.md) の
+「ベンチの画像のダウンロード」）。XXH3 は要求ごとの種で計算するので、bench は期待する画像を描き直す必要があり、
+320 px の 1 枚に約 1.5 ms かかる。最上位帯の走行ではこれが bench の CPU の約 4 割を占めた。
+
+`-image-digests` で初期データの画像の SHA-256 の表を渡すと、初期データの画像の取得（抜き取り検査と
+Memories の画像）では Router に SHA-256 を返させ（`X-Benchmark-Digest: sha256`）、表と比べるので描き直さない。
+表は `cd bench && go run ./cmd/imagedigests -scale large -out ../var/image-digests/large.bin`
+（`make bench-image-digests`）で作る。Large で約 183 万枚、58 MB で、すべての画像を描くので CPU 時間で
+30 分ほどかかる。ファイルの先頭に初期データの設定の SHA-256 を入れており、`-scale` の違う表は読まない。
+
+- SHA-256 を返さない古い Router は XXH3 を返すので、そのときは描き直して比べる。isureal-digest が落ちていて
+  画像そのものが返ったときは、その SHA-256 を表と比べる。
+- エクスポートは表を使わない。1 回に 4 枚しか比べないのに、Router が SHA-256 を ZIP の全部の画像に掛けることになるため。
+- 比べないで取得するだけの画像（間引いた検証）は、Router の CPU を使わないよう XXH3 のままにする。
 
 初期データの検証と並行して、負荷ユーザーを用意する（`scenario/prepare.go`）。asia に `-users` 人とインフルエンサー 2 人、
 europe と america にその 1/2（1 人以上）とインフルエンサー 1 人ずつを登録し、初期データの cohort のユーザー（書き込んで

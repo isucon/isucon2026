@@ -4,12 +4,16 @@ import (
 	"archive/zip"
 	"bytes"
 	"cmp"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -24,6 +28,19 @@ var testWorld = func() *dataset.World {
 	cfg.Users, cfg.Days = 120, 35
 	return dataset.Generate(cfg)
 }()
+
+// testDigests は testWorld の画像の SHA-256 の表。
+var testDigests = sync.OnceValue(func() *dataset.ImageDigests {
+	var table bytes.Buffer
+	if _, err := dataset.WriteImageDigests(&table, testWorld); err != nil {
+		panic(err)
+	}
+	digests, err := dataset.ReadImageDigests(bytes.NewReader(table.Bytes()), testWorld)
+	if err != nil {
+		panic(err)
+	}
+	return digests
+})
 
 // fakeApp は初期データどおりに応答するアプリ。mutate で応答を壊して、Checker が
 // 見逃さないことを確かめる。
@@ -202,6 +219,13 @@ func (f *fakeApp) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if f.image != nil {
 			data = f.image(img, data)
 		}
+		if r.Header.Get("X-Benchmark-Digest") == "sha256" {
+			// Router（isureal-digest）と同じく、本体の代わりに SHA-256 を返す。
+			sum := sha256.Sum256(data)
+			w.Header().Set("X-Body-Sha256", hex.EncodeToString(sum[:]))
+			w.Header().Set("X-Body-Length", strconv.Itoa(len(data)))
+			return
+		}
 		w.Write(data)
 		return
 	default:
@@ -277,26 +301,30 @@ func TestChecker(t *testing.T) {
 			}
 		}, wantErr: "エクスポート"},
 	} {
-		t.Run(name, func(t *testing.T) {
-			app := newFakeApp(c)
-			if tc.setup != nil {
-				tc.setup(app)
-			}
-			server := httptest.NewServer(app)
-			defer server.Close()
-			var err error
-			for _, user := range targets {
-				if err = c.Check(t.Context(), client.New(server.URL), user); err != nil {
-					break
+		// 画像は描き直して比べるときと、SHA-256 の表と比べるときの両方で確かめる。
+		for _, digests := range []*dataset.ImageDigests{nil, testDigests()} {
+			t.Run(fmt.Sprintf("%s/digests=%v", name, digests != nil), func(t *testing.T) {
+				c.ImageDigests = digests
+				app := newFakeApp(c)
+				if tc.setup != nil {
+					tc.setup(app)
 				}
-			}
-			if tc.wantErr == "" && err != nil {
-				t.Fatal(err)
-			}
-			if tc.wantErr != "" && (err == nil || !strings.Contains(err.Error(), tc.wantErr)) {
-				t.Fatalf("want error containing %q, got %v", tc.wantErr, err)
-			}
-		})
+				server := httptest.NewServer(app)
+				defer server.Close()
+				var err error
+				for _, user := range targets {
+					if err = c.Check(t.Context(), client.New(server.URL), user); err != nil {
+						break
+					}
+				}
+				if tc.wantErr == "" && err != nil {
+					t.Fatal(err)
+				}
+				if tc.wantErr != "" && (err == nil || !strings.Contains(err.Error(), tc.wantErr)) {
+					t.Fatalf("want error containing %q, got %v", tc.wantErr, err)
+				}
+			})
+		}
 	}
 }
 
@@ -370,12 +398,15 @@ func TestCheckExportImages(t *testing.T) {
 		t.Fatal(err)
 	}
 	isNew := func(string) bool { return false }
-	if err := c.CheckExport(t.Context(), a, 0, isNew); err != nil {
-		t.Fatalf("images=0 compared images: %v", err)
-	}
-	for _, images := range []int{1, AllImages} {
-		if err := c.CheckExport(t.Context(), a, images, isNew); err == nil || !strings.Contains(err.Error(), "画像と違います") {
-			t.Fatalf("images=%d: err=%v", images, err)
+	for _, digests := range []*dataset.ImageDigests{nil, testDigests()} {
+		c.ImageDigests = digests
+		if err := c.CheckExport(t.Context(), a, 0, isNew); err != nil {
+			t.Fatalf("images=0 compared images: %v", err)
+		}
+		for _, images := range []int{1, AllImages} {
+			if err := c.CheckExport(t.Context(), a, images, isNew); err == nil || !strings.Contains(err.Error(), "画像と違います") {
+				t.Fatalf("digests=%v images=%d: err=%v", digests != nil, images, err)
+			}
 		}
 	}
 }

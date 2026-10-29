@@ -3,6 +3,8 @@ package client_test
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -53,6 +55,53 @@ func TestImageDigest(t *testing.T) {
 		other[len(other)-1]++
 		if client.SameImage(got, other) || client.SameImage(got, image[1:]) {
 			t.Errorf("digest=%v: another image matches", digest)
+		}
+	}
+}
+
+// InitialImage は Router に SHA-256 を求める。SHA-256 を返す Router、XXH3 しか返さない古い
+// Router、ダイジェストを返さないとき（isureal-digest が止まっている）のどれでも SameImage で比べられ、
+// XXH3 のとき以外は ImageSHA256 で中身の SHA-256 がわかる。
+func TestInitialImageSHA256(t *testing.T) {
+	image := bytes.Repeat([]byte("jpeg"), 50_000)
+	want := sha256.Sum256(image)
+	mode := ""
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seed, err := strconv.ParseUint(r.Header.Get("X-Benchmark-Request-Id"), 10, 64)
+		if err != nil || r.Header.Get("X-Benchmark-Digest") != "sha256" {
+			t.Errorf("X-Benchmark-Request-Id %q, X-Benchmark-Digest %q", r.Header.Get("X-Benchmark-Request-Id"), r.Header.Get("X-Benchmark-Digest"))
+		}
+		switch mode {
+		case "sha256":
+			w.Header().Set("X-Body-Sha256", hex.EncodeToString(want[:]))
+		case "xxh3":
+			w.Header().Set("X-Body-Xxh3", fmt.Sprintf("%016x", xxh3.HashSeed(image, seed)))
+		default:
+			_, _ = w.Write(image)
+			return
+		}
+		w.Header().Set("X-Body-Length", strconv.Itoa(len(image)))
+	}))
+	defer server.Close()
+	api := client.New(server.URL)
+	for _, mode = range []string{"sha256", "xxh3", "bytes"} {
+		got, err := api.InitialImage(t.Context(), "/api/images/x?exp=1&sig=s")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if (len(got) == len(image)) != (mode == "bytes") {
+			t.Errorf("%s: got %d bytes", mode, len(got))
+		}
+		if !client.SameImage(got, image) {
+			t.Errorf("%s: the image does not match", mode)
+		}
+		other := bytes.Clone(image)
+		other[len(other)-1]++
+		if client.SameImage(got, other) || client.SameImage(got, image[1:]) {
+			t.Errorf("%s: another image matches", mode)
+		}
+		if sum, ok := client.ImageSHA256(got); ok != (mode != "xxh3") || (ok && sum != want) {
+			t.Errorf("%s: ImageSHA256 = %x, %v", mode, sum, ok)
 		}
 	}
 }
