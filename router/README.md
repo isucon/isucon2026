@@ -89,8 +89,8 @@ runtime API で書き換える。
 | `ROUTER_DIGEST_ADDRESS` | `127.0.0.1:18010` | isureal-digest の待ち受け。空にするとベンチの画像のダウンロードもアプリへ送る |
 
 ベンチの画像とエクスポートのダウンロード（`X-Benchmark-Request-Id` 付き）は、同じ network namespace で動く
-`isureal-digest`（`digest/`、Rust）に送り、本体の代わりに XXH3 を返す（[設計文書](../docs/router.md) の
-「ベンチの画像のダウンロード」）。isureal-digest は上の 2 つのアドレスだけを環境変数から読む。単体テストは
+`isureal-digest`（`digest/`、Rust）に送り、本体の代わりに XXH3 を返す（初期データの画像で
+`X-Benchmark-Digest: sha256` が付いていれば SHA-256。[設計文書](../docs/router.md) の「ベンチの画像のダウンロード」）。isureal-digest は上の 2 つのアドレスだけを環境変数から読む。単体テストは
 `cargo test --manifest-path router/digest/Cargo.toml`。
 
 ### Public hostnames
