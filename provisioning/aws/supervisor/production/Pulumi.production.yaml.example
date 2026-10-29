@@ -1,0 +1,17 @@
+config:
+  aws:region: ap-northeast-1
+  isucon2026-production-supervisor:name: isucon2026-production-supervisor
+  isucon2026-production-supervisor:endpoint: https://portal.isucon.net
+  isucon2026-production-supervisor:desiredCount: 3
+  isucon2026-production-supervisor:image: REPLACE_WITH_PHOTOS_ARM64_IMAGE_DIGEST
+  isucon2026-production-supervisor:tokenSecretArn: REPLACE_WITH_PRODUCTION_APPLICATION_SECRET_ARN
+  isucon2026-production-supervisor:network:
+    vpcId: REPLACE_WITH_PRODUCTION_VPC_ID
+    internetGatewayId: REPLACE_WITH_PRODUCTION_IGW_ID
+    subnets:
+      - availabilityZone: ap-northeast-1a
+        cidrBlock: 10.27.32.0/22
+      - availabilityZone: ap-northeast-1c
+        cidrBlock: 10.27.36.0/22
+      - availabilityZone: ap-northeast-1d
+        cidrBlock: 10.27.40.0/22
