@@ -40,7 +40,7 @@ func plans(env scenario.EvilEnv) []actorPlan {
 		out = append(out, actorPlan{
 			at: time.Duration(n) * arrivalInterval, kind: 1,
 			username: fmt.Sprintf("evil_login_%x_%d", seed, n),
-			rate:     20 + rng.IntN(81), password: fmt.Sprintf("password_dummy_%d", rng.IntN(1_000_000)),
+			rate:     40 + rng.IntN(121), password: fmt.Sprintf("password_dummy_%d", rng.IntN(1_000_000)),
 		})
 		if at := time.Duration(n)*arrivalInterval + arrivalInterval/2; at < env.Length {
 			out = append(out, actorPlan{at: at, kind: 2, username: fmt.Sprintf("evil_upload_%x_%d", seed, n)})
@@ -78,7 +78,7 @@ func isBan(err error) bool {
 	return errors.As(err, &e) && e.Status == http.StatusForbidden && e.Code == "ip_banned"
 }
 
-// runLoginActor schedules 20-100 requests per second. In-flight requests are bounded;
+// runLoginActor schedules 40-160 requests per second. In-flight requests are bounded;
 // a missed slot is discarded rather than replayed after congestion clears.
 func runLoginActor(parent context.Context, env scenario.EvilEnv, api *client.Client, p actorPlan) {
 	ctx, cancel := context.WithCancel(parent)
