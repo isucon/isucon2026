@@ -24,7 +24,7 @@ const adminJobsPerPage = 15
 func (h *Handler) AdminDashboard(w http.ResponseWriter, r *http.Request) error {
 	ri := info(r)
 	ctx := r.Context()
-	w.Header().Set("Cache-Control", "max-age=15, private")
+	w.Header().Set("Cache-Control", "no-store")
 
 	var lb *pbresources.Leaderboard
 	if _, wire, ok, err := h.cache.Read(ctx, "leaderboard-v2:admin"); err != nil {
@@ -49,12 +49,24 @@ func (h *Handler) AdminDashboard(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 
+	var pendingCount int64
+	var earliestPendingAt sql.NullTime
+	if err := h.db.QueryRowContext(ctx,
+		`SELECT COUNT(*), MIN(created_at) FROM benchmark_jobs WHERE status = $1`, model.JobPending,
+	).Scan(&pendingCount, &earliestPendingAt); err != nil {
+		return err
+	}
+
 	res := &pbadmin.DashboardResponse{
 		Leaderboard:                  lb,
+		PendingBenchmarkJobCount:     pendingCount,
 		UnansweredClarificationCount: clarCount,
 	}
 	if earliestClarAt.Valid {
 		res.EarliestUnansweredClarificationAt = timestamppb.New(earliestClarAt.Time)
+	}
+	if earliestPendingAt.Valid {
+		res.EarliestPendingBenchmarkJobAt = timestamppb.New(earliestPendingAt.Time)
 	}
 	renderPB(w, http.StatusOK, res)
 	return nil
