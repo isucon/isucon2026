@@ -21,16 +21,23 @@ import (
 func TestPlans(t *testing.T) {
 	env := scenario.EvilEnv{Start: time.Unix(42, 0), Length: time.Minute, Seed: 7}
 	a, b := plans(env), plans(env)
-	if !reflect.DeepEqual(a, b) || len(a) != 24 {
+	if !reflect.DeepEqual(a, b) || len(a) != 36 {
 		t.Fatal("plans are not deterministic or arrivals are missing")
 	}
 	for i, p := range a {
-		if p.at != time.Duration(i)*arrivalInterval/2 || p.kind != i%2+1 {
+		cycle, slot := i/3, i%3
+		wantAt := time.Duration(cycle) * arrivalInterval
+		wantKind := 1
+		if slot > 0 {
+			wantAt += time.Duration(slot) * arrivalInterval / 4
+			wantKind = 2
+		}
+		if p.at != wantAt || p.kind != wantKind {
 			t.Fatalf("plan %d: %+v", i, p)
 		}
 		if p.kind == 1 && (!strings.HasPrefix(p.password, "password_dummy_") ||
-			(i == len(a)-2 && p.rate != 300) ||
-			(i != len(a)-2 && (p.rate < 40 || p.rate > 160))) {
+			(i == len(a)-3 && p.rate != 300) ||
+			(i != len(a)-3 && (p.rate < 40 || p.rate > 160))) {
 			t.Fatalf("invalid login actor: %+v", p)
 		}
 	}
