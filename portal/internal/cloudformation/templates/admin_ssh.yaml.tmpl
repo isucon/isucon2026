@@ -1,0 +1,8 @@
+{{define "admin_ssh"}}          users:
+            - default
+            - name: isuadmin
+              shell: /bin/bash
+              lock_passwd: true
+              sudo: ['ALL=(ALL) NOPASSWD:ALL']
+              ssh_authorized_keys: ['{{.AdminSSHPublicKey}}']
+{{end}}

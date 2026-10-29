@@ -15,7 +15,7 @@ func TestRegistrationBootstrap(t *testing.T) {
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("registration script: %v\n%s", err, out)
 	}
-	document, err := ContestTemplate(&config.Config{PublicURLHost: "portal.example", ContestAMIID: "ami-test", CheckerSecret: []byte("test")}, 1, "apne1-az1", time.Now())
+	document, err := ContestTemplate(&config.Config{IsuconAdminSSHKeyPath: adminKey(t), PublicURLHost: "portal.example", ContestAMIID: "ami-test", CheckerSecret: []byte("test")}, 1, "apne1-az1", time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -40,6 +40,7 @@ func TestContestTemplateEmbedsConfiguredRouterAMI(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	cfg.IsuconAdminSSHKeyPath = adminKey(t)
 	cfg.ContestAMIID = "ami-service"
 	cfg.CheckerSecret = []byte("test")
 	document, err := ContestTemplate(cfg, 1, "apne1-az1", time.Now())
@@ -59,7 +60,7 @@ func TestContestTemplateEmbedsConfiguredRouterAMI(t *testing.T) {
 }
 
 func TestContestTemplateUploadSizeForPortalDevTeam(t *testing.T) {
-	cfg := &config.Config{PublicURLHost: "portal-dev.isucon.net", ContestAMIID: "ami-01a0c5844ea355efd", RouterAMIID: "ami-069a13171cf378369", CheckerSecret: []byte("test"), CloudFormationStaging: true}
+	cfg := &config.Config{IsuconAdminSSHKeyPath: adminKey(t), PublicURLHost: "portal-dev.isucon.net", ContestAMIID: "ami-01a0c5844ea355efd", RouterAMIID: "ami-069a13171cf378369", CheckerSecret: []byte("test"), CloudFormationStaging: true}
 	document, err := ContestTemplate(cfg, 60001, "apne1-az2", time.Now())
 	if err != nil {
 		t.Fatal(err)
@@ -70,7 +71,7 @@ func TestContestTemplateUploadSizeForPortalDevTeam(t *testing.T) {
 }
 
 func TestContestRouterInterfacesAttachedAtLaunch(t *testing.T) {
-	cfg := &config.Config{PublicURLHost: "portal-dev.isucon.net", ContestAMIID: "ami-service", RouterAMIID: "ami-router", CheckerSecret: []byte("test")}
+	cfg := &config.Config{IsuconAdminSSHKeyPath: adminKey(t), PublicURLHost: "portal-dev.isucon.net", ContestAMIID: "ami-service", RouterAMIID: "ami-router", CheckerSecret: []byte("test")}
 	document, err := ContestTemplate(cfg, 60001, "apne1-az2", time.Now())
 	if err != nil {
 		t.Fatal(err)
