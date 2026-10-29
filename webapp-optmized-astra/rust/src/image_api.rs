@@ -477,10 +477,15 @@ const IMAGE_QUERY: &str = r#"
 // the parent table; the timestamp is only a performance hint.
 const FIRST_IMAGE_MONTH: i32 = 2024 * 12 + 8;
 const IMAGE_MONTHS: usize = 34;
+// October 2026 is split at 2026-10-28 06:00 UTC; later October rows live in
+// image_objects_20261028 (unix seconds, inclusive start and exclusive end).
+const SPLIT_IMAGE_PARTITION: (i64, i64) = (1_793_167_200, 1_793_491_200);
 static PARTITION_IMAGE_QUERIES: LazyLock<Vec<String>> = LazyLock::new(|| {
-    (0..=IMAGE_MONTHS)
+    (0..=IMAGE_MONTHS + 1)
         .map(|offset| {
-            let table = if offset == IMAGE_MONTHS {
+            let table = if offset == IMAGE_MONTHS + 1 {
+                "image_objects_20261028".to_owned()
+            } else if offset == IMAGE_MONTHS {
                 "image_objects_default".to_owned()
             } else {
                 let month = FIRST_IMAGE_MONTH + offset as i32;
@@ -495,6 +500,10 @@ static PARTITION_IMAGE_QUERIES: LazyLock<Vec<String>> = LazyLock::new(|| {
 });
 
 fn partition_image_query(timestamp: DateTime<Utc>) -> &'static str {
+    let seconds = timestamp.timestamp();
+    if (SPLIT_IMAGE_PARTITION.0..SPLIT_IMAGE_PARTITION.1).contains(&seconds) {
+        return &PARTITION_IMAGE_QUERIES[IMAGE_MONTHS + 1];
+    }
     let offset = timestamp.year() * 12 + timestamp.month0() as i32 - FIRST_IMAGE_MONTH;
     let index = usize::try_from(offset)
         .ok()
