@@ -77,7 +77,7 @@ export const AdminAttentionSound: React.FC<{ level: Level }> = ({ level }) => {
       }
     };
     play();
-    const timer = window.setInterval(play, 30_000);
+    const timer = window.setInterval(play, 500);
     return () => {
       window.clearInterval(timer);
       for (const [oscillator, gain] of active) {
