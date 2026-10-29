@@ -99,6 +99,23 @@ AWS に触らずに結果を確かめられます。
 
 ## 適用記録
 
+### 2026-10-29 初期データの最終日を 10-27 にしたベンチへの更新
+
+- #325 で `Large()` の最終日を 2026-10-27 にしたので、ベンチを入れ替えました。
+  問題サーバーの AMI `ami-07743933837cd476f` と組で使います。古い AMI のチームへのジョブは、初期データの検証で落ちます。
+- イメージを `sha256:3dfe2f60…`（上の ARM64 への移行、ソース `51f63c0b`）から
+  `sha256:3de628855b0ba84a1b2e013c528fd67f94ccfaad3c9947ea5e8686e715b5fd98`（タグ `arm64-bench-e5efafe2ac0f`）にしました。
+- `51f63c0b` から変わったのは `dataset/world.go`（最終日）だけで、supervisor、bench、portal は同じです。
+  手元が x86_64 で ARM64 の Rust をビルドできないので、`3dfe2f60…` を土台に `/usr/local/bin/isureal-bench` だけを差し替えました。
+  bench は Dockerfile と同じ `golang:1.26.5-alpine@sha256:0178a641…` で、
+  `CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -buildvcs=false -trimpath` でクロスコンパイルしました。
+  同じ方法で `51f63c0b` から作った bench は、`3dfe2f60…` の bench と SHA-256 が一致しました。
+  写真のアーカイブも `3dfe2f60…` のものと SHA-256 が一致することを確かめました。
+- `pulumi up` は出力 `deployments` のイメージの変更だけです（リソース 1 件、変更なし）。
+  `ecspresso diff` はタスク定義のイメージだけで、走行中のジョブがないことを確かめてから revision 11 を配備しました。
+- 3 タスクが `ecs.cpu-architecture=arm64` と新しい digest で動き、ポータルをポーリングしていることを確認しました。
+  配備後の Pulumi preview と ecspresso diff に差分はありません。
+
 ### 2026-10-29 ARM64 への移行
 
 - 写真入り ARM64 イメージ `sha256:3dfe2f60499d8fdf662b72a1aab2f971f2b3761ae4cc6762289ef4f64717da2b` を ECR に push しました。
