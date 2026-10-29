@@ -7,7 +7,7 @@
 ## Secrets Manager への登録
 
 Pulumi は `<name>/application` と `<name>/admin-ssh-key` の入れ物だけを作ります。
-`application` は環境変数名をキーとする JSON、`admin-ssh-key` は worker 用 SSH 秘密鍵の PEM 本文です。
+`application` は環境変数名をキーとする JSON、`admin-ssh-key` は portal / worker 用 SSH 秘密鍵の PEM 本文です。
 次の例ではファイルをアクセス制限された作業場所に用意し、登録後に削除してください。
 
 ```sh
@@ -81,3 +81,9 @@ S3 の bucket、CORS、公開 GET policy は Pulumi が管理します。
 公開前の移行と負荷試験は [deploy README](README.md) にまとめています。
 
 Bot トークン `ISUXPORTAL_DISCORD_BOT_TOKEN` は worker と、有効化した場合の bot タスクだけに注入します。所属確認は worker の REST API 呼び出しで実行でき、常駐 bot の起動は不要です。参加者ロール同期を使う場合は `ISUXPORTAL_DISCORD_CONTESTANT_ROLE_ID` に対象環境のロール ID を指定します。現在の同期対象は参加者ロールのみで、現地参加ロールは管理しません。
+
+The portal also receives the environment-specific admin SSH key to derive the
+public key embedded in CloudFormation. The worker uses the same secret for SSH
+as `isuadmin`. Dev and production use their own `sshSecretArn` from Pulumi; never
+copy a private key between environments. The participant template contains only
+the public key and provisions the account through cloud-init.

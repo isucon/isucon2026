@@ -222,6 +222,7 @@ Resources:
       UserData:
         Fn::Base64: |
           #cloud-config
+{{template "admin_ssh" $}}
           write_files:
           - path: /opt/isucon-env-checker/portal_credentials.json
             permissions: '0600'
@@ -233,7 +234,7 @@ Resources:
             content: '{{$.Registration .Number}}'
           - path: /opt/isucon-registration/register.py
             permissions: '0700'
-            encoding: b64
+            encoding: gz+b64
             content: '{{$.RegistrationScript}}'
 {{template "contest_registration_service" $}}
           runcmd:
@@ -328,6 +329,7 @@ Resources:
       UserData:
         Fn::Base64: |
           #cloud-config
+{{template "admin_ssh" $}}
           write_files:
           - path: /etc/isucon/registration.json
             permissions: '0600'
@@ -335,11 +337,11 @@ Resources:
             content: '{{.Registration 5}}'
           - path: /opt/isucon-registration/register.py
             permissions: '0700'
-            encoding: b64
+            encoding: gz+b64
             content: '{{.RegistrationScript}}'
           - path: /opt/isucon-registration/router-bootstrap.py
             permissions: '0700'
-            encoding: b64
+            encoding: gz+b64
             content: '{{.RouterBootstrap}}'
           - path: /etc/isucon/router.env
             owner: root:isureal-router
