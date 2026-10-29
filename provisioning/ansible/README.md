@@ -12,6 +12,9 @@ AMI の中身を作ります。Packer（`provisioning/packer`）から呼ばれ�
 チームごとに違うもの（app のリージョンと DB の接続先、どのサービスを動かすか、Router の設定ファイル、
 ENI、TLS 証明書）は Pulumi の user-data が設定します。
 
+Coding agent instruction files are installed for `isucon` by the
+[agent-instructions role](roles/agent-instructions/README.md).
+
 ## 配布するソースから取り除くもの
 
 `prepare.yml` は webapp と isureal-guard のソースを tar で固めたあと、`scripts/sanitize_archive.py` で
