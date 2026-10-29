@@ -103,6 +103,7 @@ func (g *generator) users() {
 		}
 		g.world.Users = append(g.world.Users, user)
 	}
+	localizeUsers(g.cfg.Seed, g.world.Users)
 	g.friends = make([]map[int]bool, len(g.world.Users))
 	for i := range g.friends {
 		g.friends[i] = map[int]bool{}
