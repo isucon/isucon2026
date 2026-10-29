@@ -8,7 +8,7 @@ Team 12で稼働するRust最適化実装。`webapp/rust`と`webapp/sql`を2335d
 
 [ZIP出力と画像読み取りの改善](experiments/team12-export-io/README.md)では、固定seed 1で変更前164,297点PASS、ZIP直接出力180,280点・175,539点PASSを記録した。初期画像25区画・1,826,950枚の所有者順配置とまとめ読みにも対応し、移行・GC・再起動後の検証を完了した。この追加変更は183,352点・171,580点でPASS。Asiaの読み取りIOPS削減は再現したが、2走平均の全体スコアはZIP出力のみとほぼ同じで、スコア改善は未確認。
 
-[署名検証での発行済みURLキャッシュ利用](experiments/signature-verification/README.md)を追加した。現在の鍵・画像ID・期限が一致すればキャッシュ内の署名と比較し、画像の有効性・期限の確認は毎回行う。初回は175,968点PASS。
+[署名検証での発行済みURLキャッシュ利用](experiments/signature-verification/README.md)を追加した。現在の鍵・画像ID・期限が一致すればキャッシュ内の署名と比較し、画像の有効性・期限の確認は毎回行う。キャッシュのロックは待たず、使用中なら従来の検証へ戻る。最終版は179,991点PASS（1走、スコア改善は未確定）。
 
 <!-- astra-final-summary-start -->
 ## Team 10時代の構成と検証記録
@@ -427,3 +427,4 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261029T124542Z-team12 | owner-ordered image packs and grouped ZIP reads repeat without restart; seed=1 | PASS | 171,580 |
 | 20261029T130241Z-team12 | verify using cached issued URL signatures; seed=1 | PASS | 175,968 |
 | 20261029T130802Z-team12 | verify using cached issued URL signatures repeat without restart; seed=1 | PASS | 149,195 |
+| 20261029T131830Z-team12 | cached signature verification without waiting for issuer locks; seed=1 | PASS | 179,991 |
