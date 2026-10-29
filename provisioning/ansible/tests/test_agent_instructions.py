@@ -18,7 +18,7 @@ PACING = (
     "許可された読み取り専用の操作であっても、操作の間には `sleep` による待機を挟み、"
     "連続実行や並列実行で本番環境に負荷を集中させないこと。\n\n"
 )
-HOLIDAY = "- 休日は対応できる人が少ないため、破壊的作業を行わないこと。\n"
+HOLIDAY = "- 休日の破壊的作業(障害時に対応できる人員が少ないため)\n"
 
 
 class AgentInstructionsTest(unittest.TestCase):
