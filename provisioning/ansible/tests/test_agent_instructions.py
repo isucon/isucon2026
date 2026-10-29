@@ -25,10 +25,9 @@ class AgentInstructionsTest(unittest.TestCase):
         content = (
             ANSIBLE / "roles/agent-instructions/files/instructions.md"
         ).read_bytes()
-        source, separator, supplement = content.partition(
-            b"\n\n<!-- participant-supplement -->\n"
-        )
+        source, separator, supplement = content.partition("\n## 8. 応答言語\n".encode())
         self.assertTrue(separator)
+        self.assertNotIn(b"<!-- participant-supplement -->", content)
         operations = source.decode("utf-8").split("## 4. 許可される操作\n", 1)[1]
         operations = operations.split("## 5.", 1)[0]
         self.assertIn(PACING, operations)
@@ -51,6 +50,17 @@ class AgentInstructionsTest(unittest.TestCase):
             with self.subTest(topic=topic):
                 self.assertIn(topic, notes)
 
+    def test_no_language_specific_destinations(self):
+        defaults = yaml.safe_load(
+            (ANSIBLE / "roles/agent-instructions/defaults/main.yml").read_text()
+        )
+        paths = defaults["agent_instructions_paths"]
+        self.assertEqual(len(paths), 8)
+        self.assertEqual(
+            [path for path in paths if path.startswith("webapp/")],
+            ["webapp/AGENTS.md"],
+        )
+
     def test_deployment_and_idempotence(self):
         expected = {
             ".codex/AGENTS.md",
@@ -61,10 +71,6 @@ class AgentInstructionsTest(unittest.TestCase):
             ".pi/agent/AGENTS.md",
             "AGENTS.md",
             "webapp/AGENTS.md",
-            *(
-                f"webapp/{lang}/AGENTS.md"
-                for lang in ("go", "ruby", "rust", "python", "php", "perl", "nodejs")
-            ),
         }
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
