@@ -52,7 +52,7 @@ team 11（Large データ、各サーバー 2 vCPU / 3.8 GiB）で新しいベ�
   （初期データ）の順です。初期化はディレクトリを rename して裏で消します。
 - エクスポート: 投稿を先に読み、画像は (id, 投稿時刻) の配列で 64 枚ずつ 4 本まで並列に読みます
   （画像の `created_at` は投稿時刻なので月のパーティションに絞れます）。
-- ログイン失敗のアクションログを出し、`isureal-guard` が不正な IP を BAN できるようにしました。
+- ログイン失敗、JPEGとして復号できないプロフィール画像、不正な画像署名のアクションログを出し、`isureal-guard` が不正な IP を BAN できるようにしました。復号できるJPEGの寸法超過はBAN対象にしません。
 - `postgresql/isucon.conf`（shared_buffers 512MB など）と VM 用の `deploy/nginx.conf` を追加し、
   初期化の `ANALYZE` は走行で書き換わる小さな表に限ります。
   `ISUREAL_PPROF=127.0.0.1:6060` で pprof を開けます。

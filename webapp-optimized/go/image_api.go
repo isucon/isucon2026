@@ -117,7 +117,11 @@ func getImageHandler(h *HandlerContext) echo.HandlerFunc {
 		if err != nil {
 			return err
 		}
-		if !hmac.Equal(sig, imageSignature(key, input.ImageID, exp)) || !object.Live {
+		if !hmac.Equal(sig, imageSignature(key, input.ImageID, exp)) {
+			logAbuseFailure(c, "get_image", http.StatusForbidden, "invalid_signature")
+			return NewAPIError(http.StatusForbidden, "image_forbidden")
+		}
+		if !object.Live {
 			return NewAPIError(http.StatusForbidden, "image_forbidden")
 		}
 		if exp <= time.Now().Unix() {

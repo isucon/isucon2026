@@ -9,7 +9,7 @@ use chrono::Utc;
 use serde::Deserialize;
 use subtle::ConstantTimeEq;
 
-use crate::api_error::{Error, new_api_error};
+use crate::api_error::{Error, new_abuse_error, new_api_error};
 use crate::bind::{Bind, Bindable, Binder, parse_query};
 use crate::image_signature::{image_signature, image_signing_key};
 use crate::response::blob;
@@ -86,7 +86,11 @@ async fn get_image(
     };
     let key = image_signing_key(&secret_key_hash)?;
     if !bool::from(sig.ct_eq(&image_signature(&key, &input.image_id, exp))) {
-        return Err(new_api_error(StatusCode::FORBIDDEN, "image_forbidden"));
+        return Err(new_abuse_error(
+            StatusCode::FORBIDDEN,
+            "image_forbidden",
+            "invalid_signature",
+        ));
     }
 
     // 削除状態を毎回確認する。即時反映も5秒以内の許容範囲に含まれる。

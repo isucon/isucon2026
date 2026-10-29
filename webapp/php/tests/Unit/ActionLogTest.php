@@ -44,9 +44,13 @@ final class ActionLogTest extends TestCase
         [$app, $output] = self::app('info');
         self::send($app, 'GET', '/api/feeds/friends', '');
         self::send($app, 'POST', '/api/posts', '{}');
+        self::send($app, 'PUT', '/api/me/profile-image', '');
+        self::send($app, 'GET', '/api/images/image-id', '');
         $lines = self::lines($output);
-        self::assertCount(1, $lines);
+        self::assertCount(3, $lines);
         self::assertSame('create_post', $lines[0]['action']);
+        self::assertSame(['action' => 'put_profile_image', 'ip' => '203.0.113.7', 'level' => 'info', 'status' => 400, 'user_id' => null, 'abuse' => 'invalid_image'], $lines[1]);
+        self::assertSame(['action' => 'get_image', 'ip' => '203.0.113.7', 'level' => 'info', 'status' => 403, 'user_id' => null, 'abuse' => 'invalid_signature'], $lines[2]);
     }
 
     public function testKeyOrderAndEncoding(): void
@@ -94,6 +98,14 @@ final class ActionLogTest extends TestCase
         });
         $app->get('/api/users/{userId}', function (Request $request, Response $response): Response {
             throw new \RuntimeException('boom');
+        });
+        $app->put('/api/me/profile-image', function (Request $request, Response $response): Response {
+            ActionLogEntry::of($request)->abuse = 'invalid_image';
+            throw new ApiError(400, 'invalid_profile_image');
+        });
+        $app->get('/api/images/{imageId}', function (Request $request, Response $response): Response {
+            ActionLogEntry::of($request)->abuse = 'invalid_signature';
+            throw new ApiError(403, 'image_forbidden');
         });
         $app->addRoutingMiddleware();
         $app->addErrorMiddleware(false, false, false)
