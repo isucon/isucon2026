@@ -277,7 +277,7 @@ export function createSupervisor(c: SupervisorConfig) {
     tags,
   });
   const cluster = new aws.ecs.Cluster("supervisor-cluster", {
-    settings: [{ name: "containerInsights", value: "enabled" }],
+    settings: [{ name: "containerInsights", value: "enhanced" }],
     tags,
   });
   const repository = new aws.ecr.Repository("supervisor-images", {
