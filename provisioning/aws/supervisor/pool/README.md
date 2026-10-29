@@ -62,6 +62,8 @@ workflow](../../../../portal/internal/cloudformation/README.md).
 
 1. 新しいベンチのイメージを作って push する（[Supervisor 構築手順](../README.md) の `make supervisor-image`）。
    写真のアーカイブを同梱したイメージなら、`benchImages` に同梱した場所（`/opt/isucon/photos/merged.zip`）を指定します。
+   初期データの画像のダイジェストの表は `benchImageDigests`（`/opt/isucon/photos/image-digests-large.bin`、環境変数
+   `ISUXBENCH_IMAGE_DIGESTS`）で指定します。表を同梱していないイメージに指定すると、ベンチは起動時に失敗します。
 2. `pool.json` のイメージや共通設定を更新する。`image` は digest で固定します。
    IP の変更やチーム追加はポータルのインスタンス登録・同期で反映し、固定IPの転送表は管理しません。
 3. 配備の定義を作って stack の設定に書き、適用する。雛形には稼働中のタスク定義（family の最新の ACTIVE）と

@@ -19,7 +19,7 @@ from urllib.parse import urlparse
 
 IMAGE = re.compile(r"[A-Za-z0-9./:_-]+@sha256:[a-f0-9]{64}")
 DURATION = re.compile(r"[0-9]+(ms|s|m|h)")
-# ベンチの -images（イメージ内の絶対パスか https の URL）
+# ベンチの -images と -image-digests（イメージ内の絶対パスか https の URL）
 IMAGES = re.compile(r"/[A-Za-z0-9._/-]+|https://[A-Za-z0-9._~:/?#@!$&'()*+,;=%-]+")
 
 
@@ -49,6 +49,11 @@ def build(task, service, config):
         raise ValueError(
             "benchImages must be an absolute path in the image or an HTTPS URL"
         )
+    bench_image_digests = config.get("benchImageDigests")
+    if bench_image_digests is not None and not IMAGES.fullmatch(bench_image_digests):
+        raise ValueError(
+            "benchImageDigests must be an absolute path in the image or an HTTPS URL"
+        )
     bench_args = " --target-port 8080 --scale large"
     if bench_timeout is not None:
         bench_args += f" --timeout {bench_timeout}"
@@ -77,6 +82,10 @@ def build(task, service, config):
     env.pop("ISUXBENCH_IMAGES", None)
     if bench_images is not None:
         env["ISUXBENCH_IMAGES"] = bench_images
+    # 初期データの画像のダイジェストの表の場所（bench -image-digests の既定値）
+    env.pop("ISUXBENCH_IMAGE_DIGESTS", None)
+    if bench_image_digests is not None:
+        env["ISUXBENCH_IMAGE_DIGESTS"] = bench_image_digests
     c["environment"] = [{"name": k, "value": v} for k, v in sorted(env.items())]
     script = (
         # Router IP and Host come from the portal registration, never a static map.
