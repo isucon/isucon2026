@@ -45,6 +45,9 @@ type Checker struct {
 	// 署名はすべて確かめる。海外のサーバーは DB まで遠く、RealMoji の多いユーザーの画像を
 	// すべて取ると数分かかるので、無作為に選んだものだけを取る。
 	ImageFetches int
+	// ImageDigests は初期データの画像の SHA-256 の表（なければ nil）。あれば Router に画像の
+	// SHA-256 を返させてこの表と比べ、画像を描き直さない。
+	ImageDigests *dataset.ImageDigests
 
 	users             map[string]*dataset.User
 	windows           map[string]*dataset.Window
@@ -240,15 +243,36 @@ func (c *Checker) SpotCheck(ctx context.Context, a *agent.Agent, n int) error {
 	for range n {
 		p := posts[rand.IntN(len(posts))]
 		url := "/api/images/" + p.Image.ID + "?" + neturl.Values{"exp": {strconv.FormatInt(exp, 10)}, "sig": {imageurl.Sign(user.SecretKey, p.Image.ID, exp)}}.Encode()
-		data, err := a.API.Image(ctx, url)
+		data, err := c.image(ctx, a.API, url)
 		if err != nil {
 			return err
 		}
-		if !client.SameImage(data, c.world.ImageBytes(p.Image)) {
+		if !c.sameImage(data, p.Image) {
 			return fmt.Errorf("投稿 %s の画像 %s が初期データと違います", p.ID, p.Image.ID)
 		}
 	}
 	return nil
+}
+
+// image は初期データの画像を取得する。SHA-256 の表があれば Router に SHA-256 を返させる。
+func (c *Checker) image(ctx context.Context, api *client.Client, url string) ([]byte, error) {
+	if c.ImageDigests != nil {
+		return api.InitialImage(ctx, url)
+	}
+	return api.Image(ctx, url)
+}
+
+// sameImage は got（画像のバイト列か Router が返したダイジェスト）が初期データの画像 img と
+// 同じかを返す。SHA-256 の表に img があれば、画像を描き直さずに比べる。
+func (c *Checker) sameImage(got []byte, img *dataset.Image) bool {
+	if c.ImageDigests != nil {
+		if want, ok := c.ImageDigests.Lookup(img.ID); ok {
+			if sum, ok := client.ImageSHA256(got); ok {
+				return [dataset.ImageDigestSize]byte(sum[:dataset.ImageDigestSize]) == want
+			}
+		}
+	}
+	return client.SameImage(got, c.world.ImageBytes(img))
 }
 
 // userCheck は 1 人のユーザーの検証。画像は URL の署名をその場で確かめ、中身の取得は
@@ -318,8 +342,13 @@ func (u *userCheck) fetchImages(ctx context.Context) error {
 		slots <- struct{}{}
 		wg.Go(func() {
 			defer func() { <-slots }()
-			data, err := u.a.API.Image(ctx, fetch.url)
-			if err == nil && !u.skipContents && !client.SameImage(data, u.world.ImageBytes(fetch.image)) {
+			var err error
+			if u.skipContents {
+				// 比べないので、Router に SHA-256（XXH3 より重い）を求めない。
+				_, err = u.a.API.Image(ctx, fetch.url)
+			} else if data, e := u.image(ctx, u.a.API, fetch.url); e != nil {
+				err = e
+			} else if !u.sameImage(data, fetch.image) {
 				err = fmt.Errorf("画像 %s の中身が初期データと違います", fetch.image.ID)
 			}
 			if err != nil {
@@ -646,7 +675,7 @@ func (u *userCheck) exportPosts(ctx context.Context, images int, isNew func(id s
 		if err != nil {
 			return fmt.Errorf("エクスポートの %s を読めません: %w", p.ImagePath, err)
 		}
-		if !client.SameImage(image, c.world.ImageBytes(want[i].Image)) {
+		if !c.sameImage(image, want[i].Image) {
 			return fmt.Errorf("エクスポートの %s が投稿 %s の画像と違います", p.ImagePath, want[i].ID)
 		}
 	}
