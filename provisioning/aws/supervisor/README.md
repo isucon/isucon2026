@@ -6,7 +6,7 @@
 | 場所 | 管理対象 | Pulumi project | backend の末尾 |
 | --- | --- | --- | --- |
 | このディレクトリ | cluster、実行 role、ネットワーク、ECR、ログ、Router の接続設定、停止中の旧チーム別サービス | `isucon2026-trial-supervisor` | `/supervisor` |
-| [`pool/`](pool/README.md) | 共有プールの配備設定。ECS サービスとタスク定義の配備は ecspresso が担当 | `isucon2026-shared-supervisor` | `/shared-supervisor` |
+| [`pool/`](pool/README.md) | 共有プールの専用サブネット、ルートテーブル、配備設定。ECS サービスとタスク定義の配備は ecspresso が担当 | `isucon2026-shared-supervisor` | `/shared-supervisor` |
 
 両 project の既存 stack は `portal-dev`、backend のバケットは `isucon2026-pulumi-state-124502390568` です。
 各ディレクトリの `mise.toml` が backend を選びます。
