@@ -12,13 +12,13 @@ paths relative to `/home/isucon`:
 | GitHub Copilot CLI         | `.copilot/copilot-instructions.md` |
 | OpenCode                   | `.config/opencode/AGENTS.md`       |
 | Pi                         | `.pi/agent/AGENTS.md`              |
-| Cursor CLI (project scope) | `AGENTS.md`, `webapp/AGENTS.md`    |
+| Cursor CLI (project scope) | `AGENTS.md`                        |
 
 Cursor's documented file support is project-scoped, not a global user file. The
-copies cover launches from the home directory and webapp root. No copies are
-installed in individual language directories. They do not provide global
-coverage for arbitrary new workspaces. Place an `AGENTS.md` in a new workspace
-when needed.
+copy is installed only at the home directory root. No copies are installed in
+`webapp` or individual language directories. This does not provide global
+coverage for arbitrary workspaces. Place an `AGENTS.md` in a workspace when
+needed.
 
 These paths assume default agent configuration directories. Overrides such as
 `CODEX_HOME`, `COPILOT_HOME`, or `PI_CODING_AGENT_DIR` require copying the file
