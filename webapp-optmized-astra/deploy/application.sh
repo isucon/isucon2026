@@ -9,7 +9,7 @@ region=${6:?region required}
 read_scope=${7:-all}
 case "$read_scope" in all|feed_search) ;; *) exit 2 ;; esac
 case "$write_fence_mode" in poll|native) ;; *) exit 2 ;; esac
-case "$write_fence_hosts" in ''|192.168.146.10,192.168.147.10) ;; *) exit 2 ;; esac
+case "$write_fence_hosts" in ''|192.168.178.10,192.168.179.10) ;; *) exit 2 ;; esac
 case "$read_fence" in 0|1) ;; *) exit 2 ;; esac
 case "$read_host" in ''|127.0.0.1) ;; *) exit 2 ;; esac
 destination=/home/isucon/webapp-optmized-astra

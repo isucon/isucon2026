@@ -2,7 +2,7 @@
 
 Run from the repository root: python3 .../sample-db.py OUTPUT.json SECONDS.
 Only SQL statement shapes and wait categories are saved; quoted literals are
-redacted. This read-only diagnostic uses the existing Team 10 database VM.
+redacted. This read-only diagnostic uses the existing Team 12 database VM.
 """
 import collections,json,subprocess,shlex,sys
 seconds=int(sys.argv[2])

@@ -7,7 +7,7 @@ set -euo pipefail
 umask 077
 . /home/isucon/.astra-replication.env
 password=$ASTRA_REPL_PASSWORD
-printf '192.168.148.10:5432:replication:astra_repl:%s\n' "$password" >/run/astra-replication.pgpass
+printf '192.168.180.10:5432:replication:astra_repl:%s\n' "$password" >/run/astra-replication.pgpass
 chown postgres:postgres /run/astra-replication.pgpass
 chmod 600 /run/astra-replication.pgpass
 SCRIPT

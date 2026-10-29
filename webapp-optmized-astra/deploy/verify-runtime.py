@@ -1,4 +1,4 @@
-"""Read-only verification of the configured Team 10 runtime and release."""
+"""Read-only verification of the configured Team 12 runtime and release."""
 from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import json
@@ -42,7 +42,7 @@ def inspect(app):
             'ISUREAL_METADATA_POOL_CONNECTIONS':str(runtime['metadataPoolConnections']),
             'ISUREAL_NOTIFICATION_BATCH_WRITES':str(int(runtime['notificationBatchWritesEnabled'])),
             'ISUREAL_FILE_IMAGE_ROOT':runtime.get('fileImageStore',{}).get('root','') if runtime.get('fileImageStore',{}).get('enabled') else '',
-            'ISUREAL_ARCHIVE_PEER':'192.168.148.10:8082' if runtime.get('archivePeer',{}).get('readsEnabled',False) and app['region']=='asia' and service=='webapp-optmized-astra' else '',
+            'ISUREAL_ARCHIVE_PEER':'192.168.180.10:8082' if runtime.get('archivePeer',{}).get('readsEnabled',False) and app['region']=='asia' and service=='webapp-optmized-astra' else '',
             'ISUREAL_FILE_IMAGE_ARCHIVES':str(int(runtime.get('fileImageStore',{}).get('archiveReadsEnabled',False))),
             'ISUREAL_FILE_IMAGE_WRITES':str(int(runtime.get('fileImageStore',{}).get('writesEnabled',False))),
             'ISUREAL_IMAGE_STORE_HOST':runtime['imageStore']['host'],
@@ -59,7 +59,7 @@ def inspect(app):
             'ISUREAL_DB_READ_HOST':read_host,
             'ISUREAL_DB_READ_SCOPE':read_scope(runtime,app,writer=service.endswith('-writer')),
             'ISUREAL_READ_FENCE':str(int(fenced)) if not service.endswith('-writer') else '',
-            'ISUREAL_UPLOAD_PROXY_TARGET':'192.168.145.10:8081' if regional and runtime['regionalUploadCacheEnabled'] else '',
+            'ISUREAL_UPLOAD_PROXY_TARGET':'192.168.177.10:8081' if regional and runtime['regionalUploadCacheEnabled'] else '',
         }
     regions={a['region']:a['host'] for a in runtime['applications'] if a['region']!='asia'} if runtime.get('regionalImageStoresEnabled') else {}
     program='expected='+repr(expected)+'\nbinary='+repr(expected_binary)+'\nregions='+repr(regions)+'\nnginx_malloc='+repr(runtime.get('nginxMallocThresholdKiB',0)*1024)+'\n'+'''
@@ -146,7 +146,7 @@ print('primary shared buffers MiB='+str(primary_cache//1024**2))
 peer=runtime.get('archivePeer',{'enabled':False,'readsEnabled':False})
 peer_config=remote(runtime['database']['instanceId'], 'sudo cat /etc/nginx/conf.d/astra-archive-peer.conf 2>/dev/null || true')
 if peer['enabled']:
-    assert 'listen 192.168.148.10:8082;' in peer_config and 'deny all;' in peer_config and 'gzip off;' in peer_config
+    assert 'listen 192.168.180.10:8082;' in peer_config and 'deny all;' in peer_config and 'gzip off;' in peer_config
     assert 'aio '+('threads' if peer.get('aioThreads',False) else 'off')+';' in peer_config
     for app in runtime['applications']:
         assert 'allow '+app['host']+';' in peer_config
@@ -157,7 +157,7 @@ if peer['enabled']:
         subprocess.run(['python3',str(root/'webapp-optmized-astra/deploy/archive-peer.py'),'verify'],env=env,check=True)
     print('db1 archive peer enabled; Asia peer reads='+str(peer['readsEnabled']))
 else:
-    assert 'listen 192.168.148.10:8082;' not in peer_config
+    assert 'listen 192.168.180.10:8082;' not in peer_config
 expected_replicas={app["replicaName"] for app in metadata_replicas(runtime)}
 assert len(rows)==len(expected_replicas) and {row.split("|")[0] for row in rows}==expected_replicas
 for row in rows:

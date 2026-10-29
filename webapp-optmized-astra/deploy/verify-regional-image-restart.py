@@ -59,7 +59,7 @@ if sys.argv[1:2] == ['capture'] and len(sys.argv) in (2,3):
           ORDER BY i.id LIMIT 5
         ) sample"""
     command=['psql' ,'-XAt','-v','ON_ERROR_STOP=1',
-             '-h',os.environ.get('ISUREAL_DB_HOST','192.168.148.10'),
+             '-h',os.environ.get('ISUREAL_DB_HOST','192.168.180.10'),
              '-p',os.environ.get('ISUREAL_DB_PORT','5432'),
              '-U',os.environ.get('ISUREAL_DB_USER','isureal'),
              '-d',os.environ.get('ISUREAL_DB_NAME','isureal'),'-c',query]

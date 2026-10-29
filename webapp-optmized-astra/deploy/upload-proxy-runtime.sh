@@ -11,7 +11,7 @@ runtime=json.load(open(sys.argv[1]))
 enabled=runtime.get('regionalUploadCacheEnabled',False) and sys.argv[2]=='webapp-optmized-astra' and sys.argv[3]!='asia'
 if enabled:
     assert runtime['writeProxyEnabled'] and runtime['imageStore']['enabled'] and runtime['imageStore']['writesEnabled']
-target='192.168.145.10:8081' if enabled else ''
+target='192.168.177.10:8081' if enabled else ''
 regional=runtime.get('regionalImageWritesEnabled',False)
 assert not regional or runtime.get('regionalImageStoresEnabled',False) and runtime.get('regionalUploadCacheEnabled',False)
 print('[Service]')

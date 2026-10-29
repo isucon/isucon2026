@@ -39,7 +39,7 @@ impl CachePeers {
             assert!(
                 matches!(
                     (region.as_str(), host.as_str()),
-                    ("europe", "192.168.146.10:8080") | ("america", "192.168.147.10:8080")
+                    ("europe", "192.168.178.10:8080") | ("america", "192.168.179.10:8080")
                 ),
                 "known regional cache peer"
             );
@@ -148,7 +148,7 @@ pub fn receiver_from_env() -> Option<Router> {
         return None;
     }
     assert_eq!(
-        value, "192.168.145.10",
+        value, "192.168.177.10",
         "cache source is the existing Asia writer"
     );
     Some(receiver_router(value.parse().unwrap()))
@@ -162,13 +162,13 @@ mod tests {
 
     #[tokio::test]
     async fn receiver_requires_actual_writer_socket_and_valid_payload() {
-        let router = receiver_router("192.168.145.10".parse().unwrap());
+        let router = receiver_router("192.168.177.10".parse().unwrap());
         let id = uuid::Uuid::new_v4();
-        for peer in [None, Some("127.0.0.1:1"), Some("192.168.146.10:1")] {
+        for peer in [None, Some("127.0.0.1:1"), Some("192.168.178.10:1")] {
             let mut req = HttpRequest::post(format!(
                 "/internal/astra/image-cache/{id}?createdAtMicros=1"
             ))
-            .header("X-Forwarded-For", "192.168.145.10")
+            .header("X-Forwarded-For", "192.168.177.10")
             .body(Body::from("poison"))
             .unwrap();
             if let Some(peer) = peer {
@@ -191,7 +191,7 @@ mod tests {
             .body(Body::from(data))
             .unwrap();
             req.extensions_mut().insert(ConnectInfo(
-                "192.168.145.10:1".parse::<SocketAddr>().unwrap(),
+                "192.168.177.10:1".parse::<SocketAddr>().unwrap(),
             ));
             assert_eq!(
                 router.clone().oneshot(req).await.unwrap().status(),

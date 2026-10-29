@@ -12,8 +12,8 @@ import urllib.request
 ROOT = Path('/var/lib/astra-images/packs')
 MANIFEST = Path('/var/lib/astra-images/.archive-peer-manifest.json')
 STAGED = Path('/home/isucon/astra-deploy/archive-peer-manifest.json')
-SOURCE = 'http://192.168.145.10:8082/internal/astra/packs/'
-PEER = 'http://192.168.148.10:8082/internal/astra/packs/'
+SOURCE = 'http://192.168.177.10:8082/internal/astra/packs/'
+PEER = 'http://192.168.180.10:8082/internal/astra/packs/'
 
 
 def validate_manifest(document):

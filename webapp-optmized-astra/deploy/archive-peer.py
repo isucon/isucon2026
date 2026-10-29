@@ -17,7 +17,7 @@ def main():
     runtime = json.loads((deploy / 'runtime.json').read_text())
     peer = runtime['archivePeer']
     assert peer['enabled'] and peer['instanceId'] == runtime['database']['instanceId']
-    assert peer['host'] == runtime['database']['host'] == '192.168.148.10'
+    assert peer['host'] == runtime['database']['host'] == '192.168.180.10'
     assert peer['port'] == 8082 and peer['root'] == '/var/lib/astra-images/packs'
     env = dict(os.environ, AWS_CONFIG_FILE=str(root / 'provisioning/aws-sdk.config'), AWS_SDK_LOAD_CONFIG='1')
     ssh = str(deploy / 'ssh.sh')

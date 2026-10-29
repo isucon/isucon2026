@@ -26,7 +26,7 @@ def stop(app):remote(app,'sudo systemctl stop '+units(app));return app['region']
 def storage(app):remote(app,'sudo systemctl restart postgresql@16-astraassets nginx && systemctl is-active --quiet postgresql@16-astraassets nginx');return app['region']+' image database and file-serving Nginx restarted'
 def start(app):
  remote(app,'sudo systemctl start '+units(app))
- endpoints=[('127.0.0.1',8080)]+([('192.168.145.10',8081)] if app['region']=='asia' else [])
+ endpoints=[('127.0.0.1',8080)]+([('192.168.177.10',8081)] if app['region']=='asia' else [])
  program='endpoints='+repr(endpoints)+'\n'+'''import socket,time
 for endpoint in endpoints:
  deadline=time.monotonic()+40

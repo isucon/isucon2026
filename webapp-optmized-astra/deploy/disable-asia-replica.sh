@@ -1,6 +1,8 @@
 #!/bin/bash
 # Called only on the existing Asia app VM after readers return to the primary.
 set -euo pipefail
+# A fresh VM never had the Asia standby; there is nothing to stop or verify.
+[ -f /var/lib/postgresql/16/astra/.astra-basebackup-complete ] || exit 0
 python3 - <<'PY'
 import json,subprocess
 runtime=json.load(open('/home/isucon/astra-deploy/runtime.json'))

@@ -60,7 +60,7 @@ impl UploadProxy {
             "upload cache belongs at regional ingress"
         );
         assert_eq!(
-            target, "192.168.145.10:8081",
+            target, "192.168.177.10:8081",
             "use the existing private writer"
         );
         let mut proxy = Self::new(target.parse().unwrap());

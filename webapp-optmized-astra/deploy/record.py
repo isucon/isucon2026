@@ -1,4 +1,4 @@
-"""Persist reproducible evidence for one completed Team 10 benchmark."""
+"""Persist reproducible evidence for one completed Team 12 benchmark."""
 import hashlib
 import json
 import os
@@ -12,7 +12,7 @@ run, label = sys.argv[1:]
 source = Path("var/aws-bench") / run
 result = json.loads((source / "result.json").read_text())
 meta = json.loads((source / "meta.json").read_text())
-assert meta["team"] == 10 and meta["exitCode"] is not None
+assert meta["team"] == 12 and meta["exitCode"] is not None
 destination = Path("webapp-optmized-astra/results") / run
 destination.mkdir(parents=True, exist_ok=True)
 for name in ("result.json", "meta.json", "report.txt"):
@@ -26,7 +26,7 @@ experiment = {
     "source_parent": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
     "artifact_sha256": hashlib.sha256(Path("var/astra/release.tar.gz").read_bytes()).hexdigest(),
     "benchmark_image": meta["image"],
-    "team": 10,
+    "team": 12,
     "pass": result["pass"],
     "score": result["score"],
     "note": "The result commit includes source and Pulumi configuration used for this run.",

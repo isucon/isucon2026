@@ -255,7 +255,7 @@ async fn independent_bytes_publish_atomically_and_preserve_visibility_export_and
             .fetch_one(&db)
             .await
             .unwrap();
-    let receiver = isureal::image_cache_push::receiver_router("192.168.145.10".parse().unwrap());
+    let receiver = isureal::image_cache_push::receiver_router("192.168.177.10".parse().unwrap());
     let cache_path = format!(
         "/internal/astra/image-cache/{external_id}?createdAtMicros={}",
         created.timestamp_micros()
@@ -264,7 +264,7 @@ async fn independent_bytes_publish_atomically_and_preserve_visibility_export_and
         .body(Body::from(original.to_vec()))
         .unwrap();
     delivery.extensions_mut().insert(axum::extract::ConnectInfo(
-        "192.168.145.10:1234"
+        "192.168.177.10:1234"
             .parse::<std::net::SocketAddr>()
             .unwrap(),
     ));
@@ -273,11 +273,11 @@ async fn independent_bytes_publish_atomically_and_preserve_visibility_export_and
         StatusCode::NO_CONTENT
     );
     let mut poison = Request::post(&cache_path)
-        .header("X-Forwarded-For", "192.168.145.10")
+        .header("X-Forwarded-For", "192.168.177.10")
         .body(Body::from(second.to_vec()))
         .unwrap();
     poison.extensions_mut().insert(axum::extract::ConnectInfo(
-        "192.168.146.10:1234"
+        "192.168.178.10:1234"
             .parse::<std::net::SocketAddr>()
             .unwrap(),
     ));
