@@ -10,10 +10,18 @@ export PORTAL_LISTEN=${PORTAL_LISTEN:-:8081}
 export ISUXPORTAL_DATABASE_URL=${ISUXPORTAL_DATABASE_URL:-postgres://isuxportal:isuxportal@127.0.0.1:15432/isuxportal?sslmode=disable}
 export REDIS_URL=${REDIS_URL:-redis://127.0.0.1:16379/0}
 
+# Template downloads require an administration key, including in the test server.
+ADMIN_KEY_DIR=$(mktemp -d)
+trap 'rm -rf "$ADMIN_KEY_DIR"' EXIT
+if [ -z "${ISUXPORTAL_ISUCON_ADMIN_SSH_PRIVATE_KEY_PATH:-}" ]; then
+  export ISUXPORTAL_ISUCON_ADMIN_SSH_PRIVATE_KEY_PATH="$ADMIN_KEY_DIR/admin"
+  ssh-keygen -q -t ed25519 -N '' -f "$ISUXPORTAL_ISUCON_ADMIN_SSH_PRIVATE_KEY_PATH"
+fi
+
 go build -o bin/portal ./cmd/portal
 ./bin/portal &
 SERVER_PID=$!
-trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+trap 'kill "$SERVER_PID" 2>/dev/null || true; rm -rf "$ADMIN_KEY_DIR"' EXIT
 
 for _ in $(seq 1 50); do
   if curl -sf http://127.0.0.1:8081/site/sha >/dev/null 2>&1; then

@@ -17,7 +17,7 @@ func TestSSHKeyBootstrap(t *testing.T) {
 	for _, kind := range []string{"test", "contest"} {
 		for _, mode := range []string{"http", "empty", "invalid", "mixed", "retry", "valid"} {
 			t.Run(kind+"/"+mode, func(t *testing.T) {
-				cfg := &config.Config{PublicURLHost: "portal.example.invalid", TestAMIID: "ami-test", ContestAMIID: "ami-test", CheckerSecret: []byte("test")}
+				cfg := &config.Config{IsuconAdminSSHKeyPath: adminKey(t), PublicURLHost: "portal.example.invalid", TestAMIID: "ami-test", ContestAMIID: "ami-test", CheckerSecret: []byte("test")}
 				render := TestTemplate
 				if kind == "contest" {
 					render = ContestTemplate
