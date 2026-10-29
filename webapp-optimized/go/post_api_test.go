@@ -140,9 +140,14 @@ func TestCreatePostIntegration(t *testing.T) {
 	if created.Author.ID != userID || created.PostingWindowID != windowID || !created.OnTime || created.LateSeconds != 0 || created.Location.Latitude == nil || *created.Location.Latitude != 35 {
 		t.Fatalf("unexpected response: %+v", created)
 	}
-	var stored []byte
-	if err := db.Get(&stored, `SELECT data FROM image_objects WHERE owner_user_id=$1`, userID); err != nil {
+	// The image body lives in the app's store; the row holds the metadata only.
+	var imageID string
+	if err := db.Get(&imageID, `SELECT id FROM image_objects WHERE owner_user_id=$1 AND data = ''`, userID); err != nil {
 		t.Fatal(err)
+	}
+	stored, ok := store.get(imageID)
+	if !ok {
+		t.Fatal("uploaded image is not in the store")
 	}
 	if _, err := jpeg.Decode(bytes.NewReader(stored)); err != nil {
 		t.Fatal(err)

@@ -25,10 +25,10 @@ type getImageRequest struct {
 // imageLivenessTTL is how long a confirmed-live image is served without asking
 // the database again. Images of deleted posts may be served for up to five
 // seconds, so this stays well below that.
-const imageLivenessTTL = 3 * time.Second
+var imageLivenessTTL = 3 * time.Second
 
 func getImageHandler(h *HandlerContext) echo.HandlerFunc {
-	cache := newImageCache(imageCacheBytes, imageCacheEntries)
+	cache := images
 	return func(c *echo.Context) error {
 		c.Response().Header().Set("Cache-Control", "no-store")
 		var input getImageRequest
@@ -51,20 +51,29 @@ func getImageHandler(h *HandlerContext) echo.HandlerFunc {
 		ctx := c.Request().Context()
 		cached, hit := cache.get(input.ImageID)
 		var object imageObject
-		if live, keyHash, known := hot.imageLive(input.ImageID); known && (hit || !live) {
-			// Post images of open windows: the hot state knows deletion exactly.
-			object = imageObject{SecretKeyHash: keyHash, Version: cached.version, MediaType: cached.mediaType, Live: live, Data: cached.data}
+		if live, keyHash, known := hot.imageLive(input.ImageID); known {
+			// Post images of open windows: the hot state knows deletion exactly,
+			// and the bytes are in this app's store or a peer's.
+			object = imageObject{SecretKeyHash: keyHash, Version: cached.version, MediaType: "image/jpeg", Live: live, Data: cached.data}
+			if hit {
+				object.MediaType = cached.mediaType
+			} else if live {
+				if data, ok := imageBytes(ctx, input.ImageID); ok {
+					object.Data = data
+					cache.put(input.ImageID, object, time.Now())
+				}
+			}
 		} else if hit && time.Since(cached.checkedAt) < imageLivenessTTL {
 			// Deleted images may still be served for a few seconds, so a recent
 			// liveness check is reused without a database round trip.
 			object = imageObject{SecretKeyHash: cached.secretKeyHash, Version: cached.version, MediaType: cached.mediaType, Live: true, Data: cached.data}
 		} else {
 			var version *string
-			if hit {
+			if hit && cached.version != "" {
 				version = &cached.version
 			}
 			checkedAt := time.Now()
-			object, err = loadImageObject(ctx, h.ReadDB, input.ImageID, version)
+			object, err = loadImageObject(ctx, h.DB, input.ImageID, version)
 			if errors.Is(err, sql.ErrNoRows) {
 				return NewAPIError(http.StatusForbidden, "image_forbidden")
 			}
@@ -74,6 +83,12 @@ func getImageHandler(h *HandlerContext) echo.HandlerFunc {
 			if object.Live {
 				if hit && cached.version == object.Version {
 					object.Data = cached.data
+				} else if len(object.Data) == 0 {
+					// The row has no body: the image was uploaded during the load
+					// and its bytes are in an app's store.
+					if data, ok := imageBytes(ctx, input.ImageID); ok {
+						object.Data = data
+					}
 				}
 				cache.put(input.ImageID, object, checkedAt)
 			}
