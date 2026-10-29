@@ -200,6 +200,8 @@ jobs:
           working-directory: portal/rspec
       - name: Start portal server in test mode
         run: |
+          export ISUXPORTAL_ISUCON_ADMIN_SSH_PRIVATE_KEY_PATH="$RUNNER_TEMP/portal-admin.key"
+          ssh-keygen -q -t ed25519 -N "" -f "$ISUXPORTAL_ISUCON_ADMIN_SSH_PRIVATE_KEY_PATH"
           go build -o bin/portal ./cmd/portal
           ./bin/portal &
           for _ in $(seq 1 50); do
