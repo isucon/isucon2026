@@ -206,13 +206,15 @@ pub fn image_signature(key: &[u8], image_id: &str, exp: i64) -> [u8; 32] {
 pub fn verify_image_signature(key: &[u8], image_id: &str, exp: i64, signature: &[u8]) -> bool {
     let cached = if *ISSUED_URLS_ENABLED {
         let lookup = issued_url_key(key, image_id);
-        issued_url_shard(&lookup)
-            .lock()
-            .unwrap()
-            .values
-            .get(&lookup)
-            .filter(|entry| entry.expires == exp)
-            .map(|entry| entry.signature)
+        // Issuance can hold this lock while computing HMAC. Verification
+        // should use the existing path instead of waiting for unrelated URLs.
+        issued_url_shard(&lookup).try_lock().ok().and_then(|cache| {
+            cache
+                .values
+                .get(&lookup)
+                .filter(|entry| entry.expires == exp)
+                .map(|entry| entry.signature)
+        })
     } else {
         None
     };
@@ -463,6 +465,24 @@ mod cache_tests {
         for shard in &SIGNATURE_MEMO.shards {
             assert!(!shard.lock().unwrap().values.contains_key(&memo_key));
         }
+        // Verification must finish even while an issuer holds its shard.
+        let locked = issued_url_shard(&lookup).lock().unwrap();
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let verifying_image = image.clone();
+        let verifier = std::thread::spawn(move || {
+            sender
+                .send(verify_image_signature(
+                    &key,
+                    &verifying_image,
+                    exp,
+                    &signature,
+                ))
+                .unwrap();
+        });
+        let verified = receiver.recv_timeout(std::time::Duration::from_secs(1));
+        drop(locked);
+        verifier.join().unwrap();
+        assert!(verified.expect("verification waited for the issuer lock"));
         assert!(!verify_image_signature(&[32; 32], &image, exp, &signature));
         assert!(!verify_image_signature(
             &key,
