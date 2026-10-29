@@ -186,7 +186,7 @@ func fixtureImage(id string, size int) []byte {
 
 func routerHeaders(request *http.Request) string {
 	var saw []string
-	for _, name := range []string{"X-Benchmark-Request-Id", "X-Isureal-Upstream", "X-Isureal-Route", "X-Isureal-Limit"} {
+	for _, name := range []string{"X-Benchmark-Request-Id", "X-Benchmark-Digest", "X-Isureal-Upstream", "X-Isureal-Route", "X-Isureal-Limit"} {
 		if request.Header.Get(name) != "" {
 			saw = append(saw, name)
 		}

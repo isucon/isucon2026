@@ -10,6 +10,11 @@
 //! JSON files is replaced by its digest (zip::MARKER). Other statuses pass
 //! through unchanged.
 //!
+//! An image request that also carries X-Benchmark-Digest: sha256 gets
+//! X-Body-Sha256 (hex) instead of X-Body-Xxh3. The benchmark asks for it for the
+//! images of the initial data, which it compares with a table of their SHA-256
+//! made in advance instead of rendering them again. Exports ignore it.
+//!
 //! Configuration comes from the Router's environment:
 //! ROUTER_DIGEST_ADDRESS (where to listen, default 127.0.0.1:18010) and
 //! ROUTER_HAPROXY_RUNTIME_ADDRESS (the HAProxy runtime API, default
@@ -25,6 +30,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
+use sha2::{Digest, Sha256};
 use tokio::io::AsyncWriteExt;
 use tokio::net::{TcpListener, TcpStream};
 use xxhash_rust::xxh3::Xxh3;
@@ -96,10 +102,21 @@ fn parse_header<T: std::str::FromStr>(value: &[u8]) -> Option<T> {
     std::str::from_utf8(value).ok()?.trim().parse().ok()
 }
 
+fn hex(bytes: &[u8]) -> String {
+    const DIGITS: &[u8; 16] = b"0123456789abcdef";
+    let mut s = String::with_capacity(bytes.len() * 2);
+    for &b in bytes {
+        s.push(DIGITS[(b >> 4) as usize] as char);
+        s.push(DIGITS[(b & 15) as usize] as char);
+    }
+    s
+}
+
 /// What HAProxy asked for besides the request itself.
 struct Request {
     upstream: Option<String>,
     seed: Option<u64>,
+    sha256: bool,
     route: Option<String>,
     limit: Option<f64>,
     export: bool,
@@ -134,6 +151,7 @@ fn parse_request(head: &[u8], c: &mut Conn) -> io::Result<(Request, u64)> {
     let mut req = Request {
         upstream: None,
         seed: None,
+        sha256: false,
         route: None,
         limit: None,
         export: path == "/api/me/export" || path.starts_with("/api/me/export?"),
@@ -166,6 +184,10 @@ fn parse_request(head: &[u8], c: &mut Conn) -> io::Result<(Request, u64)> {
         }
         if name.eq_ignore_ascii_case("x-benchmark-request-id") {
             req.seed = parse_header(h.value);
+            continue;
+        }
+        if name.eq_ignore_ascii_case("x-benchmark-digest") {
+            req.sha256 = h.value.trim_ascii().eq_ignore_ascii_case(b"sha256");
             continue;
         }
         if name.eq_ignore_ascii_case("content-length") {
@@ -289,23 +311,32 @@ async fn exchange(
 
         match req.seed {
             Some(seed) if code == 200 && !req.export => {
-                let mut hash = Xxh3::with_seed(seed);
                 let mut n = 0u64;
-                read_body(
-                    &mut c.upstream,
-                    &mut conn,
-                    framing,
-                    &mut Sink::Hash(&mut hash, &mut n),
-                )
-                .await?;
+                let digest = if req.sha256 {
+                    let mut hash = Sha256::new();
+                    read_body(
+                        &mut c.upstream,
+                        &mut conn,
+                        framing,
+                        &mut Sink::Sha256(&mut hash, &mut n),
+                    )
+                    .await?;
+                    format!("X-Body-Sha256: {}", hex(&hash.finalize()))
+                } else {
+                    let mut hash = Xxh3::with_seed(seed);
+                    read_body(
+                        &mut c.upstream,
+                        &mut conn,
+                        framing,
+                        &mut Sink::Xxh3(&mut hash, &mut n),
+                    )
+                    .await?;
+                    format!("X-Body-Xxh3: {:016x}", hash.digest())
+                };
                 DIGESTED_BYTES.fetch_add(n, Ordering::Relaxed);
                 c.out.extend_from_slice(
-                    format!(
-                        "X-Body-Xxh3: {:016x}\r\nX-Body-Length: {}\r\nContent-Length: 0\r\n\r\n",
-                        hash.digest(),
-                        n
-                    )
-                    .as_bytes(),
+                    format!("{digest}\r\nX-Body-Length: {n}\r\nContent-Length: 0\r\n\r\n")
+                        .as_bytes(),
                 );
             }
             _ => {
@@ -462,4 +493,17 @@ fn main() {
             }
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sha256_in_hex() {
+        assert_eq!(
+            hex(&Sha256::digest(b"abc")),
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
+    }
 }
