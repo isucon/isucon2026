@@ -57,15 +57,15 @@ class AgentInstructionsTest(unittest.TestCase):
             with self.subTest(topic=topic):
                 self.assertIn(topic, notes)
 
-    def test_no_language_specific_destinations(self):
+    def test_no_webapp_destinations(self):
         defaults = yaml.safe_load(
             (ANSIBLE / "roles/agent-instructions/defaults/main.yml").read_text()
         )
         paths = defaults["agent_instructions_paths"]
-        self.assertEqual(len(paths), 8)
+        self.assertEqual(len(paths), 7)
         self.assertEqual(
             [path for path in paths if path.startswith("webapp/")],
-            ["webapp/AGENTS.md"],
+            [],
         )
 
     def test_deployment_and_idempotence(self):
@@ -77,7 +77,6 @@ class AgentInstructionsTest(unittest.TestCase):
             ".config/opencode/AGENTS.md",
             ".pi/agent/AGENTS.md",
             "AGENTS.md",
-            "webapp/AGENTS.md",
         }
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
