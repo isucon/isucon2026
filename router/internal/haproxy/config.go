@@ -56,11 +56,13 @@ func streamBackend(server domain.ServerID) string { return string(server) + "_st
 // The benchmark marks its downloads of images and exports with this header.
 // They go to isureal-digest (router/digest), which reads the app's response and
 // answers with its digest, so that the Router forwards those bytes once instead
-// of twice. Browsers never send the header.
+// of twice. Browsers never send the header. With digestModeHeader the benchmark
+// asks for SHA-256 instead of XXH3 (the images of the initial data).
 const (
-	benchmarkHeader = "x-benchmark-request-id"
-	imagePathPrefix = "/api/images/"
-	exportPath      = "/api/me/export"
+	benchmarkHeader  = "x-benchmark-request-id"
+	digestModeHeader = "x-benchmark-digest"
+	imagePathPrefix  = "/api/images/"
+	exportPath       = "/api/me/export"
 )
 
 func digestBackend(server domain.ServerID) string { return string(server) + "_digest" }
@@ -222,6 +224,7 @@ func Render(cfg config.Config) (map[string]string, error) {
 		line("backend %s", digestBackend(server))
 		line("    acl digest_up srv_is_up(%s/digest)", digestBackend(server))
 		line("    http-request del-header %s unless digest_up", benchmarkHeader)
+		line("    http-request del-header %s unless digest_up", digestModeHeader)
 		line("    http-request set-header X-Isureal-Upstream %s if digest_up", upstream)
 		line("    http-request set-header X-Isureal-Route %%[var(txn.route)] if digest_up")
 		limits := map[uint64][]string{}

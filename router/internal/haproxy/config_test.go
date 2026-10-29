@@ -71,7 +71,7 @@ func TestRenderRouteMatrix(t *testing.T) {
 		"acl bench_digest req.fhdr_cnt(x-benchmark-request-id) -m int gt 0",
 		"acl digest_path path_beg /api/images/\n    acl digest_path path /api/me/export",
 		"use_backend app1_digest if { method GET } bench_digest digest_path { var(txn.pair) -m str app/AP app1/AP app1/EU app1/US }",
-		"backend app1_digest\n    acl digest_up srv_is_up(app1_digest/digest)\n    http-request del-header x-benchmark-request-id unless digest_up",
+		"backend app1_digest\n    acl digest_up srv_is_up(app1_digest/digest)\n    http-request del-header x-benchmark-request-id unless digest_up\n    http-request del-header x-benchmark-digest unless digest_up",
 		"http-request set-header X-Isureal-Upstream 172.31.1.10:8080 if digest_up",
 		"http-request set-header X-Isureal-Route %[var(txn.route)] if digest_up",
 		"http-request set-header X-Isureal-Limit 100000 if digest_up { var(txn.pair) -m str app1/EU app1/US }",

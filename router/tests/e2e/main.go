@@ -4,7 +4,9 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -593,8 +595,9 @@ type download struct {
 	duration time.Duration
 }
 
-// download fetches path as the benchmark does when seed is not zero.
-func (r *runner) download(ctx context.Context, host, country, path string, seed uint64) (download, error) {
+// download fetches path as the benchmark does when seed is not zero, asking for
+// SHA-256 instead of XXH3 if useSHA256 is set.
+func (r *runner) download(ctx context.Context, host, country, path string, seed uint64, useSHA256 bool) (download, error) {
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, routerEndpoint+path, nil)
 	if err != nil {
 		return download{}, err
@@ -603,6 +606,9 @@ func (r *runner) download(ctx context.Context, host, country, path string, seed 
 	request.Header.Set("X-Country-Code", country)
 	if seed != 0 {
 		request.Header.Set("X-Benchmark-Request-Id", strconv.FormatUint(seed, 10))
+	}
+	if useSHA256 {
+		request.Header.Set("X-Benchmark-Digest", "sha256")
 	}
 	started := time.Now()
 	response, err := r.api.Do(request)
@@ -632,14 +638,24 @@ func checkDigest(got download, image []byte, seed uint64) error {
 func (r *runner) assertDigest(ctx context.Context) error {
 	const seed = 0x1234_5678_9abc_def0
 	image := fixtureImage("photo", 200_000)
-	got, err := r.download(ctx, appHost, "JP", "/api/images/photo?bytes=200000", seed)
+	got, err := r.download(ctx, appHost, "JP", "/api/images/photo?bytes=200000", seed, false)
 	if err != nil {
 		return err
 	}
 	if err := checkDigest(got, image, seed); err != nil {
 		return fmt.Errorf("image: %w", err)
 	}
-	got, err = r.download(ctx, appHost, "JP", "/api/images/photo?bytes=200000", 0)
+	got, err = r.download(ctx, appHost, "JP", "/api/images/photo?bytes=200000", seed, true)
+	if err != nil {
+		return err
+	}
+	sum := sha256.Sum256(image)
+	if want := hex.EncodeToString(sum[:]); got.status != http.StatusOK || len(got.body) != 0 || got.header.Get("X-Body-Sha256") != want ||
+		got.header.Get("X-Body-Xxh3") != "" || got.header.Get("X-Body-Length") != strconv.Itoa(len(image)) || got.header.Get("X-Fixture-Saw") != "" {
+		return fmt.Errorf("SHA-256 image: status %d, %d bytes, X-Body-Sha256 %q (want %q), X-Body-Length %q, app saw %q",
+			got.status, len(got.body), got.header.Get("X-Body-Sha256"), want, got.header.Get("X-Body-Length"), got.header.Get("X-Fixture-Saw"))
+	}
+	got, err = r.download(ctx, appHost, "JP", "/api/images/photo?bytes=200000", 0, false)
 	if err != nil {
 		return err
 	}
@@ -647,7 +663,7 @@ func (r *runner) assertDigest(ctx context.Context) error {
 		return fmt.Errorf("browser image: status %d, %d bytes, X-Body-Xxh3 %q", got.status, len(got.body), got.header.Get("X-Body-Xxh3"))
 	}
 
-	got, err = r.download(ctx, appHost, "JP", "/api/me/export", seed)
+	got, err = r.download(ctx, appHost, "JP", "/api/me/export", seed, false)
 	if err != nil {
 		return err
 	}
@@ -678,7 +694,7 @@ func (r *runner) assertDigest(ctx context.Context) error {
 	// app2/AP is limited to 1 Mbps here: after one second of burst, the rest of
 	// 400 kB takes about 2.2 s although HAProxy forwards only the digest.
 	slow := fixtureImage("slow", 400_000)
-	got, err = r.download(ctx, app2Host, "JP", "/api/images/slow?bytes=400000", seed)
+	got, err = r.download(ctx, app2Host, "JP", "/api/images/slow?bytes=400000", seed, false)
 	if err != nil {
 		return err
 	}
@@ -688,7 +704,7 @@ func (r *runner) assertDigest(ctx context.Context) error {
 	if got.duration < 1500*time.Millisecond || got.duration > 15*time.Second {
 		return fmt.Errorf("limited image took %s, want about 2.3s", got.duration)
 	}
-	log.Printf("PASS digest image/export/browser; 400 kB at 1 Mbps took %s", got.duration)
+	log.Printf("PASS digest image/SHA-256 image/export/browser; 400 kB at 1 Mbps took %s", got.duration)
 	return nil
 }
 
@@ -697,7 +713,7 @@ func (r *runner) assertDigest(ctx context.Context) error {
 func (r *runner) assertDigestFallback(ctx context.Context) error {
 	image := fixtureImage("photo", 200_000)
 	return waitFor(ctx, 15*time.Second, "app answers the benchmark while isureal-digest is down", func() error {
-		got, err := r.download(ctx, appHost, "JP", "/api/images/photo?bytes=200000", 7)
+		got, err := r.download(ctx, appHost, "JP", "/api/images/photo?bytes=200000", 7, true)
 		if err != nil {
 			return err
 		}
