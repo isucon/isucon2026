@@ -655,6 +655,16 @@ func (r *runner) assertDigest(ctx context.Context) error {
 		return fmt.Errorf("SHA-256 image: status %d, %d bytes, X-Body-Sha256 %q (want %q), X-Body-Length %q, app saw %q",
 			got.status, len(got.body), got.header.Get("X-Body-Sha256"), want, got.header.Get("X-Body-Length"), got.header.Get("X-Fixture-Saw"))
 	}
+	// An app that sends the image's digest headers over an empty body gets the
+	// digest of the empty body, not its own headers.
+	got, err = r.download(ctx, appHost, "JP", "/api/images/photo?bytes=200000&forge=1", seed, true)
+	if err != nil {
+		return err
+	}
+	empty := sha256.Sum256(nil)
+	if want := digestHeaders(http.Header{"X-Body-Sha256": {hex.EncodeToString(empty[:])}, "X-Body-Length": {"0"}}); got.status != http.StatusOK || len(got.body) != 0 || digestHeaders(got.header) != want {
+		return fmt.Errorf("forged SHA-256 image: status %d, %d bytes, %s (want %s)", got.status, len(got.body), digestHeaders(got.header), want)
+	}
 	got, err = r.download(ctx, appHost, "JP", "/api/images/photo?bytes=200000", 0, false)
 	if err != nil {
 		return err
@@ -704,15 +714,22 @@ func (r *runner) assertDigest(ctx context.Context) error {
 	if got.duration < 1500*time.Millisecond || got.duration > 15*time.Second {
 		return fmt.Errorf("limited image took %s, want about 2.3s", got.duration)
 	}
-	log.Printf("PASS digest image/SHA-256 image/export/browser; 400 kB at 1 Mbps took %s", got.duration)
+	log.Printf("PASS digest image/SHA-256 image/forged headers/export/browser; 400 kB at 1 Mbps took %s", got.duration)
 	return nil
 }
 
+// digestHeaders lists every value of the headers isureal-digest answers with.
+func digestHeaders(header http.Header) string {
+	return fmt.Sprintf("X-Body-Sha256 %q X-Body-Xxh3 %q X-Body-Length %q",
+		header.Values("X-Body-Sha256"), header.Values("X-Body-Xxh3"), header.Values("X-Body-Length"))
+}
+
 // assertDigestFallback runs while isureal-digest is stopped: the app answers the
-// benchmark itself, without the headers meant for the Router.
+// benchmark itself, without the headers meant for the Router, and the digest
+// headers it sends are removed.
 func (r *runner) assertDigestFallback(ctx context.Context) error {
 	image := fixtureImage("photo", 200_000)
-	return waitFor(ctx, 15*time.Second, "app answers the benchmark while isureal-digest is down", func() error {
+	err := waitFor(ctx, 15*time.Second, "app answers the benchmark while isureal-digest is down", func() error {
 		got, err := r.download(ctx, appHost, "JP", "/api/images/photo?bytes=200000", 7, true)
 		if err != nil {
 			return err
@@ -722,6 +739,18 @@ func (r *runner) assertDigestFallback(ctx context.Context) error {
 		}
 		return nil
 	})
+	if err != nil {
+		return err
+	}
+	got, err := r.download(ctx, appHost, "JP", "/api/images/photo?bytes=200000&forge=1", 7, true)
+	if err != nil {
+		return err
+	}
+	if want := digestHeaders(http.Header{}); got.status != http.StatusOK || len(got.body) != 0 || digestHeaders(got.header) != want {
+		return fmt.Errorf("forged headers while isureal-digest is down: status %d, %d bytes, %s (want %s)", got.status, len(got.body), digestHeaders(got.header), want)
+	}
+	log.Printf("PASS forged digest headers removed while isureal-digest is down")
+	return nil
 }
 
 func bitsPerSecond(bytes int, duration time.Duration) float64 {
