@@ -1,11 +1,11 @@
 # 開発ポータルの共有 Supervisor プール
 
 開発ポータル（`https://portal-dev.isucon.net`）のベンチを実行する Supervisor の共有プールです。
-ECS service `isucon2026-shared-supervisor`（cluster `supervisor-cluster-1090218`）に 3 タスクを置き、
+ECS service `isucon2026-shared-supervisor`（cluster `supervisor-cluster-1090218`）に 3 タスク（合計 12 vCPU）を置き、
 チームも AZ も絞らずにポータルのキューをポーリングします。各タスクは 4 vCPU / 8 GiB です。
 `render.py` は Linux ARM64 のタスク定義を生成します。
 cluster、実行 role、ネットワーク、ECR、log group は [試し解き用 Supervisor の stack](../README.md) が持ち、
-このディレクトリはサービスとタスク定義だけを扱います。
+このディレクトリは共有プール専用サブネットとルートテーブルを Pulumi で管理し、サービスとタスク定義を ecspresso で配備します。
 
 2026-10-28 に `provisioning/aws/shared-supervisor/` から `provisioning/aws/supervisor/pool/` に移しました。
 Pulumi project、stack、backend と配備設定は維持しています。
@@ -15,7 +15,7 @@ Pulumi project、stack、backend と配備設定は維持しています。
 | 管理 | 対象 |
 |---|---|
 | `pool.json` | 定義の元。接続先、イメージ、タスク数、ベンチの上限時間、Supervisor の上限時間、写真のアーカイブの場所 |
-| Pulumi（project `isucon2026-shared-supervisor`、stack `portal-dev`） | `render.py` が作った配備の定義（タスク定義、サービス定義、ecspresso の設定）を stack の設定 `deployments` に保持して出力する。リソースは作らない |
+| Pulumi（project `isucon2026-shared-supervisor`、stack `portal-dev`） | `render.py` が作った配備の定義（タスク定義、サービス定義、ecspresso の設定）を stack の設定 `deployments` に保持して出力する。専用サブネットとルートテーブルも管理する |
 | ecspresso（`generated/`、Git 管理外） | stack の出力から書いた JSON でサービスとタスク定義を配備する |
 
 Pulumi の backend は `s3://isucon2026-pulumi-state-124502390568/shared-supervisor`、stack は `portal-dev`、
@@ -80,7 +80,7 @@ workflow](../../../../portal/internal/cloudformation/README.md).
    ecspresso --config ecspresso.json diff
    ```
 
-4. 走行中のジョブがないことを確かめて配備する。CloudWatch Logs `supervisor-logs-2e941a9` の 3 ストリームが
+4. 走行中のジョブがないことを確かめて配備する。CloudWatch Logs `supervisor-logs-2e941a9` の各タスクのストリームが
    `Received job: None` を繰り返していて、`phase:` の行が出ていなければ空きです。
    サービスは旧タスクを止めてから新タスクを起動する（minimumHealthyPercent 0）ので、短い間ポーリングが止まります。
 
@@ -97,7 +97,36 @@ ecspresso は `mise exec "aqua:kayac/ecspresso@2.8.7" -- ecspresso` で使えま
 `render.py build pool.json task.json service.json` は雛形をファイルから読んで定義を標準出力に書くので、
 AWS に触らずに結果を確かめられます。
 
+## 複数 AZ のネットワーク
+
+`Pulumi.portal-dev.yaml` の `network` で、既存 Portal VPC 内に専用 private subnet を管理します。
+
+| AZ | CIDR | 750 タスクへ拡張した場合の目安 |
+| --- | --- | --- |
+| ap-northeast-1a | 10.26.32.0/22 | 250 |
+| ap-northeast-1c | 10.26.36.0/22 | 250 |
+| ap-northeast-1d | 10.26.40.0/22 | 250 |
+
+各サブネットには AWS 予約分を除いて 1019 個の IP があり、既存 Portal の /24 を消費しません。
+Pulumi は `deployments` の subnet ID を作成した 3 サブネットの ID で上書きして出力します。
+`render.py config` が live の subnet ID を取り込んでも、次回適用時の管理元は `network` です。
+ECS が複数 AZ に配置し、実際の稼働数は配備後に確認します。
+既存の NAT `nat-0de08f47e08354915` を共有するため、NAT の AZ 障害に対する冗長性はありません。
+タスク数だけを変更するときは、Pulumi 適用後に `ecspresso deploy --skip-task-definition` を使えます。
+
 ## 適用記録
+
+### 2026-10-29 3000 vCPU の起動確認と縮退
+
+- On-Demand Fargate quota 4000 vCPU を確認し、共有プールを 45 から 750 タスクへ増やしました。
+- Pulumi で上記 3 AZ の専用サブネットと NAT 向けルートテーブルを作成し、ecspresso でネットワークとタスク数を適用しました。
+  タスク定義は revision 11 のままです。
+- 19:58 JST に 750 タスクすべてが RUNNING、pending 0、rollout COMPLETED であることを確認しました。
+  割当 CPU は合計 3000 vCPU、AZ 別の実測は 1a: 235、1c: 259、1d: 256 タスクでした。
+  ポータルへのポーリング成功を確認し、直近のログにエラーはありませんでした。ベンチジョブによる CPU 負荷試験は実施していません。
+- 起動確認後の依頼により、`pool.json` と Pulumi の設定を 3 タスク（12 vCPU）へ戻し、ecspresso で縮退しました。
+  20:01 JST に desired / running が 3、pending が 0、各 AZ に 1 タスクずつ RUNNING であることを確認しました。
+  3 AZ の専用ネットワークは維持し、縮退後の Pulumi preview と ecspresso diff に差分はありません。
 
 ### 2026-10-29 初期データの最終日を 10-27 にしたベンチへの更新
 
