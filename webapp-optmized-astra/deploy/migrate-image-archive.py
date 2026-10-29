@@ -25,12 +25,14 @@ deploy = root / 'webapp-optmized-astra/deploy'
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('partition')
 parser.add_argument('--restore')
+parser.add_argument('--repack', action='store_true', help='Reorder existing initial pack images by owner')
+parser.add_argument('--restore-layout', help='Restore the source references of an owner-layout migration; old packs must still exist')
 parser.add_argument('--reclaim')
 parser.add_argument('--resume', help='Publish an already built but unpublished archive after verification')
 args = parser.parse_args()
 assert re.fullmatch(r'image_objects_202[4-7](0[1-9]|1[0-2])', args.partition)
-assert sum(bool(mode) for mode in (args.restore, args.reclaim, args.resume)) <= 1
-archive = args.restore or args.reclaim or args.resume or uuid.uuid4().hex
+assert sum(bool(mode) for mode in (args.restore, args.reclaim, args.resume, args.repack, args.restore_layout)) <= 1
+archive = args.restore or args.restore_layout or args.reclaim or args.resume or uuid.uuid4().hex
 assert re.fullmatch('[0-9a-f]{32}', archive)
 runtime = json.loads((deploy / 'runtime.json').read_text())
 assert runtime['fileImageStore']['enabled'] and runtime['fileImageStore']['archiveReadsEnabled']
@@ -150,9 +152,11 @@ while True:
 
 
 parallel(capture)
-if args.restore or args.reclaim or args.resume:
+if args.restore or args.restore_layout or args.reclaim or args.resume:
     previous = json.loads(remote(asia, 'sudo cat ' + report_path))
     bytes_required = previous['bytes']
+elif args.repack:
+    bytes_required = int(sql(f"SELECT coalesce(sum(split_part(asset_key, ':', 4)::bigint),0) FROM {args.partition} WHERE asset_key LIKE 'pack:%' AND created_at<=(SELECT created_at FROM initial_data_boundary)"))
 else:
     bytes_required = int(sql(f"SELECT coalesce(sum(octet_length(data)),0) FROM {args.partition} WHERE asset_key IS NULL AND created_at<=(SELECT created_at FROM initial_data_boundary)"))
 assert 0 < bytes_required <= 8 * 1024**3
@@ -168,8 +172,8 @@ try:
         remote(app, 'sudo systemctl stop ' + units(app))
     sql(f'BEGIN; LOCK TABLE {args.partition} IN ACCESS EXCLUSIVE MODE; COMMIT;')
     verify_replay()
-    if not (args.restore or args.reclaim or args.resume):
-        reports = parallel(lambda app: invoke(app, 'build'))
+    if not (args.restore or args.restore_layout or args.reclaim or args.resume):
+        reports = parallel(lambda app: invoke(app, 'repack' if args.repack else 'build'))
         assert reports[0] == reports[1] == reports[2], 'Regional archives differ; metadata remains unchanged'
     reports = parallel(lambda app: invoke(app, 'verify'))
     assert reports[0] == reports[1] == reports[2], 'Regional archive verification differs'
@@ -180,13 +184,13 @@ try:
     if args.resume:
         assert int(sql(f"SELECT count(*) FROM {args.partition} WHERE asset_key LIKE 'pack:{archive}:%'")) == 0, 'Archive already published; use --reclaim after inspecting the previous operation'
     if not args.reclaim:
-        invoke(asia, 'restore' if args.restore else 'apply')
-    expected = 0 if args.restore else report['rows']
+        invoke(asia, 'restore-layout' if args.restore_layout else 'restore' if args.restore else 'apply')
+    expected = 0 if args.restore or args.restore_layout else report['rows']
     assert int(sql(f"SELECT count(*) FROM {args.partition} WHERE asset_key LIKE 'pack:{archive}:%'")) == expected
     print('Reclaiming the old partition storage after publication', flush=True)
     await_cleanup_horizon()
     before=int(sql("SELECT pg_total_relation_size('"+args.partition+"')"))
-    sql(f'VACUUM (FULL, ANALYZE) {args.partition}')
+    sql(f'VACUUM (ANALYZE) {args.partition}' if report.get('repacked') else f'VACUUM (FULL, ANALYZE) {args.partition}')
     after=int(sql("SELECT pg_total_relation_size('"+args.partition+"')"))
     print('partition_bytes',before,'->',after,flush=True)
     sql('CHECKPOINT')
@@ -203,8 +207,8 @@ finally:
 for app in apps:
     print(app['region'], remote(app, 'sudo python3 ' + helper + ' verify').strip(), flush=True)
 subprocess.run(['python3', str(deploy / 'verify-runtime.py')], cwd=root, env=env, check=True)
-evidence = root / 'webapp-optmized-astra/results' / ('archive-' + archive + ('-restore' if args.restore else '-reclaim' if args.reclaim else ''))
+evidence = root / 'webapp-optmized-astra/results' / ('archive-' + archive + ('-restore-layout' if args.restore_layout else '-restore' if args.restore else '-reclaim' if args.reclaim else ''))
 evidence.mkdir()
 (evidence / 'report.json').write_text(json.dumps(report, indent=2) + '\n')
 (evidence / 'validation.txt').write_text('All three archive and manifest hashes matched before SQL publication. Available public images (up to five per region) matched before/after migration and application restart. Runtime and all configured metadata replicas verified.\n')
-print('Completed', 'restore' if args.restore else 'reclaim' if args.reclaim else 'migration', args.partition, archive, flush=True)
+print('Completed', 'restore-layout' if args.restore_layout else 'restore' if args.restore else 'reclaim' if args.reclaim else 'migration', args.partition, archive, flush=True)

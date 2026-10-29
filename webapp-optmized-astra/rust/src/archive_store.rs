@@ -1,6 +1,7 @@
 //! Read immutable historical image ranges from locally replicated archive files.
 //! SQL still authorizes every image and supplies its exact immutable reference.
-use std::{fs::File, io, os::unix::fs::FileExt, path::Path};
+use bytes::Bytes;
+use std::{collections::BTreeMap, fs::File, io, os::unix::fs::FileExt, path::Path};
 
 pub const MAX_ARCHIVE_BYTES: u64 = 8 * 1024 * 1024 * 1024;
 const MAX_IMAGE_BYTES: u64 = 32 * 1024 * 1024;
@@ -59,6 +60,61 @@ impl ArchiveReference {
     }
 }
 
+/// Read adjacent image ranges once, preserving the caller's original order.
+/// Each archive is opened once per export, and shared spans avoid image copies.
+pub fn read_many(directory: &Path, references: &[ArchiveReference]) -> io::Result<Vec<Bytes>> {
+    let mut archives = BTreeMap::<&str, Vec<(usize, &ArchiveReference)>>::new();
+    for (index, reference) in references.iter().enumerate() {
+        archives
+            .entry(&reference.archive)
+            .or_default()
+            .push((index, reference));
+    }
+    let mut result = vec![Bytes::new(); references.len()];
+    for (archive, mut ranges) in archives {
+        let file = File::open(directory.join(archive))?;
+        let size = file.metadata()?.len();
+        for (_, reference) in &ranges {
+            if size > MAX_ARCHIVE_BYTES
+                || reference
+                    .offset
+                    .checked_add(reference.length as u64)
+                    .is_none_or(|end| end > size)
+            {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "image archive is truncated or oversized",
+                ));
+            }
+        }
+        ranges.sort_by_key(|(_, reference)| reference.offset);
+        let mut start = 0;
+        while start < ranges.len() {
+            let from = ranges[start].1.offset;
+            let mut end = from + ranges[start].1.length as u64;
+            let mut stop = start + 1;
+            while stop < ranges.len() {
+                let next = ranges[stop].1;
+                let next_end = end.max(next.offset + next.length as u64);
+                if next.offset > end + 64 * 1024 || next_end - from > 16 * 1024 * 1024 {
+                    break;
+                }
+                end = next_end;
+                stop += 1;
+            }
+            let mut bytes = vec![0; (end - from) as usize];
+            file.read_exact_at(&mut bytes, from)?;
+            let bytes = Bytes::from(bytes);
+            for (index, reference) in &ranges[start..stop] {
+                let offset = (reference.offset - from) as usize;
+                result[*index] = bytes.slice(offset..offset + reference.length);
+            }
+            start = stop;
+        }
+    }
+    Ok(result)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -115,5 +171,40 @@ mod tests {
                 .is_err()
         );
         fs::remove_dir_all(directory).unwrap();
+    }
+    #[test]
+    fn grouped_ranges_preserve_order_duplicates_gaps_and_archive_boundaries() {
+        let root = std::env::temp_dir().join(format!("astra-grouped-{}", uuid::Uuid::new_v4()));
+        fs::create_dir(&root).unwrap();
+        let first = uuid::Uuid::new_v4().simple().to_string();
+        let second = uuid::Uuid::new_v4().simple().to_string();
+        let mut data = vec![42; 200_000];
+        data[0..3].copy_from_slice(b"one");
+        data[3..6].copy_from_slice(b"two");
+        data[150_000..150_005].copy_from_slice(b"three");
+        fs::write(root.join(&first), data).unwrap();
+        fs::write(root.join(&second), b"other").unwrap();
+        let references: Vec<_> = [
+            format!("pack:{first}:3:3"),
+            format!("pack:{first}:150000:5"),
+            format!("pack:{second}:0:5"),
+            format!("pack:{first}:0:3"),
+            format!("pack:{first}:3:3"),
+        ]
+        .iter()
+        .map(|key| ArchiveReference::parse(key).unwrap())
+        .collect();
+        let result = read_many(&root, &references).unwrap();
+        for (index, reference) in references.iter().enumerate() {
+            assert_eq!(result[index].as_ref(), reference.read(&root).unwrap());
+        }
+        assert_eq!(result[0].as_ptr(), result[4].as_ptr());
+        assert_eq!(result[3].as_ptr().wrapping_add(3), result[0].as_ptr());
+        let bad = ArchiveReference::parse(&format!("pack:{second}:4:2")).unwrap();
+        assert!(read_many(&root, &[references[0].clone(), bad]).is_err());
+        fs::remove_file(root.join(&second)).unwrap();
+        assert!(read_many(&root, &references).is_err());
+        assert!(read_many(&root, &[]).unwrap().is_empty());
+        fs::remove_dir_all(root).unwrap();
     }
 }

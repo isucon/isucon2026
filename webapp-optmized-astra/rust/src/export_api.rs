@@ -7,7 +7,6 @@ use axum::extract::State;
 use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::Response;
 use bytes::Bytes;
-use futures_util::{StreamExt, TryStreamExt};
 use serde::Serialize;
 use sqlx::postgres::PgRow;
 use sqlx::{FromRow, Row};
@@ -42,32 +41,37 @@ pub async fn export_posts_handler(
         .expect("export semaphore is never closed");
     let cached = crate::image_api::cached_export_images(user_id);
     let query = export_query();
-    let rows = sqlx::query_as::<_, ExportPost>(&query)
+    let mut rows = sqlx::query_as::<_, ExportPost>(&query)
         .bind(user_id)
         .bind(&cached.ids)
         .bind(&cached.versions)
         .bind(&cached.timestamps)
-        .fetch(&h.db)
-        .map(|row| async {
-            let mut row: ExportPost = row?;
-            if row.cache_hit {
-                row.image_data = cached
-                    .bytes
-                    .get(&row.post.image_id)
-                    .ok_or_else(|| sqlx::Error::Protocol("missing pinned export image".into()))?
-                    .clone();
-            } else if let Some(key) = &row.asset_key {
-                let store = h
-                    .image_store
-                    .as_ref()
-                    .ok_or_else(|| sqlx::Error::Protocol("image store unavailable".into()))?;
-                row.image_data = store.get(key).await?.into();
-            }
-            Ok::<_, sqlx::Error>(row)
-        })
-        .buffered(8)
-        .try_collect::<Vec<_>>()
+        .fetch_all(&h.db)
         .await?;
+    let mut missing = Vec::new();
+    let mut keys = Vec::new();
+    for (index, row) in rows.iter_mut().enumerate() {
+        if row.cache_hit {
+            row.image_data = cached
+                .bytes
+                .get(&row.post.image_id)
+                .ok_or_else(|| sqlx::Error::Protocol("missing pinned export image".into()))?
+                .clone();
+        } else if let Some(key) = &row.asset_key {
+            missing.push(index);
+            keys.push(key.clone());
+        }
+    }
+    if !keys.is_empty() {
+        let store = h
+            .image_store
+            .as_ref()
+            .ok_or_else(|| sqlx::Error::Protocol("image store unavailable".into()))?;
+        let images = store.get_many(&keys).await?;
+        for (index, bytes) in missing.into_iter().zip(images) {
+            rows[index].image_data = bytes;
+        }
+    }
     // Finish SQL/immutable-file reads before sending a successful response.
     // Keep only the image buffers; do not allocate another complete ZIP.
     let (sender, receiver) = mpsc::channel(2);
