@@ -4,21 +4,20 @@ The `problem-server` image runs this role after extracting the webapp sources.
 It installs `files/instructions.md` as `isucon:isucon`, mode `0644`, at these
 paths relative to `/home/isucon`:
 
-| Agent                      | Path                                                                  |
-| -------------------------- | --------------------------------------------------------------------- |
-| Codex CLI                  | `.codex/AGENTS.md`                                                    |
-| Claude Code                | `.claude/CLAUDE.md`                                                   |
-| Gemini CLI                 | `.gemini/GEMINI.md`                                                   |
-| GitHub Copilot CLI         | `.copilot/copilot-instructions.md`                                    |
-| OpenCode                   | `.config/opencode/AGENTS.md`                                          |
-| Pi                         | `.pi/agent/AGENTS.md`                                                 |
-| Cursor CLI (project scope) | `AGENTS.md`, `webapp/{go,ruby,rust,python,php,perl,nodejs}/AGENTS.md` |
+| Agent                      | Path                                                                                      |
+| -------------------------- | ----------------------------------------------------------------------------------------- |
+| Codex CLI                  | `.codex/AGENTS.md`                                                                        |
+| Claude Code                | `.claude/CLAUDE.md`                                                                       |
+| Gemini CLI                 | `.gemini/GEMINI.md`                                                                       |
+| GitHub Copilot CLI         | `.copilot/copilot-instructions.md`                                                        |
+| OpenCode                   | `.config/opencode/AGENTS.md`                                                              |
+| Pi                         | `.pi/agent/AGENTS.md`                                                                     |
+| Cursor CLI (project scope) | `AGENTS.md`, `webapp/AGENTS.md`, `webapp/{go,ruby,rust,python,php,perl,nodejs}/AGENTS.md` |
 
 Cursor's documented file support is project-scoped, not a global user file. The
-copies cover launches from the home directory and each supplied language
-directory. No copy is installed at `webapp/AGENTS.md`. This does not provide
-global coverage for arbitrary workspaces. Place an `AGENTS.md` in a workspace
-when needed.
+copies cover launches from the home directory, webapp root, and each supplied
+language directory. This does not provide global coverage for arbitrary
+workspaces. Place an `AGENTS.md` in a workspace when needed.
 
 These paths assume default agent configuration directories. Overrides such as
 `CODEX_HOME`, `COPILOT_HOME`, or `PI_CODING_AGENT_DIR` require copying the file
