@@ -72,15 +72,15 @@ final readonly class ActionLog
     public function write(ServerRequestInterface $request, ?string $route, int $status, ActionLogEntry $entry): void
     {
         $method = $request->getMethod();
+        $action = $route === null ? null : (self::ACTION_NAMES["{$method} {$route}"] ?? null);
         $level = match (true) {
             $status >= 500 => 'error',
-            $method === 'GET' => 'debug',
+            $method === 'GET' && !($status === 403 && $entry->abuse === 'invalid_signature') => 'debug',
             default => 'info',
         };
         if (self::LEVEL_RANKS[$level] < (self::LEVEL_RANKS[$this->minLevel] ?? 0)) {
             return;
         }
-        $action = $route === null ? null : (self::ACTION_NAMES["{$method} {$route}"] ?? null);
         $line = [
             'action' => $action,
             'ip' => ClientIp::of($request),
@@ -90,6 +90,9 @@ final readonly class ActionLog
         ];
         if ($action === 'login' || $action === 'register') {
             $line['username'] = $entry->username !== null && User::validUsername($entry->username) ? $entry->username : null;
+        }
+        if ($entry->abuse !== null) {
+            $line['abuse'] = $entry->abuse;
         }
         fwrite($this->output, json_encode($line, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE | JSON_THROW_ON_ERROR) . "\n");
     }

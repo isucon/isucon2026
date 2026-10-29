@@ -14,7 +14,7 @@ import (
 
 const statsInterval = 30 * time.Second
 
-// detector は IP ごとに、集計期間内のログイン失敗の時刻を持つ。時刻はジャーナルの記録時刻を使う。
+// detector は IP ごとに、集計期間内の失敗の時刻を持つ。時刻はジャーナルの記録時刻を使う。
 type detector struct {
 	threshold int
 	window    time.Duration
@@ -77,59 +77,83 @@ type actionLog struct {
 	Action *string `json:"action"`
 	Status int     `json:"status"`
 	IP     string  `json:"ip"`
+	Abuse  string  `json:"abuse"`
 }
 
-// parseLoginFailure は journalctl --output json の 1 行を読み、unitPattern に合う unit のログイン失敗の
-// アクションログなら IP と記録時刻を返す。アクションログでない行は ok=false になる。
-func parseLoginFailure(line []byte, unitPattern string) (ip string, at time.Time, isAction, ok bool) {
+type failureKind string
+
+const (
+	loginFailureKind     failureKind = "login"
+	invalidImageKind     failureKind = "invalid_image"
+	invalidSignatureKind failureKind = "invalid_signature"
+)
+
+// parseFailure は、対象 unit のアクションログから BAN 対象の失敗を取り出す。
+func parseFailure(line []byte, unitPattern string) (ip string, at time.Time, isAction bool, kind failureKind) {
 	var entry journalEntry
 	if err := json.Unmarshal(line, &entry); err != nil || !readsUnit(unitPattern, entry.Unit) {
-		return "", time.Time{}, false, false
+		return "", time.Time{}, false, ""
 	}
 	// MESSAGE は UTF-8 でないとバイト列の配列になる。アクションログは ASCII なので文字列だけを読む。
 	var message string
 	if err := json.Unmarshal(entry.Message, &message); err != nil {
-		return "", time.Time{}, false, false
+		return "", time.Time{}, false, ""
 	}
 	var action actionLog
 	if err := json.Unmarshal([]byte(message), &action); err != nil || action.Action == nil {
-		return "", time.Time{}, false, false
+		return "", time.Time{}, false, ""
 	}
-	if *action.Action != "login" || action.Status != 401 || action.IP == "" {
-		return "", time.Time{}, true, false
+	if action.IP == "" {
+		return "", time.Time{}, true, ""
+	}
+	switch {
+	case *action.Action == "login" && action.Status == 401:
+		kind = loginFailureKind
+	case *action.Action == "put_profile_image" && action.Status == 400 && action.Abuse == string(invalidImageKind):
+		kind = invalidImageKind
+	case *action.Action == "get_image" && action.Status == 403 && action.Abuse == string(invalidSignatureKind):
+		kind = invalidSignatureKind
+	default:
+		return "", time.Time{}, true, ""
 	}
 	micros, err := strconv.ParseInt(entry.Realtime, 10, 64)
 	if err != nil {
-		return "", time.Time{}, true, false
+		return "", time.Time{}, true, ""
 	}
-	return action.IP, time.UnixMicro(micros), true, true
+	return action.IP, time.UnixMicro(micros), true, kind
 }
 
 // run はジャーナルを 1 行ずつ読み、閾値を超えた IP を ban で BAN する。
 func run(ctx context.Context, journal io.Reader, unitPattern string, d *detector, ban func(context.Context, string) error, logger *log.Logger) error {
+	detectors := map[failureKind]*detector{
+		loginFailureKind:     d,
+		invalidImageKind:     newDetector(2, 5*time.Second),
+		invalidSignatureKind: newDetector(3, 5*time.Second),
+	}
 	var lines, actions, failures, bans int
 	nextStats := time.Now().Add(statsInterval)
 	scanner := bufio.NewScanner(journal)
 	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
 	for scanner.Scan() {
 		lines++
-		ip, at, isAction, ok := parseLoginFailure(scanner.Bytes(), unitPattern)
+		ip, at, isAction, kind := parseFailure(scanner.Bytes(), unitPattern)
 		if isAction {
 			actions++
 		}
-		if ok {
+		if kind != "" {
 			failures++
-			if d.observe(ip, at) {
+			detector := detectors[kind]
+			if detector.observe(ip, at) {
 				if err := ban(ctx, ip); err != nil {
-					logger.Printf("ban failed: ip=%s: %v", ip, err)
+					logger.Printf("ban failed: ip=%s reason=%s: %v", ip, kind, err)
 				} else {
 					bans++
-					logger.Printf("banned: ip=%s failures=%d window=%s", ip, d.threshold, d.window)
+					logger.Printf("banned: ip=%s reason=%s failures=%d window=%s", ip, kind, detector.threshold, detector.window)
 				}
 			}
 		}
 		if now := time.Now(); now.After(nextStats) {
-			logger.Printf("stats: lines=%d action_logs=%d login_failures=%d bans=%d", lines, actions, failures, bans)
+			logger.Printf("stats: lines=%d action_logs=%d failures=%d bans=%d", lines, actions, failures, bans)
 			nextStats = now.Add(statsInterval)
 		}
 	}

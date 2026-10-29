@@ -1,4 +1,4 @@
-// isureal-guard は、アプリのアクションログを journalctl で読み、ログインに失敗し続ける IP アドレスを
+// isureal-guard は、アプリのアクションログを journalctl で読み、攻撃を繰り返す IP アドレスを
 // ip_bans テーブルへ書いて BAN する。
 package main
 
@@ -24,8 +24,9 @@ import (
 const usage = `Usage: isureal-guard
 
 isureal-guard reads the action log of systemd units through journalctl and bans an IP address
-when it fails to log in GUARD_FAIL_THRESHOLD times within GUARD_FAIL_WINDOW. A failed login is
-an action log line with "action":"login" and "status":401. A ban is written to the ip_bans table
+when it fails to log in GUARD_FAIL_THRESHOLD times within GUARD_FAIL_WINDOW, sends two invalid
+profile images within five seconds, or requests an image with an invalid signature three times
+within five seconds. A ban is written to the ip_bans table
 and lasts GUARD_BAN_DURATION.
 
 Environment variables:

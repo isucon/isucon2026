@@ -68,7 +68,7 @@ func ActionLogMiddleware(minLevel string, output io.Writer) echo.MiddlewareFunc 
 			switch {
 			case status >= http.StatusInternalServerError:
 				level = "error"
-			case c.Request().Method == http.MethodGet:
+			case c.Request().Method == http.MethodGet && !(status == http.StatusForbidden && c.Get("abuse") == "invalid_signature"):
 				level = "debug"
 			}
 			if logLevelRanks[level] < logLevelRanks[minLevel] {
@@ -76,8 +76,9 @@ func ActionLogMiddleware(minLevel string, output io.Writer) echo.MiddlewareFunc 
 			}
 
 			route := c.RouteInfo()
-			// ログを読むのは isureal-guard（login の 401 を数える）だけなので、login/register とエラー以外は出さない
-			if level != "error" && route.Path != "/api/auth/login" && route.Path != "/api/auth/register" {
+			// Guard が数える失敗とサーバーエラーだけを記録する。
+			abuse, _ := c.Get("abuse").(string)
+			if level != "error" && route.Path != "/api/auth/login" && route.Path != "/api/auth/register" && abuse == "" {
 				return nil
 			}
 			entry := map[string]any{
@@ -99,6 +100,9 @@ func ActionLogMiddleware(minLevel string, output io.Writer) echo.MiddlewareFunc 
 				if username, _ := c.Get("username").(string); usernamePattern.MatchString(username) {
 					entry["username"] = username
 				}
+			}
+			if abuse != "" {
+				entry["abuse"] = abuse
 			}
 			line, marshalErr := json.Marshal(entry)
 			if marshalErr != nil {
