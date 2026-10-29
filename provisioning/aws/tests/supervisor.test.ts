@@ -100,6 +100,10 @@ test("creates Fargate service with fixed egress and scoped execution-role secret
       )
     );
   });
+  const cluster = resources.find((r) => r.type === "aws:ecs/cluster:Cluster");
+  expect(cluster?.inputs.settings).toEqual([
+    { name: "containerInsights", value: "enabled" },
+  ]);
   const logs = resources.find((r) =>
     r.type === "aws:cloudwatch/logGroup:LogGroup"
   )!;
