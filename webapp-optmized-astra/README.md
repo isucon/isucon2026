@@ -6,7 +6,7 @@ Team 12で稼働するRust最適化実装。`webapp/rust`と`webapp/sql`を2335d
 
 メタデータはdb1を主としてEU・USへ同期複製する。Asiaは主DBを読み、Asiaアプリ上の追加レプリカは使わない。画像本体は3地域の既存VMのファイルへ保存する。新しいAWSリソースは作成せず、runtimeはPulumiのastraスタックで管理し、秘密情報は非公開ファイルをSCPで共有する。
 
-[ZIP出力と画像読み取りの改善](experiments/team12-export-io/README.md)では、固定seed 1で変更前164,297点PASS、ZIP直接出力180,280点・175,539点PASSを記録した。初期画像25区画・1,826,950枚の所有者順配置とまとめ読みにも対応し、移行・GC・再起動後の検証を完了した。この追加変更のスコアは測定前。
+[ZIP出力と画像読み取りの改善](experiments/team12-export-io/README.md)では、固定seed 1で変更前164,297点PASS、ZIP直接出力180,280点・175,539点PASSを記録した。初期画像25区画・1,826,950枚の所有者順配置とまとめ読みにも対応し、移行・GC・再起動後の検証を完了した。この追加変更の初回は183,352点PASS。反復は未測定。
 
 <!-- astra-final-summary-start -->
 ## Team 10時代の構成と検証記録
@@ -421,3 +421,4 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261029T112444Z-team12 | Team 12 baseline before grouped export image reads; fixed seed 1 | PASS | 164,297 |
 | 20261029T113254Z-team12 | Team 12 bounded streaming ZIP response; fixed seed 1 | PASS | 180,280 |
 | 20261029T113810Z-team12 | Team 12 streamed ZIP repeat without restart; fixed seed 1 | PASS | 175,539 |
+| 20261029T124028Z-team12 | owner-ordered image packs and grouped ZIP reads; seed=1 | PASS | 183,352 |
