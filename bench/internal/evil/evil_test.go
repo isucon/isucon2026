@@ -35,6 +35,9 @@ func TestPlans(t *testing.T) {
 		if p.at != wantAt || p.kind != wantKind {
 			t.Fatalf("plan %d: %+v", i, p)
 		}
+		if p.kind == 2 && p.uploadInterval != 2*time.Second {
+			t.Fatalf("invalid upload interval: %+v", p)
+		}
 		if p.kind == 1 && (!strings.HasPrefix(p.password, "password_dummy_") ||
 			(i == len(a)-3 && p.rate != 300) ||
 			(i != len(a)-3 && (p.rate < 40 || p.rate > 160))) {
@@ -105,7 +108,7 @@ func TestUploadActorStreamsNonJPEGAndStopsOnBan(t *testing.T) {
 		if id != "evil-id" {
 			t.Error(id)
 		}
-	}}, api, actorPlan{kind: 2, username: "evil_upload"})
+	}}, api, actorPlan{kind: 2, username: "evil_upload", uploadInterval: 10 * time.Millisecond})
 	if registered.Load() != 1 || uploads.Load() != 2 {
 		t.Fatal(registered.Load(), uploads.Load())
 	}

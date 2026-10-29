@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { gzipSync } from "node:zlib";
 import * as aws from "@pulumi/aws";
 import * as pulumi from "@pulumi/pulumi";
@@ -29,6 +31,10 @@ function latestAmi(role: string): pulumi.Output<string> {
 
 const serviceAmiId = config.serviceAmiId ?? latestAmi("problem-server");
 const routerAmiId = config.routerAmiId ?? latestAmi("router");
+const earlyJpegScript = readFileSync(
+	join(__dirname, "experiments/team9-early-jpeg.sh"),
+	"utf8",
+);
 const {
 	availabilityZone,
 	serviceInstanceType,
@@ -463,6 +469,24 @@ function createTeam(t: Team) {
 				},
 			],
 			scheduleExpression: "rate(30 minutes)",
+		});
+	}
+	if (config.earlyJpegTeams.includes(t.number) && instancesEnabled) {
+		new aws.ssm.Association(`${prefix}-early-jpeg`, {
+			name: "AWS-RunShellScript",
+			parameters: {
+				commands: `printf '%s' '${Buffer.from(earlyJpegScript).toString("base64")}' | base64 -d | sh`,
+			},
+			targets: [
+				{
+					key: "InstanceIds",
+					values: servers.flatMap((server, index) =>
+						server && t.servers[index].region !== undefined ? [server.id] : [],
+					),
+				},
+			],
+			scheduleExpression: "rate(30 minutes)",
+			waitForSuccessTimeoutSeconds: 300,
 		});
 	}
 
