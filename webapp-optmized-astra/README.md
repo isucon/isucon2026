@@ -27,10 +27,28 @@ Unicode検索のGIN索引、JPEG検証、ZIP出力、接続再利用、通知の
 [DB構成とVMの役割の比較](architecture-evaluation.md)に、独立画像DB、MySQL予備比較、地域別DBへの分割、db1の追加用途を記録する。
 <!-- astra-final-summary-end -->
 
+## Team 12への移設（2026-10-29）
+
+Team 10のVMを置き換えたため、同じ最終構成をTeam 12へ配置した。問題サーバーAMIはami-07743933837cd476f（10-27までの初期データを焼き込み済み）、ルーターAMIはami-02ec75ef123258866。app1/asiaはi-055f64431d3006a5f・192.168.177.10、app2/europeはi-0a062905e0bb9ebb7・192.168.178.10、app3/americaはi-03c92149bdc1fcfe1・192.168.179.10、db1はi-000e45b5dad0a1b39・192.168.180.10。`deploy/runtime.json`、`deploy/ssh.sh`、Pulumiの`astra`スタック、各デプロイスクリプト、Rustの接続元検証とテストのアドレスをこの値へ書き換えた。`deploy/benchmark.sh`はTeam 12と現行mainのベンチイメージ（sha256:55649c0a…）を使い、結果を記録するだけでコミットもpushもしない。
+
+mainの2335d5f以降の変更から、友達の友達フィードのおすすめ順（8e12918）と、10月の画像パーティションを10-28 06:00 UTCで`image_objects_202610`と`image_objects_20261028`に分けるデータ（9b10bb8）を取り込んだ。友達の友達フィードは、表示できる候補すべてに`10 × E + 3 × M + min(C, 30)`を閲覧判定と同じスナップショットのSQLで付け、`(score, postedAt, id)`の降順で51件を取る。`beforeScore`は3つの続きの値が揃わなければ400、ほかのフィードでは無視する。時刻順のフィードは従来どおり投稿期間ごとに51件へ絞る。画像の検索ヒントは分割後の時刻を`image_objects_20261028`へ向ける。reset.sqlはパーティション名で比較するので、分割後の区画もTRUNCATEされ、変更は要らなかった。
+
+新しいVMでは次の順に反映した。各段階の事前確認は前の段階で動いているプロセスの設定を見るため、まとめて`all`では通らない。
+
+1. 書き込みを無効にした読み取り構成で`database`、`image-store`、`replication`（非同期、2台のベースバックアップに約12.5分）、`application`を実行する。`disable-asia-replica.sh`は、Asiaのスタンバイを作ったことがないVMでは何もせずに終わるよう直した。
+2. `replicasSynchronous=true`で`replication`、続けて`replicaReads=true`で`application`。
+3. 書き込みワーカーとnative fenceを先に`application`で配置し、そのあと画像・ファイル・地域別の書き込みを有効にして`application`。書き込みの事前確認は稼働中のワーカーを要求するので、同時には有効にできない。
+4. `replicasSynchronous=false`で`replication`。署名ファイルを生成して最終構成で`application`し、Pulumiの`astra`スタックを更新する。
+5. 初期画像を`migrate-image-archive.py`で区画ごとにパックへ移す。1,826,950枚・14,054,519,155バイトが25ファイルになり、SQL内の初期画像本体はゼロになった（[coverage](results/archive-complete-team12/coverage.json)）。所要は約41分。`image_objects_202608`ではビルド完了後にEC2 Instance Connectの接続が1時間の上限で切れたため、3地域のファイルを確かめてから`--resume`で公開した。
+
+署名ファイル`var/astra/signatures.bin`はTeam 12のdb1から作り直した。有効期限は2026-10-30 09:19:56 UTCで、それを過ぎると通常の署名計算に戻る。作り直すときは`cache-signatures`を実行して`apply.sh application`で配る。生成器は全コアで計算するようにした。
+
+ベンチは初回（冷えた状態、パック移行前）が[163,617点・PASS](results/20261029T093255Z-team12/result.json)、パック移行後が[181,755点・PASS](results/20261029T102234Z-team12/result.json)と[159,007点・PASS](results/20261029T102856Z-team12/result.json)。間の[167,869点・PASS](results/20261029T102534Z-team12/result.json)はメモリ9,790MiBの遅いベンチホストに当たったので比較から外した。
+
 ## デプロイ
 
 アプリとDBの実行設定は`deploy/runtime.json`に記録し、Pulumiプロジェクト`provisioning/aws/astra`の`dev`スタックから参照する。
-ISUCONルールに合わせて、新しいAWSリソースは作成しない。既存のTeam 10 VMへSSH/scpで反映する。
+ISUCONルールに合わせて、新しいAWSリソースは作成しない。既存のTeam 12 VMへSSH/scpで反映する（2026-10-29にTeam 10から移設）。
 接続には既存のEC2 Instance Connect Endpointを使い、共有インフラや他チームの設定は変更しない。
 ベンチのFargateタスクは既存のecspresso経由で実行する。
 
@@ -391,3 +409,7 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261028T201755Z-team10 | restore two-replica acknowledgement after three-replica comparison | PASS | 181,005 |
 | 20261028T203054Z-team10 | read all Asia metadata from the primary after application improvements | PASS | 176,830 |
 | 20261028T203453Z-team10 | repeat all Asia primary reads without restart | PASS | 174,401 |
+| 20261029T093255Z-team12 | team 12 cold warm-up before initial image packs; FoF ranking port | PASS | 163,617 |
+| 20261029T102234Z-team12 | team 12 final runtime with all initial images in 25 packs | PASS | 181,755 |
+| 20261029T102534Z-team12 | team 12 repeat final runtime without restart | PASS | 167,869 |
+| 20261029T102856Z-team12 | team 12 repeat final runtime; previous run hit a 9,790 MiB bench host | PASS | 159,007 |
