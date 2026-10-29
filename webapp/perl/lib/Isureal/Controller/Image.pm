@@ -35,7 +35,10 @@ sub show ($c) {
            WHERE i.id = $1 AND u.status = 'active'
         SQL
     my $key = image_signing_key($row->[0]);
-    forbidden() unless secure_compare($signature, image_signature($key, $image_id, $exp));
+    unless (secure_compare($signature, image_signature($key, $image_id, $exp))) {
+        $c->stash('isureal.abuse' => 'invalid_signature');
+        forbidden();
+    }
 
     # 削除状態を毎回確認する。即時反映も5秒以内の許容範囲に含まれる。
     my $object = $db->query(<<~'SQL', $image_id)->hash or forbidden();

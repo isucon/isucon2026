@@ -9,7 +9,11 @@ use crate::response::json;
 pub struct ApiError {
     pub status: StatusCode,
     pub code: &'static str,
+    pub abuse: Option<&'static str>,
 }
+
+#[derive(Clone, Copy)]
+pub struct AbuseEvent(pub &'static str);
 
 #[derive(Debug)]
 pub struct HttpError {
@@ -51,7 +55,19 @@ struct ApiErrorResponse {
 }
 
 pub fn new_api_error(status: StatusCode, code: &'static str) -> Error {
-    Error::Api(ApiError { status, code })
+    Error::Api(ApiError {
+        status,
+        code,
+        abuse: None,
+    })
+}
+
+pub fn new_abuse_error(status: StatusCode, code: &'static str, abuse: &'static str) -> Error {
+    Error::Api(ApiError {
+        status,
+        code,
+        abuse: Some(abuse),
+    })
 }
 
 impl Error {
@@ -110,6 +126,10 @@ impl From<zip::result::ZipError> for Error {
 
 impl IntoResponse for Error {
     fn into_response(self) -> Response {
+        let abuse = match &self {
+            Error::Api(err) => err.abuse,
+            _ => None,
+        };
         let status = match &self {
             Error::Api(err) => err.status,
             Error::Http(err) => err.status,
@@ -120,9 +140,13 @@ impl IntoResponse for Error {
             logger::error("request failed", &message);
         }
         let body = ApiErrorResponse { error: message };
-        json(status, body).unwrap_or_else(|err| {
+        let mut response = json(status, body).unwrap_or_else(|err| {
             logger::error("failed to write error response", &err);
             status.into_response()
-        })
+        });
+        if let Some(abuse) = abuse {
+            response.extensions_mut().insert(AbuseEvent(abuse));
+        }
+        response
     }
 }

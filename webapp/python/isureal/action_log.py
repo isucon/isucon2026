@@ -102,7 +102,9 @@ class ActionLogMiddleware:
     def write(self, scope: Scope, state: dict[str, Any], status: int) -> None:
         if status >= HTTPStatus.INTERNAL_SERVER_ERROR:
             level = "error"
-        elif scope["method"] == "GET":
+        elif scope["method"] == "GET" and not (
+            status == HTTPStatus.FORBIDDEN and state.get("abuse") == "invalid_signature"
+        ):
             level = "debug"
         else:
             level = "info"
@@ -122,6 +124,8 @@ class ActionLogMiddleware:
             username = state.get("username")
             valid = isinstance(username, str) and valid_username(username)
             entry["username"] = username if valid else None
+        if abuse := state.get("abuse"):
+            entry["abuse"] = abuse
         line = json.dumps(
             entry, ensure_ascii=False, separators=(",", ":"), sort_keys=True
         )

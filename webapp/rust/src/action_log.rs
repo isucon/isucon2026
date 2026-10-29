@@ -10,6 +10,7 @@ use axum::middleware::Next;
 use axum::response::Response;
 use serde_json::{Map, Value};
 
+use crate::api_error::AbuseEvent;
 use crate::ip_ban::extract_client_ip;
 use crate::session::Session;
 use crate::user::USERNAME_PATTERN;
@@ -135,7 +136,9 @@ pub async fn action_log_middleware(
 
     let level = if status >= 500 {
         "error"
-    } else if method == Method::GET {
+    } else if method == Method::GET
+        && !(status == 403 && response.extensions().get::<AbuseEvent>().is_some())
+    {
         "debug"
     } else {
         "info"
@@ -161,6 +164,9 @@ pub async fn action_log_middleware(
     }
     if let Some(session) = response.extensions().get::<Session>() {
         entry.insert("user_id".to_owned(), session.user_id.clone().into());
+    }
+    if let Some(abuse) = response.extensions().get::<AbuseEvent>() {
+        entry.insert("abuse".to_owned(), abuse.0.into());
     }
     if action == Some("login") || action == Some("register") {
         entry.insert("username".to_owned(), Value::Null);

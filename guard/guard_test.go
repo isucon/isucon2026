@@ -104,6 +104,44 @@ func TestRunBansRepeatedLoginFailures(t *testing.T) {
 	}
 }
 
+func TestRunBansInvalidImagesAndSignaturesSeparately(t *testing.T) {
+	base := time.Unix(1_800_000_000, 0)
+	line := func(action string, status int, ip string, offset time.Duration, abuse string) string {
+		message := `{"level":"info","action":"` + action + `","status":` + strconv.Itoa(status) + `,"ip":"` + ip + `","abuse":"` + abuse + `"}`
+		return journalLine(t, "isureal-rust.service", message, base.Add(offset))
+	}
+	journal := strings.Join([]string{
+		line("put_profile_image", 400, "192.0.2.1", 0, "invalid_image"),
+		line("put_profile_image", 400, "192.0.2.2", 0, "invalid_image"),
+		line("get_image", 403, "192.0.2.1", time.Second, "invalid_signature"),
+		line("put_profile_image", 204, "192.0.2.1", time.Second, ""),
+		line("put_profile_image", 400, "192.0.2.1", 2*time.Second, ""),
+		line("put_profile_image", 400, "192.0.2.1", 4*time.Second, "invalid_image"),
+		line("put_profile_image", 400, "192.0.2.2", 5*time.Second, "invalid_image"),
+		line("get_image", 403, "192.0.2.3", 0, "invalid_signature"),
+		line("get_image", 403, "192.0.2.3", 2*time.Second, "invalid_signature"),
+		line("get_image", 403, "192.0.2.3", 3*time.Second, ""),
+		line("get_image", 200, "192.0.2.3", 3*time.Second, ""),
+		line("get_image", 403, "192.0.2.3", 4*time.Second, "invalid_signature"),
+	}, "\n")
+	var banned []string
+	var output bytes.Buffer
+	err := run(context.Background(), strings.NewReader(journal), "isureal-*.service", newDetector(10, 10*time.Second), func(_ context.Context, ip string) error {
+		banned = append(banned, ip)
+		return nil
+	}, log.New(&output, "", 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(banned, []string{"192.0.2.1", "192.0.2.3"}) {
+		t.Fatalf("banned = %v", banned)
+	}
+	if !strings.Contains(output.String(), "reason=invalid_image failures=2 window=5s") ||
+		!strings.Contains(output.String(), "reason=invalid_signature failures=3 window=5s") {
+		t.Fatalf("wrong ban reasons: %s", output.String())
+	}
+}
+
 func TestRunReadsOnlyMatchingUnits(t *testing.T) {
 	base := time.Unix(1_800_000_000, 0)
 	var lines []string
