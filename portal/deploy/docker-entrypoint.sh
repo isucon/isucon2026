@@ -3,7 +3,7 @@
 # それ以外はそのままコマンドとして実行する（デバッグ用に sh などを起動できる）。
 set -eu
 
-# ECS injects this secret only into the worker. The SSH client requires a file.
+# ECS injects this secret into portal and worker. Template generation and SSH use the file.
 if [ -n "${ISUXPORTAL_ADMIN_SSH_PRIVATE_KEY:-}" ]; then
   umask 077
   export ISUXPORTAL_ISUCON_ADMIN_SSH_PRIVATE_KEY_PATH="${ISUXPORTAL_ISUCON_ADMIN_SSH_PRIVATE_KEY_PATH:-/tmp/isucon_admin.key}"
