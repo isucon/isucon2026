@@ -1,5 +1,4 @@
 import { must, type Queryer, type Row } from "./db.ts";
-import type { Timestamp } from "./time.ts";
 import { getUser, setImageKey, userColumnsAs, userFromRow, validUserText, type User } from "./user.ts";
 
 export type PostLocation = {
@@ -38,9 +37,9 @@ export type Post = {
   caption: string;
   visibility: string;
   location: PostLocation;
-  postedAt: Timestamp;
-  onTimeDeadline: Timestamp;
-  windowEndedAt: Timestamp | null;
+  postedAt: Temporal.Instant;
+  onTimeDeadline: Temporal.Instant;
+  windowEndedAt: Temporal.Instant | null;
 };
 
 export const postColumns = `p.id, p.author_id, p.posting_window_id, p.image_id, p.caption, p.visibility,
@@ -106,15 +105,16 @@ export type ViewerContext = {
   hasPostedToday: boolean;
   friends: Set<string>;
   friendsOfFriends: Set<string>;
+  mutualFriends: Map<string, number>;
   blocked: Set<string>;
 };
 
 export async function loadViewerContext(db: Queryer, viewerID: string): Promise<ViewerContext | undefined> {
   const user = await getUser(db, viewerID);
-  if (user === undefined) {
+  if (!user) {
     return undefined;
   }
-  const viewer: ViewerContext = { user, hasPostedToday: false, friends: new Set(), friendsOfFriends: new Set(), blocked: new Set() };
+  const viewer: ViewerContext = { user, hasPostedToday: false, friends: new Set(), friendsOfFriends: new Set(), mutualFriends: new Map(), blocked: new Set() };
   const posted = must(await db.get<{ exists: boolean }>(
     `
   SELECT EXISTS(
@@ -147,9 +147,15 @@ export async function loadViewerContext(db: Queryer, viewerID: string): Promise<
   for (const friendship of friendships) {
     if (viewer.friends.has(friendship.user_low_id)) {
       viewer.friendsOfFriends.add(friendship.user_high_id);
+      if (friendship.user_high_id !== viewer.user.id) {
+        viewer.mutualFriends.set(friendship.user_high_id, (viewer.mutualFriends.get(friendship.user_high_id) ?? 0) + 1);
+      }
     }
     if (viewer.friends.has(friendship.user_high_id)) {
       viewer.friendsOfFriends.add(friendship.user_low_id);
+      if (friendship.user_low_id !== viewer.user.id) {
+        viewer.mutualFriends.set(friendship.user_low_id, (viewer.mutualFriends.get(friendship.user_low_id) ?? 0) + 1);
+      }
     }
   }
   return viewer;
@@ -159,7 +165,7 @@ export function canView(viewer: ViewerContext, post: Post): boolean {
   if (post.authorID === viewer.user.id) {
     return true;
   }
-  if (post.windowEndedAt !== null || !viewer.hasPostedToday || viewer.blocked.has(post.authorID)) {
+  if (post.windowEndedAt || !viewer.hasPostedToday || viewer.blocked.has(post.authorID)) {
     return false;
   }
   switch (post.visibility) {
@@ -176,11 +182,11 @@ export function canView(viewer: ViewerContext, post: Post): boolean {
 
 export async function canViewPost(db: Queryer, viewerID: string, postID: string): Promise<boolean> {
   const post = await getPostWithAuthor(db, postID);
-  if (post === undefined) {
+  if (!post) {
     return false;
   }
   const viewer = await loadViewerContext(db, viewerID);
-  if (viewer === undefined) {
+  if (!viewer) {
     return false;
   }
   return canView(viewer, post.post);

@@ -1,4 +1,35 @@
-# 試し解き用Supervisor
+# Supervisor の構成と配備
+
+開発ポータルの Supervisor の基盤と共有プールをこのディレクトリで管理します。
+ベンチのイメージ更新とサービスの配備には、[共有プールの手順](pool/README.md)を使ってください。
+
+| 場所 | 管理対象 | Pulumi project | backend の末尾 |
+| --- | --- | --- | --- |
+| このディレクトリ | cluster、実行 role、ネットワーク、ECR、ログ、Router の接続設定、停止中の旧チーム別サービス | `isucon2026-trial-supervisor` | `/supervisor` |
+| [`pool/`](pool/README.md) | 共有プールの専用サブネット、ルートテーブル、配備設定。ECS サービスとタスク定義の配備は ecspresso が担当 | `isucon2026-shared-supervisor` | `/shared-supervisor` |
+
+両 project の既存 stack は `portal-dev`、backend のバケットは `isucon2026-pulumi-state-124502390568` です。
+各ディレクトリの `mise.toml` が backend を選びます。
+`mise` を使わない場合は、そのファイルの `PULUMI_BACKEND_URL` と `PULUMI_CONFIG_PASSPHRASE` を明示して実行してください。
+同名の stack でも project と backend が異なるため、配備先のディレクトリを確認してください。
+
+2026-10-28 に `provisioning/aws/shared-supervisor/` を `pool/` に移しました。
+project 名、backend、stack 名、AWS リソース名は変更していません。
+state の移行や stack の新規作成は不要です。
+旧チーム別サービス 1〜6 は停止中のまま残り、practice の廃止記録は [共有プールの適用記録](pool/README.md#2026-10-28-practice-supervisor-の廃止)にあります。
+
+移動後の確認はリポジトリルートで実行します。
+
+```bash
+python3 -m unittest discover -s provisioning/aws/tests -p test_supervisor_layout.py
+python3 -m unittest discover -s provisioning/aws/supervisor/pool
+npm --prefix provisioning/aws run typecheck
+```
+
+以下は基盤とチーム専用 worker の構築手順です。
+既存の `portal-dev` の共有プールを更新するときは、上の共有プールの手順を使用してください。
+
+## チーム専用 worker と基盤
 
 独立したPulumi stackで、SupervisorとISURealベンチを含むコンテナをECS
 Fargateへ配置します。
@@ -77,6 +108,9 @@ make supervisor-image                   # linux/amd64 でビルドし、stack �
 make supervisor-image SUPERVISOR_STACK=portal-dev TAG=photos-20261027   # stack とタグを指定する例
 ```
 
+共有プール向けには `make supervisor-image SUPERVISOR_PLATFORM=linux/arm64` を使います。
+チーム別の旧タスクは X86_64 のため、既定の linux/amd64 を使います。
+
 `make supervisor-image`は`supervisor/Dockerfile`を`PHOTOS=archive`でビルドし、`var/photos/merged.zip`を`/opt/isucon/photos/merged.zip`に入れます。
 push先はstackの出力`repositoryUrl`（`REPOSITORY`で上書き可）、タグは省略するとイメージの内容から決め、同じタグがECRにあればpushを省きます。
 表示されたdigestを`image`（必要なら`teamImages`）に設定し、`benchmarkImages`に同梱したパスを設定します。
@@ -150,7 +184,7 @@ secretsの権限は[AWSの実行role仕様](https://docs.aws.amazon.com/AmazonEC
 ### 現在の配備状況（2026-10-27時点）
 
 portal-devのベンチは、このstackのチーム別workerではなく、共有プール`isucon2026-shared-supervisor`（3タスク、チームもAZも絞らずポーリング、接続先`https://portal-dev.isucon.net`）が実行しています。
-共有プールはこのstackのcluster、実行role、ネットワーク、ECR、log groupを使いますが、サービスとタスク定義は[共有プールの定義](../shared-supervisor/README.md)（Pulumiで設定を保持し、ecspressoで配備）が管理します。
+共有プールはこのstackのcluster、実行role、ネットワーク、ECR、log groupを使いますが、サービスとタスク定義は[共有プールの定義](pool/README.md)（Pulumiで設定を保持し、ecspressoで配備）が管理します。
 このstackのチーム別service 1〜6は`desiredCount: 0`で退役しており、適用済みの設定は[Pulumi.portal-dev.yaml.example](Pulumi.portal-dev.yaml.example)です。
 このstackを適用するときはその設定を使い、`desiredCount`を戻さないでください。
 旧ホスト名`portal-dev.isucon.whywrite.it`は解決できなくなっています。

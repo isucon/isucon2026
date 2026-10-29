@@ -4,16 +4,21 @@
 # /opt/isucon/photos/merged.zip に同梱する。アーカイブは make supervisor-photos で S3 から取る。
 #
 # 環境変数: SUPERVISOR_STACK（Supervisor stack、既定 portal-dev）、REPOSITORY（ECR の URL。省略時は stack の出力
-# repositoryUrl）、TAG（省略時はイメージの内容から決める。同じタグが ECR にあれば push を省く）
+# repositoryUrl）、SUPERVISOR_PLATFORM（既定 linux/amd64。共有プールは linux/arm64）、
+# TAG（省略時はイメージの内容から決める。同じタグが ECR にあれば push を省く）
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
 STACK_DIR="$ROOT/provisioning/aws/supervisor"
 PHOTOS="$ROOT/var/photos/merged.zip"
 SUPERVISOR_STACK="${SUPERVISOR_STACK:-portal-dev}"
+SUPERVISOR_PLATFORM="${SUPERVISOR_PLATFORM:-linux/amd64}"
 
 log() { printf '[supervisor-image] %s\n' "$*" >&2; }
-die() { log "$*"; exit 2; }
+die() {
+	log "$*"
+	exit 2
+}
 
 [[ -s "$PHOTOS" ]] || die "$PHOTOS がない。make supervisor-photos で取得する"
 
@@ -33,12 +38,13 @@ iid="$(mktemp)"
 trap 'rm -f "$iid"' EXIT
 log "building supervisor/Dockerfile with $PHOTOS"
 # provenance を付けるとビルドのたびに ID が変わる
-docker build --platform linux/amd64 --provenance=false --build-arg PHOTOS=archive \
+docker build --platform "$SUPERVISOR_PLATFORM" --provenance=false --build-arg PHOTOS=archive \
 	-f "$ROOT/supervisor/Dockerfile" -t isucon2026-supervisor:photos --iidfile "$iid" "$ROOT" >&2
-id="$(cat "$iid")"
+# containerd image store では iidfile の config digest で実行できないため、登録済みの ID を使う
+id="$(docker image inspect isucon2026-supervisor:photos --format '{{.Id}}')"
 # 同梱したアーカイブが手元のものと一致することを確かめてから push する
 expected="$(sha256sum "$PHOTOS" | cut -d' ' -f1)"
-actual="$(docker run --rm --entrypoint /bin/sh "$id" -c 'sha256sum /opt/isucon/photos/merged.zip 2>/dev/null' | cut -d' ' -f1)"
+actual="$(docker run --rm --platform "$SUPERVISOR_PLATFORM" --entrypoint /bin/sh "$id" -c 'sha256sum /opt/isucon/photos/merged.zip 2>/dev/null' | cut -d' ' -f1)"
 [[ "$actual" == "$expected" ]] || die "the image does not contain $PHOTOS (sha256 ${actual:-none} != $expected)"
 tag="${TAG:-photos-$(cut -d: -f2 <<<"$id" | cut -c1-16)}"
 

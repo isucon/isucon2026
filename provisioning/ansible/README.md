@@ -4,13 +4,16 @@ AMI の中身を作ります。Packer（`provisioning/packer`）から呼ばれ�
 
 | playbook | 対象 | 内容 |
 |---|---|---|
-| `prepare.yml` | localhost | webapp と isureal-guard のソース、frontend、datagen、Router、Portal を `build/` に作る |
+| `prepare.yml` | localhost | webapp と isureal-guard のソース、frontend、datagen、Router（isureal-digest は Docker でビルドする）、Portal を `build/` に作る |
 | `problem-server.yml` | `problem_servers` | app1〜3 と db1 で共用。isucon ユーザー、Go、Ruby、Rust、Python、PHP、Perl、Node.js、PostgreSQL、nginx、webapp、isureal-guard を入れ、初期データを投入する |
 | `router.yml` | `routers` | Router と検証用 Portal のバイナリ、HAProxy、systemd unit |
 
 同じ AWS アカウントに複数のチームの環境を作るので、アドレスは AMI に焼き込みません。
 チームごとに違うもの（app のリージョンと DB の接続先、どのサービスを動かすか、Router の設定ファイル、
 ENI、TLS 証明書）は Pulumi の user-data が設定します。
+
+Coding agent instruction files are installed for `isucon` by the
+[agent-instructions role](roles/agent-instructions/README.md).
 
 ## 配布するソースから取り除くもの
 

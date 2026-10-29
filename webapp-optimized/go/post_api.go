@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/labstack/echo/v5"
 )
 
@@ -40,6 +41,8 @@ type createPostResponse struct {
 	PostedAt        time.Time          `json:"postedAt"`
 	OnTime          bool               `json:"onTime"`
 	LateSeconds     int64              `json:"lateSeconds"`
+	// Score is the recommendation score of a friends-of-friends feed item.
+	Score *int64 `json:"score,omitempty"`
 }
 
 func createPostHandler(h *HandlerContext) echo.HandlerFunc {
@@ -68,7 +71,7 @@ func createPostHandler(h *HandlerContext) echo.HandlerFunc {
 			return err
 		}
 		defer imageFile.Close()
-		imageData, ok, err := readJPEG(imageFile, 4096)
+		imageData, ok, err := readJPEG(imageFile, 4096, input.Image.Size)
 		if err != nil {
 			return err
 		}
@@ -76,18 +79,32 @@ func createPostHandler(h *HandlerContext) echo.HandlerFunc {
 			return NewAPIError(http.StatusBadRequest, "invalid_post")
 		}
 
+		imageID := uuid.NewString()
+		if err := storeUploadedImage(imageID, imageData); err != nil {
+			return err
+		}
 		result, err := runWrite(c.Request().Context(), h.DB, "post_create", GetSession(c).UserID,
 			map[string]any{"caption": input.Caption, "visibility": input.Visibility, "kind": location.Kind,
-				"latitude": location.Latitude, "longitude": location.Longitude, "locality": location.Locality}, imageData)
+				"latitude": location.Latitude, "longitude": location.Longitude, "locality": location.Locality,
+				"imageId": imageID}, []byte{})
 		if err != nil {
 			return err
 		}
 		post, user := result.Post, result.User
+		cacheUploadedImage(imageID, user.SecretKeyHash, imageData)
 		return c.JSON(http.StatusCreated, newPostResponse(post, user))
 	}
 }
 
 func newPostResponse(post Post, user User) createPostResponse {
+	imageURL, ok := history.postImageURL(post.ID, post.ImageID)
+	if !ok {
+		imageURL = signedImageURL(user, post.ImageID)
+	}
+	return newPostResponseWithURL(post, user, imageURL)
+}
+
+func newPostResponseWithURL(post Post, user User, imageURL string) createPostResponse {
 	response := createPostResponse{
 		ID: post.ID,
 		Author: postAuthorResponse{
@@ -95,7 +112,7 @@ func newPostResponse(post Post, user User) createPostResponse {
 			ProfileImageURL: newGetMeResponse(user).ProfileImageURL,
 			Bio:             user.Bio, AccountType: user.AccountType,
 		},
-		PostingWindowID: post.PostingWindowID, ImageURL: signedImageURL(user, post.ImageID),
+		PostingWindowID: post.PostingWindowID, ImageURL: imageURL,
 		Caption: post.Caption, Visibility: post.Visibility, Location: post.PostLocation,
 		PostedAt: post.PostedAt, OnTime: !post.PostedAt.After(post.OnTimeDeadline),
 	}
@@ -110,8 +127,16 @@ type getMyCurrentPostResponse createPostResponse
 func getMyCurrentPostHandler(h *HandlerContext) echo.HandlerFunc {
 	return func(c *echo.Context) error {
 		ctx := c.Request().Context()
+		if user, ok := hotSessionUser(c, h); ok {
+			if post, found, ok := hot.myCurrentPost(user.ID); ok {
+				if !found {
+					return NewAPIError(http.StatusNotFound, "post_not_found")
+				}
+				return c.JSON(http.StatusOK, getMyCurrentPostResponse(newPostResponse(post.Post, post.Author)))
+			}
+		}
 		userID := GetSession(c).UserID
-		posts, err := selectPostsWithAuthor(ctx, h.ReadDB, `
+		posts, err := selectPostsWithAuthor(ctx, h.DB, `
           AND p.author_id = $1
           AND EXISTS (SELECT 1 FROM posting_windows current
             WHERE current.region = u.region AND current.ended_at IS NULL
@@ -141,7 +166,15 @@ func getPostHandler(h *HandlerContext) echo.HandlerFunc {
 			return err
 		}
 		ctx := c.Request().Context()
-		post, viewer, err := loadPostAccess(ctx, h.ReadDB, GetSession(c).UserID, input.PostID)
+		if user, ok := hotSessionUser(c, h); ok {
+			if post, visible, ok := hot.viewPost(user.ID, input.PostID); ok {
+				if !visible {
+					return NewAPIError(http.StatusNotFound, "post_not_found")
+				}
+				return c.JSON(http.StatusOK, getPostResponse(newPostResponse(post.Post, post.Author)))
+			}
+		}
+		post, viewer, err := loadPostAccess(ctx, h.DB, GetSession(c).UserID, input.PostID)
 		if errors.Is(err, sql.ErrNoRows) {
 			return NewAPIError(http.StatusNotFound, "post_not_found")
 		}

@@ -147,3 +147,10 @@ Worker 起動後に処理されるため、本番切替時に旧環境との同�
 維持し、新たな意図しない公開を防ぎます。AMIを変更する場合も同じ手順が必要です。
 公開後は `Public=true` と `LaunchPermissions` の `Group=all` を読み戻し、
 `pulumi preview` に差分がないことを確認してください。
+
+### Clar 公開通知の送信先
+
+開発環境の `ISUXPORTAL_DISCORD_CHANNEL_ID` は application secret の JSON キーとして Secrets Manager に保存します。
+スタックの `secretKeys` に同名キーを追加し、`environment` には値を記載しません。
+既存のシークレットキーを保持して値を更新した後、`pulumi up` と ecspresso による再デプロイで反映します。
+Discord の公開通知は worker が送信します。

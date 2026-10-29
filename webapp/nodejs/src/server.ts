@@ -6,7 +6,7 @@ import { adminLoginHandler, adminLogoutHandler } from "./admin_api.ts";
 import { openPostingWindowHandler } from "./admin_posting_window_api.ts";
 import { adminSessionMiddleware, type AdminSession } from "./admin_session.ts";
 import { certifyUserHandler, deleteUserCertificationHandler } from "./admin_user_api.ts";
-import { apiErrorHandler } from "./api_error.ts";
+import { apiErrorHandler, errorMessage } from "./api_error.ts";
 import { createCommentHandler, deleteCommentHandler, getCommentsHandler } from "./comment_api.ts";
 import type { Config } from "./config.ts";
 import { DB } from "./db.ts";
@@ -59,7 +59,7 @@ export async function newServer(config: Config, poolSize: number): Promise<Hono<
   try {
     await db.ping();
   } catch (err) {
-    throw new Error("failed to ping database: " + (err as Error).message);
+    throw new Error("failed to ping database: " + errorMessage(err));
   }
 
   const handlerContext: HandlerContext = {
@@ -117,7 +117,7 @@ export async function newServer(config: Config, poolSize: number): Promise<Hono<
   return e;
 }
 
-const allowMethods = ["CONNECT", "DELETE", "GET", "HEAD", "PATCH", "POST", "PUT", "TRACE"];
+const allowMethods = ["CONNECT", "DELETE", "GET", "HEAD", "PATCH", "POST", "PUT", "TRACE"] as const;
 
 function routeNotFoundHandler(e: Hono<Env>): NotFoundHandler<Env> {
   let routes: { method: string; pattern: RegExp }[] | undefined;

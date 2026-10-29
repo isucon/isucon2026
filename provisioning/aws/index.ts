@@ -251,7 +251,8 @@ function createTeam(t: Team) {
 				{
 					ami: config.teamImages[t.number]?.routerAmiId ?? routerAmiId,
 					availabilityZone,
-					instanceType: routerInstanceType,
+					instanceType:
+						config.teamRouterInstanceTypes[t.number] ?? routerInstanceType,
 					iamInstanceProfile: instanceProfile.name,
 					subnetId: routerPublicSubnet.id,
 					privateIp: t.routerPublicIp,
@@ -271,6 +272,13 @@ function createTeam(t: Team) {
 						...teamTags,
 						Name: `isucon2026-${prefix}-router`,
 						Role: "router",
+						...(config.portalTeamIds[t.number] === undefined
+							? {}
+							: {
+									IsuconTeamID: String(config.portalTeamIds[t.number]),
+									IsuconInstanceNum: "5",
+									IsuconBenchmarkHost: `app.team${t.number}-aws.127.0.0.1.nip.io`,
+								}),
 					},
 				},
 				// プライベート IP を固定しているので、置き換え時は古いインスタンスを先に消す。
@@ -280,7 +288,8 @@ function createTeam(t: Team) {
 				{
 					dependsOn: [internetGateway],
 					deleteBeforeReplace: true,
-					ignoreChanges: ["userDataBase64"],
+					// The provider reports false while stopped; this is a launch-time setting.
+					ignoreChanges: ["userDataBase64", "associatePublicIpAddress"],
 				},
 			)
 		: undefined;
@@ -390,9 +399,13 @@ function createTeam(t: Team) {
 			{
 				ami: config.teamImages[t.number]?.serviceAmiId ?? serviceAmiId,
 				availabilityZone,
-				instanceType: isDatabase
-					? config.databaseInstanceType
-					: serviceInstanceType,
+				instanceType:
+					config.teamServerInstanceTypes[t.number]?.[network.id] ??
+					(isDatabase
+						? config.databaseInstanceType
+						: network.region === "asia"
+							? config.asiaInstanceType
+							: serviceInstanceType),
 				iamInstanceProfile: instanceProfile.name,
 				subnetId: serverSubnet.id,
 				privateIp: network.serviceIp,
@@ -428,6 +441,8 @@ function createTeam(t: Team) {
 			// プライベート IP を固定しているので、置き換え時は古いインスタンスを先に消す
 			{
 				dependsOn: routes,
+				// Losing an ephemeral IP while stopped must not replace the instance.
+				ignoreChanges: ["associatePublicIpAddress"],
 				deleteBeforeReplace: true,
 				protect: isDatabase && config.protectedDatabaseTeams.includes(t.number),
 			},

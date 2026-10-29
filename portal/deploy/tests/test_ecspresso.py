@@ -127,6 +127,19 @@ class EcspressoTest(unittest.TestCase):
         )
         self.assertNotIn("loadBalancers", self.render("migrate", "servicedef"))
 
+    def test_develop_announcement_channel_is_loaded_from_secrets_manager(self):
+        key = "ISUXPORTAL_DISCORD_CHANNEL_ID"
+        example = (ROOT / "pulumi/Pulumi.develop.yaml.example").read_text()
+        self.assertIn("    - " + key, example)
+        self.infra["secretKeys"].append(key)
+        (self.path / "infra.json").write_text(json.dumps(self.infra))
+        container = self.render("worker", "taskdef")["containerDefinitions"][0]
+        self.assertIn(
+            {"name": key, "valueFrom": "arn:application:" + key + "::"},
+            container["secrets"],
+        )
+        self.assertNotIn(key, {v["name"] for v in container["environment"]})
+
     def test_discord_invitation_is_loaded_from_secrets_manager(self):
         key = "ISUXPORTAL_DISCORD_INVITE_URL"
         self.infra["secretKeys"].append(key)
@@ -156,7 +169,7 @@ class EcspressoTest(unittest.TestCase):
                         service == "worker" or (service == "bot" and enabled),
                     )
 
-    def test_singletons_and_worker_secret_isolation(self):
+    def test_singletons_and_admin_key_secret_isolation(self):
         for name in ("bot", "notifyloop"):
             definition = self.render(name, "servicedef")
             self.assertEqual(
@@ -166,10 +179,11 @@ class EcspressoTest(unittest.TestCase):
                 definition["deploymentConfiguration"]["minimumHealthyPercent"], 0
             )
         self.assertEqual(self.render("bot", "servicedef")["desiredCount"], 0)
-        for name in ("portal", "worker", "bot", "notifyloop"):
+        for name in ("portal", "worker", "bot", "notifyloop", "migrate"):
             secrets = self.render(name, "taskdef")["containerDefinitions"][0]["secrets"]
             self.assertEqual(
-                any(s["valueFrom"] == "arn:ssh" for s in secrets), name == "worker"
+                any(s["valueFrom"] == "arn:ssh" for s in secrets),
+                name in ("portal", "worker"),
             )
 
 

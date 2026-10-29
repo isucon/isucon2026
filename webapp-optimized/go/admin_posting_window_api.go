@@ -1,10 +1,17 @@
 package isureal
 
 import (
+	"context"
+	"errors"
+	"log/slog"
 	"net/http"
+	"slices"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jmoiron/sqlx"
 	"github.com/labstack/echo/v5"
 )
 
@@ -20,6 +27,86 @@ type openPostingWindowResponse struct {
 	LocalDate      string    `json:"localDate"`
 	StartsAt       time.Time `json:"startsAt"`
 	OnTimeDeadline time.Time `json:"onTimeDeadline"`
+}
+
+// notificationWriter writes the notification rows of opened windows in the
+// background. The notifications are delivered from the hot state as soon as
+// the window opens; the rows (thousands per region, into cold indexes) are
+// the durable record and need not delay the opening. Initialization waits
+// for pending writes so a reset cannot interleave with them.
+type notificationWriter struct {
+	mu     sync.Mutex
+	wg     sync.WaitGroup
+	ctx    context.Context
+	cancel context.CancelFunc
+}
+
+var notificationWrites = newNotificationWriter()
+
+func newNotificationWriter() *notificationWriter {
+	ctx, cancel := context.WithCancel(context.Background())
+	return &notificationWriter{ctx: ctx, cancel: cancel}
+}
+
+// notificationWriteDelay and notificationWriteChunk pace the rows: a region's
+// users post within the first seconds of a day, and a burst of thousands of
+// index inserts into the cold notifications table (tens of seconds at the
+// grand prix) would compete with them for the database.
+var notificationWriteDelay = 4 * time.Second
+
+const notificationWriteChunk = 500
+
+func (w *notificationWriter) write(db *sqlx.DB, windowID string, startsAt time.Time, userIDs []string) {
+	w.mu.Lock()
+	ctx := w.ctx
+	w.wg.Add(1)
+	w.mu.Unlock()
+	go func() {
+		defer w.wg.Done()
+		select {
+		case <-time.After(notificationWriteDelay):
+		case <-ctx.Done():
+			return
+		}
+		sorted := slices.Clone(userIDs)
+		slices.Sort(sorted)
+		for start := 0; start < len(sorted) && ctx.Err() == nil; start += notificationWriteChunk {
+			chunk := sorted[start:min(start+notificationWriteChunk, len(sorted))]
+			ids := make([]string, len(chunk))
+			for i, userID := range chunk {
+				ids[i] = notificationID(windowID, startsAt, userID)
+			}
+			// One write per window and time-ordered IDs: every index of the
+			// table is appended to, not probed at random (see the schema).
+			if _, err := db.ExecContext(ctx, `INSERT INTO notifications (id, user_id, posting_window_id, created_at)
+          SELECT n.id, n.user_id, $3, $4 FROM unnest($1::text[], $2::text[]) AS n(id, user_id)`, ids, chunk, windowID, startsAt); err != nil {
+				if ctx.Err() == nil {
+					slog.Error("notification rows", "window", windowID, "error", err)
+				}
+				return
+			}
+			select {
+			case <-time.After(50 * time.Millisecond):
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+}
+
+// discard stops pending writes and waits for them, before a reset deletes
+// the windows they belong to.
+func (w *notificationWriter) discard() {
+	w.mu.Lock()
+	w.cancel()
+	w.ctx, w.cancel = context.WithCancel(context.Background())
+	w.mu.Unlock()
+	w.wg.Wait()
+}
+
+// drain waits for pending writes to finish.
+func (w *notificationWriter) drain() {
+	w.wg.Wait()
 }
 
 func openPostingWindowHandler(h *HandlerContext) echo.HandlerFunc {
@@ -38,18 +125,17 @@ func openPostingWindowHandler(h *HandlerContext) echo.HandlerFunc {
 			seconds = *input.OnTimeSeconds
 		}
 		ctx := c.Request().Context()
-		tx, err := h.DB.BeginTxx(ctx, nil)
+		began := time.Now()
+		tx, err := h.adminDB().BeginTxx(ctx, nil)
 		if err != nil {
 			return err
 		}
 		defer tx.Rollback()
-		// SHARE ROW EXCLUSIVE serializes window openings and blocks changes to
-		// users, so the notified set is consistent, while posts and reactions (row
-		// locks FOR NO KEY UPDATE) continue: the notifications' foreign key checks
-		// do not conflict with them.
-		if _, err := tx.ExecContext(ctx, `LOCK TABLE users IN SHARE ROW EXCLUSIVE MODE`); err != nil {
-			return err
-		}
+		// Openings of one region are serialized by the unique index on the open
+		// window (posting_windows_one_active_region) and by the update of the
+		// previous window; posts take FOR SHARE on the open window, so this
+		// update waits for in-flight posts of the closing window and new posts
+		// see the new one.
 		var conflict bool
 		if err := tx.GetContext(ctx, &conflict, `SELECT EXISTS(SELECT 1 FROM posting_windows WHERE region = $1 AND local_date >= $2)`, region, localDate); err != nil {
 			return err
@@ -69,12 +155,16 @@ func openPostingWindowHandler(h *HandlerContext) echo.HandlerFunc {
    INSERT INTO posting_windows (id, region, local_date, starts_at, on_time_deadline)
    VALUES ($1, $2, $3, $4, $5)
   `, windowID, region, localDate, startsAt, startsAt.Add(time.Duration(seconds)*time.Second)); err != nil {
+			var pgErr *pgconn.PgError
+			if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+				// A concurrent opening of the region won the unique index.
+				return NewAPIError(http.StatusConflict, "posting_window_conflict")
+			}
 			return err
 		}
-		if _, err := tx.ExecContext(ctx, `
-   INSERT INTO notifications (id, user_id, posting_window_id, created_at)
-   SELECT gen_random_uuid()::text, id, $2, $3 FROM users WHERE region = $1 AND status = 'active'
-  `, region, windowID, startsAt); err != nil {
+		// The notified set is the active users of the region in this snapshot.
+		var notified []string
+		if err := tx.SelectContext(ctx, &notified, `SELECT id FROM users WHERE region = $1 AND status = 'active'`, region); err != nil {
 			return err
 		}
 		window, err := getPostingWindow(ctx, tx, windowID)
@@ -88,8 +178,13 @@ func openPostingWindowHandler(h *HandlerContext) echo.HandlerFunc {
 		if err := tx.Commit(); err != nil {
 			return err
 		}
+		committed := time.Now()
+		notificationWrites.write(h.DB, windowID, startsAt, notified)
 		broadcast(ctx, stateEvent{Version: version, Kind: "window", Window: &hotWindow{
-			ID: window.ID, Region: window.Region, LocalDate: window.LocalDate, OnTimeDeadline: window.OnTimeDeadline}})
+			ID: window.ID, Region: window.Region, LocalDate: window.LocalDate, StartsAt: window.StartsAt,
+			OnTimeDeadline: window.OnTimeDeadline, Notified: notified}})
+		slog.Info("posting window opened", "region", region, "notified", len(notified),
+			"db_ms", committed.Sub(began).Milliseconds(), "broadcast_ms", time.Since(committed).Milliseconds())
 		return c.JSON(http.StatusCreated, openPostingWindowResponse{
 			ID: window.ID, Region: window.Region, LocalDate: window.LocalDate.Format(time.DateOnly),
 			StartsAt: window.StartsAt, OnTimeDeadline: window.OnTimeDeadline,

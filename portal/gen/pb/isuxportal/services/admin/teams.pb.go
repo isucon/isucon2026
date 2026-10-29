@@ -324,17 +324,18 @@ func (*UpdateTeamResponse) Descriptor() ([]byte, []int) {
 }
 
 type ListTeamsResponse_TeamListItem struct {
-	state              protoimpl.MessageState `protogen:"open.v1"`
-	TeamId             int64                  `protobuf:"varint,1,opt,name=team_id,json=teamId,proto3" json:"team_id,omitempty"`
-	Name               string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
-	MemberNames        []string               `protobuf:"bytes,3,rep,name=member_names,json=memberNames,proto3" json:"member_names,omitempty"`
-	FinalParticipation bool                   `protobuf:"varint,4,opt,name=final_participation,json=finalParticipation,proto3" json:"final_participation,omitempty"`
-	IsStudent          bool                   `protobuf:"varint,5,opt,name=is_student,json=isStudent,proto3" json:"is_student,omitempty"`
-	Withdrawn          bool                   `protobuf:"varint,6,opt,name=withdrawn,proto3" json:"withdrawn,omitempty"`
-	Disqualified       bool                   `protobuf:"varint,7,opt,name=disqualified,proto3" json:"disqualified,omitempty"`
-	Hidden             bool                   `protobuf:"varint,8,opt,name=hidden,proto3" json:"hidden,omitempty"`
-	unknownFields      protoimpl.UnknownFields
-	sizeCache          protoimpl.SizeCache
+	state                 protoimpl.MessageState `protogen:"open.v1"`
+	TeamId                int64                  `protobuf:"varint,1,opt,name=team_id,json=teamId,proto3" json:"team_id,omitempty"`
+	Name                  string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	MemberNames           []string               `protobuf:"bytes,3,rep,name=member_names,json=memberNames,proto3" json:"member_names,omitempty"`
+	FinalParticipation    bool                   `protobuf:"varint,4,opt,name=final_participation,json=finalParticipation,proto3" json:"final_participation,omitempty"`
+	IsStudent             bool                   `protobuf:"varint,5,opt,name=is_student,json=isStudent,proto3" json:"is_student,omitempty"`
+	Withdrawn             bool                   `protobuf:"varint,6,opt,name=withdrawn,proto3" json:"withdrawn,omitempty"`
+	Disqualified          bool                   `protobuf:"varint,7,opt,name=disqualified,proto3" json:"disqualified,omitempty"`
+	Hidden                bool                   `protobuf:"varint,8,opt,name=hidden,proto3" json:"hidden,omitempty"`
+	OnsiteSupportExcluded bool                   `protobuf:"varint,9,opt,name=onsite_support_excluded,json=onsiteSupportExcluded,proto3" json:"onsite_support_excluded,omitempty"`
+	unknownFields         protoimpl.UnknownFields
+	sizeCache             protoimpl.SizeCache
 }
 
 func (x *ListTeamsResponse_TeamListItem) Reset() {
@@ -423,14 +424,21 @@ func (x *ListTeamsResponse_TeamListItem) GetHidden() bool {
 	return false
 }
 
+func (x *ListTeamsResponse_TeamListItem) GetOnsiteSupportExcluded() bool {
+	if x != nil {
+		return x.OnsiteSupportExcluded
+	}
+	return false
+}
+
 var File_isuxportal_services_admin_teams_proto protoreflect.FileDescriptor
 
 const file_isuxportal_services_admin_teams_proto_rawDesc = "" +
 	"\n" +
 	"%isuxportal/services/admin/teams.proto\x12\x1fisuxportal.proto.services.admin\x1a\x1fisuxportal/resources/team.proto\x1a%isuxportal/resources/contestant.proto\"\x10\n" +
-	"\x0eListTeamsQuery\"\xf5\x02\n" +
+	"\x0eListTeamsQuery\"\xad\x03\n" +
 	"\x11ListTeamsResponse\x12U\n" +
-	"\x05teams\x18\x01 \x03(\v2?.isuxportal.proto.services.admin.ListTeamsResponse.TeamListItemR\x05teams\x1a\x88\x02\n" +
+	"\x05teams\x18\x01 \x03(\v2?.isuxportal.proto.services.admin.ListTeamsResponse.TeamListItemR\x05teams\x1a\xc0\x02\n" +
 	"\fTeamListItem\x12\x17\n" +
 	"\ateam_id\x18\x01 \x01(\x03R\x06teamId\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12!\n" +
@@ -440,7 +448,8 @@ const file_isuxportal_services_admin_teams_proto_rawDesc = "" +
 	"is_student\x18\x05 \x01(\bR\tisStudent\x12\x1c\n" +
 	"\twithdrawn\x18\x06 \x01(\bR\twithdrawn\x12\"\n" +
 	"\fdisqualified\x18\a \x01(\bR\fdisqualified\x12\x16\n" +
-	"\x06hidden\x18\b \x01(\bR\x06hidden\"\x1e\n" +
+	"\x06hidden\x18\b \x01(\bR\x06hidden\x126\n" +
+	"\x17onsite_support_excluded\x18\t \x01(\bR\x15onsiteSupportExcluded\"\x1e\n" +
 	"\fGetTeamQuery\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x03R\x02id\"G\n" +
 	"\x0fGetTeamResponse\x124\n" +

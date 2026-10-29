@@ -7,8 +7,11 @@ import (
 	"fmt"
 	"image/jpeg"
 	"io"
+	"maps"
 	"net/http"
+	"net/url"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -21,6 +24,7 @@ import (
 
 type fakeUser struct {
 	id, username, secret, region, bio string
+	displayName                       string
 	certified, deleted                bool
 	profileImage                      string
 }
@@ -55,7 +59,12 @@ type fakeRequest struct {
 // fakeApp はアプリの閲覧可否とフィードの規則を、bench のモデルとは別に実装した偽のアプリ。
 // トークンはユーザー ID。フィールドで障害や不具合を注入する。
 type fakeApp struct {
-	t *testing.T
+	// flakyMoves は、所属リージョンの変更を反映したうえで 500 を返す回数（応答の届かない変更を再現する）。
+	flakyMoves int
+	// moveReplies は、所属リージョンの変更に順に返す応答。500 は反映したうえで 500、409 は
+	// 反映せずに 409 を返す。空になったら flakyMoves に従う。
+	moveReplies []int
+	t           *testing.T
 
 	mu        sync.Mutex
 	users     map[string]*fakeUser
@@ -142,8 +151,8 @@ func (a *fakeApp) canView(viewer *fakeUser, p *fakePost) bool {
 	if viewer.id == author.id {
 		return true
 	}
-	current, ok := a.windows[author.region]
-	if !ok || current.id != p.PostingWindowID {
+	// 投稿の投稿期間が終わっていなければ今の投稿（投稿者がリージョンを移っても変わらない）。
+	if !a.windowOpen(p) {
 		return false
 	}
 	own, ok := a.windows[viewer.region]
@@ -160,9 +169,9 @@ func (a *fakeApp) canView(viewer *fakeUser, p *fakePost) bool {
 	}
 }
 
+// windowOpen は投稿の投稿期間がまだ開いているか（投稿者が今いるリージョンとは関係ない）。
 func (a *fakeApp) windowOpen(p *fakePost) bool {
-	current, ok := a.windows[a.users[p.Author.ID].region]
-	return ok && current.id == p.PostingWindowID
+	return slices.ContainsFunc(slices.Collect(maps.Values(a.windows)), func(w fakeWindow) bool { return w.id == p.PostingWindowID })
 }
 
 func (a *fakeApp) canComment(viewer *fakeUser, p *fakePost) bool {
@@ -202,6 +211,92 @@ func (a *fakeApp) inFeed(viewer *fakeUser, p *fakePost, feed string) bool {
 	default:
 		return false
 	}
+}
+
+// mutualFriends は x と y の共通の友達の数。
+func (a *fakeApp) mutualFriends(x, y string) int64 {
+	n := int64(0)
+	for id := range a.users {
+		if id != x && id != y && a.friends[key(x, id)] && a.friends[key(id, y)] {
+			n++
+		}
+	}
+	return n
+}
+
+// score はおすすめ順の点数（10 × 友達の反応 + 3 × 共通の友達 + 3 歩の道の数（30 まで））。
+func (a *fakeApp) score(viewer string, p *fakePost) int64 {
+	author := p.Author.ID
+	connections := int64(0)
+	for id := range a.users {
+		if a.friends[key(author, id)] {
+			connections += a.mutualFriends(viewer, id)
+		}
+	}
+	score := 3*a.mutualFriends(viewer, author) + min(connections, 30)
+	engaged := map[string]bool{}
+	for _, reaction := range a.reactions {
+		if reaction.postID == p.ID && !reaction.replaced && !reaction.gone {
+			engaged[reaction.reactorID] = true
+		}
+	}
+	for _, c := range a.comments {
+		if c.postID == p.ID && !c.deleted {
+			engaged[c.Author.ID] = true
+		}
+	}
+	for id := range engaged {
+		if a.friends[key(viewer, id)] && a.active(id) {
+			score += 10
+		}
+	}
+	return score
+}
+
+// recommended は友達の友達フィードの 1 ページ（おすすめ順）。
+func (a *fakeApp) recommended(viewer *fakeUser, query url.Values, size int) map[string]any {
+	type item struct {
+		client.Post
+		Score int64 `json:"score"`
+	}
+	items := []item{}
+	for _, p := range a.posts {
+		if a.inFeed(viewer, p, "friends-of-friends") {
+			items = append(items, item{Post: p.Post, Score: a.score(viewer.id, p)})
+		}
+	}
+	less := func(x, y item) bool {
+		if x.Score != y.Score {
+			return x.Score < y.Score
+		}
+		if !x.PostedAt.Equal(y.PostedAt) {
+			return x.PostedAt.Before(y.PostedAt)
+		}
+		return x.ID < y.ID
+	}
+	slices.SortFunc(items, func(x, y item) int {
+		switch {
+		case less(y, x):
+			return -1
+		case less(x, y):
+			return 1
+		}
+		return 0
+	})
+	if query.Get("beforeScore") != "" {
+		score, _ := strconv.ParseInt(query.Get("beforeScore"), 10, 64)
+		postedAt, _ := time.Parse(time.RFC3339Nano, query.Get("beforePostedAt"))
+		cursor := item{Post: client.Post{ID: query.Get("beforeId"), PostedAt: postedAt}, Score: score}
+		items = slices.DeleteFunc(items, func(x item) bool { return !less(x, cursor) })
+	}
+	hasMore := len(items) > size
+	if hasMore {
+		items = items[:size]
+	}
+	for _, extra := range a.extraFeed {
+		items = append(items, item{Post: extra})
+	}
+	return map[string]any{"items": items, "hasMore": hasMore}
 }
 
 func (a *fakeApp) signed(owner *fakeUser, imageID string) string {
@@ -293,7 +388,8 @@ func (a *fakeApp) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			fail(http.StatusUnauthorized, "invalid_session")
 			return
 		}
-		if viewer.region != region {
+		// 所属リージョンの変更（PATCH /api/me）は、アプリと同じくどのリージョンからでも受け付ける。
+		if viewer.region != region && !(path[0] == "me" && len(path) == 1 && r.Method == http.MethodPatch) {
 			// アプリは地域外のサーバーからのアクセスを 403 で拒否する。bench は事前検証でだけ
 			// わざと送るので、負荷走行のテストでは来ないはず。
 			if !a.lax && path[0] == "me" && len(path) == 1 {
@@ -301,7 +397,7 @@ func (a *fakeApp) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			if !a.lax {
-				a.t.Errorf("user %s sent a country of %s, want %s", token, region, viewer.region)
+				a.t.Errorf("user %s sent a country of %s, want %s (%s %s)", token, region, viewer.region, r.Method, r.URL.Path)
 			}
 		}
 	}
@@ -351,6 +447,28 @@ func (a *fakeApp) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewDecoder(r.Body).Decode(&input)
 		if bio, ok := input["bio"]; ok {
 			viewer.bio = bio
+		}
+		if name, ok := input["displayName"]; ok {
+			viewer.displayName = name
+		}
+		if region, ok := input["region"]; ok {
+			if len(a.moveReplies) > 0 {
+				reply := a.moveReplies[0]
+				a.moveReplies = a.moveReplies[1:]
+				if reply == http.StatusConflict {
+					fail(http.StatusConflict, "rejected")
+					return
+				}
+				viewer.region = region
+				fail(reply, "flaky")
+				return
+			}
+			viewer.region = region
+			if a.flakyMoves > 0 {
+				a.flakyMoves--
+				fail(http.StatusInternalServerError, "flaky")
+				return
+			}
 		}
 		respond(http.StatusOK, a.profile(viewer))
 	case path[0] == "me" && path[1] == "profile-image" && method == http.MethodPut:
@@ -447,6 +565,21 @@ func (a *fakeApp) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case path[0] == "posting-window":
 		respond(http.StatusOK, map[string]any{"window": map[string]string{"id": a.windows[region].id, "region": region, "localDate": a.windows[region].date}, "canPost": true, "hasPosted": a.postedOn(viewer, a.windows[region].date)})
 	case path[0] == "posts" && len(path) == 1:
+		// アプリと同じく、同じ日付に有効な投稿があるか、2 回削除していれば受け付けない。
+		date, active, deleted := a.windows[region].date, 0, 0
+		for _, p := range a.posts {
+			if p.Author.ID == viewer.id && p.date == date {
+				if p.deleted {
+					deleted++
+				} else {
+					active++
+				}
+			}
+		}
+		if active > 0 || deleted >= 2 {
+			fail(http.StatusConflict, "post_slot_unavailable")
+			return
+		}
 		id := a.id()
 		imageID := "img-" + id
 		a.images[imageID] = image
@@ -455,6 +588,7 @@ func (a *fakeApp) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		p.Post = client.Post{
 			ID: id, Author: client.UserSummary{ID: viewer.id, Username: viewer.username}, PostingWindowID: a.windows[region].id,
 			ImageURL: a.signed(viewer, imageID), Caption: r.FormValue("caption"), Visibility: r.FormValue("visibility"), PostedAt: time.Now().Truncate(time.Microsecond),
+			Location: fakeLocation(r),
 		}
 		a.posts = append(a.posts, p)
 		respond(http.StatusCreated, p.Post)
@@ -539,6 +673,8 @@ func (a *fakeApp) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		respond(http.StatusOK, map[string]any{"items": items, "hasMore": false})
 	case path[0] == "feeds" && a.dropFeeds && path[1] != "friends":
 		respond(http.StatusOK, map[string]any{"items": []client.Post{}, "hasMore": false})
+	case path[0] == "feeds" && path[1] == "friends-of-friends":
+		respond(http.StatusOK, a.recommended(viewer, r.URL.Query(), cmp.Or(a.pageSize, 50)))
 	case path[0] == "feeds":
 		size := cmp.Or(a.pageSize, 50)
 		var before time.Time
@@ -618,7 +754,7 @@ func (a *fakeApp) post(id string) *fakePost {
 
 func (a *fakeApp) profile(u *fakeUser) map[string]any {
 	s := a.summary(u)
-	return map[string]any{"id": u.id, "username": u.username, "region": u.region, "bio": u.bio, "profileImageUrl": s.ProfileImageURL}
+	return map[string]any{"id": u.id, "username": u.username, "displayName": u.displayName, "region": u.region, "bio": u.bio, "profileImageUrl": s.ProfileImageURL}
 }
 
 // serveNotifications は購読した時点より後に開いた投稿期間を 1 件だけ通知する。
@@ -747,4 +883,19 @@ func (a *fakeApp) serveInteraction(respond func(int, any), fail func(int, string
 		}
 		respond(http.StatusOK, map[string]any{"items": items, "hasMore": false})
 	}
+}
+
+// fakeLocation は投稿の位置情報のフォームを、アプリと同じ形の応答に直す。
+func fakeLocation(r *http.Request) client.Location {
+	location := client.Location{Kind: r.FormValue("location_kind")}
+	if v, err := strconv.ParseFloat(r.FormValue("latitude"), 64); err == nil {
+		location.Latitude = &v
+	}
+	if v, err := strconv.ParseFloat(r.FormValue("longitude"), 64); err == nil {
+		location.Longitude = &v
+	}
+	if v := r.FormValue("locality"); v != "" {
+		location.Locality = &v
+	}
+	return location
 }

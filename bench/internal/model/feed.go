@@ -85,10 +85,13 @@ func (m *Model) checkFeedLocked(viewerID, feed string, before *client.FeedPost, 
 		result.error("フィード %s: 閲覧者 %s を bench が知りません", feed, viewerID)
 		return result, nil
 	}
+	if feed == "friends-of-friends" {
+		return m.checkRecommendedLocked(viewer, before, page, r, thorough)
+	}
 	// 1 ページは FeedPageSize 件。続きがあるのに足りないページを返すと、それより古い投稿の
 	// 欠落を確かめられなくなる（最新の 1 件だけ返して軽くすることもできてしまう）。
-	if page.HasMore && len(page.Items) < m.PageSize {
-		result.error("フィード %s: 続きがあるのに投稿が %d 件です（1 ページ %d 件）", feed, len(page.Items), m.PageSize)
+	if (page.HasMore && len(page.Items) < m.PageSize) || len(page.Items) > m.PageSize {
+		result.error("フィード %s: 投稿が %d 件です（1 ページ %d 件、続きがあるか %t）", feed, len(page.Items), m.PageSize, page.HasMore)
 		return result, nil
 	}
 

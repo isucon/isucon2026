@@ -10,24 +10,25 @@ import (
 )
 
 type Team struct {
-	ID                 int64
-	Name               string
-	LeaderID           sql.NullInt64
-	IsHidden           bool
-	FinalParticipation bool
-	EmailAddress       string
-	InviteToken        string
-	Withdrawn          bool
-	Disqualified       bool
-	Student            bool
-	AvailabilityZone   sql.NullString
+	ID                    int64
+	Name                  string
+	LeaderID              sql.NullInt64
+	IsHidden              bool
+	FinalParticipation    bool
+	EmailAddress          string
+	InviteToken           string
+	Withdrawn             bool
+	Disqualified          bool
+	OnsiteSupportExcluded bool
+	Student               bool
+	AvailabilityZone      sql.NullString
 }
 
-const teamColumns = `teams.id, teams.name, teams.leader_id, teams.is_hidden, teams.final_participation, teams.email_address, teams.invite_token, teams.withdrawn, teams.disqualified, teams.student, teams.availability_zone`
+const teamColumns = `teams.id, teams.name, teams.leader_id, teams.is_hidden, teams.final_participation, teams.email_address, teams.invite_token, teams.withdrawn, teams.disqualified, teams.onsite_support_excluded, teams.student, teams.availability_zone`
 
 func scanTeam(row interface{ Scan(...any) error }) (*Team, error) {
 	t := &Team{}
-	err := row.Scan(&t.ID, &t.Name, &t.LeaderID, &t.IsHidden, &t.FinalParticipation, &t.EmailAddress, &t.InviteToken, &t.Withdrawn, &t.Disqualified, &t.Student, &t.AvailabilityZone)
+	err := row.Scan(&t.ID, &t.Name, &t.LeaderID, &t.IsHidden, &t.FinalParticipation, &t.EmailAddress, &t.InviteToken, &t.Withdrawn, &t.Disqualified, &t.OnsiteSupportExcluded, &t.Student, &t.AvailabilityZone)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -73,15 +74,16 @@ func ActiveVisibleTeamCount(ctx context.Context, db DBTX) (int, error) {
 // ToPB は Team#to_pb 相当。members / leader は呼び出し側で読み込んで渡す。
 func (t *Team) ToPB(detail bool, members []*Contestant, memberDetail bool) *pbresources.Team {
 	pb := &pbresources.Team{
-		Id:                 t.ID,
-		Name:               t.Name,
-		LeaderId:           t.LeaderID.Int64,
-		MemberIds:          []int64{},
-		FinalParticipation: t.FinalParticipation,
-		Hidden:             t.IsHidden,
-		Withdrawn:          t.Withdrawn,
-		Disqualified:       t.Disqualified,
-		Student:            &pbresources.Team_StudentStatus{Status: t.Student},
+		Id:                    t.ID,
+		Name:                  t.Name,
+		LeaderId:              t.LeaderID.Int64,
+		MemberIds:             []int64{},
+		FinalParticipation:    t.FinalParticipation,
+		Hidden:                t.IsHidden,
+		Withdrawn:             t.Withdrawn,
+		Disqualified:          t.Disqualified,
+		OnsiteSupportExcluded: t.OnsiteSupportExcluded,
+		Student:               &pbresources.Team_StudentStatus{Status: t.Student},
 	}
 	if detail {
 		pb.Detail = &pbresources.Team_TeamDetail{

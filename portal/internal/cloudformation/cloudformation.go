@@ -7,25 +7,33 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"os"
+
 	"strings"
 	"text/template"
 	"time"
+
+	"golang.org/x/crypto/ssh"
 
 	"github.com/isucon/isucon2026/portal/internal/config"
 	"github.com/isucon/isucon2026/portal/internal/token"
 )
 
-//go:embed templates/*.yaml.tmpl
+//go:embed templates/*.yaml.tmpl files/*.py
 var templatesFS embed.FS
 
 var templates = template.Must(template.ParseFS(templatesFS, "templates/*.yaml.tmpl"))
 
 type params struct {
+	TeamID            int64
 	ZoneID            string
 	Token             string
 	PortalCredentials string
 	PortalHost        string
 	AMIID             string
+	RouterAMIID       string
+	AdminSSHPublicKey string
 }
 
 type envCheckInstance struct {
@@ -35,13 +43,14 @@ type envCheckInstance struct {
 }
 
 // EnvCheckInstances matches the production defaults in provisioning/aws/config.ts:
-// three app servers, one database server and one router.
+// App1 (asia) and the database are c5.large, the overseas apps c7i.large and the
+// router c6in.large.
 func (params) EnvCheckInstances() []envCheckInstance {
 	return []envCheckInstance{
-		{"EnvcheckInstance001", "001", "c7i.large"},
+		{"EnvcheckInstance001", "001", "c5.large"},
 		{"EnvcheckInstance002", "002", "c7i.large"},
 		{"EnvcheckInstance003", "003", "c7i.large"},
-		{"EnvcheckInstance004", "004", "c6in.large"},
+		{"EnvcheckInstance004", "004", "c5.large"},
 		{"EnvcheckInstance005", "005", "c6in.large"},
 	}
 }
@@ -65,6 +74,15 @@ func render(cfg *config.Config, name string, teamID int64, zoneID, amiID string,
 	if zoneID == "" {
 		return "", errors.New("Availability Zone should be set to team")
 	}
+	key, err := os.ReadFile(cfg.IsuconAdminSSHKeyPath)
+	if err != nil {
+		return "", fmt.Errorf("administration SSH key: %w", err)
+	}
+	signer, err := ssh.ParsePrivateKey(key)
+	if err != nil {
+		return "", fmt.Errorf("administration SSH key: %w", err)
+	}
+	publicKey := strings.TrimSpace(string(ssh.MarshalAuthorizedKey(signer.PublicKey())))
 	tok, err := token.CreateChecker(cfg.CheckerSecret, token.CheckerPayload{TeamID: teamID, Expiry: expiry})
 	if err != nil {
 		return "", err
@@ -79,11 +97,14 @@ func render(cfg *config.Config, name string, teamID int64, zoneID, amiID string,
 	}
 	var sb strings.Builder
 	err = templates.ExecuteTemplate(&sb, name, params{
+		TeamID:            teamID,
 		ZoneID:            zoneID,
 		Token:             tok,
 		PortalCredentials: base64.StdEncoding.EncodeToString(credsJSON),
 		PortalHost:        cfg.PublicURLHost,
 		AMIID:             amiID,
+		RouterAMIID:       cfg.RouterAMIID,
+		AdminSSHPublicKey: publicKey,
 	})
 	return sb.String(), err
 }

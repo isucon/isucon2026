@@ -78,8 +78,10 @@ func TestWriteRoundtripCounts(t *testing.T) {
 	}
 	token := login.Token
 	request("PATCH", "/me", token, `{"displayName":"changed","bio":"bio"}`, "application/json", 200, 1)
-	request("PUT", "/profile", token, string(testJPEG(t)), "image/jpeg", 204, 1)
-	request("DELETE", "/profile", token, "", "", 204, 1)
+	// Profile image changes read the user again (in a short transaction with a
+	// fresh version) for the hot state event: 1 write + 4 for the refresh.
+	request("PUT", "/profile", token, string(testJPEG(t)), "image/jpeg", 204, 5)
+	request("DELETE", "/profile", token, "", "", 204, 5)
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
 	for k, v := range map[string]string{"visibility": "public", "location_kind": "none", "caption": "post", "reactionType": "like"} {

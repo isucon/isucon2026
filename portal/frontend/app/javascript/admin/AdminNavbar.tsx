@@ -25,7 +25,7 @@ export class AdminNavbar extends React.Component<Props, State> {
       <nav className="navbar is-light" role="navigation" aria-label="main navigation">
         <div className="container">
           <div className="navbar-brand">
-            <Link className="navbar-item" to="/contestant">
+            <Link className="navbar-item" to="/admin">
               ISUCON2026 Admin
             </Link>
           </div>

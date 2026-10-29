@@ -244,7 +244,7 @@ func (c *Checker) SpotCheck(ctx context.Context, a *agent.Agent, n int) error {
 		if err != nil {
 			return err
 		}
-		if !bytes.Equal(data, c.world.ImageBytes(p.Image)) {
+		if !client.SameImage(data, c.world.ImageBytes(p.Image)) {
 			return fmt.Errorf("投稿 %s の画像 %s が初期データと違います", p.ID, p.Image.ID)
 		}
 	}
@@ -319,7 +319,7 @@ func (u *userCheck) fetchImages(ctx context.Context) error {
 		wg.Go(func() {
 			defer func() { <-slots }()
 			data, err := u.a.API.Image(ctx, fetch.url)
-			if err == nil && !u.skipContents && !bytes.Equal(data, u.world.ImageBytes(fetch.image)) {
+			if err == nil && !u.skipContents && !client.SameImage(data, u.world.ImageBytes(fetch.image)) {
 				err = fmt.Errorf("画像 %s の中身が初期データと違います", fetch.image.ID)
 			}
 			if err != nil {
@@ -646,7 +646,7 @@ func (u *userCheck) exportPosts(ctx context.Context, images int, isNew func(id s
 		if err != nil {
 			return fmt.Errorf("エクスポートの %s を読めません: %w", p.ImagePath, err)
 		}
-		if !bytes.Equal(image, c.world.ImageBytes(want[i].Image)) {
+		if !client.SameImage(image, c.world.ImageBytes(want[i].Image)) {
 			return fmt.Errorf("エクスポートの %s が投稿 %s の画像と違います", p.ImagePath, want[i].ID)
 		}
 	}

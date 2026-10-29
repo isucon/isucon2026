@@ -49,6 +49,16 @@ export declare type Contest = Message<"isuxportal.proto.resources.Contest"> & {
    * @generated from field: bool frozen = 7;
    */
   frozen: boolean;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp registration_invitation_closes_at = 8;
+   */
+  registrationInvitationClosesAt?: Timestamp;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp registration_update_closes_at = 9;
+   */
+  registrationUpdateClosesAt?: Timestamp;
 };
 
 /**

@@ -4,9 +4,11 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 )
 
 // TestCancelledRunCannotPass は、中断された走行が pass にならず、途中経過は報告されることを
@@ -27,7 +29,14 @@ func TestCancelledRunCannotPass(t *testing.T) {
 
 // TestBrokenAppCannotPass は、アプリが 500 しか返さなければ fail になることを確かめる。
 func TestBrokenAppCannotPass(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { http.Error(w, "broken", 500) }))
+	closed := make(chan struct{}, 1)
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { http.Error(w, "broken", 500) }))
+	server.Config.ConnState = func(_ net.Conn, state http.ConnState) {
+		if state == http.StateClosed {
+			closed <- struct{}{}
+		}
+	}
+	server.Start()
 	defer server.Close()
 	r, err := NewRunner(Config{Target: server.URL, Users: 1, Dataset: tinyDataset, Logger: slog.New(slog.NewTextHandler(io.Discard, nil))})
 	if err != nil {
@@ -35,5 +44,11 @@ func TestBrokenAppCannotPass(t *testing.T) {
 	}
 	if result := r.Run(context.Background()); result.Pass || result.Reason == "" {
 		t.Fatalf("result=%+v", result)
+	}
+	// 負荷ユーザーを作る前に失敗しても、初期化に使った管理者の接続を残さない。
+	select {
+	case <-closed:
+	case <-time.After(time.Second):
+		t.Fatal("initialize connection was not closed after the run")
 	}
 }

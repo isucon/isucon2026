@@ -15,9 +15,6 @@ import (
 	"github.com/isucon/isucon2026/dataset"
 )
 
-// friendRequestsPerNewcomer は友達つながりで来たユーザーが送る友達申請の数。
-const friendRequestsPerNewcomer = 3
-
 // social は友達まわりの操作を 1 つ行う。検索して申請する、届いた申請を断る、送った申請を
 // 取り下げる、関係の一覧を見る、まれに友達を解除する。
 func (r *Runner) social(ctx context.Context, u *user, s *session) {
@@ -41,27 +38,72 @@ func (r *Runner) social(ctx context.Context, u *user, s *session) {
 	}
 }
 
+// reachOutOnRegister と reachOutPerDay は、登録したときと毎日の投稿のあとで送る友達申請の
+// 数の上限。顔の広い人も一度に送りすぎず、最初の投稿に間に合うようにする。
+// discoveriesPerDay は、フィードで見た人に送る友達申請の 1 日の上限。
+const (
+	reachOutOnRegister = 5
+	reachOutPerDay     = 3
+	discoveriesPerDay  = 2
+)
+
+// reachOut は、登録したあとでまだ送っていない友達申請を n 件まで送る。
+func (r *Runner) reachOut(ctx context.Context, u *user, n int) {
+	n = min(n, u.circleLeft)
+	if n <= 0 || u.stopped.Load() {
+		return
+	}
+	u.circleLeft -= n
+	for _, target := range r.chooseFriends(u, n) {
+		r.requestFriend(ctx, u, target, u.rng.IntN(2) == 0)
+	}
+}
+
+// discover は、フィードで見た投稿の投稿者に友達申請を送る（知り合いかもしれない人）。
+// 投稿者が bench の知っている、止まっていないユーザーで、まだ友達でもブロックの関係でも
+// ないときだけ送る。
+func (r *Runner) discover(ctx context.Context, u *user, s *session, authorID string) {
+	r.mu.Lock()
+	target := r.byID[authorID]
+	r.mu.Unlock()
+	if target == nil || target == u || target.stopped.Load() {
+		return
+	}
+	now := r.model.Now()
+	if r.model.Friend(u.ID, target.ID, now) != model.False || r.model.Blocked(u.ID, target.ID, now) != model.False {
+		return
+	}
+	s.discovered++
+	r.mu.Lock()
+	r.discoveries[u.Region]++
+	r.mu.Unlock()
+	r.requestFriend(ctx, u, target, false)
+}
+
 // chooseFriends は u が友達申請を送る相手を n 人まで選ぶ。相手は友達の多い人ほど選ばれ
 // やすく（優先的選択）、asia のユーザーは 8 割を asia から、海外のユーザーは 8 割を asia
 // から選ぶ（サービスはアジアで広まっていて、海外の人はアジアの友達に誘われて来る）。
 func (r *Runner) chooseFriends(u *user, n int) []*user {
 	now := r.model.Now()
 	var home, asia, others []*user
-	for _, c := range r.usersSnapshot() {
-		if c.ID == u.ID || c.stopped.Load() || r.model.Friend(u.ID, c.ID, now) != model.False || r.model.Blocked(u.ID, c.ID, now) != model.False {
-			continue
-		}
-		switch {
-		case c.Region == u.Region:
-			home = append(home, c)
-		case c.Region == geo.Asia:
-			asia = append(asia, c)
-		default:
-			others = append(others, c)
+	byRegion := r.usersByRegion()
+	for _, region := range geo.Regions {
+		for _, c := range byRegion[region] {
+			if c.ID == u.ID || c.stopped.Load() || r.model.Friend(u.ID, c.ID, now) != model.False || r.model.Blocked(u.ID, c.ID, now) != model.False {
+				continue
+			}
+			switch {
+			case region == u.Region:
+				home = append(home, c)
+			case region == geo.Asia:
+				asia = append(asia, c)
+			default:
+				others = append(others, c)
+			}
 		}
 	}
 	var targets []*user
-	for attempts := 0; len(targets) < n && attempts < 20; attempts++ {
+	for attempts := 0; len(targets) < n && attempts < 4*n+10; attempts++ {
 		pool := home
 		x := u.rng.Float64()
 		switch {
@@ -254,9 +296,12 @@ func (r *Runner) unfriend(ctx context.Context, u *user) {
 func (r *Runner) groom(ctx context.Context, u *user, s *session) {
 	switch u.rng.IntN(6) {
 	case 0:
-		if u.registered {
+		switch {
+		case u.registered && u.rng.Float64() < 0.3:
+			r.rename(ctx, u)
+		case u.registered:
 			r.updateBio(ctx, u)
-		} else {
+		default:
 			r.toggleFollow(ctx, u)
 		}
 	case 1:
@@ -277,6 +322,20 @@ func (r *Runner) groom(ctx context.Context, u *user, s *session) {
 }
 
 // updateBio は自己紹介を変える。
+// rename は表示名を変える。
+func (r *Runner) rename(ctx context.Context, u *user) {
+	name := dataset.DisplayName(u.rng)
+	profile, err := u.API.UpdateMe(ctx, u.Token, &name, nil, nil)
+	switch {
+	case err != nil:
+		r.requestError(ctx, u, "%s: 表示名を変えられません: %v", u.Username, err)
+	case profile.ID != u.ID || profile.DisplayName != name:
+		r.invalid(ctx, u, "%s: 表示名を変えた応答が違います", u.Username)
+	default:
+		r.award(u, r.dayNow(u.Region), score.TagProfileUpdate)
+	}
+}
+
 func (r *Runner) updateBio(ctx context.Context, u *user) {
 	bio := dataset.Bio(u.rng)
 	profile, err := u.API.UpdateMe(ctx, u.Token, nil, &bio, nil)
@@ -292,6 +351,7 @@ func (r *Runner) updateBio(ctx context.Context, u *user) {
 
 // changeProfileImage はプロフィール画像を変えるか消し、自分のプロフィールで確かめる。
 func (r *Runner) changeProfileImage(ctx context.Context, u *user) {
+	var image []byte
 	if u.profileImage != nil && u.rng.IntN(3) == 0 {
 		if err := u.API.DeleteProfileImage(ctx, u.Token); err != nil {
 			r.requestError(ctx, u, "%s: プロフィール画像を消せません: %v", u.Username, err)
@@ -299,7 +359,7 @@ func (r *Runner) changeProfileImage(ctx context.Context, u *user) {
 		}
 		u.profileImage = nil
 	} else {
-		image := r.photos.Profile(hashOf(r.seed, "profile", u.Username, itoa(u.rng.IntN(1<<30))))
+		image = r.photos.Profile(hashOf(r.seed, "profile", u.Username, itoa(u.rng.IntN(1<<30))))
 		if err := u.API.PutProfileImage(ctx, u.Token, image); err != nil {
 			r.requestError(ctx, u, "%s: プロフィール画像を変えられません: %v", u.Username, err)
 			return
@@ -325,7 +385,7 @@ func (r *Runner) changeProfileImage(ctx context.Context, u *user) {
 			r.requestError(ctx, u, "%s: プロフィール画像を取得できません: %v", u.Username, err)
 			return
 		}
-		if sha256.Sum256(data) != *u.profileImage {
+		if !client.SameImage(data, image) {
 			r.invalid(ctx, u, "%s: プロフィール画像が送った画像と違います", u.Username)
 			return
 		}
@@ -445,9 +505,11 @@ func (r *Runner) toggleBlock(ctx context.Context, u *user) {
 	}
 	now := r.model.Now()
 	var candidates []*user
-	for _, c := range r.usersSnapshot() {
+	// 同じリージョンの人から選ぶ。ほかのユーザーのリージョンは移動と競合しないよう、ロックの
+	// 中で取った一覧で見る。
+	for _, c := range r.usersByRegion()[u.Region] {
 		// 退会した人は選ばない（Visible は相手が有効で、どちら向きにもブロックしていないこと）。
-		if c.ID != u.ID && c.Region == u.Region && !c.certified.Load() && r.model.Friend(u.ID, c.ID, now) == model.False && r.model.Visible(u.ID, c.ID, now) == model.True {
+		if c.ID != u.ID && !c.certified.Load() && r.model.Friend(u.ID, c.ID, now) == model.False && r.model.Visible(u.ID, c.ID, now) == model.True {
 			candidates = append(candidates, c)
 		}
 	}
@@ -472,4 +534,98 @@ func (r *Runner) toggleBlock(ctx context.Context, u *user) {
 	default:
 		r.requestError(ctx, u, "%s: ブロックできません: %v", u.Username, err)
 	}
+}
+
+// FriendStats は、あるリージョンの止まっていない負荷ユーザーの友達の数（Friends）と、友達の
+// 友達のうち止まっていない負荷ユーザーの数（FoF）。友達の友達フィードの候補になりうる人の
+// 数の目安。
+type FriendStats struct {
+	Users      int     `json:"users"`
+	FriendsAvg float64 `json:"friendsAvg"`
+	FriendsP50 int     `json:"friendsP50"`
+	FriendsP90 int     `json:"friendsP90"`
+	FriendsMax int     `json:"friendsMax"`
+	FoFAvg     float64 `json:"fofAvg"`
+	FoFP90     int     `json:"fofP90"`
+	FoFMax     int     `json:"fofMax"`
+	// Discoveries はフィードで見た人に送った友達申請の数。
+	Discoveries int `json:"discoveries"`
+}
+
+// friendStats は走行の終わりの友達の数を、リージョンごとに数える。
+func (r *Runner) friendStats() map[string]FriendStats {
+	now := r.model.Now()
+	byRegion := r.usersByRegion()
+	active := map[string]bool{}
+	for _, list := range byRegion {
+		for _, u := range list {
+			if !u.stopped.Load() {
+				active[u.ID] = true
+			}
+		}
+	}
+	cache := map[string][]string{}
+	friendsOf := func(id string) []string {
+		if friends, ok := cache[id]; ok {
+			return friends
+		}
+		friends := r.model.FriendsOf(id, now)
+		cache[id] = friends
+		return friends
+	}
+	out := map[string]FriendStats{}
+	for region, list := range byRegion {
+		var friends, fofs []int
+		for _, u := range list {
+			if !active[u.ID] {
+				continue
+			}
+			direct := friendsOf(u.ID)
+			seen := map[string]bool{u.ID: true}
+			for _, f := range direct {
+				seen[f] = true
+			}
+			fof := 0
+			for _, f := range direct {
+				for _, g := range friendsOf(f) {
+					if !seen[g] {
+						seen[g] = true
+						if active[g] {
+							fof++
+						}
+					}
+				}
+			}
+			friends = append(friends, len(direct))
+			fofs = append(fofs, fof)
+		}
+		if len(friends) == 0 {
+			continue
+		}
+		slices.Sort(friends)
+		slices.Sort(fofs)
+		stats := FriendStats{
+			Users:      len(friends),
+			FriendsAvg: float64(sum(friends)) / float64(len(friends)),
+			FriendsP50: percentileOf(friends, 0.5),
+			FriendsP90: percentileOf(friends, 0.9),
+			FriendsMax: friends[len(friends)-1],
+			FoFAvg:     float64(sum(fofs)) / float64(len(fofs)),
+			FoFP90:     percentileOf(fofs, 0.9),
+			FoFMax:     fofs[len(fofs)-1],
+		}
+		r.mu.Lock()
+		stats.Discoveries = r.discoveries[region]
+		r.mu.Unlock()
+		out[region] = stats
+	}
+	return out
+}
+
+func sum(xs []int) int {
+	total := 0
+	for _, x := range xs {
+		total += x
+	}
+	return total
 }

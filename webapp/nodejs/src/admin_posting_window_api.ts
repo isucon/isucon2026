@@ -6,7 +6,7 @@ import { must } from "./db.ts";
 import { getPostingWindow } from "./posting_window.ts";
 import { jsonResponse } from "./response.ts";
 import type { Env, HandlerContext } from "./server.ts";
-import { validDate, type Timestamp } from "./time.ts";
+import { validDate } from "./time.ts";
 import { validRegion } from "./user.ts";
 
 const openPostingWindowRequest = {
@@ -19,8 +19,8 @@ type OpenPostingWindowResponse = {
   id: string;
   region: string;
   localDate: string;
-  startsAt: Timestamp;
-  onTimeDeadline: Timestamp;
+  startsAt: Temporal.Instant;
+  onTimeDeadline: Temporal.Instant;
 };
 
 export function openPostingWindowHandler(h: HandlerContext): Handler<Env> {
@@ -44,7 +44,7 @@ export function openPostingWindowHandler(h: HandlerContext): Handler<Env> {
     if (conflict) {
       throw new APIError(409, "posting_window_conflict");
     }
-    const { clock_timestamp: startsAt } = must(await tx.get<{ clock_timestamp: Timestamp }>(`SELECT clock_timestamp()`));
+    const { clock_timestamp: startsAt } = must(await tx.get<{ clock_timestamp: Temporal.Instant }>(`SELECT clock_timestamp()`));
     await tx.exec(`UPDATE posting_windows SET ended_at = $2 WHERE region = $1 AND ended_at IS NULL`, region, startsAt);
     const windowID = randomUUID();
     await tx.exec(
@@ -56,7 +56,7 @@ export function openPostingWindowHandler(h: HandlerContext): Handler<Env> {
       region,
       localDate,
       startsAt,
-      startsAt.addSeconds(seconds),
+      startsAt.add({ seconds }),
     );
     await tx.exec(
       `

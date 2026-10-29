@@ -4,13 +4,12 @@ import { APIError } from "./api_error.ts";
 import { must, type DB, type Queryer } from "./db.ts";
 import type { Env, HandlerContext } from "./server.ts";
 import { sha256Hex } from "./session.ts";
-import type { Timestamp } from "./time.ts";
 
 export type AdminSession = {
   token: string;
   administratorID: string;
   tokenHash: string;
-  createdAt: Timestamp;
+  createdAt: Temporal.Instant;
 };
 
 export function getAdminSession(c: Context<Env>): AdminSession | null {
@@ -34,7 +33,7 @@ async function getAdminSessionFromHeader(c: Context<Env>, db: DB): Promise<Admin
  `,
     sha256Hex(token),
   );
-  if (row === undefined) {
+  if (!row) {
     return null;
   }
   return { token: "", administratorID: row.administrator_id, tokenHash: row.token_hash, createdAt: row.created_at };
@@ -71,7 +70,9 @@ export async function createAdminSession(db: DB, administratorID: string): Promi
 }
 
 async function getAdminSessionByID(db: Queryer, sessionID: string): Promise<AdminSession> {
-  const row = must(await db.get(`SELECT administrator_id, token_hash, created_at FROM administrator_sessions WHERE id = $1`, sessionID));
+  const row = must(
+    await db.get<{ administrator_id: string; token_hash: string; created_at: Temporal.Instant }>(`SELECT administrator_id, token_hash, created_at FROM administrator_sessions WHERE id = $1`, sessionID),
+  );
   return { token: "", administratorID: row.administrator_id, tokenHash: row.token_hash, createdAt: row.created_at };
 }
 
