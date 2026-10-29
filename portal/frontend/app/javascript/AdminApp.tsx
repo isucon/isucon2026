@@ -16,6 +16,7 @@ import { AdminClarificationList } from "./admin/AdminClarificationList";
 import { AdminClarificationDetail } from "./admin/AdminClarificationDetail";
 import { AdminLastValidations } from "./admin/AdminLastValidations";
 import { AdminContestantInstanceList } from "./admin/AdminContestantInstanceList";
+import { AdminAttention } from "./admin/AdminAttention";
 import { AdminDashboard } from "./admin/AdminDashboard";
 import { AdminUnpreparedStats } from "./admin/AdminUnpreparedStats";
 import { AdminLastValidationsCommandResult } from "./admin/AdminLastValidationsCommandResult";
@@ -40,6 +41,7 @@ export class AdminApp extends React.Component<Props, State> {
   public render() {
     return (
       <BrowserRouter>
+        <AdminAttention client={this.state.adminClient} />
         <AdminNavbar session={this.props.session} client={this.state.adminClient} />
 
         <div className="container px-5 py-5">
