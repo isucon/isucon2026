@@ -20,11 +20,12 @@ const arrivalInterval = 5 * time.Second
 var _ scenario.EvilFunc = Run
 
 type actorPlan struct {
-	at       time.Duration
-	kind     int
-	username string
-	rate     int
-	password string
+	at             time.Duration
+	kind           int
+	username       string
+	rate           int
+	password       string
+	uploadInterval time.Duration
 }
 
 // plans gives each actor a separate identity and IP. Type 1 arrives every five seconds;
@@ -48,7 +49,7 @@ func plans(env scenario.EvilEnv) []actorPlan {
 		})
 		for variant, offset := range []time.Duration{arrivalInterval / 4, arrivalInterval / 2} {
 			if at := time.Duration(n)*arrivalInterval + offset; at < env.Length {
-				out = append(out, actorPlan{at: at, kind: 2, username: fmt.Sprintf("evil_upload_%x_%d_%d", seed, n, variant)})
+				out = append(out, actorPlan{at: at, kind: 2, username: fmt.Sprintf("evil_upload_%x_%d_%d", seed, n, variant), uploadInterval: 2 * time.Second})
 			}
 		}
 	}
@@ -129,13 +130,17 @@ func runLoginActor(parent context.Context, env scenario.EvilEnv, api *client.Cli
 func runUploadActor(parent context.Context, env scenario.EvilEnv, api *client.Client, p actorPlan) {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
-	var sent int64
-	var banned bool
-	defer func() { logActor(env, api, p, sent, 0, banned) }()
+	var sent, skipped atomic.Int64
+	var banned atomic.Bool
+	var wg sync.WaitGroup
+	defer func() {
+		wg.Wait()
+		logActor(env, api, p, sent.Load(), skipped.Load(), banned.Load())
+	}()
 	u, err := api.Register(ctx, p.username, "Evil upload user", "asia")
-	sent++
+	sent.Add(1)
 	if isBan(err) {
-		banned = true
+		banned.Store(true)
 	}
 	if err != nil || u.ID == "" || u.SecretKey == "" {
 		return
@@ -144,22 +149,34 @@ func runUploadActor(parent context.Context, env scenario.EvilEnv, api *client.Cl
 		env.RegisterUser(u.ID)
 	}
 	loggedIn, err := api.Login(ctx, p.username, u.SecretKey)
-	sent++
+	sent.Add(1)
 	if isBan(err) {
-		banned = true
+		banned.Store(true)
 	}
 	if err != nil || loggedIn.Token == "" {
 		return
 	}
-	for ctx.Err() == nil {
-		reqCtx, done := context.WithTimeout(ctx, 10*time.Second)
-		err := api.PutNonJPEGStream(reqCtx, loggedIn.Token)
-		done()
-		sent++
-		if isBan(err) {
-			banned = true
-			return
+	start := time.Now()
+	slots := make(chan struct{}, 4)
+	for n := 0; waitUntil(ctx, start.Add(time.Duration(n)*p.uploadInterval)); n++ {
+		select {
+		case slots <- struct{}{}:
+		default:
+			skipped.Add(1)
+			continue
 		}
+		wg.Add(1)
+		sent.Add(1)
+		go func() {
+			defer wg.Done()
+			defer func() { <-slots }()
+			reqCtx, done := context.WithTimeout(ctx, 10*time.Second)
+			defer done()
+			if isBan(api.PutNonJPEGStream(reqCtx, loggedIn.Token)) {
+				banned.Store(true)
+				cancel()
+			}
+		}()
 	}
 }
 

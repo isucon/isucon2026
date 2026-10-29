@@ -33,6 +33,10 @@ export const config = {
 	guardStoppedTeams: z
 		.array(z.number().int().min(1).max(maxTeams))
 		.parse(c.getObject<number[]>("guardStoppedTeams") ?? []),
+	// Experimental early JPEG rejection on selected VM teams.
+	earlyJpegTeams: z
+		.array(z.number().int().min(1).max(maxTeams))
+		.parse(c.getObject<number[]>("earlyJpegTeams") ?? []),
 	// 使っていないチームのインスタンスを、ディスクごと残したまま止める
 	stoppedTeams: z
 		.array(z.number().int().min(1).max(maxTeams))
