@@ -7,9 +7,14 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"os"
+
 	"strings"
 	"text/template"
 	"time"
+
+	"golang.org/x/crypto/ssh"
 
 	"github.com/isucon/isucon2026/portal/internal/config"
 	"github.com/isucon/isucon2026/portal/internal/token"
@@ -28,6 +33,7 @@ type params struct {
 	PortalHost        string
 	AMIID             string
 	RouterAMIID       string
+	AdminSSHPublicKey string
 }
 
 type envCheckInstance struct {
@@ -67,6 +73,15 @@ func render(cfg *config.Config, name string, teamID int64, zoneID, amiID string,
 	if zoneID == "" {
 		return "", errors.New("Availability Zone should be set to team")
 	}
+	key, err := os.ReadFile(cfg.IsuconAdminSSHKeyPath)
+	if err != nil {
+		return "", fmt.Errorf("administration SSH key: %w", err)
+	}
+	signer, err := ssh.ParsePrivateKey(key)
+	if err != nil {
+		return "", fmt.Errorf("administration SSH key: %w", err)
+	}
+	publicKey := strings.TrimSpace(string(ssh.MarshalAuthorizedKey(signer.PublicKey())))
 	tok, err := token.CreateChecker(cfg.CheckerSecret, token.CheckerPayload{TeamID: teamID, Expiry: expiry})
 	if err != nil {
 		return "", err
@@ -88,6 +103,7 @@ func render(cfg *config.Config, name string, teamID int64, zoneID, amiID string,
 		PortalHost:        cfg.PublicURLHost,
 		AMIID:             amiID,
 		RouterAMIID:       cfg.RouterAMIID,
+		AdminSSHPublicKey: publicKey,
 	})
 	return sb.String(), err
 }
