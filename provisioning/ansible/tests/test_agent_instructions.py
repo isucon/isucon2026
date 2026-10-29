@@ -1,5 +1,6 @@
 """Exercise instruction deployment without changing the real user's home."""
 
+import hashlib
 import json
 import os
 import pwd
@@ -15,25 +16,31 @@ ANSIBLE = Path(__file__).resolve().parents[1]
 
 
 class AgentInstructionsTest(unittest.TestCase):
-    def test_japanese_instruction_layout(self):
-        lines = (
-            (ANSIBLE / "roles/agent-instructions/files/instructions.md")
-            .read_text()
-            .splitlines()
+    def test_supplied_instructions_and_daily_notes(self):
+        content = (
+            ANSIBLE / "roles/agent-instructions/files/instructions.md"
+        ).read_bytes()
+        source, separator, supplement = content.partition(
+            b"\n\n<!-- participant-supplement -->\n"
         )
-        self.assertEqual(lines[0], "全てのレスポンスは日本語で行うこと。")
-        self.assertEqual(len([line for line in lines[1:-4] if line.strip()]), 100)
-        self.assertFalse(any(line.startswith(("- ", "* ", "# ")) for line in lines))
-        self.assertIn("", lines[1:-4])
+        self.assertTrue(separator)
+        # Preserve the supplied document byte for byte without a Downloads dependency.
         self.assertEqual(
-            lines[-4:],
-            [
-                "このサーバは本番用のサーバであるため、他のアプリケーションの動作に影響を及ぼしてはいけない。",
-                "エージェントの動作はできるだけゆっくりゆっくり、sleepしながら行うこと。",
-                "このサーバは本番用のサーバであるため、破壊的な変更は行わないこと。",
-                "このサーバは本番用のサーバであるため、調査などはできるだけ行わないようにすること。",
-            ],
+            hashlib.sha256(source).hexdigest(),
+            "22b2412fa165cb282b86064ada6a74faca31c3386d14a93ce4d9dae65a60be0c",
         )
+        notes = supplement.decode("utf-8")
+        for topic in (
+            "全てのレスポンスは日本語で行うこと。",
+            "プレミアムフライデー",
+            "ビール",
+            "ノンアルコール",
+            "休日",
+            "読書や音楽",
+            "十分な休息",
+        ):
+            with self.subTest(topic=topic):
+                self.assertIn(topic, notes)
 
     def test_deployment_and_idempotence(self):
         expected = {
