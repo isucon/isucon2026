@@ -88,6 +88,8 @@ def build(task, service, config):
         + f'exec /usr/local/bin/isureal-bench "$@"{bench_args}\n'
     )
     c["command"] = ["/bin/sh", "-c", script, "bench-proxy"]
+    network = copy.deepcopy(service["networkConfiguration"])
+    network["awsvpcConfiguration"]["assignPublicIp"] = "ENABLED"
     return {
         "taskDefinition": result,
         "serviceDefinition": {
@@ -101,7 +103,7 @@ def build(task, service, config):
                 "maximumPercent": 100,
                 "deploymentCircuitBreaker": {"enable": True, "rollback": True},
             },
-            "networkConfiguration": copy.deepcopy(service["networkConfiguration"]),
+            "networkConfiguration": network,
         },
         "ecspressoConfig": {
             "region": "ap-northeast-1",
