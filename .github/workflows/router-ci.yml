@@ -71,12 +71,12 @@ jobs:
   digest:
     name: isureal-digest (Rust)
     runs-on: actions-runner-processor
+    container:
+      image: rust:1.95.0-trixie@sha256:f49565f188ee00bc2a18dd418183f2c5f23ef7d6e691890517ed341a598f67c3
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Install Rust
-        run: |
-          rustup toolchain install 1.95.0 --profile minimal --component rustfmt,clippy
-          rustup default 1.95.0
+      - name: Install Rust components
+        run: rustup component add rustfmt clippy
       - name: Format, lint and test
         working-directory: router/digest
         run: |
