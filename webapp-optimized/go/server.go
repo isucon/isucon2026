@@ -2,6 +2,7 @@ package isureal
 
 import (
 	"context"
+	"log/slog"
 	"os"
 	"strconv"
 	"time"
@@ -35,6 +36,7 @@ func NewServer(config *Config) *echo.Echo {
 	if !validRegion(config.Region) {
 		panic("invalid server region: " + config.Region)
 	}
+	homeRegion = config.Region
 	e := echo.New()
 	e.IPExtractor = extractClientIP
 
@@ -63,6 +65,15 @@ func NewServer(config *Config) *echo.Echo {
 		panic("failed to ping database: " + err.Error())
 	}
 
+	if dir := os.Getenv("ISUREAL_IMAGE_DIR"); dir != "" {
+		if p, err := openImagePack(context.Background(), db, dir); err != nil {
+			slog.Warn("image pack not used", "error", err)
+		} else {
+			pack = p
+			slog.Info("image pack", "images", len(p.entries))
+		}
+	}
+
 	adminDB, err := sqlx.Open("pgx-auth", config.DatabaseDSN())
 	if err != nil {
 		panic("failed to open database: " + err.Error())
@@ -87,8 +98,19 @@ func NewServer(config *Config) *echo.Echo {
 	go func() {
 		for {
 			if err := hot.load(context.Background(), db); err == nil {
+				break
+			}
+			time.Sleep(time.Second)
+		}
+		if os.Getenv("ISUREAL_HOT_STATE") == "off" {
+			return
+		}
+		for {
+			err := history.load(context.Background(), db, config.Region)
+			if err == nil {
 				return
 			}
+			slog.Error("history store", "error", err)
 			time.Sleep(time.Second)
 		}
 	}()
@@ -135,6 +157,10 @@ func NewServer(config *Config) *echo.Echo {
 	e.PUT("/api/admin/users/:userId/certification", certifyUserHandler(handlerContext), AdminSessionMiddleware(handlerContext, true))
 	e.DELETE("/api/admin/users/:userId/certification", deleteUserCertificationHandler(handlerContext), AdminSessionMiddleware(handlerContext, true))
 	e.POST("/api/admin/posting-window", openPostingWindowHandler(handlerContext), AdminSessionMiddleware(handlerContext, true))
+	// Without nginx in front (ISUREAL_PUBLIC_LISTEN), the app serves the front end.
+	if dir := os.Getenv("ISUREAL_PUBLIC_DIR"); dir != "" {
+		e.GET("/*", staticHandler(dir))
+	}
 
 	return e
 }

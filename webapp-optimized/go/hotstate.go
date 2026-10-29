@@ -48,6 +48,34 @@ type hotState struct {
 	// each author's posts, so a feed page stops after the first matches.
 	sorted   []*hotPost
 	byAuthor map[string][]*hotPost
+	// posters are the users who created or edited a post since the load, in
+	// any window.
+	posters map[string]bool
+
+	// The comments and RealMojis of the posts of open windows: reactions
+	// holds each reactor's latest RealMoji on a post (one is live at most),
+	// postComments and postReactors index them by post, and engaged counts
+	// each user's live ones per post for the recommendation score.
+	reactions    map[[2]string]hotReaction // post, reactor
+	comments     map[string]hotComment
+	postComments map[string][]string
+	postReactors map[string][]string
+	engaged      map[string]map[string]int
+}
+
+type hotMark struct {
+	Live    bool
+	Version int64
+}
+
+type hotComment struct {
+	Comment
+	hotMark
+}
+
+type hotReaction struct {
+	RealMoji
+	hotMark
 }
 
 type hotUser struct {
@@ -111,6 +139,11 @@ type relationKey struct {
 
 var hot = newHotState()
 
+// homeRegion is this app's region. The hot state vouches only for the
+// sessions of its own region's users; other users are authenticated by the
+// database, so their session changes may reach this region late.
+var homeRegion string
+
 func newHotState() *hotState {
 	s := &hotState{}
 	s.reset()
@@ -133,6 +166,52 @@ func (s *hotState) reset() {
 	s.byImage = map[string]string{}
 	s.sorted = nil
 	s.byAuthor = map[string][]*hotPost{}
+	s.posters = map[string]bool{}
+	s.reactions = map[[2]string]hotReaction{}
+	s.comments = map[string]hotComment{}
+	s.postComments = map[string][]string{}
+	s.postReactors = map[string][]string{}
+	s.engaged = map[string]map[string]int{}
+}
+
+// setComment stores a comment of a post of an open window at a version.
+func (s *hotState) setComment(c Comment, live bool, version int64) {
+	current, known := s.comments[c.ID]
+	if !known {
+		s.postComments[c.PostID] = append(s.postComments[c.PostID], c.ID)
+	}
+	s.comments[c.ID] = hotComment{Comment: c, hotMark: hotMark{Live: live, Version: version}}
+	s.engage(c.PostID, c.AuthorID, current.Live, live)
+}
+
+// setReaction stores a reactor's latest RealMoji on a post of an open window
+// at a version.
+func (s *hotState) setReaction(r RealMoji, live bool, version int64) {
+	key := [2]string{r.PostID, r.ReactorID}
+	current, known := s.reactions[key]
+	if !known {
+		s.postReactors[r.PostID] = append(s.postReactors[r.PostID], r.ReactorID)
+	}
+	s.reactions[key] = hotReaction{RealMoji: r, hotMark: hotMark{Live: live, Version: version}}
+	s.engage(r.PostID, r.ReactorID, current.Live, live)
+}
+
+// engage moves a user's engagement count on a post when one of the user's
+// RealMoji or comments turns live or not.
+func (s *hotState) engage(postID, userID string, before, after bool) {
+	if before == after {
+		return
+	}
+	users := s.engaged[postID]
+	if users == nil {
+		users = map[string]int{}
+		s.engaged[postID] = users
+	}
+	if after {
+		users[userID]++
+	} else if users[userID]--; users[userID] <= 0 {
+		delete(users, userID)
+	}
 }
 
 func newerPost(a, b *hotPost) int {
@@ -155,6 +234,15 @@ func (s *hotState) dropClosedPosts() {
 		if s.closed[p.PostingWindowID] {
 			delete(s.posts, p.ID)
 			delete(s.byImage, p.ImageID)
+			for _, id := range s.postComments[p.ID] {
+				delete(s.comments, id)
+			}
+			for _, reactor := range s.postReactors[p.ID] {
+				delete(s.reactions, [2]string{p.ID, reactor})
+			}
+			delete(s.postComments, p.ID)
+			delete(s.postReactors, p.ID)
+			delete(s.engaged, p.ID)
 			continue
 		}
 		keep = append(keep, p)
@@ -236,6 +324,18 @@ func (s *hotState) load(ctx context.Context, db *sqlx.DB) error {
       FROM posts p JOIN posting_windows w ON w.id = p.posting_window_id WHERE w.ended_at IS NULL`); err != nil {
 		return err
 	}
+	var reactions []RealMoji
+	if err := tx.SelectContext(ctx, &reactions, `SELECT r.id, r.post_id, r.reactor_id, r.image_id, r.reaction_type, r.created_at
+      FROM realmojis r JOIN posts p ON p.id = r.post_id JOIN posting_windows w ON w.id = p.posting_window_id
+      WHERE w.ended_at IS NULL AND r.replaced_at IS NULL AND r.deleted_at IS NULL`); err != nil {
+		return err
+	}
+	var comments []Comment
+	if err := tx.SelectContext(ctx, &comments, `SELECT c.id, c.post_id, c.author_id, c.body, c.created_at
+      FROM comments c JOIN posts p ON p.id = c.post_id JOIN posting_windows w ON w.id = p.posting_window_id
+      WHERE w.ended_at IS NULL AND c.deleted_at IS NULL`); err != nil {
+		return err
+	}
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -270,6 +370,12 @@ func (s *hotState) load(ctx context.Context, db *sqlx.DB) error {
 	for _, p := range posts {
 		s.addPost(&hotPost{Post: p.Post, Deleted: p.Deleted})
 	}
+	for _, r := range reactions {
+		s.setReaction(r, true, 0)
+	}
+	for _, c := range comments {
+		s.setComment(c, true, 0)
+	}
 	s.loaded = true
 	return nil
 }
@@ -301,6 +407,16 @@ func (s *hotState) apply(events []stateEvent) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, e := range events {
+		switch e.Kind {
+		case "post", "post_deleted", "history_dirty":
+			id := e.A
+			if e.Post != nil {
+				id = e.Post.ID
+			}
+			history.touch(id)
+		case "window":
+			history.windowOpened(e.Window.LocalDate)
+		}
 		switch e.Kind {
 		case "user":
 			u := e.User.user()
@@ -357,6 +473,7 @@ func (s *hotState) apply(events []stateEvent) {
 			}
 		case "post":
 			p := e.Post
+			s.posters[p.AuthorID] = true
 			if s.closed[p.PostingWindowID] {
 				continue
 			}
@@ -371,6 +488,17 @@ func (s *hotState) apply(events []stateEvent) {
 			if current := s.posts[e.A]; current != nil {
 				current.Deleted = true
 				current.Version = max(e.Version, current.Version)
+			}
+		case "reaction":
+			// The reactor's latest RealMoji on the post, live or not.
+			r := e.Reaction
+			if s.posts[r.PostID] != nil && e.Version > s.reactions[[2]string{r.PostID, r.ReactorID}].Version {
+				s.setReaction(*r, e.Exists, e.Version)
+			}
+		case "comment":
+			c := e.Comment
+			if s.posts[c.PostID] != nil && e.Version > s.comments[c.ID].Version {
+				s.setComment(*c, e.Exists, e.Version)
 			}
 		}
 	}
@@ -389,28 +517,32 @@ func (s *hotState) authenticate(tokenHash, region string) (User, bool) {
 		return User{}, false
 	}
 	u := s.users[session.UserID]
-	if u == nil || u.Status != "active" || (region != "" && u.Region != region) {
+	if u == nil || u.Status != "active" || (region != "" && u.Region != region) || (homeRegion != "" && u.Region != homeRegion) {
 		return User{}, false
 	}
 	return u.User, true
 }
 
+// feedCursor is the last item of the previous page. Score is used by the
+// friends-of-friends feed only.
 type feedCursor struct {
+	Score    int64
 	PostedAt time.Time
 	ID       string
 }
 
-// feed computes a feed page like getFeedHandler's SQL. ok is false when the
-// state cannot answer and the database must be asked.
-func (s *hotState) feed(viewerID, feed string, before *feedCursor) (posts []PostWithAuthor, ok bool) {
+// feed computes a feed page like getFeedHandler's SQL, with the scores of a
+// friends-of-friends page. ok is false when the state cannot answer and the
+// database must be asked.
+func (s *hotState) feed(viewerID, feed string, before *feedCursor) (posts []PostWithAuthor, scores []int64, ok bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	viewer := s.users[viewerID]
 	if !s.loaded || viewer == nil {
-		return nil, false
+		return nil, nil, false
 	}
 	if viewer.Status != "active" {
-		return nil, true
+		return nil, nil, true
 	}
 	openWindows := map[string]*hotWindow{}
 	for _, w := range s.windows {
@@ -418,7 +550,7 @@ func (s *hotState) feed(viewerID, feed string, before *feedCursor) (posts []Post
 	}
 	current := s.windows[viewer.Region]
 	if current == nil {
-		return nil, true
+		return nil, nil, true
 	}
 	postedToday := false
 	for _, p := range s.byAuthor[viewerID] {
@@ -430,40 +562,76 @@ func (s *hotState) feed(viewerID, feed string, before *feedCursor) (posts []Post
 		}
 	}
 	if !postedToday {
-		return nil, true
+		return nil, nil, true
 	}
+	ranked := feed == "friends-of-friends"
 	friends := s.friends[viewerID]
-	var fof map[string]bool
+	// mutual counts, for each user two steps away other than the viewer, the
+	// friends in common with the viewer, so its keys are the friends of friends.
+	var mutual map[string]int
 	inFOF := func(id string) bool {
-		if fof == nil {
-			fof = map[string]bool{}
+		if mutual == nil {
+			mutual = map[string]int{}
 			for friend := range friends {
 				for other := range s.friends[friend] {
-					fof[other] = true
+					if other != viewerID {
+						mutual[other]++
+					}
 				}
 			}
 		}
-		return fof[id]
+		return mutual[id] > 0
 	}
-	start := 0
-	if before != nil {
-		start, _ = slices.BinarySearchFunc(s.sorted, before, func(p *hotPost, c *feedCursor) int {
-			return cmp.Or(c.PostedAt.Compare(p.PostedAt), cmp.Compare(c.ID, p.ID))
-		})
-		// Skip the cursor post itself.
-		for start < len(s.sorted) && !s.sorted[start].PostedAt.Before(before.PostedAt) &&
-			!(s.sorted[start].PostedAt.Equal(before.PostedAt) && s.sorted[start].ID < before.ID) {
-			start++
+	var scan []*hotPost
+	if feed == "friends" || ranked {
+		// Only the posts of the candidate authors, instead of every open post.
+		authors := friends
+		if ranked {
+			inFOF("")
+			authors = map[string]bool{}
+			for id := range mutual {
+				authors[id] = true
+			}
 		}
+		for id := range authors {
+			for _, p := range s.byAuthor[id] {
+				// A ranked page takes every candidate: the cursor is on the score.
+				if ranked || before == nil || p.PostedAt.Before(before.PostedAt) || p.PostedAt.Equal(before.PostedAt) && p.ID < before.ID {
+					scan = append(scan, p)
+				}
+			}
+		}
+		if !ranked {
+			slices.SortFunc(scan, func(a, b *hotPost) int {
+				return cmp.Or(b.PostedAt.Compare(a.PostedAt), cmp.Compare(b.ID, a.ID))
+			})
+		}
+	} else {
+		start := 0
+		if before != nil {
+			start, _ = slices.BinarySearchFunc(s.sorted, before, func(p *hotPost, c *feedCursor) int {
+				return cmp.Or(c.PostedAt.Compare(p.PostedAt), cmp.Compare(c.ID, p.ID))
+			})
+			// Skip the cursor post itself.
+			for start < len(s.sorted) && !s.sorted[start].PostedAt.Before(before.PostedAt) &&
+				!(s.sorted[start].PostedAt.Equal(before.PostedAt) && s.sorted[start].ID < before.ID) {
+				start++
+			}
+		}
+		scan = s.sorted[start:]
 	}
-	for _, p := range s.sorted[start:] {
+	for _, p := range scan {
+		// Cheap tests first: the public feed skips most posts here.
+		if p.Deleted || feed == "public" && p.Visibility != "public" || p.AuthorID == viewerID {
+			continue
+		}
 		w := openWindows[p.PostingWindowID]
-		if w == nil || p.Deleted || p.AuthorID == viewerID {
+		if w == nil {
 			continue
 		}
 		author := s.users[p.AuthorID]
 		if author == nil {
-			return nil, false
+			return nil, nil, false
 		}
 		if author.Status != "active" || s.blocks[[2]string{viewerID, p.AuthorID}] || s.blocks[[2]string{p.AuthorID, viewerID}] {
 			continue
@@ -489,11 +657,195 @@ func (s *hotState) feed(viewerID, feed string, before *feedCursor) (posts []Post
 		post.OnTimeDeadline = w.OnTimeDeadline
 		post.WindowEndedAt = nil
 		posts = append(posts, PostWithAuthor{Post: post, Author: author.User})
-		if len(posts) == 51 {
+		if !ranked && len(posts) == 51 {
 			break
 		}
 	}
-	return posts, true
+	if ranked {
+		posts, scores = s.recommend(friends, mutual, posts, before)
+	}
+	return posts, scores, true
+}
+
+// recommend orders the friends-of-friends candidates by the recommendation
+// score 10 × E + 3 × M + min(C, 30), then posted_at and ID descending, and
+// returns the page after the cursor with the scores. M is the friends in
+// common of the viewer and the author, C the sum of mutual over the author's
+// friends, and E the viewer's friends with a live RealMoji or comment on the
+// post who are active.
+func (s *hotState) recommend(friends map[string]bool, mutual map[string]int, candidates []PostWithAuthor, before *feedCursor) ([]PostWithAuthor, []int64) {
+	connections := map[string]int64{}
+	type item struct {
+		score int64
+		post  PostWithAuthor
+	}
+	items := make([]item, 0, len(candidates))
+	for _, post := range candidates {
+		author := post.AuthorID
+		c, ok := connections[author]
+		if !ok {
+			for x := range s.friends[author] {
+				if c += int64(mutual[x]); c >= 30 {
+					c = 30
+					break
+				}
+			}
+			connections[author] = c
+		}
+		var e int64
+		for user := range s.engaged[post.ID] {
+			if friends[user] {
+				if u := s.users[user]; u != nil && u.Status == "active" {
+					e++
+				}
+			}
+		}
+		score := 10*e + 3*int64(mutual[author]) + c
+		if before != nil && !rankedAfter(score, post.PostedAt, post.ID, before) {
+			continue
+		}
+		items = append(items, item{score: score, post: post})
+	}
+	slices.SortFunc(items, func(a, b item) int {
+		return cmp.Or(cmp.Compare(b.score, a.score), b.post.PostedAt.Compare(a.post.PostedAt), cmp.Compare(b.post.ID, a.post.ID))
+	})
+	items = items[:min(len(items), 51)]
+	posts := make([]PostWithAuthor, len(items))
+	scores := make([]int64, len(items))
+	for i, it := range items {
+		posts[i], scores[i] = it.post, it.score
+	}
+	return posts, scores
+}
+
+// rankedAfter reports whether (score, postedAt, id) comes after the cursor in
+// the recommendation order.
+func rankedAfter(score int64, postedAt time.Time, id string, cursor *feedCursor) bool {
+	if score != cursor.Score {
+		return score < cursor.Score
+	}
+	if !postedAt.Equal(cursor.PostedAt) {
+		return postedAt.Before(cursor.PostedAt)
+	}
+	return id < cursor.ID
+}
+
+// interactionAllowed decides opt_access for a post of an open window: whether
+// the viewer may list its comments (comments) or RealMojis. ok is false when
+// the state cannot answer.
+func (s *hotState) interactionAllowed(viewerID, postID string, comments bool) (allowed, ok bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.interactionAllowedLocked(viewerID, postID, comments)
+}
+
+// interactions lists the comments (oldest first, after the cursor) or the
+// RealMojis (newest first, before the cursor) of a post of an open window,
+// like readInteractions' SQL, at most 51, with their authors. ok is false
+// when the state cannot answer.
+func (s *hotState) interactions(viewerID, postID string, comments bool, at *time.Time, id string) (records []writeResult, allowed, ok bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if allowed, ok = s.interactionAllowedLocked(viewerID, postID, comments); !ok || !allowed {
+		return nil, allowed, ok
+	}
+	type record struct {
+		createdAt time.Time
+		id        string
+		result    writeResult
+	}
+	var list []record
+	if comments {
+		for _, commentID := range s.postComments[postID] {
+			c := s.comments[commentID]
+			author := s.users[c.AuthorID]
+			if !c.Live || author == nil || author.Status != "active" {
+				continue
+			}
+			if at != nil && cmp.Or(c.CreatedAt.Compare(*at), cmp.Compare(c.ID, id)) <= 0 {
+				continue
+			}
+			list = append(list, record{c.CreatedAt, c.ID, writeResult{User: author.User, Comment: c.Comment}})
+		}
+	} else {
+		for _, reactor := range s.postReactors[postID] {
+			r := s.reactions[[2]string{postID, reactor}]
+			author := s.users[reactor]
+			if !r.Live || author == nil || author.Status != "active" {
+				continue
+			}
+			if at != nil && cmp.Or(r.CreatedAt.Compare(*at), cmp.Compare(r.ID, id)) >= 0 {
+				continue
+			}
+			list = append(list, record{r.CreatedAt, r.ID, writeResult{User: author.User, Reaction: r.RealMoji}})
+		}
+	}
+	slices.SortFunc(list, func(a, b record) int {
+		order := cmp.Or(a.createdAt.Compare(b.createdAt), cmp.Compare(a.id, b.id))
+		if !comments {
+			order = -order
+		}
+		return order
+	})
+	records = make([]writeResult, 0, min(len(list), 51))
+	for _, r := range list[:min(len(list), 51)] {
+		records = append(records, r.result)
+	}
+	return records, true, true
+}
+
+func (s *hotState) interactionAllowedLocked(viewerID, postID string, comments bool) (allowed, ok bool) {
+	viewer := s.users[viewerID]
+	p := s.posts[postID]
+	if !s.loaded || viewer == nil || p == nil {
+		return false, false
+	}
+	w := s.openWindow(p.PostingWindowID)
+	author := s.users[p.AuthorID]
+	if w == nil || author == nil {
+		return false, false
+	}
+	if p.Deleted || viewer.Status != "active" || author.Status != "active" {
+		return false, true
+	}
+	if p.AuthorID == viewerID {
+		return true, true
+	}
+	current := s.windows[viewer.Region]
+	if current == nil {
+		return false, true
+	}
+	postedToday := false
+	for _, own := range s.byAuthor[viewerID] {
+		if ow := s.openWindow(own.PostingWindowID); !own.Deleted && ow != nil && ow.LocalDate.Equal(current.LocalDate) {
+			postedToday = true
+			break
+		}
+	}
+	if !postedToday || s.blocks[[2]string{viewerID, p.AuthorID}] || s.blocks[[2]string{p.AuthorID, viewerID}] {
+		return false, true
+	}
+	if p.Visibility == "public" {
+		return true, true
+	}
+	friend := s.friends[viewerID][p.AuthorID]
+	if comments {
+		return friend && (p.Visibility == "friends" || p.Visibility == "friends_of_friends"), true
+	}
+	switch p.Visibility {
+	case "friends":
+		return friend, true
+	case "friends_of_friends":
+		if friend {
+			return true, true
+		}
+		for f := range s.friends[viewerID] {
+			if s.friends[f][p.AuthorID] {
+				return true, true
+			}
+		}
+	}
+	return false, true
 }
 
 // imageLive reports whether a post image is live, with its owner's signing
@@ -544,10 +896,12 @@ func (s *hotState) search(viewerID, query, beforeUsername, beforeID string) (use
 		}
 	}
 	for _, u := range s.byName[start:] {
-		if u.ID == viewerID || u.Status != "active" || s.blocks[[2]string{viewerID, u.ID}] || s.blocks[[2]string{u.ID, viewerID}] {
+		// The text test first: most users do not match, and the block
+		// lookups hash two IDs each.
+		if !strings.Contains(u.nameKey, query) && !strings.Contains(u.displayKey, query) {
 			continue
 		}
-		if !strings.Contains(u.nameKey, query) && !strings.Contains(u.displayKey, query) {
+		if u.ID == viewerID || u.Status != "active" || s.blocks[[2]string{viewerID, u.ID}] || s.blocks[[2]string{u.ID, viewerID}] {
 			continue
 		}
 		users = append(users, u.User)
@@ -556,6 +910,22 @@ func (s *hotState) search(viewerID, query, beforeUsername, beforeID string) (use
 		}
 	}
 	return users, true
+}
+
+// postedSinceLoad reports whether the user created or edited a post since the
+// load. ok is false when the state is not loaded.
+func (s *hotState) postedSinceLoad(userID string) (posted, ok bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.posters[userID], s.loaded
+}
+
+// tracksPost reports whether the post belongs to an open window, whose
+// RealMoji and comments the state keeps.
+func (s *hotState) tracksPost(postID string) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.posts[postID] != nil
 }
 
 // openWindow returns the open window with the ID, if any.
