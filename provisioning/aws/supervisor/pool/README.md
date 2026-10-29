@@ -99,7 +99,7 @@ AWS に触らずに結果を確かめられます。
 
 ## 複数 AZ のネットワーク
 
-`Pulumi.portal-dev.yaml` の `network` で、既存 Portal VPC 内に専用 private subnet を管理します。
+`Pulumi.portal-dev.yaml` の `network` で、既存 Portal VPC 内に専用 public subnet を管理します。
 
 | AZ | CIDR | 750 タスクへ拡張した場合の目安 |
 | --- | --- | --- |
@@ -111,10 +111,24 @@ AWS に触らずに結果を確かめられます。
 Pulumi は `deployments` の subnet ID を作成した 3 サブネットの ID で上書きして出力します。
 `render.py config` が live の subnet ID を取り込んでも、次回適用時の管理元は `network` です。
 ECS が複数 AZ に配置し、実際の稼働数は配備後に確認します。
-既存の NAT `nat-0de08f47e08354915` を共有するため、NAT の AZ 障害に対する冗長性はありません。
+各サブネットのデフォルトルートは既存 Internet Gateway `igw-044e44de1f22729b7` に向けます。
+`render.py` は `assignPublicIp: ENABLED` を出力し、Fargate がタスクごとに public IPv4 を割り当てます。
+サブネットの `mapPublicIpOnLaunch` には依存しません。Supervisor の通信は NAT Gateway を経由しません。
+共有 NAT と他サービスのルートテーブルは変更しません。タスクの Security Group は受信許可なしです。
+タスク再作成時には送信元 public IP が変わります。今回の接続対象は CloudFormation 製環境です。
+旧 Pulumi 製 Router の固定 NAT IP による送信元制限は維持しており、public IP 付きタスクからは接続できません。
 タスク数だけを変更するときは、Pulumi 適用後に `ecspresso deploy --skip-task-definition` を使えます。
 
 ## 適用記録
+
+### 2026-10-29 タスクごとの public IP への切り替え
+
+- 専用ルートテーブルのデフォルトルートを NAT から既存 Internet Gateway に変更しました。
+  Pulumi alias で既存ルートテーブルを引き継ぎ、サブネットの再作成は行っていません。
+- `render.py` で `assignPublicIp: ENABLED` を生成し、Pulumi の配備設定に反映して ecspresso でサービスを更新しました。
+- 3 AZ に各 1 タスクが RUNNING、pending 0 となり、各 ENI に異なる public IP が割り当てられたことを確認しました。
+  全タスクでポータルへのポーリングが成功し、適用後の Pulumi preview と ecspresso diff に差分はありません。
+- CloudFormation 製環境を接続対象とし、旧 Pulumi 製 Router の送信元制限、共有 NAT、他サービスのルートは変更していません。
 
 ### 2026-10-29 3000 vCPU の起動確認と縮退
 

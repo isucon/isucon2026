@@ -56,6 +56,19 @@ def run_proxy(script, address, *args):
 
 
 class SharedTest(unittest.TestCase):
+    def test_public_ip_is_enabled_even_with_private_template(self):
+        service = copy.deepcopy(SERVICE)
+        service["networkConfiguration"]["awsvpcConfiguration"]["assignPublicIp"] = (
+            "DISABLED"
+        )
+        original = copy.deepcopy(service)
+        result = build(TASK, service, CONFIG)["serviceDefinition"]
+        network = result["networkConfiguration"]["awsvpcConfiguration"]
+        self.assertEqual(network["assignPublicIp"], "ENABLED")
+        self.assertEqual(network["subnets"], ["subnet"])
+        self.assertEqual(network["securityGroups"], ["sg"])
+        self.assertEqual(service, original)
+
     def test_runtime_platform_is_arm64_even_with_x86_template(self):
         for platform in (
             None,
@@ -185,8 +198,11 @@ class SharedTest(unittest.TestCase):
                 **deployment["serviceDefinition"],
                 "clusterArn": deployment["ecspressoConfig"]["cluster"],
             }
-            expected = build(task, service, config)["taskDefinition"]
-            self.assertEqual(task, expected)
+            expected = build(task, service, config)
+            self.assertEqual(task, expected["taskDefinition"])
+            self.assertEqual(
+                deployment["serviceDefinition"], expected["serviceDefinition"]
+            )
 
     def test_export_writes_ecspresso_files(self):
         deployment = build(copy.deepcopy(TASK), SERVICE, CONFIG)
