@@ -248,6 +248,10 @@ HTTP の帯域は HAProxy の route に任せて default class の上限を外�
 - isureal-digest が落ちると、HAProxy のヘルスチェック（1 秒ごと、2 回）で予備のサーバー（アプリ）に切り替える。
   そのときは `X-Benchmark-Request-Id` と `X-Benchmark-Digest` を消して送るので、アプリはベンチの要求と区別できず、
   ベンチはバイト列で比べる。
+- `X-Body-Sha256`、`X-Body-Xxh3`、`X-Body-Length` を付けるのは isureal-digest だけにする。アプリの応答に同じ名前の
+  ヘッダーがあれば isureal-digest は捨ててから自分の値を付け、isureal-digest が落ちてアプリが直接答えるときは
+  HAProxy が消す。ベンチは最初の値を読むので、アプリのヘッダーが残ると、アプリは本体を送らずに期待する画像の
+  SHA-256 を返せる（SHA-256 は種を使わないので、アプリが前もって計算できる）。
 - ルーターの設定は `ROUTER_DIGEST_ADDRESS`（既定 `127.0.0.1:18010`、空で無効）。AWS では
   `isureal-digest.service` が `isureal-haproxy.service` と一緒に起動する。
 

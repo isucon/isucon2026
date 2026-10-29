@@ -109,8 +109,19 @@ func newHandler(config serverConfig) http.Handler {
 		}
 		writer.Header().Set("Content-Type", "image/jpeg")
 		writer.Header().Set("X-Fixture-Saw", routerHeaders(request))
+		image := fixtureImage(request.PathValue("id"), size)
+		// With forge an app that has the image does not send it, only the
+		// digest headers the Router answers with.
+		if request.URL.Query().Get("forge") != "" {
+			sum := sha256.Sum256(image)
+			writer.Header().Set("X-Body-Sha256", fmt.Sprintf("%x", sum[:]))
+			writer.Header().Set("X-Body-Xxh3", "0123456789abcdef")
+			writer.Header().Set("X-Body-Length", strconv.Itoa(size))
+			writer.Header().Set("Content-Length", "0")
+			return
+		}
 		writer.Header().Set("Content-Length", strconv.Itoa(size))
-		_, _ = writer.Write(fixtureImage(request.PathValue("id"), size))
+		_, _ = writer.Write(image)
 	})
 	mux.HandleFunc("GET /api/me/export", func(writer http.ResponseWriter, request *http.Request) {
 		writer.Header().Set("Content-Type", "application/zip")

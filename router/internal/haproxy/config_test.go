@@ -77,6 +77,7 @@ func TestRenderRouteMatrix(t *testing.T) {
 		"http-request set-header X-Isureal-Limit 100000 if digest_up { var(txn.pair) -m str app1/EU app1/US }",
 		"http-request set-header X-Isureal-Limit 10000000 if digest_up { var(txn.pair) -m str app/AP app1/AP }",
 		"http-request set-header X-Isureal-Limit 200000 if digest_up { var(txn.pair) -m str app2/US }",
+		"http-response del-header x-body-sha256 unless { srv_name -m str digest }\n    http-response del-header x-body-xxh3 unless { srv_name -m str digest }\n    http-response del-header x-body-length unless { srv_name -m str digest }",
 		"server digest 127.0.0.1:18010 check inter 1s fall 2 rise 2\n    server app3 172.31.3.10:8080 backup",
 	} {
 		if !strings.Contains(text, want+"\n") {
