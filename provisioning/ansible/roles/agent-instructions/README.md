@@ -32,11 +32,12 @@ those edits.
 
 ## Validation
 
-The instruction source adds a pacing paragraph with `sleep` to section 4 of the
-supplied `fujiwara-agent.md`. Sections 8 and 9 contain the appended language and
-daily-life notes. The regression test checks the pacing paragraph's location and
-the original document's SHA-256 after removing that addition, without depending
-on the contributor's Downloads directory. Do not reformat the imported portion.
+The instruction source adds a pacing paragraph with `sleep` to section 4 and a
+holiday restriction on destructive work to section 2.4 of the supplied
+`fujiwara-agent.md`. Sections 8 and 9 contain the appended language and
+daily-life notes. The regression test checks the additions' locations and the
+original document's SHA-256 after removing those additions, without depending on
+the contributor's Downloads directory. Do not reformat the imported portion.
 
 With Ansible and its Python dependencies available in the active environment:
 

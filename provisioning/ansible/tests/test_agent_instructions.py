@@ -18,6 +18,7 @@ PACING = (
     "許可された読み取り専用の操作であっても、操作の間には `sleep` による待機を挟み、"
     "連続実行や並列実行で本番環境に負荷を集中させないこと。\n\n"
 )
+HOLIDAY = "- 休日は対応できる人が少ないため、破壊的作業を行わないこと。\n"
 
 
 class AgentInstructionsTest(unittest.TestCase):
@@ -32,9 +33,15 @@ class AgentInstructionsTest(unittest.TestCase):
         operations = operations.split("## 5.", 1)[0]
         self.assertIn(PACING, operations)
         self.assertEqual(source.count(PACING.encode()), 1)
-        # Only the requested pacing paragraph changes the supplied document.
+        data_rules = source.decode("utf-8").split("### 2.4 データの変更・削除\n", 1)[1]
+        self.assertIn(HOLIDAY, data_rules.split("### 2.5", 1)[0])
+        self.assertEqual(source.count(HOLIDAY.encode()), 1)
+        # Preserve the supplied document except for the requested additions.
+        original = source.replace(PACING.encode(), b"", 1).replace(
+            HOLIDAY.encode(), b"", 1
+        )
         self.assertEqual(
-            hashlib.sha256(source.replace(PACING.encode(), b"", 1)).hexdigest(),
+            hashlib.sha256(original).hexdigest(),
             "22b2412fa165cb282b86064ada6a74faca31c3386d14a93ce4d9dae65a60be0c",
         )
         notes = supplement.decode("utf-8")
