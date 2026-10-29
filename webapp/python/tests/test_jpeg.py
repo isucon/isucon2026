@@ -4,7 +4,7 @@ import io
 import pytest
 from PIL import Image
 
-from isureal.jpeg import valid_jpeg
+from isureal.jpeg import jpeg_failure, valid_jpeg
 
 from .conftest import make_jpeg
 
@@ -54,3 +54,9 @@ def test_valid_jpeg_accepts(data: bytes) -> None:
 )
 def test_valid_jpeg_rejects(data: bytes) -> None:
     assert not asyncio.run(valid_jpeg(data, 512))
+
+
+def test_jpeg_failure_distinguishes_invalid_data_from_dimensions() -> None:
+    assert asyncio.run(jpeg_failure(b"not a JPEG", 512)) == "invalid_image"
+    assert asyncio.run(jpeg_failure(make_jpeg(513, 1), 512)) == "too_large"
+    assert asyncio.run(jpeg_failure(PHOTO, 512)) is None

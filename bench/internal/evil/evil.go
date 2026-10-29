@@ -1,61 +1,73 @@
-// Package evil は得点に数えない不正な利用者を動かす。
+// Package evil runs abusive users whose requests do not contribute to the score.
 package evil
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
-	"image"
-	"image/jpeg"
 	"math/rand/v2"
 	"net/http"
+	"net/url"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/isucon/isucon2026/bench/internal/client"
+	"github.com/isucon/isucon2026/bench/internal/imageurl"
 	"github.com/isucon/isucon2026/bench/internal/scenario"
+	"github.com/isucon/isucon2026/dataset"
 )
 
-const interval = 500 * time.Millisecond
+const arrivalInterval = 5 * time.Second
+const type2UploadCount = 8
 
 var _ scenario.EvilFunc = Run
 
 type actorPlan struct {
-	at       time.Duration
-	username string
-	queries  []string
+	at             time.Duration
+	kind           int
+	username       string
+	rate           int
+	password       string
+	uploadInterval time.Duration
+	targetIndex    int
 }
 
-// plans は走行開始時刻から登場時刻と検索語を決める。
+// plans gives each actor a separate identity and IP. Type 1 arrives every five seconds;
+// two Type 2 actors arrive 1.25 and 2.5 seconds later, then Type 3 at 3.75 seconds.
 func plans(env scenario.EvilEnv) []actorPlan {
 	seed := env.Seed
 	if seed == 0 {
 		seed = uint64(env.Start.UnixNano())
 	}
 	rng := rand.New(rand.NewPCG(seed, seed^0x6576696c))
-	queries := []string{"a", "e", "i", "o", "u"}
-	if env.Dataset != nil {
-		for _, u := range env.Dataset.Users {
-			if u != nil && u.Username != "" {
-				queries = append(queries, u.Username)
+	var out []actorPlan
+	for n := 0; time.Duration(n)*arrivalInterval < env.Length; n++ {
+		rate := 40 + rng.IntN(121)
+		if time.Duration(n+1)*arrivalInterval >= env.Length {
+			rate = 300
+		}
+		out = append(out, actorPlan{
+			at: time.Duration(n) * arrivalInterval, kind: 1,
+			username: fmt.Sprintf("evil_login_%x_%d", seed, n),
+			rate:     rate, password: fmt.Sprintf("password_dummy_%d", rng.IntN(1_000_000)),
+		})
+		if time.Duration(n+1)*arrivalInterval >= env.Length {
+			continue
+		}
+		for variant, offset := range []time.Duration{arrivalInterval / 4, arrivalInterval / 2} {
+			if at := time.Duration(n)*arrivalInterval + offset; at < env.Length {
+				out = append(out, actorPlan{at: at, kind: 2, username: fmt.Sprintf("evil_upload_%x_%d_%d", seed, n, variant), uploadInterval: 500 * time.Millisecond})
 			}
 		}
-	}
-	var out []actorPlan
-	for i, fraction := range []int{2, 5, 8} {
-		p := actorPlan{at: env.Length * time.Duration(fraction) / 12,
-			username: fmt.Sprintf("evil_%x_%d", seed, i)}
-		for j := 0; j < 64; j++ {
-			p.queries = append(p.queries, queries[rng.IntN(len(queries))])
+		if at := time.Duration(n)*arrivalInterval + 3*arrivalInterval/4; at < env.Length {
+			out = append(out, actorPlan{at: at, kind: 3, rate: 50, targetIndex: n})
 		}
-		out = append(out, p)
 	}
 	return out
 }
 
-// Run は時計に従って利用者を増やし、終了時に通信を取り消す。
+// Run starts actors on the load clock and waits for their requests to finish.
 func Run(ctx context.Context, env scenario.EvilEnv) {
 	ctx, cancel := context.WithDeadline(ctx, env.Start.Add(env.Length))
 	defer cancel()
@@ -69,112 +81,169 @@ func Run(ctx context.Context, env scenario.EvilEnv) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			runActor(ctx, env, api, p, interval)
+			switch p.kind {
+			case 1:
+				runLoginActor(ctx, env, api, p)
+			case 2:
+				runUploadActor(ctx, env, api, p)
+			case 3:
+				runSignatureActor(ctx, env, api, p)
+			}
 		}()
 	}
 	<-ctx.Done()
 }
 
-// invalidImage は許容寸法を超えた JPEG。初期実装は復号してから拒否する。
-func invalidImage() []byte {
-	var b bytes.Buffer
-	_ = jpeg.Encode(&b, image.NewGray(image.Rect(0, 0, 513, 513)), nil)
-	return b.Bytes()
+func isBan(err error) bool {
+	var e *client.APIError
+	return errors.As(err, &e) && e.Status == http.StatusForbidden && e.Code == "ip_banned"
 }
 
-// runActor は応答を待たずに操作を予定する。滞留時は捨て、後からまとめて送らない。
-func runActor(parent context.Context, env scenario.EvilEnv, api *client.Client, p actorPlan, tick time.Duration) {
-	ctx, cancel := context.WithCancel(parent)
-	var wg sync.WaitGroup
-	var sent, skipped, bans atomic.Int64
-	defer func() {
-		cancel()
-		wg.Wait()
-		if env.Logger != nil {
-			env.Logger.Info("不正な利用者の通信", "ip", api.ClientIP(), "operations", sent.Load(), "skipped", skipped.Load(), "banned", bans.Load() != 0)
+// runLoginActor sends fabricated login attempts at the planned rate.
+func runLoginActor(parent context.Context, env scenario.EvilEnv, api *client.Client, p actorPlan) {
+	runRateActor(parent, env, api, p, func(ctx context.Context, n int) error {
+		_, err := api.Login(ctx, fmt.Sprintf("%s_%d", p.username, n), p.password)
+		return err
+	})
+}
+
+// runSignatureActor sends a syntactically valid but incorrect signature for an existing
+// image. The valid image ID and expiry make the application perform signature verification.
+func runSignatureActor(parent context.Context, env scenario.EvilEnv, api *client.Client, p actorPlan) {
+	path, ok := forgedImageURL(env.Dataset, p.targetIndex)
+	if !ok {
+		return
+	}
+	runRateActor(parent, env, api, p, func(ctx context.Context, _ int) error {
+		_, err := api.Image(ctx, path)
+		return err
+	})
+}
+
+func forgedImageURL(world *dataset.World, index int) (string, bool) {
+	if world == nil {
+		return "", false
+	}
+	var targets []*dataset.User
+	for _, user := range world.Users {
+		if user.Status == "active" && user.ProfileImage != nil {
+			targets = append(targets, user)
 		}
+	}
+	if len(targets) == 0 {
+		return "", false
+	}
+	owner := targets[index%len(targets)]
+	imageID := owner.ProfileImage.ID
+	exp := time.Now().Add(time.Hour).Unix()
+	query := url.Values{"exp": {fmt.Sprint(exp)}, "sig": {imageurl.Sign("wrong-"+owner.SecretKey, imageID, exp)}}
+	return "/api/images/" + url.PathEscape(imageID) + "?" + query.Encode(), true
+}
+
+// runRateActor sends requests at the planned rate and stops when the IP is banned.
+// In-flight requests are bounded; missed slots are discarded after congestion.
+func runRateActor(parent context.Context, env scenario.EvilEnv, api *client.Client, p actorPlan, request func(context.Context, int) error) {
+	ctx, cancel := context.WithCancel(parent)
+	defer cancel()
+	var wg sync.WaitGroup
+	var sent, skipped atomic.Int64
+	var banned atomic.Bool
+	defer func() {
+		wg.Wait()
+		logActor(env, api, p, sent.Load(), skipped.Load(), banned.Load())
 	}()
-	slots := make(chan struct{}, 8)
-	launch := func(f func(context.Context) error) {
-		if ctx.Err() != nil {
-			return
+	slots := make(chan struct{}, 64)
+	interval := time.Second / time.Duration(p.rate)
+	start := env.Start.Add(p.at)
+	for n := 0; waitUntil(ctx, start.Add(time.Duration(n)*interval)); n++ {
+		if time.Since(start.Add(time.Duration(n)*interval)) >= interval {
+			skipped.Add(1)
+			continue
 		}
 		select {
 		case slots <- struct{}{}:
 		default:
 			skipped.Add(1)
-			return
+			continue
 		}
 		wg.Add(1)
 		sent.Add(1)
-		go func() {
+		go func(n int) {
 			defer wg.Done()
 			defer func() { <-slots }()
 			reqCtx, done := context.WithTimeout(ctx, 2*time.Second)
 			defer done()
-			err := f(reqCtx)
-			var e *client.APIError
-			if errors.As(err, &e) && e.Status == http.StatusForbidden && e.Code == "ip_banned" {
-				bans.Add(1)
+			err := request(reqCtx, n)
+			if isBan(err) {
+				banned.Store(true)
+				cancel()
+			}
+		}(n)
+	}
+}
+
+func runUploadActor(parent context.Context, env scenario.EvilEnv, api *client.Client, p actorPlan) {
+	ctx, cancel := context.WithCancel(parent)
+	defer cancel()
+	var sent atomic.Int64
+	var banned atomic.Bool
+	var invalidImage, tooLarge, otherUploadResult atomic.Int64
+	var wg sync.WaitGroup
+	defer func() {
+		wg.Wait()
+		logActor(env, api, p, sent.Load(), 0, banned.Load())
+		if env.Logger != nil {
+			env.Logger.Info("不正アップロードの応答", "ip", api.ClientIP(), "invalid_image", invalidImage.Load(), "too_large", tooLarge.Load(), "other", otherUploadResult.Load())
+		}
+	}()
+	u, err := api.Register(ctx, p.username, "Evil upload user", "asia")
+	sent.Add(1)
+	if isBan(err) {
+		banned.Store(true)
+	}
+	if err != nil || u.ID == "" || u.SecretKey == "" {
+		return
+	}
+	if env.RegisterUser != nil {
+		env.RegisterUser(u.ID)
+	}
+	loggedIn, err := api.Login(ctx, p.username, u.SecretKey)
+	sent.Add(1)
+	if isBan(err) {
+		banned.Store(true)
+	}
+	if err != nil || loggedIn.Token == "" {
+		return
+	}
+	start := time.Now()
+	for n := 0; n < type2UploadCount && waitUntil(ctx, start.Add(time.Duration(n)*p.uploadInterval)); n++ {
+		wg.Add(1)
+		sent.Add(1)
+		go func() {
+			defer wg.Done()
+			reqCtx, done := context.WithTimeout(ctx, 10*time.Second)
+			defer done()
+			err := api.PutNonJPEGStream(reqCtx, loggedIn.Token)
+			var apiErr *client.APIError
+			switch {
+			case errors.As(err, &apiErr) && apiErr.Status == http.StatusBadRequest && apiErr.Code == "invalid_profile_image":
+				invalidImage.Add(1)
+			case errors.As(err, &apiErr) && apiErr.Status == http.StatusRequestEntityTooLarge:
+				tooLarge.Add(1)
+			default:
+				otherUploadResult.Add(1)
+			}
+			if isBan(err) {
+				banned.Store(true)
 				cancel()
 			}
 		}()
 	}
-	var mu sync.Mutex
-	var own client.User
-	var token string
-	var registering, loggingIn bool
-	payload := invalidImage()
-	start := env.Start.Add(p.at)
-	for n := 0; waitUntil(ctx, start.Add(time.Duration(n)*tick)); n++ {
-		// 遅れた枠を再送しない。
-		if time.Since(start.Add(time.Duration(n)*tick)) >= tick {
-			skipped.Add(1)
-			continue
-		}
-		if n == 0 {
-			registering = true
-			launch(func(ctx context.Context) error {
-				u, err := api.Register(ctx, p.username, "Evil user", "asia")
-				if u.ID != "" && env.RegisterUser != nil {
-					env.RegisterUser(u.ID)
-				}
-				mu.Lock()
-				own = u
-				mu.Unlock()
-				return err
-			})
-			continue
-		}
-		mu.Lock()
-		u, session := own, token
-		mu.Unlock()
-		if registering && !loggingIn && u.ID != "" && u.SecretKey != "" {
-			loggingIn = true
-			launch(func(ctx context.Context) error {
-				loggedIn, err := api.Login(ctx, p.username, u.SecretKey)
-				if err == nil {
-					mu.Lock()
-					token = loggedIn.Token
-					mu.Unlock()
-				}
-				return err
-			})
-			continue
-		}
-		// 自分の名前だけを使う。正常なユーザーの認証情報には触れない。
-		launch(func(ctx context.Context) error {
-			_, err := api.Login(ctx, p.username, "invalid-evil-credential")
-			return err
-		})
-		if n >= 16 && n%2 == 0 && session != "" {
-			if n%4 == 0 {
-				q := p.queries[(n/4)%len(p.queries)]
-				launch(func(ctx context.Context) error { _, err := api.SearchUsers(ctx, session, q); return err })
-			} else {
-				launch(func(ctx context.Context) error { return api.PutProfileImage(ctx, session, payload) })
-			}
-		}
+}
+
+func logActor(env scenario.EvilEnv, api *client.Client, p actorPlan, sent, skipped int64, banned bool) {
+	if env.Logger != nil {
+		env.Logger.Info("不正な利用者の通信", "type", p.kind, "ip", api.ClientIP(), "operations", sent, "skipped", skipped, "banned", banned)
 	}
 }
 
