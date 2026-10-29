@@ -1,0 +1,97 @@
+{
+  "applicationName": "webapp-optmized-astra",
+  "archivePath": "var/astra/release.tar.gz",
+  "replicationEnvPath": "var/astra/.replication.env",
+  "replicasEnabled": true,
+  "replicasSynchronous": false,
+  "replicaReads": true,
+  "database": {
+    "instanceId": "i-0ecc0569db071b251",
+    "host": "192.168.148.10"
+  },
+  "applications": [
+    {
+      "region": "asia",
+      "instanceId": "i-011601eac543fe5ee",
+      "host": "192.168.145.10"
+    },
+    {
+      "region": "europe",
+      "instanceId": "i-072b8ec3440704170",
+      "host": "192.168.146.10",
+      "replicaName": "astra_europe"
+    },
+    {
+      "region": "america",
+      "instanceId": "i-07c43b75dd34fbb7e",
+      "host": "192.168.147.10",
+      "replicaName": "astra_america"
+    }
+  ],
+  "writeProxyEnabled": true,
+  "readFenceEnabled": false,
+  "writeFenceEnabled": true,
+  "writeFenceMode": "native",
+  "nginxWorkerConnections": 8192,
+  "nginxWorkerRlimitNofile": 65536,
+  "imageStore": {
+    "enabled": true,
+    "writesEnabled": true,
+    "instanceId": "i-011601eac543fe5ee",
+    "host": "192.168.145.10",
+    "port": 5433,
+    "cacheEnabled": false
+  },
+  "imageCachePushEnabled": false,
+  "guardJournalUnit": "webapp-optmized-astra*.service",
+  "regionalUploadCacheEnabled": true,
+  "localUploadCacheEnabled": true,
+  "tokioWorkerThreads": 2,
+  "regionalReactionCacheEnabled": true,
+  "regionalImageStoresEnabled": true,
+  "regionalImageWritesEnabled": true,
+  "regionalUploadEnvPath": "var/astra/.regional-upload.env",
+  "asiaUpstreamKeepaliveEnabled": true,
+  "applicationLogLevel": "error",
+  "nginxRequestBuffering": true,
+  "nginxAccessLogBufferBytes": 65536,
+  "nginxAccessLogFlushSeconds": 1,
+  "fileImageStore": {
+    "enabled": true,
+    "writesEnabled": true,
+    "root": "/var/lib/astra-images",
+    "port": 8082,
+    "archiveReadsEnabled": true
+  },
+  "listenBacklog": 4096,
+  "nginxAccessLogEnabled": false,
+  "asiaReplicaEnabled": false,
+  "asiaReplicaSynchronous": false,
+  "asiaReplicaReads": false,
+  "asiaReplicaReadScope": "feed_search",
+  "signatureCacheCoalescing": false,
+  "signatureCacheMetrics": true,
+  "issuedImageUrlCacheEnabled": true,
+  "issuedImageUrlCacheEntries": 262144,
+  "nginxJsonGzipEnabled": true,
+  "signatureFileCacheEnabled": true,
+  "signatureFileCachePath": "var/astra/signatures.bin",
+  "imageCacheMiB": 512,
+  "metadataPoolConnections": 16,
+  "notificationBatchWritesEnabled": true,
+  "primarySharedBuffersMiB": 512,
+  "archivePeer": {
+    "enabled": false,
+    "readsEnabled": false,
+    "host": "192.168.148.10",
+    "instanceId": "i-0ecc0569db071b251",
+    "port": 8082,
+    "root": "/var/lib/astra-images/packs",
+    "aioThreads": false
+  },
+  "nginxClientBodyBufferKiB": 1024,
+  "nginxMallocThresholdKiB": 128,
+  "applicationMallocThresholdKiB": 128,
+  "authTimingEnabled": false,
+  "postTimingEnabled": false
+}
