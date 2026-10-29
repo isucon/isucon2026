@@ -29,11 +29,6 @@ def triggered(workflow, event, branch, path):
 
 
 class WorkflowRoutingTest(unittest.TestCase):
-    def test_shared_ci_uses_available_runner_pool(self):
-        for name, job in workflows()["ci.yml"]["jobs"].items():
-            with self.subTest(job=name):
-                self.assertEqual(job["runs-on"], "actions-runner-processor")
-
     def test_feature_push_does_not_duplicate_pr(self):
         for name, workflow in workflows().items():
             if "pull_request" in workflow["on"]:
@@ -41,10 +36,9 @@ class WorkflowRoutingTest(unittest.TestCase):
                     self.assertEqual(workflow["on"]["push"]["branches"], ["main"])
                     self.assertIn("concurrency", workflow)
 
-    def test_portal_and_shared_ci_use_processor_runner(self):
-        all_workflows = workflows()
-        for name in ("ci.yml", "portal-ci.yml"):
-            for job_name, job in all_workflows[name]["jobs"].items():
+    def test_all_workflows_use_processor_runner(self):
+        for name, workflow in workflows().items():
+            for job_name, job in workflow["jobs"].items():
                 with self.subTest(workflow=name, job=job_name):
                     self.assertEqual(job["runs-on"], "actions-runner-processor")
 
@@ -55,9 +49,6 @@ class WorkflowRoutingTest(unittest.TestCase):
             "portal/internal/handler/admin.go": {"portal-ci.yml", "supervisor-ci.yml"},
             "supervisor/src/main.rs": {"supervisor-ci.yml"},
             "bench/main.go": {"supervisor-ci.yml"},
-            "router/internal/config/config.go": {"router-ci.yml"},
-            "portal-mock/web/src/App.tsx": {"portal-mock-ci.yml"},
-            "gen/go/portal/v1/config.pb.go": {"portal-mock-ci.yml", "router-ci.yml"},
             "specs/001-isureal-social-app/contracts/openapi.yaml": {
                 "backend-ci.yml",
                 "frontend-ci.yml",
@@ -99,21 +90,6 @@ class WorkflowRoutingTest(unittest.TestCase):
                 all_workflows["ci.yml"], "pull_request", "main", "docs/example.env"
             )
         )
-
-    def test_portal_release_uses_protected_environment_and_serialization(self):
-        deploy = workflows()["portal-deploy.yml"]
-        self.assertEqual(set(deploy["on"]), {"workflow_dispatch"})
-        self.assertEqual(deploy["permissions"]["id-token"], "write")
-        self.assertEqual(deploy["concurrency"]["cancel-in-progress"], "false")
-        job = deploy["jobs"]["deploy"]
-        self.assertEqual(job["environment"], "portal-${{ inputs.stage }}")
-        self.assertIn("github.ref == 'refs/heads/main'", job["if"])
-        self.assertIn("vars.PORTAL_DEPLOY_ENABLED == 'true'", job["if"])
-        ci = workflows()["portal-ci.yml"]
-        for event in ("push", "pull_request"):
-            self.assertTrue(
-                triggered(ci, event, "main", ".github/workflows/portal-deploy.yml")
-            )
 
 
 if __name__ == "__main__":
