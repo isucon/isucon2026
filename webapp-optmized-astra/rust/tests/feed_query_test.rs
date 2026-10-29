@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::str::FromStr;
 use std::sync::Arc;
 
@@ -73,6 +73,147 @@ async fn reference(
     .collect()
 }
 
+// Independent in-memory reference for the recommended friends-of-friends order:
+// 10 * E + 3 * M + min(C, 30) from raw friendships, RealMojis and comments.
+async fn recommendation_scores(db: &PgPool, posts: &[PostWithAuthor]) -> HashMap<String, i64> {
+    let friendships: Vec<(String, String)> =
+        sqlx::query_as("SELECT user_low_id, user_high_id FROM friendships")
+            .fetch_all(db)
+            .await
+            .unwrap();
+    let friends: HashSet<&str> = friendships
+        .iter()
+        .filter_map(|(low, high)| match (low.as_str(), high.as_str()) {
+            ("viewer", other) | (other, "viewer") => Some(other),
+            _ => None,
+        })
+        .collect();
+    let mut mutual: HashMap<&str, i64> = HashMap::new();
+    for (low, high) in &friendships {
+        if friends.contains(low.as_str()) && high != "viewer" {
+            *mutual.entry(high).or_default() += 1;
+        }
+        if friends.contains(high.as_str()) && low != "viewer" {
+            *mutual.entry(low).or_default() += 1;
+        }
+    }
+    let active: HashSet<String> =
+        sqlx::query_scalar("SELECT id FROM users WHERE status = 'active'")
+            .fetch_all(db)
+            .await
+            .unwrap()
+            .into_iter()
+            .collect();
+    let engagements: Vec<(String, String)> = sqlx::query_as(
+        "SELECT post_id, reactor_id FROM realmojis WHERE replaced_at IS NULL AND deleted_at IS NULL \
+         UNION ALL SELECT post_id, author_id FROM comments WHERE deleted_at IS NULL",
+    )
+    .fetch_all(db)
+    .await
+    .unwrap();
+    posts
+        .iter()
+        .map(|post| {
+            let author = post.post.author_id.as_str();
+            let mutual_friends = mutual.get(author).copied().unwrap_or_default();
+            let connections: i64 = friendships
+                .iter()
+                .map(|(low, high)| {
+                    let other = if low == author {
+                        high
+                    } else if high == author {
+                        low
+                    } else {
+                        return 0;
+                    };
+                    mutual.get(other.as_str()).copied().unwrap_or_default()
+                })
+                .sum();
+            let engaged: HashSet<&str> = engagements
+                .iter()
+                .filter(|(post_id, user)| {
+                    post_id == &post.post.id
+                        && friends.contains(user.as_str())
+                        && active.contains(user)
+                })
+                .map(|(_, user)| user.as_str())
+                .collect();
+            let score = 10 * engaged.len() as i64 + 3 * mutual_friends + connections.min(30);
+            (post.post.id.clone(), score)
+        })
+        .collect()
+}
+
+async fn ranked_reference(db: &PgPool) -> Vec<(PostWithAuthor, i64)> {
+    let candidates = reference(db, "friends-of-friends", None, "").await;
+    let scores = recommendation_scores(db, &candidates).await;
+    let mut ranked: Vec<(PostWithAuthor, i64)> = candidates
+        .into_iter()
+        .map(|post| {
+            let score = scores[&post.post.id];
+            (post, score)
+        })
+        .collect();
+    // Stable: equal scores keep the reference's postedAt DESC, id DESC order.
+    ranked.sort_by(|a, b| b.1.cmp(&a.1));
+    ranked
+}
+
+async fn compare_ranked(h: &Arc<HandlerContext>, stage: &str) -> usize {
+    let all = ranked_reference(&h.db).await;
+    let mut cursor: Option<(i64, DateTime<Utc>, String)> = None;
+    let mut pages = 0;
+    loop {
+        let expected: Vec<&(PostWithAuthor, i64)> = all
+            .iter()
+            .filter(|(post, score)| {
+                cursor.as_ref().is_none_or(|(before_score, before, before_id)| {
+                    (*score, post.post.posted_at, post.post.id.as_str())
+                        < (*before_score, *before, before_id.as_str())
+                })
+            })
+            .collect();
+        let input = GetFeedRequest {
+            feed: "friends-of-friends".into(),
+            before_score: cursor.as_ref().map(|cursor| cursor.0),
+            before_posted_at: cursor.as_ref().map(|cursor| cursor.1),
+            before_id: cursor
+                .as_ref()
+                .map(|cursor| cursor.2.clone())
+                .unwrap_or_default(),
+        };
+        let response = get_feed_handler(State(h.clone()), Extension(session()), Bind(input))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let bytes = response.into_body().collect().await.unwrap().to_bytes();
+        let body: Value = serde_json::from_slice(&bytes).unwrap();
+        let items: Vec<(&str, i64)> = body["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|item| (item["id"].as_str().unwrap(), item["score"].as_i64().unwrap()))
+            .collect();
+        let expected_items: Vec<(&str, i64)> = expected
+            .iter()
+            .take(50)
+            .map(|(post, score)| (post.post.id.as_str(), *score))
+            .collect();
+        assert_eq!(items, expected_items, "ranked stage={stage}, page={pages}");
+        assert_eq!(
+            body["hasMore"],
+            expected.len() > 50,
+            "ranked stage={stage}, page={pages}"
+        );
+        pages += 1;
+        if expected.len() <= 50 {
+            return pages;
+        }
+        let last = expected[49];
+        cursor = Some((last.1, last.0.post.posted_at, last.0.post.id.clone()));
+    }
+}
+
 fn session() -> Session {
     Session {
         user_id: "viewer".into(),
@@ -83,15 +224,17 @@ fn session() -> Session {
     }
 }
 
-async fn compare(h: &Arc<HandlerContext>, stage: &str) {
+async fn compare(h: &Arc<HandlerContext>, stage: &str) -> usize {
     compare_post_permissions(h, stage).await;
-    for feed in ["public", "friends", "friends-of-friends", "following"] {
+    for feed in ["public", "friends", "following"] {
         let mut before = None;
         let mut before_id = String::new();
         loop {
             let expected = reference(&h.db, feed, before, &before_id).await;
+            // Other feeds ignore an integer beforeScore.
             let input = GetFeedRequest {
                 feed: feed.into(),
+                before_score: before.map(|_| 7),
                 before_posted_at: before,
                 before_id: before_id.clone(),
             };
@@ -105,7 +248,10 @@ async fn compare(h: &Arc<HandlerContext>, stage: &str) {
                 .as_array()
                 .unwrap()
                 .iter()
-                .map(|item| item["id"].as_str().unwrap())
+                .map(|item| {
+                    assert!(item.get("score").is_none(), "feed={feed} has no score");
+                    item["id"].as_str().unwrap()
+                })
                 .collect();
             let expected_ids: Vec<&str> = expected
                 .iter()
@@ -128,6 +274,7 @@ async fn compare(h: &Arc<HandlerContext>, stage: &str) {
             before_id = expected[49].post.id.clone();
         }
     }
+    compare_ranked(h, stage).await
 }
 
 async fn compare_post_permissions(h: &Arc<HandlerContext>, stage: &str) {
@@ -239,6 +386,8 @@ async fn feed_sql_matches_original_graph_and_filters_before_pagination() {
       CREATE TABLE friendships (user_low_id text, user_high_id text);
       CREATE TABLE block_relations (blocker_id text, blocked_id text);
       CREATE TABLE follows (follower_id text, followee_id text);
+      CREATE TABLE realmojis (post_id text, reactor_id text, replaced_at timestamptz, deleted_at timestamptz);
+      CREATE TABLE comments (post_id text, author_id text, deleted_at timestamptz);
       INSERT INTO users (id,username,secret_key_hash) VALUES ('viewer','viewer',repeat('ab',32));
       INSERT INTO users (id,username,secret_key_hash)
         SELECT 'author'||lpad(i::text,3,'0'), 'author'||i, repeat('cd',32) FROM generate_series(0,199) i;
@@ -279,10 +428,37 @@ async fn feed_sql_matches_original_graph_and_filters_before_pagination() {
         .execute(&db).await.unwrap();
     assert_eq!(reference(&db, "public", None, "").await.len(), 66);
     compare(&h, "visible gate and mixed graph").await;
+    // Recommendation inputs: mutual friends (070 and 071 know 090/091), a
+    // two-step path via 150, live and dead reactions, duplicate engagement by
+    // one friend, a deleted friend (003) and a non-friend reactor (150).
+    sqlx::raw_sql(r#"
+      INSERT INTO friendships VALUES ('author071','author090'),('author071','author091'),
+        ('author090','author150'),('author072','author150'),('author091','author150');
+      INSERT INTO realmojis VALUES ('post090','author070',NULL,NULL),('post090','author071',NULL,NULL),
+        ('post090','author072',now(),NULL),('post091','author150',NULL,NULL),('post093','author003',NULL,NULL),
+        ('post094','author076',NULL,now());
+      INSERT INTO comments VALUES ('post090','author071',NULL),('post090','author073',now()),
+        ('post091','author074',NULL),('post091','author074',NULL),('post094','author078',NULL);
+    "#).execute(&db).await.unwrap();
+    let scores = recommendation_scores(&db, &reference(&db, "friends-of-friends", None, "").await).await;
+    // post090: E=2 (070 RealMoji, 071 RealMoji and comment), M=2 (070, 071), C=1 (150 via 072).
+    assert_eq!(scores["post090"], 10 * 2 + 3 * 2 + 1);
+    // post091: E=1 (074 commented twice), M=2, C=1.
+    assert_eq!(scores["post091"], 10 + 3 * 2 + 1);
+    // post093: the deleted friend's RealMoji does not count.
+    assert_eq!(scores["post093"], 3);
+    assert_eq!(scores["post094"], 10 + 3);
+    compare(&h, "recommendation inputs").await;
     sqlx::raw_sql("INSERT INTO friendships SELECT 'author000', 'author'||lpad(i::text,3,'0') FROM generate_series(5,199) i; UPDATE posts SET visibility='friends_of_friends' WHERE id>='post110' AND id<='post199';")
         .execute(&db).await.unwrap();
     assert!(reference(&db, "friends-of-friends", None, "").await.len() > 50);
-    compare(&h, "dense graph and multiple pages").await;
+    // author095 has 41 more friends that each share author000 with the viewer.
+    sqlx::raw_sql("INSERT INTO friendships SELECT 'author095', 'author'||lpad(i::text,3,'0') FROM generate_series(100,140) i;")
+        .execute(&db).await.unwrap();
+    let scores = recommendation_scores(&db, &reference(&db, "friends-of-friends", None, "").await).await;
+    // M=2 (000 and 070); C is capped at 30.
+    assert_eq!(scores["post095"], 3 * 2 + 30);
+    assert!(compare(&h, "dense graph and multiple pages").await > 1);
     sqlx::raw_sql("DELETE FROM friendships WHERE user_low_id='author000'; UPDATE posts SET visibility='friends' WHERE id>='post110' AND id<='post199';")
         .execute(&db).await.unwrap();
     compare(&h, "sparse graph restored").await;
@@ -326,6 +502,17 @@ async fn feed_sql_matches_original_graph_and_filters_before_pagination() {
         GetFeedRequest {
             feed: "public".into(),
             before_posted_at: Some(Utc::now()),
+            ..Default::default()
+        },
+        GetFeedRequest {
+            feed: "friends-of-friends".into(),
+            before_posted_at: Some(Utc::now()),
+            before_id: "cursor".into(),
+            ..Default::default()
+        },
+        GetFeedRequest {
+            feed: "friends-of-friends".into(),
+            before_score: Some(3),
             ..Default::default()
         },
     ] {
