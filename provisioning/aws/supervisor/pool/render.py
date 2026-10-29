@@ -57,12 +57,15 @@ def build(task, service, config):
         "memory",
         "networkMode",
         "requiresCompatibilities",
-        "runtimePlatform",
         "executionRoleArn",
         "taskRoleArn",
         "containerDefinitions",
     ]
     result = {k: copy.deepcopy(task[k]) for k in keys if k in task}
+    result["runtimePlatform"] = {
+        "cpuArchitecture": "ARM64",
+        "operatingSystemFamily": "LINUX",
+    }
     result["family"] = config["name"]
     c = result["containerDefinitions"][0]
     c["image"] = config["image"]

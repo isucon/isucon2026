@@ -108,6 +108,9 @@ make supervisor-image                   # linux/amd64 でビルドし、stack �
 make supervisor-image SUPERVISOR_STACK=portal-dev TAG=photos-20261027   # stack とタグを指定する例
 ```
 
+共有プール向けには `make supervisor-image SUPERVISOR_PLATFORM=linux/arm64` を使います。
+チーム別の旧タスクは X86_64 のため、既定の linux/amd64 を使います。
+
 `make supervisor-image`は`supervisor/Dockerfile`を`PHOTOS=archive`でビルドし、`var/photos/merged.zip`を`/opt/isucon/photos/merged.zip`に入れます。
 push先はstackの出力`repositoryUrl`（`REPOSITORY`で上書き可）、タグは省略するとイメージの内容から決め、同じタグがECRにあればpushを省きます。
 表示されたdigestを`image`（必要なら`teamImages`）に設定し、`benchmarkImages`に同梱したパスを設定します。
