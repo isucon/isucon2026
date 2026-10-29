@@ -101,14 +101,17 @@ IDを使用していましたが、現行Supervisorは渡された文字列を�
 ベンチは投稿に使う写真のアーカイブ（`-images`、環境変数`ISUXBENCH_IMAGES`）がないと生成した小さな画像を投稿し、本番の条件と変わります。
 bench-runnerは走行ごとに署名付きURLを渡しますが、ポータルから走るSupervisorにはその経路がないため、アーカイブをイメージに同梱し、タスク定義の環境変数で場所を渡します。
 
+初期データの画像のダイジェストの表（`-image-digests`、環境変数`ISUXBENCH_IMAGE_DIGESTS`）も同じく同梱します。
+表がないとベンチは初期データの画像を描き直して比べるので、CPUを多く使います（[bench README](../../../bench/README.md)の「初期データの画像の表」）。
+
 ```bash
 # repository root
-make supervisor-photos                  # S3 の assets/merged.zip を var/photos/merged.zip に取る（あれば省く）
+make supervisor-photos                  # S3 の assets/merged.zip と assets/image-digests-large.bin を var/photos/ に取る（あれば省く）
 make supervisor-image                   # linux/amd64 でビルドし、stack の ECR へ push して repository@digest を表示する
 make supervisor-image SUPERVISOR_STACK=portal-dev TAG=photos-20261027   # stack とタグを指定する例
 ```
 
-`make supervisor-image`は`supervisor/Dockerfile`を`PHOTOS=archive`でビルドし、`var/photos/merged.zip`を`/opt/isucon/photos/merged.zip`に入れます。
+`make supervisor-image`は`supervisor/Dockerfile`を`PHOTOS=archive`でビルドし、`var/photos/merged.zip`と`var/photos/image-digests-large.bin`を`/opt/isucon/photos/`に入れます。
 push先はstackの出力`repositoryUrl`（`REPOSITORY`で上書き可）、タグは省略するとイメージの内容から決め、同じタグがECRにあればpushを省きます。
 表示されたdigestを`image`（必要なら`teamImages`）に設定し、`benchmarkImages`に同梱したパスを設定します。
 `benchmarkImages`は各workerの環境変数`ISUXBENCH_IMAGES`になり、省略すると生成画像のままです。
