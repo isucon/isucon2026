@@ -8,7 +8,7 @@
 //! X-Body-Xxh3 (the XXH3-64 of the body, seeded by the request id) and
 //! X-Body-Length instead of the body. In an export ZIP every entry except the
 //! JSON files is replaced by its digest (zip::MARKER). Other statuses pass
-//! through unchanged.
+//! through unchanged. The app's own X-Body-* headers are always dropped.
 //!
 //! An image request that also carries X-Benchmark-Digest: sha256 gets
 //! X-Body-Sha256 (hex) instead of X-Body-Xxh3. The benchmark asks for it for the
@@ -98,6 +98,14 @@ fn is_hop(name: &str) -> bool {
     .any(|h| name.eq_ignore_ascii_case(h))
 }
 
+/// The headers this proxy answers with. The app's own are dropped: the
+/// benchmark reads the first value, so the app's would decide what it compares.
+fn is_digest(name: &str) -> bool {
+    ["x-body-sha256", "x-body-xxh3", "x-body-length"]
+        .iter()
+        .any(|h| name.eq_ignore_ascii_case(h))
+}
+
 fn parse_header<T: std::str::FromStr>(value: &[u8]) -> Option<T> {
     std::str::from_utf8(value).ok()?.trim().parse().ok()
 }
@@ -132,6 +140,19 @@ struct Conn {
     body: Vec<u8>,
     zip: Vec<u8>,
     out: Vec<u8>,
+}
+
+impl Conn {
+    fn new() -> Self {
+        Conn {
+            request: Vec::with_capacity(4096),
+            upstream: Buf::new(UPSTREAM_BUFFER),
+            head: Vec::with_capacity(4096),
+            body: Vec::new(),
+            zip: Vec::new(),
+            out: Vec::with_capacity(4096),
+        }
+    }
 }
 
 /// Turns the request head into the request for the app (in c.request) without
@@ -288,7 +309,7 @@ async fn exchange(
                     }
                     continue;
                 }
-                if is_hop(h.name) {
+                if is_hop(h.name) || is_digest(h.name) {
                     continue;
                 }
                 c.out.extend_from_slice(h.name.as_bytes());
@@ -375,14 +396,7 @@ async fn exchange(
 async fn serve(mut down: TcpStream) -> io::Result<()> {
     down.set_nodelay(true)?;
     let mut buf = Buf::new(DOWNSTREAM_BUFFER);
-    let mut c = Conn {
-        request: Vec::with_capacity(4096),
-        upstream: Buf::new(UPSTREAM_BUFFER),
-        head: Vec::with_capacity(4096),
-        body: Vec::new(),
-        zip: Vec::new(),
-        out: Vec::with_capacity(4096),
-    };
+    let mut c = Conn::new();
     loop {
         let Some(head_len) = buf.read_head(&mut down).await? else {
             return Ok(());
@@ -498,6 +512,78 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// An app that sends digest headers of its own over an empty body: the
+    /// SHA-256 and length of the image it should have sent, and an XXH3.
+    async fn forging_app() -> String {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap().to_string();
+        let forged = format!(
+            "HTTP/1.1 200 OK\r\nX-Body-Sha256: {}\r\nx-body-xxh3: 0123456789abcdef\r\nX-Body-Length: 9\r\nContent-Length: 0\r\n\r\n",
+            hex(&Sha256::digest(b"the image"))
+        );
+        tokio::spawn(async move {
+            loop {
+                let (mut s, _) = listener.accept().await.unwrap();
+                let forged = forged.clone();
+                tokio::spawn(async move {
+                    let mut buf = Buf::new(4096);
+                    while let Ok(Some(n)) = buf.read_head(&mut s).await {
+                        buf.consume(n);
+                        if s.write_all(forged.as_bytes()).await.is_err() {
+                            return;
+                        }
+                    }
+                });
+            }
+        });
+        address
+    }
+
+    #[tokio::test]
+    async fn drops_the_apps_digest_headers() {
+        let up = upstream(&forging_app().await);
+        let sha256 = hex(&Sha256::digest(b""));
+        let xxh3 = format!("{:016x}", xxhash_rust::xxh3::xxh3_64_with_seed(b"", 7));
+        for (head, want) in [
+            (
+                "GET /api/images/a HTTP/1.1\r\nX-Benchmark-Request-Id: 7\r\nX-Benchmark-Digest: sha256\r\n\r\n",
+                vec![("x-body-sha256", sha256.as_str()), ("x-body-length", "0")],
+            ),
+            (
+                "GET /api/images/a HTTP/1.1\r\nX-Benchmark-Request-Id: 7\r\n\r\n",
+                vec![("x-body-xxh3", xxh3.as_str()), ("x-body-length", "0")],
+            ),
+            // Not a ZIP, so it passes through.
+            (
+                "GET /api/me/export HTTP/1.1\r\nX-Benchmark-Request-Id: 7\r\n\r\n",
+                vec![],
+            ),
+        ] {
+            let mut c = Conn::new();
+            let (req, _) = parse_request(head.as_bytes(), &mut c).unwrap();
+            exchange(&up, &req, None, &mut c).await.unwrap();
+            let mut headers = [httparse::EMPTY_HEADER; 16];
+            let mut resp = httparse::Response::new(&mut headers);
+            assert!(resp.parse(&c.out).unwrap().is_complete());
+            let got: Vec<_> = resp
+                .headers
+                .iter()
+                .filter(|h| is_digest(h.name))
+                .map(|h| {
+                    (
+                        h.name.to_ascii_lowercase(),
+                        String::from_utf8_lossy(h.value).into_owned(),
+                    )
+                })
+                .collect();
+            let want: Vec<_> = want
+                .into_iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect();
+            assert_eq!(got, want, "{head:?}");
+        }
+    }
 
     #[test]
     fn sha256_in_hex() {
