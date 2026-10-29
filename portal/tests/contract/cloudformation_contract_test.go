@@ -131,8 +131,9 @@ func TestEnvCheckTemplateUsesISUCON2026(t *testing.T) {
 	}
 	for text, count := range map[string]int{
 		"Type: AWS::EC2::Instance\n":                            5,
-		"InstanceType: c7i.large":                               3,
-		"InstanceType: c6in.large":                              2,
+		"InstanceType: c5.large":                                2,
+		"InstanceType: c7i.large":                               2,
+		"InstanceType: c6in.large":                              1,
 		"Type: AWS::EC2::EIP\n":                                 5,
 		"path: /opt/isucon-env-checker/portal_credentials.json": 5,
 	} {
@@ -194,8 +195,9 @@ func TestContestTemplateProvides2026Topology(t *testing.T) {
 	}
 	for text, count := range map[string]int{
 		"Type: AWS::EC2::Instance\n":                                5,
-		"InstanceType: c7i.large":                                   3,
-		"InstanceType: c6in.large":                                  2,
+		"InstanceType: c5.large":                                    2,
+		"InstanceType: c7i.large":                                   2,
+		"InstanceType: c6in.large":                                  1,
 		"Type: AWS::EC2::EIP\n":                                     5,
 		"Type: AWS::EC2::Subnet\n":                                  6,
 		"NetworkInterfaceId: !Ref RouterDataInterface":              13,
