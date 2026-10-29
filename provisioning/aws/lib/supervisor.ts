@@ -89,9 +89,10 @@ export function supervisorContainer(c: SupervisorConfig, logGroup: string) {
   }
   if (
     c.benchmarkImages !== undefined &&
-    !/^(\/[a-zA-Z0-9._\/-]+|https:\/\/[a-zA-Z0-9._~:\/?#@!$&'()*+,;=%-]+)$/.test(
-      c.benchmarkImages,
-    )
+    !/^(\/[a-zA-Z0-9._\/-]+|https:\/\/[a-zA-Z0-9._~:\/?#@!$&'()*+,;=%-]+)$/
+      .test(
+        c.benchmarkImages,
+      )
   ) {
     throw new Error(
       "benchmarkImages must be an absolute path in the image or an HTTPS URL",
@@ -275,7 +276,10 @@ export function createSupervisor(c: SupervisorConfig) {
     skipDestroy: true,
     tags,
   });
-  const cluster = new aws.ecs.Cluster("supervisor-cluster", { tags });
+  const cluster = new aws.ecs.Cluster("supervisor-cluster", {
+    settings: [{ name: "containerInsights", value: "enabled" }],
+    tags,
+  });
   const repository = new aws.ecr.Repository("supervisor-images", {
     name: `isucon2026-supervisor-${pulumi.getStack()}`,
     imageTagMutability: "IMMUTABLE",
