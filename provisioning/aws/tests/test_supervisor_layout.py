@@ -55,7 +55,12 @@ class SupervisorLayoutTest(unittest.TestCase):
                 json.loads((output / config["service_definition"]).read_text())[
                     "networkConfiguration"
                 ],
-                json.loads(service.read_text())["networkConfiguration"],
+                {
+                    "awsvpcConfiguration": {
+                        "subnets": ["test-subnet"],
+                        "assignPublicIp": "ENABLED",
+                    }
+                },
             )
 
     def test_stack_identities_and_typescript_resolution_are_preserved(self):

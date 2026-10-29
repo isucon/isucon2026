@@ -11,11 +11,11 @@ pulumi.runtime.setMocks({
 	call: (args) => args.inputs,
 });
 
-test("provides private capacity across three AZs using the existing NAT", async () => {
+test("provides public task subnets across three AZs through the Internet Gateway", async () => {
 	await pulumi.runtime.runInPulumiStack(async () =>
 		createPoolNetwork({
 			vpcId: "vpc-portal",
-			natGatewayId: "nat-portal",
+			internetGatewayId: "igw-portal",
 			subnets: [
 				{ availabilityZone: "ap-northeast-1a", cidrBlock: "10.26.32.0/22" },
 				{ availabilityZone: "ap-northeast-1c", cidrBlock: "10.26.36.0/22" },
@@ -41,7 +41,7 @@ test("provides private capacity across three AZs using the existing NAT", async 
 	);
 	expect(routes).toHaveLength(1);
 	expect(routes[0].inputs.routes).toEqual([
-		{ cidrBlock: "0.0.0.0/0", natGatewayId: "nat-portal" },
+		{ cidrBlock: "0.0.0.0/0", gatewayId: "igw-portal" },
 	]);
 	expect(resources.filter((r) => r.type.startsWith("aws:ecs/"))).toHaveLength(
 		0,
