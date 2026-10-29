@@ -13,6 +13,11 @@ from pathlib import Path
 import yaml
 
 ANSIBLE = Path(__file__).resolve().parents[1]
+PACING = (
+    "**エージェントはできるだけゆっくり操作すること。** "
+    "許可された読み取り専用の操作であっても、操作の間には `sleep` による待機を挟み、"
+    "連続実行や並列実行で本番環境に負荷を集中させないこと。\n\n"
+)
 
 
 class AgentInstructionsTest(unittest.TestCase):
@@ -24,9 +29,13 @@ class AgentInstructionsTest(unittest.TestCase):
             b"\n\n<!-- participant-supplement -->\n"
         )
         self.assertTrue(separator)
-        # Preserve the supplied document byte for byte without a Downloads dependency.
+        operations = source.decode("utf-8").split("## 4. 許可される操作\n", 1)[1]
+        operations = operations.split("## 5.", 1)[0]
+        self.assertIn(PACING, operations)
+        self.assertEqual(source.count(PACING.encode()), 1)
+        # Only the requested pacing paragraph changes the supplied document.
         self.assertEqual(
-            hashlib.sha256(source).hexdigest(),
+            hashlib.sha256(source.replace(PACING.encode(), b"", 1)).hexdigest(),
             "22b2412fa165cb282b86064ada6a74faca31c3386d14a93ce4d9dae65a60be0c",
         )
         notes = supplement.decode("utf-8")
