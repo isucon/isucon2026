@@ -28,7 +28,7 @@ type actorPlan struct {
 }
 
 // plans gives each actor a separate identity and IP. Type 1 arrives every five seconds;
-// Type 2 arrives halfway between those arrivals.
+// two Type 2 actors arrive 1.25 and 2.5 seconds after each Type 1.
 func plans(env scenario.EvilEnv) []actorPlan {
 	seed := env.Seed
 	if seed == 0 {
@@ -46,8 +46,10 @@ func plans(env scenario.EvilEnv) []actorPlan {
 			username: fmt.Sprintf("evil_login_%x_%d", seed, n),
 			rate:     rate, password: fmt.Sprintf("password_dummy_%d", rng.IntN(1_000_000)),
 		})
-		if at := time.Duration(n)*arrivalInterval + arrivalInterval/2; at < env.Length {
-			out = append(out, actorPlan{at: at, kind: 2, username: fmt.Sprintf("evil_upload_%x_%d", seed, n)})
+		for variant, offset := range []time.Duration{arrivalInterval / 4, arrivalInterval / 2} {
+			if at := time.Duration(n)*arrivalInterval + offset; at < env.Length {
+				out = append(out, actorPlan{at: at, kind: 2, username: fmt.Sprintf("evil_upload_%x_%d_%d", seed, n, variant)})
+			}
 		}
 	}
 	return out
@@ -150,7 +152,7 @@ func runUploadActor(parent context.Context, env scenario.EvilEnv, api *client.Cl
 		return
 	}
 	for ctx.Err() == nil {
-		reqCtx, done := context.WithTimeout(ctx, 2*time.Second)
+		reqCtx, done := context.WithTimeout(ctx, 10*time.Second)
 		err := api.PutNonJPEGStream(reqCtx, loggedIn.Token)
 		done()
 		sent++
