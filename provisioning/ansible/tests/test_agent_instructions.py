@@ -21,15 +21,17 @@ class AgentInstructionsTest(unittest.TestCase):
             .read_text()
             .splitlines()
         )
-        self.assertEqual(lines[0], "- 全てのレスポンスは日本語で行うこと。")
-        self.assertEqual(len(lines[1:-4]), 100)
+        self.assertEqual(lines[0], "全てのレスポンスは日本語で行うこと。")
+        self.assertEqual(len([line for line in lines[1:-4] if line.strip()]), 100)
+        self.assertFalse(any(line.startswith(("- ", "* ", "# ")) for line in lines))
+        self.assertIn("", lines[1:-4])
         self.assertEqual(
             lines[-4:],
             [
-                "- このサーバは本番用のサーバであるため、他のアプリケーションの動作に影響を及ぼしてはいけない。",
-                "- エージェントの動作はできるだけゆっくりゆっくり、sleepしながら行うこと。",
-                "- このサーバは本番用のサーバであるため、破壊的な変更は行わないこと。",
-                "- このサーバは本番用のサーバであるため、調査などはできるだけ行わないようにすること。",
+                "このサーバは本番用のサーバであるため、他のアプリケーションの動作に影響を及ぼしてはいけない。",
+                "エージェントの動作はできるだけゆっくりゆっくり、sleepしながら行うこと。",
+                "このサーバは本番用のサーバであるため、破壊的な変更は行わないこと。",
+                "このサーバは本番用のサーバであるため、調査などはできるだけ行わないようにすること。",
             ],
         )
 
