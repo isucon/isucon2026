@@ -21,7 +21,7 @@ import (
 func TestPlans(t *testing.T) {
 	env := scenario.EvilEnv{Start: time.Unix(42, 0), Length: time.Minute, Seed: 7}
 	a, b := plans(env), plans(env)
-	if !reflect.DeepEqual(a, b) || len(a) != 36 {
+	if !reflect.DeepEqual(a, b) || len(a) != 34 {
 		t.Fatal("plans are not deterministic or arrivals are missing")
 	}
 	for i, p := range a {
@@ -35,12 +35,12 @@ func TestPlans(t *testing.T) {
 		if p.at != wantAt || p.kind != wantKind {
 			t.Fatalf("plan %d: %+v", i, p)
 		}
-		if p.kind == 2 && p.uploadInterval != 2*time.Second {
+		if p.kind == 2 && p.uploadInterval != 500*time.Millisecond {
 			t.Fatalf("invalid upload interval: %+v", p)
 		}
 		if p.kind == 1 && (!strings.HasPrefix(p.password, "password_dummy_") ||
-			(i == len(a)-3 && p.rate != 300) ||
-			(i != len(a)-3 && (p.rate < 40 || p.rate > 160))) {
+			(i == len(a)-1 && p.rate != 300) ||
+			(i != len(a)-1 && (p.rate < 40 || p.rate > 160))) {
 			t.Fatalf("invalid login actor: %+v", p)
 		}
 	}
@@ -84,7 +84,7 @@ func TestUploadActorStreamsNonJPEGAndStopsOnBan(t *testing.T) {
 		case "/api/auth/login":
 			fmt.Fprint(w, `{"token":"own-token"}`)
 		case "/api/me/profile-image":
-			if r.Header.Get("Authorization") != "Bearer own-token" || r.Header.Get("Content-Type") != "image/jpeg" || r.ContentLength > 0 {
+			if r.Header.Get("Authorization") != "Bearer own-token" || r.Header.Get("Content-Type") != "image/jpeg" || r.ContentLength != 31<<20 {
 				t.Error("stream headers are wrong", r.Header, r.ContentLength)
 			}
 			magic := make([]byte, 12)
@@ -114,8 +114,36 @@ func TestUploadActorStreamsNonJPEGAndStopsOnBan(t *testing.T) {
 	}
 }
 
+func TestUploadActorStopsAfterFixedCount(t *testing.T) {
+	var uploads atomic.Int64
+	api := testAPI(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/auth/register":
+			w.WriteHeader(http.StatusCreated)
+			fmt.Fprint(w, `{"secretKey":"own-secret","user":{"id":"evil-id"}}`)
+		case "/api/auth/login":
+			fmt.Fprint(w, `{"token":"own-token"}`)
+		case "/api/me/profile-image":
+			uploads.Add(1)
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprint(w, `{"error":"invalid_profile_image"}`)
+		default:
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+	}))
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	runUploadActor(ctx, scenario.EvilEnv{}, api, actorPlan{kind: 2, username: "evil_upload", uploadInterval: 10 * time.Millisecond})
+	if got := uploads.Load(); got != type2UploadCount {
+		t.Fatalf("uploaded %d times, want %d", got, type2UploadCount)
+	}
+}
+
 func TestStreamCanBeRejectedFromHeaderBytes(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.ContentLength != 31<<20 {
+			t.Errorf("content length = %d, want %d", r.ContentLength, 31<<20)
+		}
 		magic := make([]byte, 12)
 		if _, err := io.ReadFull(r.Body, magic); err != nil || string(magic[4:8]) != "ftyp" {
 			t.Error("bad streamed prefix", magic, err)

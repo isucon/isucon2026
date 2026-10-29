@@ -1097,17 +1097,19 @@ func (c *Client) PutProfileImage(ctx context.Context, token string, image []byte
 	return c.do(ctx, request{method: http.MethodPut, path: apiPrefix + "/me/profile-image", token: token, contentType: "image/jpeg", body: image, want: http.StatusNoContent}, nil)
 }
 
-// PutNonJPEGStream sends a 512 MiB non-JPEG file without buffering it in memory.
+// PutNonJPEGStream sends a 31 MiB non-JPEG file without buffering it in memory.
 // It advertises JPEG so the receiver must inspect the first bytes of the body.
 // The stream is intentionally slow enough that a receiver can reject it early.
 func (c *Client) PutNonJPEGStream(ctx context.Context, token string) error {
 	const path = apiPrefix + "/me/profile-image"
+	const streamSize = 31 << 20
 	reader, writer := io.Pipe()
 	defer reader.Close()
 	request, err := http.NewRequestWithContext(ctx, http.MethodPut, c.base+path, reader)
 	if err != nil {
 		return err
 	}
+	request.ContentLength = streamSize
 	if c.host != "" {
 		request.Host = c.host
 	}
@@ -1125,7 +1127,7 @@ func (c *Client) PutNonJPEGStream(ctx context.Context, token string) error {
 		defer writer.Close()
 		chunk := make([]byte, 64<<10)
 		copy(chunk, []byte{0, 0, 0, 24, 'f', 't', 'y', 'p', 'm', 'p', '4', '2'})
-		for sent := 0; sent < 512<<20; sent += len(chunk) {
+		for sent := 0; sent < streamSize; sent += len(chunk) {
 			if _, err := writer.Write(chunk); err != nil {
 				return
 			}
