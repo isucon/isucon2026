@@ -1,11 +1,13 @@
 package integration_test
 
 import (
+	"fmt"
 	"net/http"
 	"testing"
 	"time"
 
 	pbadmin "github.com/isucon/isucon2026/portal/gen/pb/isuxportal/services/admin"
+	"github.com/isucon/isucon2026/portal/internal/model"
 	"github.com/isucon/isucon2026/portal/tests/testkit"
 )
 
@@ -51,6 +53,9 @@ func TestAdminDashboardEarliestUnansweredClarification(t *testing.T) {
 			if res.StatusCode != http.StatusOK {
 				t.Fatalf("status = %d, body = %s", res.StatusCode, readAll(t, res))
 			}
+			if got := res.Header.Get("Cache-Control"); got != "no-store" {
+				t.Fatalf("Cache-Control = %q, want no-store", got)
+			}
 			body := &pbadmin.DashboardResponse{}
 			testkit.DecodePB(t, res, body)
 			if body.UnansweredClarificationCount != tc.count {
@@ -65,5 +70,48 @@ func TestAdminDashboardEarliestUnansweredClarification(t *testing.T) {
 				t.Errorf("earliest = %v, want %v", got, tc.earliest)
 			}
 		})
+	}
+}
+
+func TestAdminDashboardPendingJobs(t *testing.T) {
+	p := testkit.Start(t)
+	now := time.Now().UTC().Truncate(time.Second)
+	oldest := now.Add(-2 * time.Minute)
+	for i, row := range []struct {
+		status int32
+		at     time.Time
+	}{
+		{model.JobPending, oldest}, {model.JobPending, now},
+		{model.JobRunning, now.Add(-time.Hour)}, {model.JobErrored, now.Add(-2 * time.Hour)},
+		{model.JobCancelled, now.Add(-3 * time.Hour)}, {model.JobFinished, now.Add(-4 * time.Hour)},
+	} {
+		teamID, _ := p.CreateTeam(t, fmt.Sprintf("pending-summary-%d", i))
+		if _, err := p.DB.Exec(`INSERT INTO benchmark_jobs (team_id, status, created_at, updated_at) VALUES ($1, $2, $3, $3)`, teamID, row.status, row.at); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, count := range []int64{2, 0} {
+		res := p.DoPB(t, http.MethodGet, "/api/admin/dashboard", nil, map[string]string{"X-Isux-Session-Staff": "1"})
+		if res.StatusCode != http.StatusOK {
+			t.Fatalf("status = %d", res.StatusCode)
+		}
+		if got := res.Header.Get("Cache-Control"); got != "no-store" {
+			t.Fatalf("Cache-Control = %q, want no-store", got)
+		}
+		body := &pbadmin.DashboardResponse{}
+		testkit.DecodePB(t, res, body)
+		if body.PendingBenchmarkJobCount != count {
+			t.Fatalf("pending = %d, want %d", body.PendingBenchmarkJobCount, count)
+		}
+		if count > 0 {
+			if body.EarliestPendingBenchmarkJobAt == nil || !body.EarliestPendingBenchmarkJobAt.AsTime().Equal(oldest) {
+				t.Fatalf("earliest = %v, want %v", body.EarliestPendingBenchmarkJobAt, oldest)
+			}
+		} else if body.EarliestPendingBenchmarkJobAt != nil {
+			t.Fatal("expected no earliest pending timestamp")
+		}
+		if _, err := p.DB.Exec(`UPDATE benchmark_jobs SET status = 1 WHERE status = 0`); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
