@@ -9,11 +9,10 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use bytes::Bytes;
 use chrono::{DateTime, Datelike, Utc};
 use serde::Deserialize;
-use subtle::ConstantTimeEq;
 
 use crate::api_error::{Error, new_api_error};
 use crate::bind::{Bind, Bindable, Binder, parse_query};
-use crate::image_signature::{image_signature, image_signing_key};
+use crate::image_signature::{image_signing_key, verify_image_signature};
 use crate::server::HandlerContext;
 
 #[derive(Default, Deserialize)]
@@ -371,7 +370,7 @@ async fn get_image(
         return Err(new_api_error(StatusCode::FORBIDDEN, "image_forbidden"));
     };
     let key = image_signing_key(&object.secret_key_hash)?;
-    if !bool::from(sig.ct_eq(&image_signature(&key, &input.image_id, exp))) {
+    if !verify_image_signature(&key, &input.image_id, exp, &sig) {
         return Err(new_api_error(StatusCode::FORBIDDEN, "image_forbidden"));
     }
     if exp <= Utc::now().timestamp() {

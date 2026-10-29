@@ -9,6 +9,7 @@ use chrono::{TimeDelta, Utc};
 use hmac::{Hmac, Mac};
 use percent_encoding::{AsciiSet, NON_ALPHANUMERIC, utf8_percent_encode};
 use sha2::Sha256;
+use subtle::ConstantTimeEq;
 
 use crate::api_error::Error;
 use crate::user::User;
@@ -200,6 +201,25 @@ pub fn image_signature(key: &[u8], image_id: &str, exp: i64) -> [u8; 32] {
     )
 }
 
+/// Reuse an issued signature only for its exact key, image and expiry.
+/// The HTTP handler still checks expiration and current SQL authorization.
+pub fn verify_image_signature(key: &[u8], image_id: &str, exp: i64, signature: &[u8]) -> bool {
+    let cached = if *ISSUED_URLS_ENABLED {
+        let lookup = issued_url_key(key, image_id);
+        issued_url_shard(&lookup)
+            .lock()
+            .unwrap()
+            .values
+            .get(&lookup)
+            .filter(|entry| entry.expires == exp)
+            .map(|entry| entry.signature)
+    } else {
+        None
+    };
+    let expected = cached.unwrap_or_else(|| image_signature(key, image_id, exp));
+    bool::from(signature.ct_eq(&expected))
+}
+
 fn calculate_signature(key: &[u8], image_id: &str, exp: i64) -> [u8; 32] {
     let base = Hmac::<Sha256>::new_from_slice(key).expect("HMAC accepts keys of any size");
     let mut mac = base.clone();
@@ -215,6 +235,7 @@ fn calculate_signature(key: &[u8], image_id: &str, exp: i64) -> [u8; 32] {
 
 struct IssuedUrl {
     expires: i64,
+    signature: [u8; 32],
     url: String,
 }
 
@@ -281,6 +302,21 @@ static ISSUED_URL_CAPACITY: LazyLock<usize> = LazyLock::new(|| {
     entries / 16
 });
 
+fn issued_url_key(key: &[u8], image_id: &str) -> SignatureKey {
+    SignatureKey {
+        key: MemoBytes::new(key),
+        image_id: MemoBytes::new(image_id.as_bytes()),
+        exp: 0,
+    }
+}
+
+fn issued_url_shard(lookup: &SignatureKey) -> &'static Mutex<IssuedUrlCache> {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    lookup.hash(&mut hasher);
+    &ISSUED_URLS[hasher.finish() as usize % ISSUED_URLS.len()]
+}
+
 pub fn signed_image_url(user: &User, image_id: &str) -> String {
     let now = Utc::now().timestamp();
     let issue = |exp| {
@@ -301,24 +337,21 @@ pub fn signed_image_url(user: &User, image_id: &str) -> String {
             exp,
             URL_SAFE_NO_PAD.encode(signature)
         );
-        IssuedUrl { expires: exp, url }
+        IssuedUrl {
+            expires: exp,
+            signature,
+            url,
+        }
     };
     if !*ISSUED_URLS_ENABLED {
         return issue(now + IMAGE_URL_LIFETIME.num_seconds()).url;
     }
     // This separate cache keys an already-issued URL by the current owner key
     // and image ID. Every caller still performs fresh authorization first.
-    let lookup = SignatureKey {
-        key: MemoBytes::new(&user.image_key),
-        image_id: MemoBytes::new(image_id.as_bytes()),
-        exp: 0,
-    };
-    use std::hash::{Hash, Hasher};
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    lookup.hash(&mut hasher);
+    let lookup = issued_url_key(&user.image_key, image_id);
     // Compute under a small shard lock so simultaneous first issuances agree.
-    // No signature-cache path takes this lock in the opposite order.
-    ISSUED_URLS[hasher.finish() as usize % ISSUED_URLS.len()]
+    // Verification releases this lock before falling back to image_signature.
+    issued_url_shard(&lookup)
         .lock()
         .unwrap()
         .get_or_issue(lookup, now, *ISSUED_URL_CAPACITY, issue)
@@ -338,6 +371,7 @@ mod cache_tests {
         };
         let issue = |exp: i64| IssuedUrl {
             expires: exp,
+            signature: [0; 32],
             url: exp.to_string(),
         };
         assert_eq!(cache.get_or_issue(key.clone(), 1000, 2, issue), "87400");
@@ -378,6 +412,7 @@ mod cache_tests {
         };
         cache.get_or_issue(key.clone(), 1000, 2, |_| IssuedUrl {
             expires: 5000,
+            signature: [0; 32],
             url: "file".into(),
         });
         assert_eq!(
@@ -387,10 +422,71 @@ mod cache_tests {
         assert_eq!(
             cache.get_or_issue(key, 4940, 2, |expires| IssuedUrl {
                 expires,
+                signature: [0; 32],
                 url: "renewed".into()
             }),
             "renewed"
         );
+    }
+
+    #[test]
+    fn verification_reuses_issued_signature_after_memo_eviction() {
+        let image = uuid::Uuid::new_v4().to_string();
+        let key = [31; 32];
+        let user = User {
+            image_key: key.to_vec(),
+            ..User::default()
+        };
+        signed_image_url(&user, &image);
+        let lookup = issued_url_key(&key, &image);
+        let (exp, signature) = {
+            let shard = issued_url_shard(&lookup).lock().unwrap();
+            let entry = &shard.values[&lookup];
+            (entry.expires, entry.signature)
+        };
+        assert_eq!(signature, calculate_signature(&key, &image, exp));
+        let memo_key = SignatureKey {
+            exp,
+            ..lookup.clone()
+        };
+        for shard in &SIGNATURE_MEMO.shards {
+            let mut shard = shard.lock().unwrap();
+            shard.values.remove(&memo_key);
+            shard.order.retain(|key| key != &memo_key);
+        }
+        assert!(verify_image_signature(&key, &image, exp, &signature));
+        let mut altered = signature;
+        altered[0] ^= 1;
+        assert!(!verify_image_signature(&key, &image, exp, &altered));
+        assert!(!verify_image_signature(&key, &image, exp, &signature[..31]));
+        // Neither a valid nor an invalid comparison should recompute HMAC.
+        for shard in &SIGNATURE_MEMO.shards {
+            assert!(!shard.lock().unwrap().values.contains_key(&memo_key));
+        }
+        assert!(!verify_image_signature(&[32; 32], &image, exp, &signature));
+        assert!(!verify_image_signature(
+            &key,
+            "another-image",
+            exp,
+            &signature
+        ));
+        assert!(!verify_image_signature(&key, &image, exp - 1, &signature));
+        let other_exp = exp - 1;
+        let other_signature = calculate_signature(&key, &image, other_exp);
+        assert!(verify_image_signature(
+            &key,
+            &image,
+            other_exp,
+            &other_signature
+        ));
+        // URL renewal must not reject an older, still-valid issued signature.
+        {
+            let mut shard = issued_url_shard(&lookup).lock().unwrap();
+            let entry = shard.values.get_mut(&lookup).unwrap();
+            entry.expires = exp + 60;
+            entry.signature = calculate_signature(&key, &image, exp + 60);
+        }
+        assert!(verify_image_signature(&key, &image, exp, &signature));
     }
 
     #[test]

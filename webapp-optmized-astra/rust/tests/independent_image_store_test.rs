@@ -1405,7 +1405,15 @@ async fn independent_bytes_publish_atomically_and_preserve_visibility_export_and
     assert!(key.starts_with("fs:asia:"));
     assert_eq!(count(&assets, "astra_image_data").await, asset_count);
     assert_eq!(files.get(&key).await.unwrap(), original);
-    let url = image_url(&file_image, &[0xab; 32]);
+    // Populate the issued-URL cache, then exercise current-key and deletion
+    // checks below through the signature-verification cache hit path.
+    let url = isureal::image_signature::signed_image_url(
+        &isureal::user::User {
+            image_key: vec![0xab; 32],
+            ..Default::default()
+        },
+        &file_image,
+    );
     assert_eq!(
         request(
             file_app.clone(),
