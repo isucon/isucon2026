@@ -44,10 +44,16 @@ func Small() Config {
 // Large は本番の規模の暫定値。履歴をアプリと DB のメモリより十分大きくし、すべてを
 // メモリに載せる実装をできなくする。投稿約 63 万件、RealMoji 約 121 万件で、画像は
 // 投稿が約 16 KB、RealMoji が約 3 KB（合わせて約 14 GB）。値は較正で決める。
+//
+// 履歴は競技当日（2026-10-31）の直前まで伸ばす。初期データの最後の作成時刻は最終日の翌日の
+// 4 時（UTC）ごろで、初期化はそれより新しい行を走行の分として消すので、この時刻より前に
+// ベンチを走らせてはいけない。webapp/sql/001-schema.sql は 10 月のパーティションを最終日の
+// 翌日の 6 時（UTC）で分けていて、最終日を変えるときはそちらも合わせる。
 func Large() Config {
 	cfg := Small()
 	cfg.Users = 5000
 	cfg.Days = 365
+	cfg.EndDate = time.Date(2026, 10, 27, 0, 0, 0, 0, time.UTC)
 	cfg.PostImageSize = 320
 	cfg.RealMojiImageSize = 128
 	cfg.ProfileImageSize = 96
