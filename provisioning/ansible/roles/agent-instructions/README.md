@@ -31,10 +31,11 @@ those edits.
 
 ## Validation
 
-The instruction source preserves the supplied `fujiwara-agent.md` verbatim,
-followed by an HTML comment marking the appended language and daily-life notes.
-The regression test checks the original document's SHA-256 without depending on
-the contributor's Downloads directory. Do not reformat the imported portion.
+The instruction source adds a pacing paragraph with `sleep` to section 4 of the
+supplied `fujiwara-agent.md`. An HTML comment marks the appended language and
+daily-life notes. The regression test checks the pacing paragraph's location and
+the original document's SHA-256 after removing that addition, without depending
+on the contributor's Downloads directory. Do not reformat the imported portion.
 
 With Ansible and its Python dependencies available in the active environment:
 
