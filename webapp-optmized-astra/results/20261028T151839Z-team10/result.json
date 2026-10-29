@@ -1,0 +1,5246 @@
+{
+  "pass": true,
+  "score": 176344,
+  "language": "rust",
+  "messages": [
+    "asia 1 日目: 18 人で始まりました",
+    "asia 2 日目: 前日にサービスを快適に使えた人が友達を誘い、36 人が新しく来ました（18 人 → 54 人）",
+    "asia 3 日目: 前日にサービスを快適に使えた人が友達を誘い、108 人が新しく来ました（54 人 → 162 人）",
+    "asia 4 日目: 前日にサービスを快適に使えた人が友達を誘い、323 人が新しく来ました（162 人 → 485 人）",
+    "asia 5 日目: 前日にサービスを快適に使えた人が友達を誘い、800 人が新しく来ました（485 人 → 1285 人）",
+    "asia 最終日（グランプリ）: 今いる 1284 人で競います",
+    "europe 1 日目: 7 人で始まりました",
+    "europe 2 日目: 前日にサービスを快適に使えた人が友達を誘い、14 人が新しく来ました（7 人 → 21 人）",
+    "europe 3 日目: 前日にサービスを快適に使えた人が友達を誘い、42 人が新しく来ました（21 人 → 63 人）",
+    "europe 4 日目: 前日にサービスを快適に使えた人が友達を誘い、125 人が新しく来ました（63 人 → 188 人）",
+    "europe 5 日目: 前日にサービスを快適に使えた人が友達を誘い、355 人が新しく来ました（188 人 → 543 人）",
+    "europe 最終日（グランプリ）: 今いる 542 人で競います",
+    "america 1 日目: 6 人で始まりました",
+    "america 2 日目: 前日にサービスを快適に使えた人が友達を誘い、12 人が新しく来ました（6 人 → 18 人）",
+    "america 3 日目: 前日にサービスを快適に使えた人が友達を誘い、36 人が新しく来ました（18 人 → 54 人）",
+    "america 4 日目: 前日にサービスを快適に使えた人が友達を誘い、107 人が新しく来ました（54 人 → 161 人）",
+    "america 5 日目: 前日にサービスを快適に使えた人が友達を誘い、288 人が新しく来ました（161 人 → 449 人）",
+    "america 最終日（グランプリ）: 今いる 448 人で競います",
+    "グランプリ（全リージョン同時）に参加できたのは 1167 人でした（asia 663 人、europe 291 人、america 213 人）",
+    "chihi5086: 通知を購読できません: GET /api/notifications: ステータスコード 401 が返りました（期待値 200、invalid_session）",
+    "kenaleo-5135: 通知を購読できません: GET /api/notifications: ステータスコード 401 が返りました（期待値 200、invalid_session）",
+    "haru16447: 通知を購読できません: GET /api/notifications: ステータスコード 503 が返りました（期待値 200、unknown）",
+    "elleo-16877: 通知を購読できません: GET /api/notifications: ステータスコード 503 が返りました（期待値 200、unknown）",
+    "saoryu-16360: 通知を購読できません: GET /api/notifications: ステータスコード 503 が返りました（期待値 200、unknown）",
+    "samar_16300: 通知を購読できません: GET /api/notifications: ステータスコード 503 が返りました（期待値 200、unknown）",
+    "miator-16581: 通知を購読できません: GET /api/notifications: ステータスコード 503 が返りました（期待値 200、unknown）",
+    "moka.16893: 通知を購読できません: GET /api/notifications: ステータスコード 503 が返りました（期待値 200、unknown）",
+    "hovinru.16548: 投稿できません: POST /api/posts: 通信に失敗しました: Post \"http://18.183.182.238:8080/api/posts\": readfrom tcp 10.26.10.42:48312-\u003e18.183.182.238:8080: write tcp 10.26.10.42:48312-\u003e18.183.182.238:8080: use of closed network connection",
+    "noarika12998: 投稿できません: POST /api/posts: 通信に失敗しました: Post \"http://18.183.182.238:8080/api/posts\": readfrom tcp 10.26.10.42:42504-\u003e18.183.182.238:8080: write tcp 10.26.10.42:42504-\u003e18.183.182.238:8080: write: broken pipe"
+  ],
+  "story": [
+    "asia 1 日目: 18 人で始まりました",
+    "asia 2 日目: 前日にサービスを快適に使えた人が友達を誘い、36 人が新しく来ました（18 人 → 54 人）",
+    "asia 3 日目: 前日にサービスを快適に使えた人が友達を誘い、108 人が新しく来ました（54 人 → 162 人）",
+    "asia 4 日目: 前日にサービスを快適に使えた人が友達を誘い、323 人が新しく来ました（162 人 → 485 人）",
+    "asia 5 日目: 前日にサービスを快適に使えた人が友達を誘い、800 人が新しく来ました（485 人 → 1285 人）",
+    "asia 最終日（グランプリ）: 今いる 1284 人で競います",
+    "europe 1 日目: 7 人で始まりました",
+    "europe 2 日目: 前日にサービスを快適に使えた人が友達を誘い、14 人が新しく来ました（7 人 → 21 人）",
+    "europe 3 日目: 前日にサービスを快適に使えた人が友達を誘い、42 人が新しく来ました（21 人 → 63 人）",
+    "europe 4 日目: 前日にサービスを快適に使えた人が友達を誘い、125 人が新しく来ました（63 人 → 188 人）",
+    "europe 5 日目: 前日にサービスを快適に使えた人が友達を誘い、355 人が新しく来ました（188 人 → 543 人）",
+    "europe 最終日（グランプリ）: 今いる 542 人で競います",
+    "america 1 日目: 6 人で始まりました",
+    "america 2 日目: 前日にサービスを快適に使えた人が友達を誘い、12 人が新しく来ました（6 人 → 18 人）",
+    "america 3 日目: 前日にサービスを快適に使えた人が友達を誘い、36 人が新しく来ました（18 人 → 54 人）",
+    "america 4 日目: 前日にサービスを快適に使えた人が友達を誘い、107 人が新しく来ました（54 人 → 161 人）",
+    "america 5 日目: 前日にサービスを快適に使えた人が友達を誘い、288 人が新しく来ました（161 人 → 449 人）",
+    "america 最終日（グランプリ）: 今いる 448 人で競います",
+    "グランプリ（全リージョン同時）に参加できたのは 1167 人でした（asia 663 人、europe 291 人、america 213 人）"
+  ],
+  "agent": "webapp-optmized-astra",
+  "harness": "codex",
+  "model": "gpt-6-astra",
+  "breakdown": {
+    "block": 74,
+    "caption": 84,
+    "comment": 1366,
+    "delete_account": 3,
+    "delete_reaction": 436,
+    "export": 517,
+    "feed": 24840,
+    "follow": 1478,
+    "friend_accept": 2204,
+    "friend_decline": 102,
+    "friend_request": 5004,
+    "gate_pass": 3153,
+    "grand_prix": 1167,
+    "history_date": 1366,
+    "history_month": 4514,
+    "image": 8814,
+    "memory": 2084,
+    "notification": 3447,
+    "post_detail": 7743,
+    "profile_image": 86,
+    "profile_update": 82,
+    "profile_view": 1716,
+    "reaction_list": 2879,
+    "realmoji": 1410,
+    "relationships": 206,
+    "search": 2672,
+    "spot_check": 421,
+    "unblock": 5,
+    "unfollow": 20,
+    "unfriend": 13
+  },
+  "scores": [
+    {
+      "region": "america",
+      "day": 0,
+      "tag": "export",
+      "count": 3,
+      "points": 60
+    },
+    {
+      "region": "america",
+      "day": 0,
+      "tag": "history_date",
+      "count": 3,
+      "points": 6
+    },
+    {
+      "region": "america",
+      "day": 0,
+      "tag": "history_month",
+      "count": 10,
+      "points": 30
+    },
+    {
+      "region": "america",
+      "day": 0,
+      "tag": "spot_check",
+      "count": 2,
+      "points": 4
+    },
+    {
+      "region": "europe",
+      "day": 0,
+      "tag": "history_date",
+      "count": 3,
+      "points": 6
+    },
+    {
+      "region": "europe",
+      "day": 0,
+      "tag": "history_month",
+      "count": 5,
+      "points": 15
+    },
+    {
+      "region": "europe",
+      "day": 0,
+      "tag": "spot_check",
+      "count": 1,
+      "points": 2
+    },
+    {
+      "region": "america",
+      "day": 1,
+      "tag": "comment",
+      "count": 10,
+      "points": 30
+    },
+    {
+      "region": "america",
+      "day": 1,
+      "tag": "delete_reaction",
+      "count": 3,
+      "points": 3
+    },
+    {
+      "region": "america",
+      "day": 1,
+      "tag": "export",
+      "count": 3,
+      "points": 60
+    },
+    {
+      "region": "america",
+      "day": 1,
+      "tag": "feed",
+      "count": 60,
+      "points": 60
+    },
+    {
+      "region": "america",
+      "day": 1,
+      "tag": "gate_pass",
+      "count": 6,
+      "points": 60
+    },
+    {
+      "region": "america",
+      "day": 1,
+      "tag": "history_date",
+      "count": 7,
+      "points": 14
+    },
+    {
+      "region": "america",
+      "day": 1,
+      "tag": "history_month",
+      "count": 16,
+      "points": 48
+    },
+    {
+      "region": "america",
+      "day": 1,
+      "tag": "image",
+      "count": 19,
+      "points": 38
+    },
+    {
+      "region": "america",
+      "day": 1,
+      "tag": "notification",
+      "count": 6,
+      "points": 6
+    },
+    {
+      "region": "america",
+      "day": 1,
+      "tag": "post_detail",
+      "count": 21,
+      "points": 21
+    },
+    {
+      "region": "america",
+      "day": 1,
+      "tag": "profile_image",
+      "count": 1,
+      "points": 3
+    },
+    {
+      "region": "america",
+      "day": 1,
+      "tag": "profile_view",
+      "count": 7,
+      "points": 7
+    },
+    {
+      "region": "america",
+      "day": 1,
+      "tag": "reaction_list",
+      "count": 10,
+      "points": 10
+    },
+    {
+      "region": "america",
+      "day": 1,
+      "tag": "spot_check",
+      "count": 3,
+      "points": 6
+    },
+    {
+      "region": "asia",
+      "day": 1,
+      "tag": "comment",
+      "count": 5,
+      "points": 15
+    },
+    {
+      "region": "asia",
+      "day": 1,
+      "tag": "delete_reaction",
+      "count": 1,
+      "points": 1
+    },
+    {
+      "region": "asia",
+      "day": 1,
+      "tag": "export",
+      "count": 13,
+      "points": 260
+    },
+    {
+      "region": "asia",
+      "day": 1,
+      "tag": "feed",
+      "count": 115,
+      "points": 115
+    },
+    {
+      "region": "asia",
+      "day": 1,
+      "tag": "follow",
+      "count": 1,
+      "points": 1
+    },
+    {
+      "region": "asia",
+      "day": 1,
+      "tag": "friend_accept",
+      "count": 1,
+      "points": 2
+    },
+    {
+      "region": "asia",
+      "day": 1,
+      "tag": "gate_pass",
+      "count": 18,
+      "points": 180
+    },
+    {
+      "region": "asia",
+      "day": 1,
+      "tag": "history_date",
+      "count": 41,
+      "points": 82
+    },
+    {
+      "region": "asia",
+      "day": 1,
+      "tag": "history_month",
+      "count": 96,
+      "points": 288
+    },
+    {
+      "region": "asia",
+      "day": 1,
+      "tag": "image",
+      "count": 29,
+      "points": 58
+    },
+    {
+      "region": "asia",
+      "day": 1,
+      "tag": "notification",
+      "count": 18,
+      "points": 18
+    },
+    {
+      "region": "asia",
+      "day": 1,
+      "tag": "post_detail",
+      "count": 29,
+      "points": 29
+    },
+    {
+      "region": "asia",
+      "day": 1,
+      "tag": "profile_view",
+      "count": 7,
+      "points": 7
+    },
+    {
+      "region": "asia",
+      "day": 1,
+      "tag": "reaction_list",
+      "count": 6,
+      "points": 6
+    },
+    {
+      "region": "asia",
+      "day": 1,
+      "tag": "relationships",
+      "count": 1,
+      "points": 1
+    },
+    {
+      "region": "asia",
+      "day": 1,
+      "tag": "spot_check",
+      "count": 6,
+      "points": 12
+    },
+    {
+      "region": "europe",
+      "day": 1,
+      "tag": "comment",
+      "count": 5,
+      "points": 15
+    },
+    {
+      "region": "europe",
+      "day": 1,
+      "tag": "delete_reaction",
+      "count": 2,
+      "points": 2
+    },
+    {
+      "region": "europe",
+      "day": 1,
+      "tag": "export",
+      "count": 3,
+      "points": 60
+    },
+    {
+      "region": "europe",
+      "day": 1,
+      "tag": "feed",
+      "count": 65,
+      "points": 65
+    },
+    {
+      "region": "europe",
+      "day": 1,
+      "tag": "follow",
+      "count": 1,
+      "points": 1
+    },
+    {
+      "region": "europe",
+      "day": 1,
+      "tag": "friend_request",
+      "count": 1,
+      "points": 2
+    },
+    {
+      "region": "europe",
+      "day": 1,
+      "tag": "gate_pass",
+      "count": 7,
+      "points": 70
+    },
+    {
+      "region": "europe",
+      "day": 1,
+      "tag": "history_date",
+      "count": 10,
+      "points": 20
+    },
+    {
+      "region": "europe",
+      "day": 1,
+      "tag": "history_month",
+      "count": 16,
+      "points": 48
+    },
+    {
+      "region": "europe",
+      "day": 1,
+      "tag": "image",
+      "count": 18,
+      "points": 36
+    },
+    {
+      "region": "europe",
+      "day": 1,
+      "tag": "notification",
+      "count": 7,
+      "points": 7
+    },
+    {
+      "region": "europe",
+      "day": 1,
+      "tag": "post_detail",
+      "count": 14,
+      "points": 14
+    },
+    {
+      "region": "europe",
+      "day": 1,
+      "tag": "profile_image",
+      "count": 1,
+      "points": 3
+    },
+    {
+      "region": "europe",
+      "day": 1,
+      "tag": "profile_view",
+      "count": 4,
+      "points": 4
+    },
+    {
+      "region": "europe",
+      "day": 1,
+      "tag": "reaction_list",
+      "count": 11,
+      "points": 11
+    },
+    {
+      "region": "europe",
+      "day": 1,
+      "tag": "relationships",
+      "count": 1,
+      "points": 1
+    },
+    {
+      "region": "europe",
+      "day": 1,
+      "tag": "search",
+      "count": 1,
+      "points": 2
+    },
+    {
+      "region": "europe",
+      "day": 1,
+      "tag": "spot_check",
+      "count": 3,
+      "points": 6
+    },
+    {
+      "region": "america",
+      "day": 2,
+      "tag": "caption",
+      "count": 2,
+      "points": 2
+    },
+    {
+      "region": "america",
+      "day": 2,
+      "tag": "comment",
+      "count": 29,
+      "points": 87
+    },
+    {
+      "region": "america",
+      "day": 2,
+      "tag": "delete_reaction",
+      "count": 5,
+      "points": 5
+    },
+    {
+      "region": "america",
+      "day": 2,
+      "tag": "export",
+      "count": 7,
+      "points": 140
+    },
+    {
+      "region": "america",
+      "day": 2,
+      "tag": "feed",
+      "count": 170,
+      "points": 170
+    },
+    {
+      "region": "america",
+      "day": 2,
+      "tag": "follow",
+      "count": 11,
+      "points": 11
+    },
+    {
+      "region": "america",
+      "day": 2,
+      "tag": "friend_accept",
+      "count": 4,
+      "points": 8
+    },
+    {
+      "region": "america",
+      "day": 2,
+      "tag": "friend_decline",
+      "count": 1,
+      "points": 1
+    },
+    {
+      "region": "america",
+      "day": 2,
+      "tag": "friend_request",
+      "count": 21,
+      "points": 42
+    },
+    {
+      "region": "america",
+      "day": 2,
+      "tag": "gate_pass",
+      "count": 18,
+      "points": 180
+    },
+    {
+      "region": "america",
+      "day": 2,
+      "tag": "history_date",
+      "count": 21,
+      "points": 42
+    },
+    {
+      "region": "america",
+      "day": 2,
+      "tag": "history_month",
+      "count": 55,
+      "points": 165
+    },
+    {
+      "region": "america",
+      "day": 2,
+      "tag": "image",
+      "count": 56,
+      "points": 112
+    },
+    {
+      "region": "america",
+      "day": 2,
+      "tag": "memory",
+      "count": 6,
+      "points": 6
+    },
+    {
+      "region": "america",
+      "day": 2,
+      "tag": "notification",
+      "count": 6,
+      "points": 6
+    },
+    {
+      "region": "america",
+      "day": 2,
+      "tag": "post_detail",
+      "count": 45,
+      "points": 45
+    },
+    {
+      "region": "america",
+      "day": 2,
+      "tag": "profile_update",
+      "count": 1,
+      "points": 1
+    },
+    {
+      "region": "america",
+      "day": 2,
+      "tag": "profile_view",
+      "count": 9,
+      "points": 9
+    },
+    {
+      "region": "america",
+      "day": 2,
+      "tag": "reaction_list",
+      "count": 19,
+      "points": 19
+    },
+    {
+      "region": "america",
+      "day": 2,
+      "tag": "realmoji",
+      "count": 5,
+      "points": 25
+    },
+    {
+      "region": "america",
+      "day": 2,
+      "tag": "relationships",
+      "count": 1,
+      "points": 1
+    },
+    {
+      "region": "america",
+      "day": 2,
+      "tag": "search",
+      "count": 13,
+      "points": 26
+    },
+    {
+      "region": "america",
+      "day": 2,
+      "tag": "spot_check",
+      "count": 7,
+      "points": 14
+    },
+    {
+      "region": "america",
+      "day": 2,
+      "tag": "unfriend",
+      "count": 1,
+      "points": 1
+    },
+    {
+      "region": "asia",
+      "day": 2,
+      "tag": "block",
+      "count": 1,
+      "points": 1
+    },
+    {
+      "region": "asia",
+      "day": 2,
+      "tag": "caption",
+      "count": 1,
+      "points": 1
+    },
+    {
+      "region": "asia",
+      "day": 2,
+      "tag": "comment",
+      "count": 25,
+      "points": 75
+    },
+    {
+      "region": "asia",
+      "day": 2,
+      "tag": "delete_reaction",
+      "count": 5,
+      "points": 5
+    },
+    {
+      "region": "asia",
+      "day": 2,
+      "tag": "export",
+      "count": 19,
+      "points": 380
+    },
+    {
+      "region": "asia",
+      "day": 2,
+      "tag": "feed",
+      "count": 570,
+      "points": 570
+    },
+    {
+      "region": "asia",
+      "day": 2,
+      "tag": "follow",
+      "count": 27,
+      "points": 27
+    },
+    {
+      "region": "asia",
+      "day": 2,
+      "tag": "friend_accept",
+      "count": 26,
+      "points": 52
+    },
+    {
+      "region": "asia",
+      "day": 2,
+      "tag": "friend_decline",
+      "count": 2,
+      "points": 2
+    },
+    {
+      "region": "asia",
+      "day": 2,
+      "tag": "friend_request",
+      "count": 81,
+      "points": 162
+    },
+    {
+      "region": "asia",
+      "day": 2,
+      "tag": "gate_pass",
+      "count": 54,
+      "points": 540
+    },
+    {
+      "region": "asia",
+      "day": 2,
+      "tag": "history_date",
+      "count": 85,
+      "points": 170
+    },
+    {
+      "region": "asia",
+      "day": 2,
+      "tag": "history_month",
+      "count": 263,
+      "points": 789
+    },
+    {
+      "region": "asia",
+      "day": 2,
+      "tag": "image",
+      "count": 148,
+      "points": 296
+    },
+    {
+      "region": "asia",
+      "day": 2,
+      "tag": "memory",
+      "count": 18,
+      "points": 18
+    },
+    {
+      "region": "asia",
+      "day": 2,
+      "tag": "notification",
+      "count": 18,
+      "points": 18
+    },
+    {
+      "region": "asia",
+      "day": 2,
+      "tag": "post_detail",
+      "count": 145,
+      "points": 145
+    },
+    {
+      "region": "asia",
+      "day": 2,
+      "tag": "profile_image",
+      "count": 1,
+      "points": 3
+    },
+    {
+      "region": "asia",
+      "day": 2,
+      "tag": "profile_view",
+      "count": 42,
+      "points": 42
+    },
+    {
+      "region": "asia",
+      "day": 2,
+      "tag": "reaction_list",
+      "count": 84,
+      "points": 84
+    },
+    {
+      "region": "asia",
+      "day": 2,
+      "tag": "realmoji",
+      "count": 24,
+      "points": 120
+    },
+    {
+      "region": "asia",
+      "day": 2,
+      "tag": "relationships",
+      "count": 5,
+      "points": 5
+    },
+    {
+      "region": "asia",
+      "day": 2,
+      "tag": "search",
+      "count": 49,
+      "points": 98
+    },
+    {
+      "region": "asia",
+      "day": 2,
+      "tag": "spot_check",
+      "count": 21,
+      "points": 42
+    },
+    {
+      "region": "europe",
+      "day": 2,
+      "tag": "block",
+      "count": 1,
+      "points": 1
+    },
+    {
+      "region": "europe",
+      "day": 2,
+      "tag": "comment",
+      "count": 18,
+      "points": 54
+    },
+    {
+      "region": "europe",
+      "day": 2,
+      "tag": "delete_reaction",
+      "count": 3,
+      "points": 3
+    },
+    {
+      "region": "europe",
+      "day": 2,
+      "tag": "export",
+      "count": 6,
+      "points": 120
+    },
+    {
+      "region": "europe",
+      "day": 2,
+      "tag": "feed",
+      "count": 235,
+      "points": 235
+    },
+    {
+      "region": "europe",
+      "day": 2,
+      "tag": "follow",
+      "count": 11,
+      "points": 11
+    },
+    {
+      "region": "europe",
+      "day": 2,
+      "tag": "friend_accept",
+      "count": 10,
+      "points": 20
+    },
+    {
+      "region": "europe",
+      "day": 2,
+      "tag": "friend_decline",
+      "count": 1,
+      "points": 1
+    },
+    {
+      "region": "europe",
+      "day": 2,
+      "tag": "friend_request",
+      "count": 28,
+      "points": 56
+    },
+    {
+      "region": "europe",
+      "day": 2,
+      "tag": "gate_pass",
+      "count": 21,
+      "points": 210
+    },
+    {
+      "region": "europe",
+      "day": 2,
+      "tag": "history_date",
+      "count": 18,
+      "points": 36
+    },
+    {
+      "region": "europe",
+      "day": 2,
+      "tag": "history_month",
+      "count": 61,
+      "points": 183
+    },
+    {
+      "region": "europe",
+      "day": 2,
+      "tag": "image",
+      "count": 59,
+      "points": 118
+    },
+    {
+      "region": "europe",
+      "day": 2,
+      "tag": "memory",
+      "count": 7,
+      "points": 7
+    },
+    {
+      "region": "europe",
+      "day": 2,
+      "tag": "notification",
+      "count": 7,
+      "points": 7
+    },
+    {
+      "region": "europe",
+      "day": 2,
+      "tag": "post_detail",
+      "count": 47,
+      "points": 47
+    },
+    {
+      "region": "europe",
+      "day": 2,
+      "tag": "profile_image",
+      "count": 1,
+      "points": 3
+    },
+    {
+      "region": "europe",
+      "day": 2,
+      "tag": "profile_update",
+      "count": 1,
+      "points": 1
+    },
+    {
+      "region": "europe",
+      "day": 2,
+      "tag": "profile_view",
+      "count": 13,
+      "points": 13
+    },
+    {
+      "region": "europe",
+      "day": 2,
+      "tag": "reaction_list",
+      "count": 22,
+      "points": 22
+    },
+    {
+      "region": "europe",
+      "day": 2,
+      "tag": "realmoji",
+      "count": 11,
+      "points": 55
+    },
+    {
+      "region": "europe",
+      "day": 2,
+      "tag": "relationships",
+      "count": 1,
+      "points": 1
+    },
+    {
+      "region": "europe",
+      "day": 2,
+      "tag": "search",
+      "count": 13,
+      "points": 26
+    },
+    {
+      "region": "europe",
+      "day": 2,
+      "tag": "spot_check",
+      "count": 9,
+      "points": 18
+    },
+    {
+      "region": "europe",
+      "day": 2,
+      "tag": "unfollow",
+      "count": 1,
+      "points": 1
+    },
+    {
+      "region": "america",
+      "day": 3,
+      "tag": "block",
+      "count": 3,
+      "points": 3
+    },
+    {
+      "region": "america",
+      "day": 3,
+      "tag": "caption",
+      "count": 5,
+      "points": 5
+    },
+    {
+      "region": "america",
+      "day": 3,
+      "tag": "comment",
+      "count": 29,
+      "points": 87
+    },
+    {
+      "region": "america",
+      "day": 3,
+      "tag": "delete_reaction",
+      "count": 12,
+      "points": 12
+    },
+    {
+      "region": "america",
+      "day": 3,
+      "tag": "export",
+      "count": 15,
+      "points": 300
+    },
+    {
+      "region": "america",
+      "day": 3,
+      "tag": "feed",
+      "count": 585,
+      "points": 585
+    },
+    {
+      "region": "america",
+      "day": 3,
+      "tag": "follow",
+      "count": 14,
+      "points": 14
+    },
+    {
+      "region": "america",
+      "day": 3,
+      "tag": "friend_accept",
+      "count": 23,
+      "points": 46
+    },
+    {
+      "region": "america",
+      "day": 3,
+      "tag": "friend_decline",
+      "count": 2,
+      "points": 2
+    },
+    {
+      "region": "america",
+      "day": 3,
+      "tag": "friend_request",
+      "count": 102,
+      "points": 204
+    },
+    {
+      "region": "america",
+      "day": 3,
+      "tag": "gate_pass",
+      "count": 54,
+      "points": 540
+    },
+    {
+      "region": "america",
+      "day": 3,
+      "tag": "history_date",
+      "count": 35,
+      "points": 70
+    },
+    {
+      "region": "america",
+      "day": 3,
+      "tag": "history_month",
+      "count": 139,
+      "points": 417
+    },
+    {
+      "region": "america",
+      "day": 3,
+      "tag": "image",
+      "count": 148,
+      "points": 296
+    },
+    {
+      "region": "america",
+      "day": 3,
+      "tag": "memory",
+      "count": 18,
+      "points": 18
+    },
+    {
+      "region": "america",
+      "day": 3,
+      "tag": "notification",
+      "count": 18,
+      "points": 18
+    },
+    {
+      "region": "america",
+      "day": 3,
+      "tag": "post_detail",
+      "count": 107,
+      "points": 107
+    },
+    {
+      "region": "america",
+      "day": 3,
+      "tag": "profile_image",
+      "count": 3,
+      "points": 9
+    },
+    {
+      "region": "america",
+      "day": 3,
+      "tag": "profile_update",
+      "count": 4,
+      "points": 4
+    },
+    {
+      "region": "america",
+      "day": 3,
+      "tag": "profile_view",
+      "count": 25,
+      "points": 25
+    },
+    {
+      "region": "america",
+      "day": 3,
+      "tag": "reaction_list",
+      "count": 66,
+      "points": 66
+    },
+    {
+      "region": "america",
+      "day": 3,
+      "tag": "realmoji",
+      "count": 17,
+      "points": 85
+    },
+    {
+      "region": "america",
+      "day": 3,
+      "tag": "relationships",
+      "count": 6,
+      "points": 6
+    },
+    {
+      "region": "america",
+      "day": 3,
+      "tag": "search",
+      "count": 51,
+      "points": 102
+    },
+    {
+      "region": "america",
+      "day": 3,
+      "tag": "spot_check",
+      "count": 18,
+      "points": 36
+    },
+    {
+      "region": "america",
+      "day": 3,
+      "tag": "unblock",
+      "count": 1,
+      "points": 1
+    },
+    {
+      "region": "america",
+      "day": 3,
+      "tag": "unfollow",
+      "count": 1,
+      "points": 1
+    },
+    {
+      "region": "asia",
+      "day": 3,
+      "tag": "block",
+      "count": 2,
+      "points": 2
+    },
+    {
+      "region": "asia",
+      "day": 3,
+      "tag": "caption",
+      "count": 10,
+      "points": 10
+    },
+    {
+      "region": "asia",
+      "day": 3,
+      "tag": "comment",
+      "count": 98,
+      "points": 294
+    },
+    {
+      "region": "asia",
+      "day": 3,
+      "tag": "delete_reaction",
+      "count": 33,
+      "points": 33
+    },
+    {
+      "region": "asia",
+      "day": 3,
+      "tag": "export",
+      "count": 74,
+      "points": 1480
+    },
+    {
+      "region": "asia",
+      "day": 3,
+      "tag": "feed",
+      "count": 1725,
+      "points": 1725
+    },
+    {
+      "region": "asia",
+      "day": 3,
+      "tag": "follow",
+      "count": 82,
+      "points": 82
+    },
+    {
+      "region": "asia",
+      "day": 3,
+      "tag": "friend_accept",
+      "count": 102,
+      "points": 204
+    },
+    {
+      "region": "asia",
+      "day": 3,
+      "tag": "friend_decline",
+      "count": 4,
+      "points": 4
+    },
+    {
+      "region": "asia",
+      "day": 3,
+      "tag": "friend_request",
+      "count": 240,
+      "points": 480
+    },
+    {
+      "region": "asia",
+      "day": 3,
+      "tag": "gate_pass",
+      "count": 162,
+      "points": 1620
+    },
+    {
+      "region": "asia",
+      "day": 3,
+      "tag": "history_date",
+      "count": 197,
+      "points": 394
+    },
+    {
+      "region": "asia",
+      "day": 3,
+      "tag": "history_month",
+      "count": 656,
+      "points": 1968
+    },
+    {
+      "region": "asia",
+      "day": 3,
+      "tag": "image",
+      "count": 469,
+      "points": 938
+    },
+    {
+      "region": "asia",
+      "day": 3,
+      "tag": "memory",
+      "count": 52,
+      "points": 52
+    },
+    {
+      "region": "asia",
+      "day": 3,
+      "tag": "notification",
+      "count": 54,
+      "points": 54
+    },
+    {
+      "region": "asia",
+      "day": 3,
+      "tag": "post_detail",
+      "count": 431,
+      "points": 431
+    },
+    {
+      "region": "asia",
+      "day": 3,
+      "tag": "profile_image",
+      "count": 5,
+      "points": 15
+    },
+    {
+      "region": "asia",
+      "day": 3,
+      "tag": "profile_update",
+      "count": 10,
+      "points": 10
+    },
+    {
+      "region": "asia",
+      "day": 3,
+      "tag": "profile_view",
+      "count": 136,
+      "points": 136
+    },
+    {
+      "region": "asia",
+      "day": 3,
+      "tag": "reaction_list",
+      "count": 242,
+      "points": 242
+    },
+    {
+      "region": "asia",
+      "day": 3,
+      "tag": "realmoji",
+      "count": 81,
+      "points": 405
+    },
+    {
+      "region": "asia",
+      "day": 3,
+      "tag": "relationships",
+      "count": 9,
+      "points": 9
+    },
+    {
+      "region": "asia",
+      "day": 3,
+      "tag": "search",
+      "count": 132,
+      "points": 264
+    },
+    {
+      "region": "asia",
+      "day": 3,
+      "tag": "spot_check",
+      "count": 69,
+      "points": 138
+    },
+    {
+      "region": "asia",
+      "day": 3,
+      "tag": "unblock",
+      "count": 1,
+      "points": 1
+    },
+    {
+      "region": "asia",
+      "day": 3,
+      "tag": "unfollow",
+      "count": 2,
+      "points": 2
+    },
+    {
+      "region": "asia",
+      "day": 3,
+      "tag": "unfriend",
+      "count": 2,
+      "points": 2
+    },
+    {
+      "region": "europe",
+      "day": 3,
+      "tag": "block",
+      "count": 6,
+      "points": 6
+    },
+    {
+      "region": "europe",
+      "day": 3,
+      "tag": "caption",
+      "count": 3,
+      "points": 3
+    },
+    {
+      "region": "europe",
+      "day": 3,
+      "tag": "comment",
+      "count": 50,
+      "points": 150
+    },
+    {
+      "region": "europe",
+      "day": 3,
+      "tag": "delete_reaction",
+      "count": 12,
+      "points": 12
+    },
+    {
+      "region": "europe",
+      "day": 3,
+      "tag": "export",
+      "count": 20,
+      "points": 400
+    },
+    {
+      "region": "europe",
+      "day": 3,
+      "tag": "feed",
+      "count": 620,
+      "points": 620
+    },
+    {
+      "region": "europe",
+      "day": 3,
+      "tag": "follow",
+      "count": 34,
+      "points": 34
+    },
+    {
+      "region": "europe",
+      "day": 3,
+      "tag": "friend_accept",
+      "count": 13,
+      "points": 26
+    },
+    {
+      "region": "europe",
+      "day": 3,
+      "tag": "friend_decline",
+      "count": 2,
+      "points": 2
+    },
+    {
+      "region": "europe",
+      "day": 3,
+      "tag": "friend_request",
+      "count": 91,
+      "points": 182
+    },
+    {
+      "region": "europe",
+      "day": 3,
+      "tag": "gate_pass",
+      "count": 63,
+      "points": 630
+    },
+    {
+      "region": "europe",
+      "day": 3,
+      "tag": "history_date",
+      "count": 50,
+      "points": 100
+    },
+    {
+      "region": "europe",
+      "day": 3,
+      "tag": "history_month",
+      "count": 162,
+      "points": 486
+    },
+    {
+      "region": "europe",
+      "day": 3,
+      "tag": "image",
+      "count": 173,
+      "points": 346
+    },
+    {
+      "region": "europe",
+      "day": 3,
+      "tag": "memory",
+      "count": 20,
+      "points": 20
+    },
+    {
+      "region": "europe",
+      "day": 3,
+      "tag": "notification",
+      "count": 21,
+      "points": 21
+    },
+    {
+      "region": "europe",
+      "day": 3,
+      "tag": "post_detail",
+      "count": 162,
+      "points": 162
+    },
+    {
+      "region": "europe",
+      "day": 3,
+      "tag": "profile_update",
+      "count": 3,
+      "points": 3
+    },
+    {
+      "region": "europe",
+      "day": 3,
+      "tag": "profile_view",
+      "count": 44,
+      "points": 44
+    },
+    {
+      "region": "europe",
+      "day": 3,
+      "tag": "reaction_list",
+      "count": 70,
+      "points": 70
+    },
+    {
+      "region": "europe",
+      "day": 3,
+      "tag": "realmoji",
+      "count": 54,
+      "points": 270
+    },
+    {
+      "region": "europe",
+      "day": 3,
+      "tag": "relationships",
+      "count": 7,
+      "points": 7
+    },
+    {
+      "region": "europe",
+      "day": 3,
+      "tag": "search",
+      "count": 41,
+      "points": 82
+    },
+    {
+      "region": "europe",
+      "day": 3,
+      "tag": "spot_check",
+      "count": 14,
+      "points": 28
+    },
+    {
+      "region": "europe",
+      "day": 3,
+      "tag": "unblock",
+      "count": 1,
+      "points": 1
+    },
+    {
+      "region": "america",
+      "day": 4,
+      "tag": "block",
+      "count": 6,
+      "points": 6
+    },
+    {
+      "region": "america",
+      "day": 4,
+      "tag": "caption",
+      "count": 9,
+      "points": 9
+    },
+    {
+      "region": "america",
+      "day": 4,
+      "tag": "comment",
+      "count": 82,
+      "points": 246
+    },
+    {
+      "region": "america",
+      "day": 4,
+      "tag": "delete_reaction",
+      "count": 21,
+      "points": 21
+    },
+    {
+      "region": "america",
+      "day": 4,
+      "tag": "export",
+      "count": 40,
+      "points": 800
+    },
+    {
+      "region": "america",
+      "day": 4,
+      "tag": "feed",
+      "count": 1588,
+      "points": 1588
+    },
+    {
+      "region": "america",
+      "day": 4,
+      "tag": "follow",
+      "count": 75,
+      "points": 75
+    },
+    {
+      "region": "america",
+      "day": 4,
+      "tag": "friend_accept",
+      "count": 59,
+      "points": 118
+    },
+    {
+      "region": "america",
+      "day": 4,
+      "tag": "friend_decline",
+      "count": 8,
+      "points": 8
+    },
+    {
+      "region": "america",
+      "day": 4,
+      "tag": "friend_request",
+      "count": 244,
+      "points": 488
+    },
+    {
+      "region": "america",
+      "day": 4,
+      "tag": "gate_pass",
+      "count": 161,
+      "points": 1610
+    },
+    {
+      "region": "america",
+      "day": 4,
+      "tag": "history_date",
+      "count": 62,
+      "points": 124
+    },
+    {
+      "region": "america",
+      "day": 4,
+      "tag": "history_month",
+      "count": 287,
+      "points": 861
+    },
+    {
+      "region": "america",
+      "day": 4,
+      "tag": "image",
+      "count": 431,
+      "points": 862
+    },
+    {
+      "region": "america",
+      "day": 4,
+      "tag": "memory",
+      "count": 54,
+      "points": 54
+    },
+    {
+      "region": "america",
+      "day": 4,
+      "tag": "notification",
+      "count": 54,
+      "points": 54
+    },
+    {
+      "region": "america",
+      "day": 4,
+      "tag": "post_detail",
+      "count": 370,
+      "points": 370
+    },
+    {
+      "region": "america",
+      "day": 4,
+      "tag": "profile_image",
+      "count": 1,
+      "points": 3
+    },
+    {
+      "region": "america",
+      "day": 4,
+      "tag": "profile_update",
+      "count": 5,
+      "points": 5
+    },
+    {
+      "region": "america",
+      "day": 4,
+      "tag": "profile_view",
+      "count": 121,
+      "points": 121
+    },
+    {
+      "region": "america",
+      "day": 4,
+      "tag": "reaction_list",
+      "count": 184,
+      "points": 184
+    },
+    {
+      "region": "america",
+      "day": 4,
+      "tag": "realmoji",
+      "count": 80,
+      "points": 400
+    },
+    {
+      "region": "america",
+      "day": 4,
+      "tag": "relationships",
+      "count": 12,
+      "points": 12
+    },
+    {
+      "region": "america",
+      "day": 4,
+      "tag": "search",
+      "count": 141,
+      "points": 282
+    },
+    {
+      "region": "america",
+      "day": 4,
+      "tag": "spot_check",
+      "count": 24,
+      "points": 48
+    },
+    {
+      "region": "america",
+      "day": 4,
+      "tag": "unfollow",
+      "count": 1,
+      "points": 1
+    },
+    {
+      "region": "asia",
+      "day": 4,
+      "tag": "block",
+      "count": 5,
+      "points": 5
+    },
+    {
+      "region": "asia",
+      "day": 4,
+      "tag": "caption",
+      "count": 8,
+      "points": 8
+    },
+    {
+      "region": "asia",
+      "day": 4,
+      "tag": "comment",
+      "count": 179,
+      "points": 537
+    },
+    {
+      "region": "asia",
+      "day": 4,
+      "tag": "delete_reaction",
+      "count": 60,
+      "points": 60
+    },
+    {
+      "region": "asia",
+      "day": 4,
+      "tag": "export",
+      "count": 57,
+      "points": 1140
+    },
+    {
+      "region": "asia",
+      "day": 4,
+      "tag": "feed",
+      "count": 2915,
+      "points": 2915
+    },
+    {
+      "region": "asia",
+      "day": 4,
+      "tag": "follow",
+      "count": 206,
+      "points": 206
+    },
+    {
+      "region": "asia",
+      "day": 4,
+      "tag": "friend_accept",
+      "count": 331,
+      "points": 662
+    },
+    {
+      "region": "asia",
+      "day": 4,
+      "tag": "friend_decline",
+      "count": 11,
+      "points": 11
+    },
+    {
+      "region": "asia",
+      "day": 4,
+      "tag": "friend_request",
+      "count": 696,
+      "points": 1392
+    },
+    {
+      "region": "asia",
+      "day": 4,
+      "tag": "gate_pass",
+      "count": 485,
+      "points": 4850
+    },
+    {
+      "region": "asia",
+      "day": 4,
+      "tag": "history_date",
+      "count": 166,
+      "points": 332
+    },
+    {
+      "region": "asia",
+      "day": 4,
+      "tag": "history_month",
+      "count": 569,
+      "points": 1707
+    },
+    {
+      "region": "asia",
+      "day": 4,
+      "tag": "image",
+      "count": 1090,
+      "points": 2180
+    },
+    {
+      "region": "asia",
+      "day": 4,
+      "tag": "memory",
+      "count": 157,
+      "points": 157
+    },
+    {
+      "region": "asia",
+      "day": 4,
+      "tag": "notification",
+      "count": 162,
+      "points": 162
+    },
+    {
+      "region": "asia",
+      "day": 4,
+      "tag": "post_detail",
+      "count": 907,
+      "points": 907
+    },
+    {
+      "region": "asia",
+      "day": 4,
+      "tag": "profile_image",
+      "count": 11,
+      "points": 33
+    },
+    {
+      "region": "asia",
+      "day": 4,
+      "tag": "profile_update",
+      "count": 11,
+      "points": 11
+    },
+    {
+      "region": "asia",
+      "day": 4,
+      "tag": "profile_view",
+      "count": 215,
+      "points": 215
+    },
+    {
+      "region": "asia",
+      "day": 4,
+      "tag": "reaction_list",
+      "count": 345,
+      "points": 345
+    },
+    {
+      "region": "asia",
+      "day": 4,
+      "tag": "realmoji",
+      "count": 183,
+      "points": 915
+    },
+    {
+      "region": "asia",
+      "day": 4,
+      "tag": "relationships",
+      "count": 13,
+      "points": 13
+    },
+    {
+      "region": "asia",
+      "day": 4,
+      "tag": "search",
+      "count": 378,
+      "points": 756
+    },
+    {
+      "region": "asia",
+      "day": 4,
+      "tag": "spot_check",
+      "count": 54,
+      "points": 108
+    },
+    {
+      "region": "asia",
+      "day": 4,
+      "tag": "unfollow",
+      "count": 2,
+      "points": 2
+    },
+    {
+      "region": "asia",
+      "day": 4,
+      "tag": "unfriend",
+      "count": 2,
+      "points": 2
+    },
+    {
+      "region": "europe",
+      "day": 4,
+      "tag": "block",
+      "count": 8,
+      "points": 8
+    },
+    {
+      "region": "europe",
+      "day": 4,
+      "tag": "caption",
+      "count": 8,
+      "points": 8
+    },
+    {
+      "region": "europe",
+      "day": 4,
+      "tag": "comment",
+      "count": 118,
+      "points": 354
+    },
+    {
+      "region": "europe",
+      "day": 4,
+      "tag": "delete_reaction",
+      "count": 39,
+      "points": 39
+    },
+    {
+      "region": "europe",
+      "day": 4,
+      "tag": "export",
+      "count": 24,
+      "points": 480
+    },
+    {
+      "region": "europe",
+      "day": 4,
+      "tag": "feed",
+      "count": 1945,
+      "points": 1945
+    },
+    {
+      "region": "europe",
+      "day": 4,
+      "tag": "follow",
+      "count": 83,
+      "points": 83
+    },
+    {
+      "region": "europe",
+      "day": 4,
+      "tag": "friend_accept",
+      "count": 68,
+      "points": 136
+    },
+    {
+      "region": "europe",
+      "day": 4,
+      "tag": "friend_decline",
+      "count": 11,
+      "points": 11
+    },
+    {
+      "region": "europe",
+      "day": 4,
+      "tag": "friend_request",
+      "count": 285,
+      "points": 570
+    },
+    {
+      "region": "europe",
+      "day": 4,
+      "tag": "gate_pass",
+      "count": 188,
+      "points": 1880
+    },
+    {
+      "region": "europe",
+      "day": 4,
+      "tag": "history_date",
+      "count": 102,
+      "points": 204
+    },
+    {
+      "region": "europe",
+      "day": 4,
+      "tag": "history_month",
+      "count": 293,
+      "points": 879
+    },
+    {
+      "region": "europe",
+      "day": 4,
+      "tag": "image",
+      "count": 500,
+      "points": 1000
+    },
+    {
+      "region": "europe",
+      "day": 4,
+      "tag": "memory",
+      "count": 61,
+      "points": 61
+    },
+    {
+      "region": "europe",
+      "day": 4,
+      "tag": "notification",
+      "count": 63,
+      "points": 63
+    },
+    {
+      "region": "europe",
+      "day": 4,
+      "tag": "post_detail",
+      "count": 421,
+      "points": 421
+    },
+    {
+      "region": "europe",
+      "day": 4,
+      "tag": "profile_image",
+      "count": 6,
+      "points": 18
+    },
+    {
+      "region": "europe",
+      "day": 4,
+      "tag": "profile_update",
+      "count": 7,
+      "points": 7
+    },
+    {
+      "region": "europe",
+      "day": 4,
+      "tag": "profile_view",
+      "count": 109,
+      "points": 109
+    },
+    {
+      "region": "europe",
+      "day": 4,
+      "tag": "reaction_list",
+      "count": 230,
+      "points": 230
+    },
+    {
+      "region": "europe",
+      "day": 4,
+      "tag": "realmoji",
+      "count": 128,
+      "points": 640
+    },
+    {
+      "region": "europe",
+      "day": 4,
+      "tag": "relationships",
+      "count": 13,
+      "points": 13
+    },
+    {
+      "region": "europe",
+      "day": 4,
+      "tag": "search",
+      "count": 152,
+      "points": 304
+    },
+    {
+      "region": "europe",
+      "day": 4,
+      "tag": "spot_check",
+      "count": 21,
+      "points": 42
+    },
+    {
+      "region": "europe",
+      "day": 4,
+      "tag": "unblock",
+      "count": 1,
+      "points": 1
+    },
+    {
+      "region": "europe",
+      "day": 4,
+      "tag": "unfollow",
+      "count": 1,
+      "points": 1
+    },
+    {
+      "region": "america",
+      "day": 5,
+      "tag": "block",
+      "count": 8,
+      "points": 8
+    },
+    {
+      "region": "america",
+      "day": 5,
+      "tag": "caption",
+      "count": 5,
+      "points": 5
+    },
+    {
+      "region": "america",
+      "day": 5,
+      "tag": "comment",
+      "count": 184,
+      "points": 552
+    },
+    {
+      "region": "america",
+      "day": 5,
+      "tag": "delete_account",
+      "count": 1,
+      "points": 5
+    },
+    {
+      "region": "america",
+      "day": 5,
+      "tag": "delete_reaction",
+      "count": 57,
+      "points": 57
+    },
+    {
+      "region": "america",
+      "day": 5,
+      "tag": "export",
+      "count": 28,
+      "points": 560
+    },
+    {
+      "region": "america",
+      "day": 5,
+      "tag": "feed",
+      "count": 3044,
+      "points": 3044
+    },
+    {
+      "region": "america",
+      "day": 5,
+      "tag": "follow",
+      "count": 180,
+      "points": 180
+    },
+    {
+      "region": "america",
+      "day": 5,
+      "tag": "friend_accept",
+      "count": 153,
+      "points": 306
+    },
+    {
+      "region": "america",
+      "day": 5,
+      "tag": "friend_decline",
+      "count": 7,
+      "points": 7
+    },
+    {
+      "region": "america",
+      "day": 5,
+      "tag": "friend_request",
+      "count": 631,
+      "points": 1262
+    },
+    {
+      "region": "america",
+      "day": 5,
+      "tag": "gate_pass",
+      "count": 448,
+      "points": 4480
+    },
+    {
+      "region": "america",
+      "day": 5,
+      "tag": "history_date",
+      "count": 76,
+      "points": 152
+    },
+    {
+      "region": "america",
+      "day": 5,
+      "tag": "history_month",
+      "count": 225,
+      "points": 675
+    },
+    {
+      "region": "america",
+      "day": 5,
+      "tag": "image",
+      "count": 996,
+      "points": 1992
+    },
+    {
+      "region": "america",
+      "day": 5,
+      "tag": "memory",
+      "count": 152,
+      "points": 152
+    },
+    {
+      "region": "america",
+      "day": 5,
+      "tag": "notification",
+      "count": 161,
+      "points": 161
+    },
+    {
+      "region": "america",
+      "day": 5,
+      "tag": "post_detail",
+      "count": 835,
+      "points": 835
+    },
+    {
+      "region": "america",
+      "day": 5,
+      "tag": "profile_image",
+      "count": 4,
+      "points": 12
+    },
+    {
+      "region": "america",
+      "day": 5,
+      "tag": "profile_update",
+      "count": 8,
+      "points": 8
+    },
+    {
+      "region": "america",
+      "day": 5,
+      "tag": "profile_view",
+      "count": 212,
+      "points": 212
+    },
+    {
+      "region": "america",
+      "day": 5,
+      "tag": "reaction_list",
+      "count": 325,
+      "points": 325
+    },
+    {
+      "region": "america",
+      "day": 5,
+      "tag": "realmoji",
+      "count": 184,
+      "points": 920
+    },
+    {
+      "region": "america",
+      "day": 5,
+      "tag": "relationships",
+      "count": 19,
+      "points": 19
+    },
+    {
+      "region": "america",
+      "day": 5,
+      "tag": "search",
+      "count": 335,
+      "points": 670
+    },
+    {
+      "region": "america",
+      "day": 5,
+      "tag": "spot_check",
+      "count": 20,
+      "points": 40
+    },
+    {
+      "region": "america",
+      "day": 5,
+      "tag": "unfollow",
+      "count": 1,
+      "points": 1
+    },
+    {
+      "region": "america",
+      "day": 5,
+      "tag": "unfriend",
+      "count": 1,
+      "points": 1
+    },
+    {
+      "region": "asia",
+      "day": 5,
+      "tag": "block",
+      "count": 13,
+      "points": 13
+    },
+    {
+      "region": "asia",
+      "day": 5,
+      "tag": "caption",
+      "count": 10,
+      "points": 10
+    },
+    {
+      "region": "asia",
+      "day": 5,
+      "tag": "comment",
+      "count": 172,
+      "points": 516
+    },
+    {
+      "region": "asia",
+      "day": 5,
+      "tag": "delete_account",
+      "count": 1,
+      "points": 5
+    },
+    {
+      "region": "asia",
+      "day": 5,
+      "tag": "delete_reaction",
+      "count": 63,
+      "points": 63
+    },
+    {
+      "region": "asia",
+      "day": 5,
+      "tag": "export",
+      "count": 108,
+      "points": 2160
+    },
+    {
+      "region": "asia",
+      "day": 5,
+      "tag": "feed",
+      "count": 4295,
+      "points": 4295
+    },
+    {
+      "region": "asia",
+      "day": 5,
+      "tag": "follow",
+      "count": 505,
+      "points": 505
+    },
+    {
+      "region": "asia",
+      "day": 5,
+      "tag": "friend_accept",
+      "count": 525,
+      "points": 1050
+    },
+    {
+      "region": "asia",
+      "day": 5,
+      "tag": "friend_decline",
+      "count": 16,
+      "points": 16
+    },
+    {
+      "region": "asia",
+      "day": 5,
+      "tag": "friend_request",
+      "count": 1621,
+      "points": 3242
+    },
+    {
+      "region": "asia",
+      "day": 5,
+      "tag": "gate_pass",
+      "count": 925,
+      "points": 9250
+    },
+    {
+      "region": "asia",
+      "day": 5,
+      "tag": "history_date",
+      "count": 193,
+      "points": 386
+    },
+    {
+      "region": "asia",
+      "day": 5,
+      "tag": "history_month",
+      "count": 712,
+      "points": 2136
+    },
+    {
+      "region": "asia",
+      "day": 5,
+      "tag": "image",
+      "count": 1738,
+      "points": 3476
+    },
+    {
+      "region": "asia",
+      "day": 5,
+      "tag": "memory",
+      "count": 472,
+      "points": 472
+    },
+    {
+      "region": "asia",
+      "day": 5,
+      "tag": "notification",
+      "count": 485,
+      "points": 485
+    },
+    {
+      "region": "asia",
+      "day": 5,
+      "tag": "post_detail",
+      "count": 1502,
+      "points": 1502
+    },
+    {
+      "region": "asia",
+      "day": 5,
+      "tag": "profile_image",
+      "count": 13,
+      "points": 39
+    },
+    {
+      "region": "asia",
+      "day": 5,
+      "tag": "profile_update",
+      "count": 7,
+      "points": 7
+    },
+    {
+      "region": "asia",
+      "day": 5,
+      "tag": "profile_view",
+      "count": 307,
+      "points": 307
+    },
+    {
+      "region": "asia",
+      "day": 5,
+      "tag": "reaction_list",
+      "count": 454,
+      "points": 454
+    },
+    {
+      "region": "asia",
+      "day": 5,
+      "tag": "realmoji",
+      "count": 202,
+      "points": 1010
+    },
+    {
+      "region": "asia",
+      "day": 5,
+      "tag": "relationships",
+      "count": 38,
+      "points": 38
+    },
+    {
+      "region": "asia",
+      "day": 5,
+      "tag": "search",
+      "count": 880,
+      "points": 1760
+    },
+    {
+      "region": "asia",
+      "day": 5,
+      "tag": "spot_check",
+      "count": 59,
+      "points": 118
+    },
+    {
+      "region": "asia",
+      "day": 5,
+      "tag": "unblock",
+      "count": 1,
+      "points": 1
+    },
+    {
+      "region": "asia",
+      "day": 5,
+      "tag": "unfollow",
+      "count": 3,
+      "points": 3
+    },
+    {
+      "region": "asia",
+      "day": 5,
+      "tag": "unfriend",
+      "count": 3,
+      "points": 3
+    },
+    {
+      "region": "europe",
+      "day": 5,
+      "tag": "block",
+      "count": 16,
+      "points": 16
+    },
+    {
+      "region": "europe",
+      "day": 5,
+      "tag": "caption",
+      "count": 17,
+      "points": 17
+    },
+    {
+      "region": "europe",
+      "day": 5,
+      "tag": "comment",
+      "count": 322,
+      "points": 966
+    },
+    {
+      "region": "europe",
+      "day": 5,
+      "tag": "delete_account",
+      "count": 1,
+      "points": 5
+    },
+    {
+      "region": "europe",
+      "day": 5,
+      "tag": "delete_reaction",
+      "count": 115,
+      "points": 115
+    },
+    {
+      "region": "europe",
+      "day": 5,
+      "tag": "export",
+      "count": 32,
+      "points": 640
+    },
+    {
+      "region": "europe",
+      "day": 5,
+      "tag": "feed",
+      "count": 5566,
+      "points": 5566
+    },
+    {
+      "region": "europe",
+      "day": 5,
+      "tag": "follow",
+      "count": 228,
+      "points": 228
+    },
+    {
+      "region": "europe",
+      "day": 5,
+      "tag": "friend_accept",
+      "count": 177,
+      "points": 354
+    },
+    {
+      "region": "europe",
+      "day": 5,
+      "tag": "friend_decline",
+      "count": 20,
+      "points": 20
+    },
+    {
+      "region": "europe",
+      "day": 5,
+      "tag": "friend_request",
+      "count": 841,
+      "points": 1682
+    },
+    {
+      "region": "europe",
+      "day": 5,
+      "tag": "gate_pass",
+      "count": 543,
+      "points": 5430
+    },
+    {
+      "region": "europe",
+      "day": 5,
+      "tag": "history_date",
+      "count": 91,
+      "points": 182
+    },
+    {
+      "region": "europe",
+      "day": 5,
+      "tag": "history_month",
+      "count": 262,
+      "points": 786
+    },
+    {
+      "region": "europe",
+      "day": 5,
+      "tag": "image",
+      "count": 1549,
+      "points": 3098
+    },
+    {
+      "region": "europe",
+      "day": 5,
+      "tag": "memory",
+      "count": 180,
+      "points": 180
+    },
+    {
+      "region": "europe",
+      "day": 5,
+      "tag": "notification",
+      "count": 188,
+      "points": 188
+    },
+    {
+      "region": "europe",
+      "day": 5,
+      "tag": "post_detail",
+      "count": 1349,
+      "points": 1349
+    },
+    {
+      "region": "europe",
+      "day": 5,
+      "tag": "profile_image",
+      "count": 24,
+      "points": 72
+    },
+    {
+      "region": "europe",
+      "day": 5,
+      "tag": "profile_update",
+      "count": 17,
+      "points": 17
+    },
+    {
+      "region": "europe",
+      "day": 5,
+      "tag": "profile_view",
+      "count": 405,
+      "points": 405
+    },
+    {
+      "region": "europe",
+      "day": 5,
+      "tag": "reaction_list",
+      "count": 728,
+      "points": 728
+    },
+    {
+      "region": "europe",
+      "day": 5,
+      "tag": "realmoji",
+      "count": 385,
+      "points": 1925
+    },
+    {
+      "region": "europe",
+      "day": 5,
+      "tag": "relationships",
+      "count": 59,
+      "points": 59
+    },
+    {
+      "region": "europe",
+      "day": 5,
+      "tag": "search",
+      "count": 467,
+      "points": 934
+    },
+    {
+      "region": "europe",
+      "day": 5,
+      "tag": "spot_check",
+      "count": 34,
+      "points": 68
+    },
+    {
+      "region": "europe",
+      "day": 5,
+      "tag": "unfollow",
+      "count": 3,
+      "points": 3
+    },
+    {
+      "region": "europe",
+      "day": 5,
+      "tag": "unfriend",
+      "count": 4,
+      "points": 4
+    },
+    {
+      "region": "america",
+      "day": 6,
+      "tag": "block",
+      "count": 4,
+      "points": 4
+    },
+    {
+      "region": "america",
+      "day": 6,
+      "tag": "caption",
+      "count": 3,
+      "points": 3
+    },
+    {
+      "region": "america",
+      "day": 6,
+      "tag": "comment",
+      "count": 9,
+      "points": 27
+    },
+    {
+      "region": "america",
+      "day": 6,
+      "tag": "delete_reaction",
+      "count": 1,
+      "points": 1
+    },
+    {
+      "region": "america",
+      "day": 6,
+      "tag": "export",
+      "count": 11,
+      "points": 220
+    },
+    {
+      "region": "america",
+      "day": 6,
+      "tag": "feed",
+      "count": 297,
+      "points": 297
+    },
+    {
+      "region": "america",
+      "day": 6,
+      "tag": "follow",
+      "count": 2,
+      "points": 2
+    },
+    {
+      "region": "america",
+      "day": 6,
+      "tag": "friend_accept",
+      "count": 24,
+      "points": 48
+    },
+    {
+      "region": "america",
+      "day": 6,
+      "tag": "friend_decline",
+      "count": 1,
+      "points": 1
+    },
+    {
+      "region": "america",
+      "day": 6,
+      "tag": "friend_request",
+      "count": 7,
+      "points": 14
+    },
+    {
+      "region": "america",
+      "day": 6,
+      "tag": "grand_prix",
+      "count": 213,
+      "points": 4260
+    },
+    {
+      "region": "america",
+      "day": 6,
+      "tag": "history_date",
+      "count": 23,
+      "points": 46
+    },
+    {
+      "region": "america",
+      "day": 6,
+      "tag": "history_month",
+      "count": 109,
+      "points": 327
+    },
+    {
+      "region": "america",
+      "day": 6,
+      "tag": "image",
+      "count": 269,
+      "points": 538
+    },
+    {
+      "region": "america",
+      "day": 6,
+      "tag": "memory",
+      "count": 207,
+      "points": 207
+    },
+    {
+      "region": "america",
+      "day": 6,
+      "tag": "notification",
+      "count": 448,
+      "points": 448
+    },
+    {
+      "region": "america",
+      "day": 6,
+      "tag": "post_detail",
+      "count": 237,
+      "points": 237
+    },
+    {
+      "region": "america",
+      "day": 6,
+      "tag": "profile_image",
+      "count": 3,
+      "points": 9
+    },
+    {
+      "region": "america",
+      "day": 6,
+      "tag": "profile_view",
+      "count": 11,
+      "points": 11
+    },
+    {
+      "region": "america",
+      "day": 6,
+      "tag": "reaction_list",
+      "count": 17,
+      "points": 17
+    },
+    {
+      "region": "america",
+      "day": 6,
+      "tag": "realmoji",
+      "count": 10,
+      "points": 50
+    },
+    {
+      "region": "america",
+      "day": 6,
+      "tag": "relationships",
+      "count": 5,
+      "points": 5
+    },
+    {
+      "region": "america",
+      "day": 6,
+      "tag": "search",
+      "count": 7,
+      "points": 14
+    },
+    {
+      "region": "america",
+      "day": 6,
+      "tag": "spot_check",
+      "count": 8,
+      "points": 16
+    },
+    {
+      "region": "america",
+      "day": 6,
+      "tag": "unfollow",
+      "count": 2,
+      "points": 2
+    },
+    {
+      "region": "asia",
+      "day": 6,
+      "tag": "block",
+      "count": 1,
+      "points": 1
+    },
+    {
+      "region": "asia",
+      "day": 6,
+      "tag": "comment",
+      "count": 17,
+      "points": 51
+    },
+    {
+      "region": "asia",
+      "day": 6,
+      "tag": "delete_reaction",
+      "count": 2,
+      "points": 2
+    },
+    {
+      "region": "asia",
+      "day": 6,
+      "tag": "export",
+      "count": 46,
+      "points": 920
+    },
+    {
+      "region": "asia",
+      "day": 6,
+      "tag": "feed",
+      "count": 471,
+      "points": 471
+    },
+    {
+      "region": "asia",
+      "day": 6,
+      "tag": "follow",
+      "count": 17,
+      "points": 17
+    },
+    {
+      "region": "asia",
+      "day": 6,
+      "tag": "friend_accept",
+      "count": 656,
+      "points": 1312
+    },
+    {
+      "region": "asia",
+      "day": 6,
+      "tag": "friend_decline",
+      "count": 12,
+      "points": 12
+    },
+    {
+      "region": "asia",
+      "day": 6,
+      "tag": "friend_request",
+      "count": 112,
+      "points": 224
+    },
+    {
+      "region": "asia",
+      "day": 6,
+      "tag": "grand_prix",
+      "count": 663,
+      "points": 13260
+    },
+    {
+      "region": "asia",
+      "day": 6,
+      "tag": "history_date",
+      "count": 158,
+      "points": 316
+    },
+    {
+      "region": "asia",
+      "day": 6,
+      "tag": "history_month",
+      "count": 494,
+      "points": 1482
+    },
+    {
+      "region": "asia",
+      "day": 6,
+      "tag": "image",
+      "count": 741,
+      "points": 1482
+    },
+    {
+      "region": "asia",
+      "day": 6,
+      "tag": "memory",
+      "count": 396,
+      "points": 396
+    },
+    {
+      "region": "asia",
+      "day": 6,
+      "tag": "notification",
+      "count": 1189,
+      "points": 1189
+    },
+    {
+      "region": "asia",
+      "day": 6,
+      "tag": "post_detail",
+      "count": 763,
+      "points": 763
+    },
+    {
+      "region": "asia",
+      "day": 6,
+      "tag": "profile_image",
+      "count": 7,
+      "points": 21
+    },
+    {
+      "region": "asia",
+      "day": 6,
+      "tag": "profile_update",
+      "count": 7,
+      "points": 7
+    },
+    {
+      "region": "asia",
+      "day": 6,
+      "tag": "profile_view",
+      "count": 21,
+      "points": 21
+    },
+    {
+      "region": "asia",
+      "day": 6,
+      "tag": "reaction_list",
+      "count": 29,
+      "points": 29
+    },
+    {
+      "region": "asia",
+      "day": 6,
+      "tag": "realmoji",
+      "count": 18,
+      "points": 90
+    },
+    {
+      "region": "asia",
+      "day": 6,
+      "tag": "relationships",
+      "count": 13,
+      "points": 13
+    },
+    {
+      "region": "asia",
+      "day": 6,
+      "tag": "search",
+      "count": 10,
+      "points": 20
+    },
+    {
+      "region": "asia",
+      "day": 6,
+      "tag": "spot_check",
+      "count": 40,
+      "points": 80
+    },
+    {
+      "region": "asia",
+      "day": 6,
+      "tag": "unfollow",
+      "count": 3,
+      "points": 3
+    },
+    {
+      "region": "europe",
+      "day": 6,
+      "tag": "caption",
+      "count": 3,
+      "points": 3
+    },
+    {
+      "region": "europe",
+      "day": 6,
+      "tag": "comment",
+      "count": 14,
+      "points": 42
+    },
+    {
+      "region": "europe",
+      "day": 6,
+      "tag": "delete_reaction",
+      "count": 2,
+      "points": 2
+    },
+    {
+      "region": "europe",
+      "day": 6,
+      "tag": "export",
+      "count": 8,
+      "points": 160
+    },
+    {
+      "region": "europe",
+      "day": 6,
+      "tag": "feed",
+      "count": 574,
+      "points": 574
+    },
+    {
+      "region": "europe",
+      "day": 6,
+      "tag": "follow",
+      "count": 1,
+      "points": 1
+    },
+    {
+      "region": "europe",
+      "day": 6,
+      "tag": "friend_accept",
+      "count": 32,
+      "points": 64
+    },
+    {
+      "region": "europe",
+      "day": 6,
+      "tag": "friend_decline",
+      "count": 4,
+      "points": 4
+    },
+    {
+      "region": "europe",
+      "day": 6,
+      "tag": "friend_request",
+      "count": 3,
+      "points": 6
+    },
+    {
+      "region": "europe",
+      "day": 6,
+      "tag": "grand_prix",
+      "count": 291,
+      "points": 5820
+    },
+    {
+      "region": "europe",
+      "day": 6,
+      "tag": "history_date",
+      "count": 25,
+      "points": 50
+    },
+    {
+      "region": "europe",
+      "day": 6,
+      "tag": "history_month",
+      "count": 84,
+      "points": 252
+    },
+    {
+      "region": "europe",
+      "day": 6,
+      "tag": "image",
+      "count": 381,
+      "points": 762
+    },
+    {
+      "region": "europe",
+      "day": 6,
+      "tag": "memory",
+      "count": 284,
+      "points": 284
+    },
+    {
+      "region": "europe",
+      "day": 6,
+      "tag": "notification",
+      "count": 542,
+      "points": 542
+    },
+    {
+      "region": "europe",
+      "day": 6,
+      "tag": "post_detail",
+      "count": 358,
+      "points": 358
+    },
+    {
+      "region": "europe",
+      "day": 6,
+      "tag": "profile_image",
+      "count": 5,
+      "points": 15
+    },
+    {
+      "region": "europe",
+      "day": 6,
+      "tag": "profile_update",
+      "count": 1,
+      "points": 1
+    },
+    {
+      "region": "europe",
+      "day": 6,
+      "tag": "profile_view",
+      "count": 28,
+      "points": 28
+    },
+    {
+      "region": "europe",
+      "day": 6,
+      "tag": "reaction_list",
+      "count": 37,
+      "points": 37
+    },
+    {
+      "region": "europe",
+      "day": 6,
+      "tag": "realmoji",
+      "count": 28,
+      "points": 140
+    },
+    {
+      "region": "europe",
+      "day": 6,
+      "tag": "relationships",
+      "count": 3,
+      "points": 3
+    },
+    {
+      "region": "europe",
+      "day": 6,
+      "tag": "search",
+      "count": 2,
+      "points": 4
+    },
+    {
+      "region": "europe",
+      "day": 6,
+      "tag": "spot_check",
+      "count": 8,
+      "points": 16
+    }
+  ],
+  "openedWindows": {
+    "america": 6,
+    "asia": 6,
+    "europe": 6
+  },
+  "users": {
+    "america": 448,
+    "asia": 1284,
+    "europe": 542
+  },
+  "grandPrix": {
+    "america": 213,
+    "asia": 663,
+    "europe": 291
+  },
+  "days": [
+    {
+      "region": "asia",
+      "day": 1,
+      "population": 18,
+      "newcomers": 0,
+      "quick": 0,
+      "missed": 0,
+      "invites": 0,
+      "gateP50": 255839352,
+      "gateP90": 376485304,
+      "passes": 18,
+      "ops": 269,
+      "failures": 0,
+      "failRate": 0,
+      "points": 1075
+    },
+    {
+      "region": "asia",
+      "day": 2,
+      "population": 18,
+      "newcomers": 36,
+      "quick": 18,
+      "missed": 0,
+      "invites": 35.68102674,
+      "gateP50": 151427415,
+      "gateP90": 253642789,
+      "passes": 54,
+      "ops": 1603,
+      "failures": 0,
+      "failRate": 0,
+      "points": 3645
+    },
+    {
+      "region": "asia",
+      "day": 3,
+      "population": 54,
+      "newcomers": 108,
+      "quick": 54,
+      "missed": 0,
+      "invites": 107.95652701933334,
+      "gateP50": 185380550,
+      "gateP90": 288585611,
+      "passes": 162,
+      "ops": 4894,
+      "failures": 0,
+      "failRate": 0,
+      "points": 10995
+    },
+    {
+      "region": "asia",
+      "day": 4,
+      "population": 162,
+      "newcomers": 323,
+      "quick": 162,
+      "missed": 0,
+      "invites": 322.83582555,
+      "gateP50": 714475862,
+      "gateP90": 1101911047,
+      "passes": 485,
+      "ops": 10172,
+      "failures": 0,
+      "failRate": 0,
+      "points": 19631
+    },
+    {
+      "region": "asia",
+      "day": 5,
+      "population": 485,
+      "newcomers": 800,
+      "quick": 372,
+      "missed": 0,
+      "invites": 799.0083573051663,
+      "gateP50": 2681931208,
+      "gateP90": 3411386131,
+      "passes": 925,
+      "ops": 19096,
+      "failures": 0,
+      "failRate": 0,
+      "points": 33322
+    },
+    {
+      "region": "asia",
+      "day": 6,
+      "population": 1284,
+      "newcomers": 0,
+      "quick": 0,
+      "missed": 359,
+      "invites": 98.06220671999996,
+      "gateP50": 3451595601,
+      "gateP90": 6182037858,
+      "passes": 663,
+      "ops": 6965,
+      "failures": 7,
+      "failRate": 0.0010050251256281408,
+      "points": 22182
+    },
+    {
+      "region": "europe",
+      "day": 1,
+      "population": 7,
+      "newcomers": 0,
+      "quick": 0,
+      "missed": 0,
+      "invites": 0,
+      "gateP50": 351008604,
+      "gateP90": 450173131,
+      "passes": 7,
+      "ops": 154,
+      "failures": 0,
+      "failRate": 0,
+      "points": 367
+    },
+    {
+      "region": "europe",
+      "day": 2,
+      "population": 7,
+      "newcomers": 14,
+      "quick": 7,
+      "missed": 0,
+      "invites": 13.359046017333332,
+      "gateP50": 239602763,
+      "gateP90": 338581169,
+      "passes": 21,
+      "ops": 616,
+      "failures": 0,
+      "failRate": 0,
+      "points": 1249
+    },
+    {
+      "region": "europe",
+      "day": 3,
+      "population": 21,
+      "newcomers": 42,
+      "quick": 21,
+      "missed": 0,
+      "invites": 41.58952191,
+      "gateP50": 257743752,
+      "gateP90": 354297122,
+      "passes": 63,
+      "ops": 1804,
+      "failures": 0,
+      "failRate": 0,
+      "points": 3705
+    },
+    {
+      "region": "europe",
+      "day": 4,
+      "population": 63,
+      "newcomers": 125,
+      "quick": 63,
+      "missed": 0,
+      "invites": 124.414856218,
+      "gateP50": 348214359,
+      "gateP90": 613552544,
+      "passes": 188,
+      "ops": 5376,
+      "failures": 0,
+      "failRate": 0,
+      "points": 9507
+    },
+    {
+      "region": "europe",
+      "day": 5,
+      "population": 188,
+      "newcomers": 355,
+      "quick": 188,
+      "missed": 0,
+      "invites": 354.55979157466686,
+      "gateP50": 824784000,
+      "gateP90": 1071821051,
+      "passes": 543,
+      "ops": 15877,
+      "failures": 1,
+      "failRate": 0.00006298419096806702,
+      "points": 25037
+    },
+    {
+      "region": "europe",
+      "day": 6,
+      "population": 542,
+      "newcomers": 0,
+      "quick": 434,
+      "missed": 0,
+      "invites": 866.6094026098338,
+      "gateP50": 3266703809,
+      "gateP90": 5820351409,
+      "passes": 291,
+      "ops": 3328,
+      "failures": 1,
+      "failRate": 0.00030048076923076925,
+      "points": 9168
+    },
+    {
+      "region": "america",
+      "day": 1,
+      "population": 6,
+      "newcomers": 0,
+      "quick": 0,
+      "missed": 0,
+      "invites": 0,
+      "gateP50": 383277265,
+      "gateP90": 453282462,
+      "passes": 6,
+      "ops": 158,
+      "failures": 0,
+      "failRate": 0,
+      "points": 366
+    },
+    {
+      "region": "america",
+      "day": 2,
+      "population": 6,
+      "newcomers": 12,
+      "quick": 6,
+      "missed": 0,
+      "invites": 11.457507483333332,
+      "gateP50": 253811255,
+      "gateP90": 346265533,
+      "passes": 18,
+      "ops": 512,
+      "failures": 0,
+      "failRate": 0,
+      "points": 1118
+    },
+    {
+      "region": "america",
+      "day": 3,
+      "population": 18,
+      "newcomers": 36,
+      "quick": 18,
+      "missed": 0,
+      "invites": 35.59256863666667,
+      "gateP50": 268724532,
+      "gateP90": 365988772,
+      "passes": 54,
+      "ops": 1575,
+      "failures": 0,
+      "failRate": 0,
+      "points": 3059
+    },
+    {
+      "region": "america",
+      "day": 4,
+      "population": 54,
+      "newcomers": 107,
+      "quick": 54,
+      "missed": 0,
+      "invites": 106.30672550866669,
+      "gateP50": 553537854,
+      "gateP90": 823295217,
+      "passes": 161,
+      "ops": 4529,
+      "failures": 0,
+      "failRate": 0,
+      "points": 8350
+    },
+    {
+      "region": "america",
+      "day": 5,
+      "population": 161,
+      "newcomers": 288,
+      "quick": 157,
+      "missed": 0,
+      "invites": 287.03834214000005,
+      "gateP50": 903303965,
+      "gateP90": 1236185384,
+      "passes": 448,
+      "ops": 9553,
+      "failures": 1,
+      "failRate": 0.00010467915837956663,
+      "points": 16641
+    },
+    {
+      "region": "america",
+      "day": 6,
+      "population": 448,
+      "newcomers": 0,
+      "quick": 311,
+      "missed": 0,
+      "invites": 675.3427116031665,
+      "gateP50": 4224922174,
+      "gateP90": 6529819121,
+      "passes": 213,
+      "ops": 2849,
+      "failures": 0,
+      "failRate": 0,
+      "points": 6804
+    }
+  ],
+  "reputation": 0,
+  "seed": 12453240012606038961,
+  "critical": null,
+  "errors": [
+    "chihi5086: 通知を購読できません: GET /api/notifications: ステータスコード 401 が返りました（期待値 200、invalid_session）",
+    "kenaleo-5135: 通知を購読できません: GET /api/notifications: ステータスコード 401 が返りました（期待値 200、invalid_session）",
+    "haru16447: 通知を購読できません: GET /api/notifications: ステータスコード 503 が返りました（期待値 200、unknown）",
+    "elleo-16877: 通知を購読できません: GET /api/notifications: ステータスコード 503 が返りました（期待値 200、unknown）",
+    "saoryu-16360: 通知を購読できません: GET /api/notifications: ステータスコード 503 が返りました（期待値 200、unknown）",
+    "samar_16300: 通知を購読できません: GET /api/notifications: ステータスコード 503 が返りました（期待値 200、unknown）",
+    "miator-16581: 通知を購読できません: GET /api/notifications: ステータスコード 503 が返りました（期待値 200、unknown）",
+    "moka.16893: 通知を購読できません: GET /api/notifications: ステータスコード 503 が返りました（期待値 200、unknown）",
+    "hovinru.16548: 投稿できません: POST /api/posts: 通信に失敗しました: Post \"http://18.183.182.238:8080/api/posts\": readfrom tcp 10.26.10.42:48312-\u003e18.183.182.238:8080: write tcp 10.26.10.42:48312-\u003e18.183.182.238:8080: use of closed network connection",
+    "noarika12998: 投稿できません: POST /api/posts: 通信に失敗しました: Post \"http://18.183.182.238:8080/api/posts\": readfrom tcp 10.26.10.42:42504-\u003e18.183.182.238:8080: write tcp 10.26.10.42:42504-\u003e18.183.182.238:8080: write: broken pipe"
+  ],
+  "windows": [
+    {
+      "window": 0,
+      "region": "asia",
+      "ops": 675,
+      "failures": 0,
+      "timeouts": 0,
+      "saw503": 0,
+      "reads": 541,
+      "readP99": 33510201,
+      "opP99": 144478776
+    },
+    {
+      "window": 0,
+      "region": "europe",
+      "ops": 157,
+      "failures": 0,
+      "timeouts": 0,
+      "saw503": 0,
+      "reads": 131,
+      "readP99": 519099082,
+      "opP99": 519099082
+    },
+    {
+      "window": 0,
+      "region": "america",
+      "ops": 72,
+      "failures": 0,
+      "timeouts": 0,
+      "saw503": 0,
+      "reads": 52,
+      "readP99": 13358469,
+      "opP99": 363494765
+    },
+    {
+      "window": 1,
+      "region": "asia",
+      "ops": 636,
+      "failures": 0,
+      "timeouts": 0,
+      "saw503": 0,
+      "reads": 460,
+      "readP99": 46275876,
+      "opP99": 137427742
+    },
+    {
+      "window": 1,
+      "region": "europe",
+      "ops": 145,
+      "failures": 0,
+      "timeouts": 0,
+      "saw503": 0,
+      "reads": 112,
+      "readP99": 11888447,
+      "opP99": 236101833
+    },
+    {
+      "window": 1,
+      "region": "america",
+      "ops": 241,
+      "failures": 0,
+      "timeouts": 0,
+      "saw503": 0,
+      "reads": 197,
+      "readP99": 526029224,
+      "opP99": 467500804
+    },
+    {
+      "window": 2,
+      "region": "asia",
+      "ops": 2501,
+      "failures": 0,
+      "timeouts": 0,
+      "saw503": 0,
+      "reads": 1971,
+      "readP99": 40351562,
+      "opP99": 143788410
+    },
+    {
+      "window": 2,
+      "region": "europe",
+      "ops": 512,
+      "failures": 0,
+      "timeouts": 0,
+      "saw503": 0,
+      "reads": 394,
+      "readP99": 124705114,
+      "opP99": 319259380
+    },
+    {
+      "window": 2,
+      "region": "america",
+      "ops": 64,
+      "failures": 0,
+      "timeouts": 0,
+      "saw503": 0,
+      "reads": 43,
+      "readP99": 10865375,
+      "opP99": 227194169
+    },
+    {
+      "window": 3,
+      "region": "asia",
+      "ops": 3144,
+      "failures": 0,
+      "timeouts": 0,
+      "saw503": 0,
+      "reads": 2399,
+      "readP99": 68652540,
+      "opP99": 174981758
+    },
+    {
+      "window": 3,
+      "region": "europe",
+      "ops": 551,
+      "failures": 0,
+      "timeouts": 0,
+      "saw503": 0,
+      "reads": 421,
+      "readP99": 11372703,
+      "opP99": 239465655
+    },
+    {
+      "window": 3,
+      "region": "america",
+      "ops": 737,
+      "failures": 0,
+      "timeouts": 0,
+      "saw503": 0,
+      "reads": 560,
+      "readP99": 192745934,
+      "opP99": 318847136
+    },
+    {
+      "window": 4,
+      "region": "asia",
+      "ops": 6133,
+      "failures": 0,
+      "timeouts": 0,
+      "saw503": 0,
+      "reads": 4749,
+      "readP99": 36808719,
+      "opP99": 159749335
+    },
+    {
+      "window": 4,
+      "region": "europe",
+      "ops": 1800,
+      "failures": 0,
+      "timeouts": 0,
+      "saw503": 0,
+      "reads": 1354,
+      "readP99": 121763033,
+      "opP99": 324847975
+    },
+    {
+      "window": 4,
+      "region": "america",
+      "ops": 424,
+      "failures": 0,
+      "timeouts": 0,
+      "saw503": 0,
+      "reads": 317,
+      "readP99": 313624900,
+      "opP99": 328440242
+    },
+    {
+      "window": 5,
+      "region": "asia",
+      "ops": 6027,
+      "failures": 0,
+      "timeouts": 0,
+      "saw503": 0,
+      "reads": 4177,
+      "readP99": 275121198,
+      "opP99": 423723893
+    },
+    {
+      "window": 5,
+      "region": "europe",
+      "ops": 1260,
+      "failures": 0,
+      "timeouts": 0,
+      "saw503": 0,
+      "reads": 984,
+      "readP99": 116985295,
+      "opP99": 264426430
+    },
+    {
+      "window": 5,
+      "region": "america",
+      "ops": 2049,
+      "failures": 0,
+      "timeouts": 0,
+      "saw503": 0,
+      "reads": 1597,
+      "readP99": 112353412,
+      "opP99": 279079902
+    },
+    {
+      "window": 6,
+      "region": "asia",
+      "ops": 7559,
+      "failures": 0,
+      "timeouts": 0,
+      "saw503": 0,
+      "reads": 5500,
+      "readP99": 568754785,
+      "opP99": 752418020
+    },
+    {
+      "window": 6,
+      "region": "europe",
+      "ops": 5459,
+      "failures": 0,
+      "timeouts": 0,
+      "saw503": 0,
+      "reads": 4106,
+      "readP99": 119725246,
+      "opP99": 353034480
+    },
+    {
+      "window": 6,
+      "region": "america",
+      "ops": 1426,
+      "failures": 0,
+      "timeouts": 0,
+      "saw503": 0,
+      "reads": 1079,
+      "readP99": 145813509,
+      "opP99": 391071432
+    },
+    {
+      "window": 7,
+      "region": "asia",
+      "ops": 8661,
+      "failures": 0,
+      "timeouts": 0,
+      "saw503": 0,
+      "reads": 6090,
+      "readP99": 417802605,
+      "opP99": 1543542543
+    },
+    {
+      "window": 7,
+      "region": "europe",
+      "ops": 2792,
+      "failures": 0,
+      "timeouts": 0,
+      "saw503": 0,
+      "reads": 2200,
+      "readP99": 99065984,
+      "opP99": 332302425
+    },
+    {
+      "window": 7,
+      "region": "america",
+      "ops": 4928,
+      "failures": 0,
+      "timeouts": 0,
+      "saw503": 0,
+      "reads": 3830,
+      "readP99": 179343130,
+      "opP99": 396545043
+    },
+    {
+      "window": 8,
+      "region": "asia",
+      "ops": 7650,
+      "failures": 0,
+      "timeouts": 0,
+      "saw503": 0,
+      "reads": 5191,
+      "readP99": 519591700,
+      "opP99": 2689373090
+    },
+    {
+      "window": 8,
+      "region": "europe",
+      "ops": 8906,
+      "failures": 1,
+      "timeouts": 0,
+      "saw503": 0,
+      "reads": 6223,
+      "readP99": 306514371,
+      "opP99": 510002919
+    },
+    {
+      "window": 8,
+      "region": "america",
+      "ops": 3232,
+      "failures": 0,
+      "timeouts": 0,
+      "saw503": 0,
+      "reads": 2247,
+      "readP99": 158870276,
+      "opP99": 511687215
+    },
+    {
+      "window": 9,
+      "region": "asia",
+      "ops": 7281,
+      "failures": 0,
+      "timeouts": 0,
+      "saw503": 0,
+      "reads": 5251,
+      "readP99": 568521459,
+      "opP99": 2809435969
+    },
+    {
+      "window": 9,
+      "region": "europe",
+      "ops": 7339,
+      "failures": 0,
+      "timeouts": 0,
+      "saw503": 0,
+      "reads": 6361,
+      "readP99": 289012027,
+      "opP99": 630408201
+    },
+    {
+      "window": 9,
+      "region": "america",
+      "ops": 7122,
+      "failures": 1,
+      "timeouts": 0,
+      "saw503": 0,
+      "reads": 5271,
+      "readP99": 382912453,
+      "opP99": 745551667
+    },
+    {
+      "window": 10,
+      "region": "asia",
+      "ops": 7120,
+      "failures": 6,
+      "timeouts": 0,
+      "saw503": 0,
+      "reads": 5219,
+      "readP99": 1802275734,
+      "opP99": 2317990409
+    },
+    {
+      "window": 10,
+      "region": "europe",
+      "ops": 2384,
+      "failures": 0,
+      "timeouts": 0,
+      "saw503": 0,
+      "reads": 1981,
+      "readP99": 1816364484,
+      "opP99": 2261178938
+    },
+    {
+      "window": 10,
+      "region": "america",
+      "ops": 3056,
+      "failures": 0,
+      "timeouts": 0,
+      "saw503": 0,
+      "reads": 2629,
+      "readP99": 1309141213,
+      "opP99": 1812973267
+    },
+    {
+      "window": 11,
+      "region": "asia",
+      "ops": 6145,
+      "failures": 1,
+      "timeouts": 0,
+      "saw503": 0,
+      "reads": 4723,
+      "readP99": 5978364229,
+      "opP99": 6334590973
+    },
+    {
+      "window": 11,
+      "region": "europe",
+      "ops": 2534,
+      "failures": 1,
+      "timeouts": 0,
+      "saw503": 0,
+      "reads": 1985,
+      "readP99": 5550493612,
+      "opP99": 7282697298
+    },
+    {
+      "window": 11,
+      "region": "america",
+      "ops": 2105,
+      "failures": 0,
+      "timeouts": 0,
+      "saw503": 0,
+      "reads": 1611,
+      "readP99": 5303402768,
+      "opP99": 7392786340
+    },
+    {
+      "window": 12,
+      "region": "asia",
+      "ops": 37,
+      "failures": 0,
+      "timeouts": 0,
+      "saw503": 0,
+      "reads": 26,
+      "readP99": 6554250682,
+      "opP99": 7652968252
+    },
+    {
+      "window": 12,
+      "region": "europe",
+      "ops": 39,
+      "failures": 0,
+      "timeouts": 0,
+      "saw503": 0,
+      "reads": 38,
+      "readP99": 515207612,
+      "opP99": 7225242595
+    },
+    {
+      "window": 12,
+      "region": "america",
+      "ops": 27,
+      "failures": 0,
+      "timeouts": 0,
+      "saw503": 0,
+      "reads": 25,
+      "readP99": 311285222,
+      "opP99": 2247719582
+    }
+  ],
+  "routes": [
+    {
+      "region": "america",
+      "route": "DELETE /api/blocks/:userId",
+      "ops": 1,
+      "failures": 0,
+      "p50": 246919446,
+      "p90": 246919446,
+      "p99": 246919446,
+      "max": 246919446
+    },
+    {
+      "region": "america",
+      "route": "DELETE /api/comments/:commentId",
+      "ops": 52,
+      "failures": 0,
+      "p50": 258336997,
+      "p90": 310037800,
+      "p99": 646788214,
+      "max": 646788214
+    },
+    {
+      "region": "america",
+      "route": "DELETE /api/follows/:userId",
+      "ops": 5,
+      "failures": 0,
+      "p50": 267158709,
+      "p90": 423335659,
+      "p99": 423335659,
+      "max": 423335659
+    },
+    {
+      "region": "america",
+      "route": "DELETE /api/friendships/:userId",
+      "ops": 2,
+      "failures": 0,
+      "p50": 230852945,
+      "p90": 248839005,
+      "p99": 248839005,
+      "max": 248839005
+    },
+    {
+      "region": "america",
+      "route": "DELETE /api/posts/:postId",
+      "ops": 54,
+      "failures": 0,
+      "p50": 314476574,
+      "p90": 593045130,
+      "p99": 770162971,
+      "max": 770162971
+    },
+    {
+      "region": "america",
+      "route": "DELETE /api/realmojis/:realMojiId",
+      "ops": 47,
+      "failures": 0,
+      "p50": 268340085,
+      "p90": 557702675,
+      "p99": 728270705,
+      "max": 728270705
+    },
+    {
+      "region": "america",
+      "route": "GET /api/feeds/following",
+      "ops": 823,
+      "failures": 0,
+      "p50": 47755659,
+      "p90": 171650620,
+      "p99": 253839535,
+      "max": 368645552
+    },
+    {
+      "region": "america",
+      "route": "GET /api/feeds/friends",
+      "ops": 3028,
+      "failures": 0,
+      "p50": 47309599,
+      "p90": 173919614,
+      "p99": 324466864,
+      "max": 8186282465
+    },
+    {
+      "region": "america",
+      "route": "GET /api/feeds/friends-of-friends",
+      "ops": 1516,
+      "failures": 0,
+      "p50": 58528458,
+      "p90": 186273139,
+      "p99": 271018533,
+      "max": 438005645
+    },
+    {
+      "region": "america",
+      "route": "GET /api/feeds/public",
+      "ops": 1346,
+      "failures": 0,
+      "p50": 38751409,
+      "p90": 168201452,
+      "p99": 287130679,
+      "max": 420470688
+    },
+    {
+      "region": "america",
+      "route": "GET /api/images/:imageId",
+      "ops": 5639,
+      "failures": 0,
+      "p50": 31116763,
+      "p90": 182591849,
+      "p99": 2061034601,
+      "max": 7363731451
+    },
+    {
+      "region": "america",
+      "route": "GET /api/me",
+      "ops": 13,
+      "failures": 0,
+      "p50": 57902324,
+      "p90": 142825042,
+      "p99": 150293961,
+      "max": 150293961
+    },
+    {
+      "region": "america",
+      "route": "GET /api/memories",
+      "ops": 1283,
+      "failures": 0,
+      "p50": 42060331,
+      "p90": 166811680,
+      "p99": 831412950,
+      "max": 5822858627
+    },
+    {
+      "region": "america",
+      "route": "GET /api/memories/:date",
+      "ops": 228,
+      "failures": 0,
+      "p50": 19798537,
+      "p90": 151226645,
+      "p99": 348077213,
+      "max": 4298951869
+    },
+    {
+      "region": "america",
+      "route": "GET /api/posting-window/current",
+      "ops": 1579,
+      "failures": 0,
+      "p50": 65542495,
+      "p90": 221595529,
+      "p99": 4312776654,
+      "max": 7401495668
+    },
+    {
+      "region": "america",
+      "route": "GET /api/posts/:postId",
+      "ops": 740,
+      "failures": 0,
+      "p50": 35887027,
+      "p90": 156263377,
+      "p99": 235291982,
+      "max": 422061742
+    },
+    {
+      "region": "america",
+      "route": "GET /api/posts/:postId/comments",
+      "ops": 303,
+      "failures": 0,
+      "p50": 34854701,
+      "p90": 209514952,
+      "p99": 315036430,
+      "max": 352543451
+    },
+    {
+      "region": "america",
+      "route": "GET /api/posts/:postId/realmojis",
+      "ops": 318,
+      "failures": 0,
+      "p50": 42944253,
+      "p90": 213172864,
+      "p99": 340142498,
+      "max": 385107021
+    },
+    {
+      "region": "america",
+      "route": "GET /api/posts/me/current",
+      "ops": 900,
+      "failures": 0,
+      "p50": 55673599,
+      "p90": 347030954,
+      "p99": 458309799,
+      "max": 1926776764
+    },
+    {
+      "region": "america",
+      "route": "GET /api/relationships/followers",
+      "ops": 18,
+      "failures": 0,
+      "p50": 133239019,
+      "p90": 202027636,
+      "p99": 225629677,
+      "max": 225629677
+    },
+    {
+      "region": "america",
+      "route": "GET /api/relationships/following",
+      "ops": 13,
+      "failures": 0,
+      "p50": 15566061,
+      "p90": 151091139,
+      "p99": 163523416,
+      "max": 163523416
+    },
+    {
+      "region": "america",
+      "route": "GET /api/relationships/friends",
+      "ops": 14,
+      "failures": 0,
+      "p50": 5879285,
+      "p90": 85224475,
+      "p99": 190709604,
+      "max": 190709604
+    },
+    {
+      "region": "america",
+      "route": "GET /api/relationships/incoming-requests",
+      "ops": 753,
+      "failures": 0,
+      "p50": 49240693,
+      "p90": 166855882,
+      "p99": 306193274,
+      "max": 1399671460
+    },
+    {
+      "region": "america",
+      "route": "GET /api/relationships/outgoing-requests",
+      "ops": 18,
+      "failures": 0,
+      "p50": 16751587,
+      "p90": 149624719,
+      "p99": 157963650,
+      "max": 157963650
+    },
+    {
+      "region": "america",
+      "route": "GET /api/users",
+      "ops": 547,
+      "failures": 0,
+      "p50": 46747952,
+      "p90": 148001747,
+      "p99": 225859961,
+      "max": 273358733
+    },
+    {
+      "region": "america",
+      "route": "GET /api/users/:userId",
+      "ops": 396,
+      "failures": 0,
+      "p50": 43033333,
+      "p90": 289656256,
+      "p99": 401817771,
+      "max": 417557031
+    },
+    {
+      "region": "america",
+      "route": "PATCH /api/me",
+      "ops": 18,
+      "failures": 0,
+      "p50": 261429935,
+      "p90": 421444201,
+      "p99": 669204627,
+      "max": 669204627
+    },
+    {
+      "region": "america",
+      "route": "PATCH /api/posts/:postId",
+      "ops": 106,
+      "failures": 0,
+      "p50": 293161815,
+      "p90": 508536401,
+      "p99": 730934922,
+      "max": 878107103
+    },
+    {
+      "region": "america",
+      "route": "POST /api/auth/login",
+      "ops": 1712,
+      "failures": 0,
+      "p50": 272534912,
+      "p90": 462868557,
+      "p99": 701312791,
+      "max": 7660683033
+    },
+    {
+      "region": "america",
+      "route": "POST /api/auth/logout",
+      "ops": 252,
+      "failures": 0,
+      "p50": 264514489,
+      "p90": 386683561,
+      "p99": 793413779,
+      "max": 3741913176
+    },
+    {
+      "region": "america",
+      "route": "POST /api/auth/register",
+      "ops": 443,
+      "failures": 0,
+      "p50": 365187138,
+      "p90": 602847556,
+      "p99": 746231633,
+      "max": 822538306
+    },
+    {
+      "region": "america",
+      "route": "POST /api/friend-requests",
+      "ops": 1008,
+      "failures": 0,
+      "p50": 338898672,
+      "p90": 636001382,
+      "p99": 818342747,
+      "max": 890727580
+    },
+    {
+      "region": "america",
+      "route": "POST /api/friend-requests/:requestId/accept",
+      "ops": 263,
+      "failures": 0,
+      "p50": 304881558,
+      "p90": 621894054,
+      "p99": 823599968,
+      "max": 863570459
+    },
+    {
+      "region": "america",
+      "route": "POST /api/friend-requests/:requestId/cancel",
+      "ops": 16,
+      "failures": 0,
+      "p50": 261121559,
+      "p90": 447129663,
+      "p99": 499518094,
+      "max": 499518094
+    },
+    {
+      "region": "america",
+      "route": "POST /api/friend-requests/:requestId/reject",
+      "ops": 3,
+      "failures": 0,
+      "p50": 286395415,
+      "p90": 409796269,
+      "p99": 409796269,
+      "max": 409796269
+    },
+    {
+      "region": "america",
+      "route": "POST /api/me/account-deletion",
+      "ops": 1,
+      "failures": 0,
+      "p50": 684485002,
+      "p90": 684485002,
+      "p99": 684485002,
+      "max": 684485002
+    },
+    {
+      "region": "america",
+      "route": "POST /api/posts",
+      "ops": 1072,
+      "failures": 0,
+      "p50": 512882835,
+      "p90": 5598629121,
+      "p99": 7701875759,
+      "max": 8012278893
+    },
+    {
+      "region": "america",
+      "route": "POST /api/posts/:postId/comments",
+      "ops": 343,
+      "failures": 0,
+      "p50": 284614207,
+      "p90": 581284809,
+      "p99": 816057088,
+      "max": 1199664864
+    },
+    {
+      "region": "america",
+      "route": "POST /api/posts/:postId/realmojis",
+      "ops": 295,
+      "failures": 0,
+      "p50": 310932856,
+      "p90": 410362831,
+      "p99": 556299825,
+      "max": 563387340
+    },
+    {
+      "region": "america",
+      "route": "PUT /api/blocks/:userId",
+      "ops": 21,
+      "failures": 0,
+      "p50": 279637202,
+      "p90": 604094196,
+      "p99": 731925360,
+      "max": 731925360
+    },
+    {
+      "region": "america",
+      "route": "PUT /api/follows/:userId",
+      "ops": 282,
+      "failures": 0,
+      "p50": 356569903,
+      "p90": 671576941,
+      "p99": 726934935,
+      "max": 727738664
+    },
+    {
+      "region": "america",
+      "route": "PUT /api/me/profile-image",
+      "ops": 12,
+      "failures": 0,
+      "p50": 269601977,
+      "p90": 342219427,
+      "p99": 350577228,
+      "max": 350577228
+    },
+    {
+      "region": "asia",
+      "route": "DELETE /api/blocks/:userId",
+      "ops": 2,
+      "failures": 0,
+      "p50": 137639972,
+      "p90": 2726459746,
+      "p99": 2726459746,
+      "max": 2726459746
+    },
+    {
+      "region": "asia",
+      "route": "DELETE /api/comments/:commentId",
+      "ops": 82,
+      "failures": 0,
+      "p50": 395141954,
+      "p90": 2414619243,
+      "p99": 2744149015,
+      "max": 2744149015
+    },
+    {
+      "region": "asia",
+      "route": "DELETE /api/follows/:userId",
+      "ops": 10,
+      "failures": 0,
+      "p50": 949895973,
+      "p90": 2218807774,
+      "p99": 2520752386,
+      "max": 2520752386
+    },
+    {
+      "region": "asia",
+      "route": "DELETE /api/friendships/:userId",
+      "ops": 7,
+      "failures": 0,
+      "p50": 496055665,
+      "p90": 2726308310,
+      "p99": 2726308310,
+      "max": 2726308310
+    },
+    {
+      "region": "asia",
+      "route": "DELETE /api/posts/:postId",
+      "ops": 75,
+      "failures": 0,
+      "p50": 592613921,
+      "p90": 2511458033,
+      "p99": 2762907528,
+      "max": 2762907528
+    },
+    {
+      "region": "asia",
+      "route": "DELETE /api/realmojis/:realMojiId",
+      "ops": 82,
+      "failures": 0,
+      "p50": 467595981,
+      "p90": 2538220669,
+      "p99": 7839750783,
+      "max": 7839750783
+    },
+    {
+      "region": "asia",
+      "route": "GET /api/feeds/following",
+      "ops": 1508,
+      "failures": 0,
+      "p50": 171429101,
+      "p90": 275136557,
+      "p99": 767184951,
+      "max": 5831821778
+    },
+    {
+      "region": "asia",
+      "route": "GET /api/feeds/friends",
+      "ops": 5979,
+      "failures": 0,
+      "p50": 162996338,
+      "p90": 291354792,
+      "p99": 1805180973,
+      "max": 7566682369
+    },
+    {
+      "region": "asia",
+      "route": "GET /api/feeds/friends-of-friends",
+      "ops": 2534,
+      "failures": 0,
+      "p50": 175537831,
+      "p90": 283529554,
+      "p99": 672405758,
+      "max": 7075683176
+    },
+    {
+      "region": "asia",
+      "route": "GET /api/feeds/public",
+      "ops": 2539,
+      "failures": 0,
+      "p50": 168982875,
+      "p90": 275943683,
+      "p99": 671523502,
+      "max": 4813217501
+    },
+    {
+      "region": "asia",
+      "route": "GET /api/images/:imageId",
+      "ops": 16043,
+      "failures": 0,
+      "p50": 88275320,
+      "p90": 240301561,
+      "p99": 2963202202,
+      "max": 7208820554
+    },
+    {
+      "region": "asia",
+      "route": "GET /api/me",
+      "ops": 38,
+      "failures": 0,
+      "p50": 185944303,
+      "p90": 332368228,
+      "p99": 349887788,
+      "max": 349887788
+    },
+    {
+      "region": "asia",
+      "route": "GET /api/memories",
+      "ops": 3915,
+      "failures": 0,
+      "p50": 135659746,
+      "p90": 301907526,
+      "p99": 1299746509,
+      "max": 7539344534
+    },
+    {
+      "region": "asia",
+      "route": "GET /api/memories/:date",
+      "ops": 844,
+      "failures": 0,
+      "p50": 83043903,
+      "p90": 288534914,
+      "p99": 1504253488,
+      "max": 6506624919
+    },
+    {
+      "region": "asia",
+      "route": "GET /api/posting-window/current",
+      "ops": 4344,
+      "failures": 0,
+      "p50": 186727244,
+      "p90": 336681674,
+      "p99": 3356389603,
+      "max": 7628872988
+    },
+    {
+      "region": "asia",
+      "route": "GET /api/posts/:postId",
+      "ops": 1543,
+      "failures": 0,
+      "p50": 187531398,
+      "p90": 303908993,
+      "p99": 389333079,
+      "max": 647243743
+    },
+    {
+      "region": "asia",
+      "route": "GET /api/posts/:postId/comments",
+      "ops": 556,
+      "failures": 0,
+      "p50": 260689992,
+      "p90": 408389337,
+      "p99": 508202421,
+      "max": 558827415
+    },
+    {
+      "region": "asia",
+      "route": "GET /api/posts/:postId/realmojis",
+      "ops": 604,
+      "failures": 0,
+      "p50": 281312121,
+      "p90": 436893591,
+      "p99": 532544139,
+      "max": 574142126
+    },
+    {
+      "region": "asia",
+      "route": "GET /api/posts/me/current",
+      "ops": 2325,
+      "failures": 0,
+      "p50": 299204878,
+      "p90": 565721207,
+      "p99": 1311108905,
+      "max": 5838364955
+    },
+    {
+      "region": "asia",
+      "route": "GET /api/relationships/followers",
+      "ops": 24,
+      "failures": 0,
+      "p50": 199863497,
+      "p90": 287647011,
+      "p99": 362928732,
+      "max": 362928732
+    },
+    {
+      "region": "asia",
+      "route": "GET /api/relationships/following",
+      "ops": 25,
+      "failures": 0,
+      "p50": 200690588,
+      "p90": 313461562,
+      "p99": 326302713,
+      "max": 326302713
+    },
+    {
+      "region": "asia",
+      "route": "GET /api/relationships/friends",
+      "ops": 30,
+      "failures": 0,
+      "p50": 191533360,
+      "p90": 297742246,
+      "p99": 5306501066,
+      "max": 5306501066
+    },
+    {
+      "region": "asia",
+      "route": "GET /api/relationships/incoming-requests",
+      "ops": 1308,
+      "failures": 0,
+      "p50": 182877871,
+      "p90": 288378759,
+      "p99": 399762941,
+      "max": 5329507455
+    },
+    {
+      "region": "asia",
+      "route": "GET /api/relationships/outgoing-requests",
+      "ops": 45,
+      "failures": 0,
+      "p50": 185635896,
+      "p90": 257928879,
+      "p99": 483170963,
+      "max": 483170963
+    },
+    {
+      "region": "asia",
+      "route": "GET /api/users",
+      "ops": 1449,
+      "failures": 0,
+      "p50": 184892063,
+      "p90": 276813736,
+      "p99": 363491677,
+      "max": 601319832
+    },
+    {
+      "region": "asia",
+      "route": "GET /api/users/:userId",
+      "ops": 736,
+      "failures": 0,
+      "p50": 362533051,
+      "p90": 541685060,
+      "p99": 702260681,
+      "max": 746959098
+    },
+    {
+      "region": "asia",
+      "route": "PATCH /api/me",
+      "ops": 35,
+      "failures": 0,
+      "p50": 414815867,
+      "p90": 2351370711,
+      "p99": 2729196078,
+      "max": 2729196078
+    },
+    {
+      "region": "asia",
+      "route": "PATCH /api/posts/:postId",
+      "ops": 243,
+      "failures": 0,
+      "p50": 592450916,
+      "p90": 2504704993,
+      "p99": 2729508933,
+      "max": 2767606993
+    },
+    {
+      "region": "asia",
+      "route": "POST /api/auth/login",
+      "ops": 5564,
+      "failures": 0,
+      "p50": 267966213,
+      "p90": 2046753874,
+      "p99": 2610558293,
+      "max": 7121669395
+    },
+    {
+      "region": "asia",
+      "route": "POST /api/auth/logout",
+      "ops": 815,
+      "failures": 0,
+      "p50": 271051581,
+      "p90": 2021465451,
+      "p99": 2718143201,
+      "max": 6760052251
+    },
+    {
+      "region": "asia",
+      "route": "POST /api/auth/register",
+      "ops": 1267,
+      "failures": 0,
+      "p50": 521246788,
+      "p90": 1721718158,
+      "p99": 1996700972,
+      "max": 2042270560
+    },
+    {
+      "region": "asia",
+      "route": "POST /api/friend-requests",
+      "ops": 2760,
+      "failures": 0,
+      "p50": 1578330969,
+      "p90": 2658031982,
+      "p99": 2777713888,
+      "max": 2836430278
+    },
+    {
+      "region": "asia",
+      "route": "POST /api/friend-requests/:requestId/accept",
+      "ops": 1652,
+      "failures": 0,
+      "p50": 623149185,
+      "p90": 2628765573,
+      "p99": 3485909462,
+      "max": 6623059760
+    },
+    {
+      "region": "asia",
+      "route": "POST /api/friend-requests/:requestId/cancel",
+      "ops": 24,
+      "failures": 0,
+      "p50": 1048834494,
+      "p90": 2739113839,
+      "p99": 2779244117,
+      "max": 2779244117
+    },
+    {
+      "region": "asia",
+      "route": "POST /api/friend-requests/:requestId/reject",
+      "ops": 23,
+      "failures": 0,
+      "p50": 1798037671,
+      "p90": 2826629062,
+      "p99": 2973174651,
+      "max": 2973174651
+    },
+    {
+      "region": "asia",
+      "route": "POST /api/me/account-deletion",
+      "ops": 1,
+      "failures": 0,
+      "p50": 2660689998,
+      "p90": 2660689998,
+      "p99": 2660689998,
+      "max": 2660689998
+    },
+    {
+      "region": "asia",
+      "route": "POST /api/posts",
+      "ops": 2505,
+      "failures": 1,
+      "p50": 1886995308,
+      "p90": 3350853882,
+      "p99": 6552516052,
+      "max": 7703469393
+    },
+    {
+      "region": "asia",
+      "route": "POST /api/posts/:postId/comments",
+      "ops": 553,
+      "failures": 0,
+      "p50": 580276002,
+      "p90": 2649897727,
+      "p99": 2873699221,
+      "max": 2975082853
+    },
+    {
+      "region": "asia",
+      "route": "POST /api/posts/:postId/realmojis",
+      "ops": 583,
+      "failures": 0,
+      "p50": 800289679,
+      "p90": 2345131656,
+      "p99": 2770769420,
+      "max": 2872209446
+    },
+    {
+      "region": "asia",
+      "route": "PUT /api/blocks/:userId",
+      "ops": 22,
+      "failures": 0,
+      "p50": 643174333,
+      "p90": 2540317209,
+      "p99": 2745496191,
+      "max": 2745496191
+    },
+    {
+      "region": "asia",
+      "route": "PUT /api/follows/:userId",
+      "ops": 838,
+      "failures": 0,
+      "p50": 1136201692,
+      "p90": 2651623067,
+      "p99": 2769281012,
+      "max": 2839464599
+    },
+    {
+      "region": "asia",
+      "route": "PUT /api/me/profile-image",
+      "ops": 37,
+      "failures": 0,
+      "p50": 637184529,
+      "p90": 2531055127,
+      "p99": 2787643606,
+      "max": 2787643606
+    },
+    {
+      "region": "europe",
+      "route": "DELETE /api/blocks/:userId",
+      "ops": 2,
+      "failures": 0,
+      "p50": 219986209,
+      "p90": 280487097,
+      "p99": 280487097,
+      "max": 280487097
+    },
+    {
+      "region": "europe",
+      "route": "DELETE /api/comments/:commentId",
+      "ops": 83,
+      "failures": 0,
+      "p50": 278504730,
+      "p90": 502737213,
+      "p99": 741611924,
+      "max": 741611924
+    },
+    {
+      "region": "europe",
+      "route": "DELETE /api/follows/:userId",
+      "ops": 5,
+      "failures": 0,
+      "p50": 292784019,
+      "p90": 306294544,
+      "p99": 306294544,
+      "max": 306294544
+    },
+    {
+      "region": "europe",
+      "route": "DELETE /api/friendships/:userId",
+      "ops": 4,
+      "failures": 0,
+      "p50": 348826972,
+      "p90": 435899083,
+      "p99": 435899083,
+      "max": 435899083
+    },
+    {
+      "region": "europe",
+      "route": "DELETE /api/me/profile-image",
+      "ops": 1,
+      "failures": 0,
+      "p50": 283840683,
+      "p90": 283840683,
+      "p99": 283840683,
+      "max": 283840683
+    },
+    {
+      "region": "europe",
+      "route": "DELETE /api/posts/:postId",
+      "ops": 52,
+      "failures": 0,
+      "p50": 300827233,
+      "p90": 604803276,
+      "p99": 702603741,
+      "max": 702603741
+    },
+    {
+      "region": "europe",
+      "route": "DELETE /api/realmojis/:realMojiId",
+      "ops": 90,
+      "failures": 0,
+      "p50": 280854286,
+      "p90": 445552575,
+      "p99": 733295157,
+      "max": 733295157
+    },
+    {
+      "region": "europe",
+      "route": "GET /api/feeds/following",
+      "ops": 1376,
+      "failures": 0,
+      "p50": 65847372,
+      "p90": 148248490,
+      "p99": 248923580,
+      "max": 1316817970
+    },
+    {
+      "region": "europe",
+      "route": "GET /api/feeds/friends",
+      "ops": 4386,
+      "failures": 0,
+      "p50": 59226903,
+      "p90": 145515037,
+      "p99": 336290862,
+      "max": 5902967342
+    },
+    {
+      "region": "europe",
+      "route": "GET /api/feeds/friends-of-friends",
+      "ops": 2220,
+      "failures": 0,
+      "p50": 74518724,
+      "p90": 158693487,
+      "p99": 271542472,
+      "max": 2453237208
+    },
+    {
+      "region": "europe",
+      "route": "GET /api/feeds/public",
+      "ops": 2210,
+      "failures": 0,
+      "p50": 63649281,
+      "p90": 143625094,
+      "p99": 197149028,
+      "max": 409235039
+    },
+    {
+      "region": "europe",
+      "route": "GET /api/images/:imageId",
+      "ops": 6585,
+      "failures": 0,
+      "p50": 28296948,
+      "p90": 174411928,
+      "p99": 2687081856,
+      "max": 7558291366
+    },
+    {
+      "region": "europe",
+      "route": "GET /api/me",
+      "ops": 39,
+      "failures": 0,
+      "p50": 67082907,
+      "p90": 148818625,
+      "p99": 171667540,
+      "max": 171667540
+    },
+    {
+      "region": "europe",
+      "route": "GET /api/memories",
+      "ops": 1436,
+      "failures": 0,
+      "p50": 31522407,
+      "p90": 150109707,
+      "p99": 1314410919,
+      "max": 6871054537
+    },
+    {
+      "region": "europe",
+      "route": "GET /api/memories/:date",
+      "ops": 300,
+      "failures": 0,
+      "p50": 8245248,
+      "p90": 101460479,
+      "p99": 345355095,
+      "max": 2338040436
+    },
+    {
+      "region": "europe",
+      "route": "GET /api/posting-window/current",
+      "ops": 1900,
+      "failures": 0,
+      "p50": 70800328,
+      "p90": 187765575,
+      "p99": 4305087548,
+      "max": 6886628231
+    },
+    {
+      "region": "europe",
+      "route": "GET /api/posts/:postId",
+      "ops": 1247,
+      "failures": 0,
+      "p50": 61024282,
+      "p90": 142444245,
+      "p99": 242684362,
+      "max": 500699372
+    },
+    {
+      "region": "europe",
+      "route": "GET /api/posts/:postId/comments",
+      "ops": 491,
+      "failures": 0,
+      "p50": 66833557,
+      "p90": 202523486,
+      "p99": 313644122,
+      "max": 471139551
+    },
+    {
+      "region": "europe",
+      "route": "GET /api/posts/:postId/realmojis",
+      "ops": 606,
+      "failures": 0,
+      "p50": 88507399,
+      "p90": 192357318,
+      "p99": 253239466,
+      "max": 348402754
+    },
+    {
+      "region": "europe",
+      "route": "GET /api/posts/me/current",
+      "ops": 1111,
+      "failures": 0,
+      "p50": 67685815,
+      "p90": 294911037,
+      "p99": 1807182667,
+      "max": 6828362254
+    },
+    {
+      "region": "europe",
+      "route": "GET /api/relationships/followers",
+      "ops": 25,
+      "failures": 0,
+      "p50": 79652896,
+      "p90": 150058860,
+      "p99": 241670212,
+      "max": 241670212
+    },
+    {
+      "region": "europe",
+      "route": "GET /api/relationships/following",
+      "ops": 28,
+      "failures": 0,
+      "p50": 48743185,
+      "p90": 166151177,
+      "p99": 171600501,
+      "max": 171600501
+    },
+    {
+      "region": "europe",
+      "route": "GET /api/relationships/friends",
+      "ops": 31,
+      "failures": 0,
+      "p50": 53620441,
+      "p90": 145630399,
+      "p99": 183766740,
+      "max": 183766740
+    },
+    {
+      "region": "europe",
+      "route": "GET /api/relationships/incoming-requests",
+      "ops": 978,
+      "failures": 0,
+      "p50": 70913229,
+      "p90": 146998837,
+      "p99": 277397144,
+      "max": 4322010188
+    },
+    {
+      "region": "europe",
+      "route": "GET /api/relationships/outgoing-requests",
+      "ops": 44,
+      "failures": 0,
+      "p50": 59300254,
+      "p90": 138338734,
+      "p99": 893575561,
+      "max": 893575561
+    },
+    {
+      "region": "europe",
+      "route": "GET /api/users",
+      "ops": 676,
+      "failures": 0,
+      "p50": 61185510,
+      "p90": 146409684,
+      "p99": 209132452,
+      "max": 304127988
+    },
+    {
+      "region": "europe",
+      "route": "GET /api/users/:userId",
+      "ops": 608,
+      "failures": 0,
+      "p50": 82319656,
+      "p90": 255459849,
+      "p99": 312395894,
+      "max": 388354155
+    },
+    {
+      "region": "europe",
+      "route": "PATCH /api/me",
+      "ops": 29,
+      "failures": 0,
+      "p50": 287084861,
+      "p90": 626576185,
+      "p99": 784805476,
+      "max": 784805476
+    },
+    {
+      "region": "europe",
+      "route": "PATCH /api/posts/:postId",
+      "ops": 133,
+      "failures": 0,
+      "p50": 315233696,
+      "p90": 571049630,
+      "p99": 721843147,
+      "max": 1205169672
+    },
+    {
+      "region": "europe",
+      "route": "POST /api/auth/login",
+      "ops": 1910,
+      "failures": 0,
+      "p50": 254294919,
+      "p90": 350501381,
+      "p99": 585162145,
+      "max": 3048591420
+    },
+    {
+      "region": "europe",
+      "route": "POST /api/auth/logout",
+      "ops": 293,
+      "failures": 0,
+      "p50": 253218424,
+      "p90": 399474864,
+      "p99": 1144883240,
+      "max": 4617417175
+    },
+    {
+      "region": "europe",
+      "route": "POST /api/auth/register",
+      "ops": 536,
+      "failures": 0,
+      "p50": 289984922,
+      "p90": 390907313,
+      "p99": 447003360,
+      "max": 477713888
+    },
+    {
+      "region": "europe",
+      "route": "POST /api/friend-requests",
+      "ops": 1249,
+      "failures": 0,
+      "p50": 302940686,
+      "p90": 428401076,
+      "p99": 531346296,
+      "max": 629319986
+    },
+    {
+      "region": "europe",
+      "route": "POST /api/friend-requests/:requestId/accept",
+      "ops": 300,
+      "failures": 0,
+      "p50": 307484994,
+      "p90": 588656261,
+      "p99": 774742171,
+      "max": 4034275416
+    },
+    {
+      "region": "europe",
+      "route": "POST /api/friend-requests/:requestId/cancel",
+      "ops": 32,
+      "failures": 0,
+      "p50": 279800806,
+      "p90": 547392177,
+      "p99": 776659964,
+      "max": 776659964
+    },
+    {
+      "region": "europe",
+      "route": "POST /api/friend-requests/:requestId/reject",
+      "ops": 6,
+      "failures": 0,
+      "p50": 282134610,
+      "p90": 616420974,
+      "p99": 616420974,
+      "max": 616420974
+    },
+    {
+      "region": "europe",
+      "route": "POST /api/me/account-deletion",
+      "ops": 1,
+      "failures": 0,
+      "p50": 311014217,
+      "p90": 311014217,
+      "p99": 311014217,
+      "max": 311014217
+    },
+    {
+      "region": "europe",
+      "route": "POST /api/posts",
+      "ops": 1299,
+      "failures": 1,
+      "p50": 451795593,
+      "p90": 5191876791,
+      "p99": 7543814338,
+      "max": 7825485231
+    },
+    {
+      "region": "europe",
+      "route": "POST /api/posts/:postId/comments",
+      "ops": 527,
+      "failures": 0,
+      "p50": 298932179,
+      "p90": 532859291,
+      "p99": 729736637,
+      "max": 777036781
+    },
+    {
+      "region": "europe",
+      "route": "POST /api/posts/:postId/realmojis",
+      "ops": 603,
+      "failures": 0,
+      "p50": 318205283,
+      "p90": 420443541,
+      "p99": 499592576,
+      "max": 1671576265
+    },
+    {
+      "region": "europe",
+      "route": "PUT /api/blocks/:userId",
+      "ops": 31,
+      "failures": 0,
+      "p50": 293090029,
+      "p90": 437533851,
+      "p99": 538303439,
+      "max": 538303439
+    },
+    {
+      "region": "europe",
+      "route": "PUT /api/follows/:userId",
+      "ops": 358,
+      "failures": 0,
+      "p50": 293831922,
+      "p90": 427402732,
+      "p99": 605666172,
+      "max": 634220233
+    },
+    {
+      "region": "europe",
+      "route": "PUT /api/me/profile-image",
+      "ops": 37,
+      "failures": 0,
+      "p50": 320541316,
+      "p90": 415397594,
+      "p99": 709887959,
+      "max": 709887959
+    }
+  ]
+}
