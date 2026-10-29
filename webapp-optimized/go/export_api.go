@@ -3,17 +3,34 @@ package isureal
 import (
 	"archive/zip"
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
+	"sync"
+	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jmoiron/sqlx"
 	"github.com/labstack/echo/v5"
+	"golang.org/x/sync/errgroup"
 )
 
 type exportPostResponse struct {
 	createPostResponse
 	ImagePath string `json:"imagePath"`
 }
+
+// exportImageBatch is how many images one query reads. Images are stored with
+// the posting time as created_at, so a query that also names the times is
+// pruned to their month partitions instead of probing every partition per
+// image; an image not found that way is read by ID alone.
+const exportImageBatch = 64
+
+// exportStatementTimeout bounds each image batch on the server.
+const exportStatementTimeout = 5 * time.Second
 
 func exportPostsHandler(h *HandlerContext) echo.HandlerFunc {
 	return func(c *echo.Context) error {
@@ -30,52 +47,45 @@ func exportPostsHandler(h *HandlerContext) echo.HandlerFunc {
 				return err
 			}
 		}
-		rows, err := h.ReadDB.QueryxContext(ctx, `
-   SELECT `+postColumns+`, i.data AS image_data
+		var posts []Post
+		if err := h.DB.SelectContext(ctx, &posts, `
+   SELECT `+postColumns+`
    FROM posts p
    JOIN posting_windows w ON w.id = p.posting_window_id
-   JOIN image_objects i ON i.id = p.image_id
    WHERE p.author_id = $1 AND p.deleted_at IS NULL
    ORDER BY p.posted_at, p.id
-  `, userID)
-		if err != nil {
+  `, userID); err != nil {
 			return err
 		}
-		defer rows.Close()
 		if state != nil {
 			author, err = readSessionUser(c, h)
 			if err != nil {
 				return err
 			}
 		}
+		imageData, err := exportImages(ctx, h.DB, posts)
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "57014" {
+			return NewAPIError(http.StatusServiceUnavailable, "export_busy")
+		}
+		if err != nil {
+			return err
+		}
 
 		var body bytes.Buffer
 		writer := zip.NewWriter(&body)
 		defer writer.Close()
-		items := make([]exportPostResponse, 0)
-		for rows.Next() {
-			var post struct {
-				Post
-				ImageData []byte `db:"image_data"`
-			}
-			if err := rows.StructScan(&post); err != nil {
-				return err
-			}
-			imagePath := fmt.Sprintf("images/%06d.jpg", len(items)+1)
+		items := make([]exportPostResponse, 0, len(posts))
+		for i, post := range posts {
+			imagePath := fmt.Sprintf("images/%06d.jpg", i+1)
 			image, err := writer.CreateHeader(&zip.FileHeader{Name: imagePath, Method: zip.Store})
 			if err != nil {
 				return err
 			}
-			if _, err := image.Write(post.ImageData); err != nil {
+			if _, err := image.Write(imageData[post.ImageID]); err != nil {
 				return err
 			}
-			items = append(items, exportPostResponse{createPostResponse: newPostResponse(post.Post, author), ImagePath: imagePath})
-		}
-		if err := rows.Err(); err != nil {
-			return err
-		}
-		if err := rows.Close(); err != nil {
-			return err
+			items = append(items, exportPostResponse{createPostResponse: newPostResponse(post, author), ImagePath: imagePath})
 		}
 		manifest, err := writer.Create("posts.json")
 		if err != nil {
@@ -91,4 +101,74 @@ func exportPostsHandler(h *HandlerContext) echo.HandlerFunc {
 		c.Response().Header().Set(echo.HeaderCacheControl, "no-store")
 		return c.Blob(http.StatusOK, "application/zip", body.Bytes())
 	}
+}
+
+// exportImages reads the bodies of the posts' images: in batches pruned by
+// posting time, a few batches at a time so the database overlaps the random
+// reads, then by ID for any image stored under another time, and from the
+// image store for images uploaded during the load.
+func exportImages(ctx context.Context, db *sqlx.DB, posts []Post) (map[string][]byte, error) {
+	data := make(map[string][]byte, len(posts))
+	var mu sync.Mutex
+	group, gctx := errgroup.WithContext(ctx)
+	group.SetLimit(4)
+	for start := 0; start < len(posts); start += exportImageBatch {
+		batch := posts[start:min(start+exportImageBatch, len(posts))]
+		group.Go(func() error {
+			ids := make([]string, len(batch))
+			times := make([]time.Time, len(batch))
+			for i, p := range batch {
+				ids[i], times[i] = p.ImageID, p.PostedAt
+			}
+			var rows []struct {
+				ID   string `db:"id"`
+				Data []byte `db:"data"`
+			}
+			// A join with the (id, time) pairs is pruned per row to one month
+			// partition; "= ANY(array)" conditions were not. The statement is
+			// bounded on the server: when the database is saturated (the grand
+			// prix's simultaneous posts) the export answers 503 instead of
+			// holding the connection past the client's deadline.
+			tx, err := db.BeginTxx(gctx, nil)
+			if err != nil {
+				return err
+			}
+			defer tx.Rollback()
+			if _, err := tx.ExecContext(gctx, `SET LOCAL statement_timeout = `+strconv.Itoa(int(exportStatementTimeout/time.Millisecond))); err != nil {
+				return err
+			}
+			if err := tx.SelectContext(gctx, &rows, `SELECT i.id, i.data
+              FROM unnest($1::text[], $2::timestamptz[]) AS n(id, at)
+              JOIN image_objects i ON i.id = n.id AND i.created_at = n.at`, ids, times); err != nil {
+				return err
+			}
+			if err := tx.Commit(); err != nil {
+				return err
+			}
+			mu.Lock()
+			defer mu.Unlock()
+			for _, row := range rows {
+				data[row.ID] = row.Data
+			}
+			return nil
+		})
+	}
+	if err := group.Wait(); err != nil {
+		return nil, err
+	}
+	for _, p := range posts {
+		body, ok := data[p.ImageID]
+		if !ok {
+			if err := db.GetContext(ctx, &body, `SELECT data FROM image_objects WHERE id = $1`, p.ImageID); err != nil {
+				return nil, err
+			}
+			data[p.ImageID] = body
+		}
+		if len(body) == 0 {
+			if stored, ok := imageBytes(ctx, p.ImageID); ok {
+				data[p.ImageID] = stored
+			}
+		}
+	}
+	return data, nil
 }

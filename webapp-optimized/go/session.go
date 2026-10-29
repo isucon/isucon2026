@@ -112,7 +112,7 @@ func sessionMiddleware(handlerContext *HandlerContext, authRequired, includeUser
 					var actor string
 					db := handlerContext.DB
 					if state.readonly {
-						db = handlerContext.ReadDB
+						db = handlerContext.DB
 					}
 					checkErr := db.GetContext(ctx, &actor, `SELECT user_id FROM optimized_auth($1,$2)`, state.session.TokenHash, state.region)
 					if checkErr != nil {
@@ -220,5 +220,5 @@ func readSessionUser(c *echo.Context, h *HandlerContext) (User, error) {
 		user := *session.user
 		return user, user.setImageKey()
 	}
-	return getUser(c.Request().Context(), h.ReadDB, session.UserID)
+	return getUser(c.Request().Context(), h.DB, session.UserID)
 }

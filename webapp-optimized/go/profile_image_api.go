@@ -3,6 +3,7 @@ package isureal
 import (
 	"net/http"
 
+	"github.com/google/uuid"
 	"github.com/labstack/echo/v5"
 )
 
@@ -11,7 +12,7 @@ func putProfileImageHandler(h *HandlerContext) echo.HandlerFunc {
 		if c.Request().Header.Get("Content-Type") != "image/jpeg" {
 			return NewAPIError(http.StatusUnsupportedMediaType, "unsupported_media_type")
 		}
-		data, ok, err := readJPEG(c.Request().Body, 512)
+		data, ok, err := readJPEG(c.Request().Body, 512, c.Request().ContentLength)
 		if err != nil {
 			return err
 		}
@@ -19,7 +20,12 @@ func putProfileImageHandler(h *HandlerContext) echo.HandlerFunc {
 			return NewAPIError(http.StatusBadRequest, "invalid_profile_image")
 		}
 
-		if _, err := runWrite(c.Request().Context(), h.DB, "profile_image_put", GetSession(c).UserID, nil, data); err != nil {
+		imageID := uuid.NewString()
+		if err := storeUploadedImage(imageID, data); err != nil {
+			return err
+		}
+		if _, err := runWrite(c.Request().Context(), h.DB, "profile_image_put", GetSession(c).UserID,
+			map[string]any{"imageId": imageID}, []byte{}); err != nil {
 			return err
 		}
 		return c.NoContent(http.StatusNoContent)

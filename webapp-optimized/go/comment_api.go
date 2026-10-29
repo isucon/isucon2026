@@ -63,7 +63,7 @@ func getCommentsHandler(h *HandlerContext) echo.HandlerFunc {
 			return NewAPIError(http.StatusBadRequest, "invalid_pagination")
 		}
 		ctx := c.Request().Context()
-		comments, allowed, err := readInteractions(ctx, h.ReadDB, GetSession(c).UserID, input.PostID, true, input.AfterCreatedAt, input.AfterID)
+		comments, allowed, err := readInteractions(ctx, h.DB, GetSession(c).UserID, input.PostID, true, input.AfterCreatedAt, input.AfterID)
 		if err != nil {
 			return err
 		}

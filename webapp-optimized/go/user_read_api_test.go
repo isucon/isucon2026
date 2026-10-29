@@ -124,7 +124,7 @@ func TestUserReadIntegration(t *testing.T) {
 	}
 	for i := 0; i < 52; i++ {
 		id := fmt.Sprintf("page-%02d", i)
-		exec(`INSERT INTO users(id,username,secret_key_hash,display_name,region) VALUES ($1,'page','9caf06bb4436cdbfa20af9121a626bc1093c4f54b31c0fa937957856135345b6','Page','asia')`, id)
+		exec(`INSERT INTO users(id,username,secret_key_hash,display_name,region) VALUES ($1,$1,'9caf06bb4436cdbfa20af9121a626bc1093c4f54b31c0fa937957856135345b6','Page','asia')`, id)
 	}
 	first := search("page")
 	if len(first.Items) != 50 || !first.HasMore {
