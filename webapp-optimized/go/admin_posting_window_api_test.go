@@ -95,6 +95,7 @@ func TestOpenPostingWindowIntegration(t *testing.T) {
 	if successes != 1 || first.Region != "asia" || first.OnTimeDeadline.Sub(first.StartsAt) != 5*time.Second {
 		t.Fatalf("successes=%d response=%+v", successes, first)
 	}
+	notificationWrites.drain()
 	var recipients []string
 	if err := db.Select(&recipients, `SELECT user_id FROM notifications WHERE posting_window_id=$1 ORDER BY user_id`, first.ID); err != nil {
 		t.Fatal(err)
@@ -125,22 +126,31 @@ func TestOpenPostingWindowIntegration(t *testing.T) {
 	if !endedAt.Equal(second.StartsAt) {
 		t.Fatal("previous window ended at different time")
 	}
+	// The window opens even when its notification rows cannot be written: they
+	// are written in the background and the notification itself is delivered
+	// from the hot state.
 	exec(`CREATE FUNCTION reject_notification() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'reject notification'; END $$`)
 	exec(`CREATE TRIGGER reject_notification BEFORE INSERT ON notifications FOR EACH ROW EXECUTE FUNCTION reject_notification()`)
 	defer db.Exec(`DROP FUNCTION reject_notification() CASCADE`)
-	check(request("asia", `{"localDate":"2026-09-25"}`, session.Token), http.StatusInternalServerError)
+	rec = request("asia", `{"localDate":"2026-09-25"}`, session.Token)
+	check(rec, http.StatusCreated)
+	var third openPostingWindowResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &third); err != nil {
+		t.Fatal(err)
+	}
+	notificationWrites.drain()
 	var activeIDs []string
 	if err := db.Select(&activeIDs, `SELECT id FROM posting_windows WHERE ended_at IS NULL ORDER BY region`); err != nil {
 		t.Fatal(err)
 	}
-	if fmt.Sprint(activeIDs) != fmt.Sprint([]string{second.ID, europe.ID}) {
-		t.Fatalf("active windows changed after failure: %v", activeIDs)
+	if fmt.Sprint(activeIDs) != fmt.Sprint([]string{third.ID, europe.ID}) {
+		t.Fatalf("active windows: %v", activeIDs)
 	}
 	var count int
 	if err := db.Get(&count, `SELECT count(*) FROM posting_windows`); err != nil {
 		t.Fatal(err)
 	}
-	if count != 3 {
-		t.Fatalf("failed window persisted: count=%d", count)
+	if count != 4 {
+		t.Fatalf("windows: count=%d", count)
 	}
 }

@@ -73,7 +73,7 @@ func getFeedHandler(h *HandlerContext) echo.HandlerFunc {
 			args = append(args, input.BeforePostedAt, input.BeforeID)
 		}
 		conditions += ` ORDER BY p.posted_at DESC, p.id DESC LIMIT 51`
-		posts, err := selectPostsWithAuthorCTE(ctx, h.ReadDB, viewerRelationsCTE, conditions, args...)
+		posts, err := selectPostsWithAuthorCTE(ctx, h.DB, viewerRelationsCTE, conditions, args...)
 		if err != nil {
 			return err
 		}
@@ -107,11 +107,7 @@ func matchesFeed(viewer viewerContext, following map[string]bool, post Post, fee
 // cachedFeed answers from the regional hot state when it knows the session and
 // the viewer, which is equivalent to the SQL below.
 func cachedFeed(c *echo.Context, h *HandlerContext, input getFeedRequest) ([]createPostResponse, bool, bool) {
-	state, _ := c.Request().Context().Value(batchSessionKey{}).(*batchSession)
-	if state == nil || state.attempted {
-		return nil, false, false
-	}
-	user, ok := hot.authenticate(state.session.TokenHash, h.Config.Region)
+	user, ok := hotSessionUser(c, h)
 	if !ok {
 		return nil, false, false
 	}
@@ -123,8 +119,6 @@ func cachedFeed(c *echo.Context, h *HandlerContext, input getFeedRequest) ([]cre
 	if !ok {
 		return nil, false, false
 	}
-	state.attempted = true
-	state.session.UserID, state.session.Region = user.ID, user.Region
 	items := make([]createPostResponse, 0, len(posts))
 	for _, post := range posts {
 		items = append(items, newPostResponse(post.Post, post.Author))

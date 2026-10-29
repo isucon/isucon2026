@@ -137,10 +137,22 @@ func registerSyncHandlers(e *echo.Echo, h *HandlerContext) {
 		hot.apply(events)
 		return c.NoContent(http.StatusNoContent)
 	})
+	e.GET("/internal/images/:imageId", func(c *echo.Context) error {
+		if c.Request().Header.Get("X-Isureal-Sync") != syncToken {
+			return c.NoContent(http.StatusForbidden)
+		}
+		data, ok := store.get(c.Param("imageId"))
+		if !ok {
+			return c.NoContent(http.StatusNotFound)
+		}
+		return c.Blob(http.StatusOK, "image/jpeg", data)
+	})
 	e.POST("/internal/state-reload", func(c *echo.Context) error {
 		if c.Request().Header.Get("X-Isureal-Sync") != syncToken {
 			return c.NoContent(http.StatusForbidden)
 		}
+		notificationWrites.discard()
+		store.clear()
 		if err := hot.load(c.Request().Context(), h.DB); err != nil {
 			return err
 		}
