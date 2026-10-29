@@ -3,6 +3,7 @@
 開発ポータル（`https://portal-dev.isucon.net`）のベンチを実行する Supervisor の共有プールです。
 ECS service `isucon2026-shared-supervisor`（cluster `supervisor-cluster-1090218`）に 3 タスクを置き、
 チームも AZ も絞らずにポータルのキューをポーリングします。各タスクは 4 vCPU / 8 GiB です。
+`render.py` は Linux ARM64 のタスク定義を生成します。
 cluster、実行 role、ネットワーク、ECR、log group は [試し解き用 Supervisor の stack](../README.md) が持ち、
 このディレクトリはサービスとタスク定義だけを扱います。
 
@@ -60,9 +61,10 @@ workflow](../../../../portal/internal/cloudformation/README.md).
 リポジトリルートで実行します。AWS の認証は `provisioning/aws-sdk.config` を通します
 （`AWS_CONFIG_FILE=provisioning/aws-sdk.config AWS_PROFILE=default AWS_SDK_LOAD_CONFIG=1`）。
 
-1. 新しいベンチのイメージを作って push する（[Supervisor 構築手順](../README.md) の `make supervisor-image`）。
+1. 新しいベンチのイメージを作って push する（[Supervisor 構築手順](../README.md) の `make supervisor-image SUPERVISOR_PLATFORM=linux/arm64`）。
    写真のアーカイブを同梱したイメージなら、`benchImages` に同梱した場所（`/opt/isucon/photos/merged.zip`）を指定します。
 2. `pool.json` のイメージや共通設定を更新する。`image` は digest で固定します。
+   ARM64 への初回移行では、既存の amd64 用 digest を ARM64 用の新しい digest に置き換えてから次の手順を実行します。
    IP の変更やチーム追加はポータルのインスタンス登録・同期で反映し、固定IPの転送表は管理しません。
 3. 配備の定義を作って stack の設定に書き、適用する。雛形には稼働中のタスク定義（family の最新の ACTIVE）と
    サービスを AWS から取り、CPU、メモリ、実行 role、ログ、secrets、ulimit、ネットワーク設定を写します。
@@ -96,6 +98,19 @@ ecspresso は `mise exec "aqua:kayac/ecspresso@2.8.7" -- ecspresso` で使えま
 AWS に触らずに結果を確かめられます。
 
 ## 適用記録
+
+### 2026-10-29 ARM64 への移行
+
+- 写真入り ARM64 イメージ `sha256:3dfe2f60499d8fdf662b72a1aab2f971f2b3761ae4cc6762289ef4f64717da2b` を ECR に push しました。
+  ソースは `51f63c0b`、写真は `assets/merged.zip` を使い、イメージ内の写真の SHA-256 が元のアーカイブと一致することを確認しました。
+- `pool.json` と Pulumi の `deployments` を更新して `pulumi up` を実行し、ecspresso で revision 10 を配備しました。
+  差分はイメージと `runtimePlatform.cpuArchitecture`（`X86_64` → `ARM64`）だけです。
+  4 vCPU / 8 GiB、desiredCount 3、ネットワークと Secrets Manager の参照は維持しました。
+- 3 タスクの `ecs.cpu-architecture=arm64` とイメージ digest を確認しました。
+  配備後の Pulumi preview と ecspresso diff に差分はありません。
+- `trial-team8` の target 1 で [ベンチジョブ #446](https://portal-dev.isucon.net/admin/benchmark_jobs/446) を実行しました。
+  2026-10-29 15:51:39〜15:53:10 JST に `pending → running → finished` と進み、`passed=true`、score 6540 で完了しました。
+  これは動作確認の結果であり、アーキテクチャ間の性能比較ではありません。
 
 ### 2026-10-28 Practice Supervisor の廃止
 
