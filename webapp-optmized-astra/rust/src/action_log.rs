@@ -10,6 +10,7 @@ use axum::middleware::Next;
 use axum::response::Response;
 use serde::Serialize;
 
+use crate::api_error::AbuseEvent;
 use crate::ip_ban::extract_client_ip;
 use crate::session::Session;
 use crate::user::USERNAME_PATTERN;
@@ -93,6 +94,8 @@ struct ActionEntry<'a> {
     user_id: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     username: Option<Option<&'a str>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    abuse: Option<&'static str>,
 }
 
 #[derive(Clone)]
@@ -154,17 +157,22 @@ pub async fn action_log_middleware(
 
     let response = next.run(req).await;
     let status = response.status().as_u16();
+    let abuse = response
+        .extensions()
+        .get::<AbuseEvent>()
+        .map(|event| event.0);
 
     let level = if status >= 500 {
         "error"
-    } else if method == Method::GET {
+    } else if method == Method::GET && abuse.is_none() {
         "debug"
     } else {
         "info"
     };
-    // The abuse guard consumes every failed login, independently of the
-    // diagnostic log level. Keep its existing JSON shape and immediate write.
-    let guard_event = action == Some("login") && status == 401;
+    // Guard events must be logged even when diagnostic logging is disabled.
+    let guard_event = (action == Some("login") && status == 401)
+        || (action == Some("put_profile_image") && status == 400 && abuse == Some("invalid_image"))
+        || (action == Some("get_image") && status == 403 && abuse == Some("invalid_signature"));
     if !guard_event && log_level_rank(level) < action_log.min_level {
         return response;
     }
@@ -183,6 +191,7 @@ pub async fn action_log_middleware(
             .get::<Session>()
             .map(|session| session.user_id.as_str()),
         username: username.as_ref().map(|_| credential_name),
+        abuse,
     };
     let mut line = Vec::with_capacity(192);
     if serde_json::to_writer(&mut line, &entry).is_ok() {

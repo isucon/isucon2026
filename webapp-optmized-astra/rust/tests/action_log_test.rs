@@ -6,11 +6,11 @@ use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use axum::middleware::from_fn_with_state;
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, post};
+use axum::routing::{get, post, put};
 use chrono::Utc;
 use isureal::Error;
 use isureal::action_log::{ActionLog, Username, action_log_middleware};
-use isureal::api_error::HttpError;
+use isureal::api_error::{HttpError, new_abuse_error};
 use isureal::bind::Bind;
 use isureal::new_api_error;
 use isureal::session::Session;
@@ -84,12 +84,46 @@ fn new_server(min_level: &str) -> (Router, Output) {
             "/api/users/{userId}",
             get(|| async { Error::Internal(anyhow::anyhow!("boom")) }),
         )
+        .route(
+            "/api/me/profile-image",
+            put(|| async {
+                new_abuse_error(
+                    StatusCode::BAD_REQUEST,
+                    "invalid_profile_image",
+                    "invalid_image",
+                )
+            }),
+        )
+        .route(
+            "/api/images/{imageId}",
+            get(|| async {
+                new_abuse_error(
+                    StatusCode::FORBIDDEN,
+                    "image_forbidden",
+                    "invalid_signature",
+                )
+            }),
+        )
         .fallback(|| async { Error::Http(HttpError::new(StatusCode::NOT_FOUND)) })
         .layer(from_fn_with_state(
             ActionLog::new(min_level, output.clone()),
             action_log_middleware,
         ));
     (app, output)
+}
+
+#[tokio::test]
+async fn abuse_events_are_logged_at_error_level() {
+    let (app, output) = new_server("error");
+    send(&app, "PUT", "/api/me/profile-image", "not a JPEG").await;
+    send(&app, "GET", "/api/images/known-image", "").await;
+    assert_eq!(
+        output.lines(),
+        vec![
+            json!({"level": "info", "action": "put_profile_image", "status": 400, "ip": "203.0.113.7", "user_id": null, "abuse": "invalid_image"}),
+            json!({"level": "info", "action": "get_image", "status": 403, "ip": "203.0.113.7", "user_id": null, "abuse": "invalid_signature"}),
+        ]
+    );
 }
 
 async fn send(app: &Router, method: &str, path: &str, body: &str) {
