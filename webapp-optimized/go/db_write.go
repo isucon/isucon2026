@@ -23,6 +23,9 @@ type writeResult struct {
 	Comment  Comment       `json:"comment"`
 	Reaction RealMoji      `json:"reaction"`
 	Request  FriendRequest `json:"request"`
+	// InitialPost tells whether a comment or RealMoji is on a post of the
+	// initial data, which the history stores hold.
+	InitialPost bool `json:"initialPost"`
 }
 
 // One statement is also the transaction boundary. Never retry mutations here:
@@ -56,8 +59,27 @@ func runWrite(ctx context.Context, db *sqlx.DB, action, actor string, args any, 
 	if err := result.prepareUser(); err != nil {
 		return result, err
 	}
-	broadcast(ctx, eventsFor(ctx, db, action, actor, args, result, row.Version)...)
+	events := eventsFor(ctx, db, action, actor, args, result, row.Version)
+	if homeRegion != "" && sessionRegion(ctx, action, actor, result) == homeRegion {
+		// Only this region trusts the session from the hot state.
+		hot.apply(events)
+		go sendToPeers(context.WithoutCancel(ctx), "/internal/state-events", events)
+		return result, nil
+	}
+	broadcast(ctx, events...)
 	return result, nil
+}
+
+func sessionRegion(ctx context.Context, action, actor string, result writeResult) string {
+	switch action {
+	case "login":
+		return result.User.Region
+	case "logout":
+		if u, ok := hot.userState(realActor(ctx, actor)); ok {
+			return u.Region
+		}
+	}
+	return ""
 }
 
 func (result *writeResult) prepareUser() error {

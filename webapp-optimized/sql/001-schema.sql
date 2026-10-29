@@ -345,6 +345,15 @@ CREATE OR REPLACE FUNCTION opt_blocked(actor text,target text) RETURNS boolean
 LANGUAGE sql STABLE AS $$ SELECT EXISTS(SELECT 1 FROM block_relations
  WHERE (blocker_id=actor AND blocked_id=target) OR (blocker_id=target AND blocked_id=actor)) $$;
 
+-- Whether a row created at created belongs to the initial data. Without the
+-- snapshot (003-initial-snapshot.sql) there is no initial data.
+CREATE OR REPLACE FUNCTION opt_initial(created timestamptz) RETURNS boolean
+LANGUAGE plpgsql STABLE AS $$ DECLARE boundary timestamptz; BEGIN
+ IF to_regclass('initial_data_boundary') IS NULL THEN RETURN false; END IF;
+ EXECUTE 'SELECT created_at FROM initial_data_boundary' INTO boundary;
+ RETURN created<=boundary;
+END $$;
+
 CREATE OR REPLACE FUNCTION opt_access(actor text, target_post text, comment_mode boolean DEFAULT false) RETURNS boolean
 LANGUAGE plpgsql STABLE AS $$
 DECLARE p posts; w posting_windows; v users; author users; posted boolean; friend boolean; fof boolean;
@@ -494,14 +503,14 @@ BEGIN
   newid:=gen_random_uuid()::text;
   IF action='comment_create' THEN
    INSERT INTO comments(id,post_id,author_id,body,created_at) VALUES(newid,p.id,actor,a->>'body',clock_timestamp()) RETURNING * INTO c;
-   RETURN jsonb_build_object('user',result,'comment',opt_comment(c));
+   RETURN jsonb_build_object('user',result,'comment',opt_comment(c),'initialPost',opt_initial(p.created_at));
   END IF;
   UPDATE realmojis SET replaced_at=clock_timestamp() WHERE post_id=p.id AND reactor_id=actor AND replaced_at IS NULL AND deleted_at IS NULL;
   imageid:=coalesce(a->>'imageId',gen_random_uuid()::text);
   INSERT INTO image_objects(id,owner_user_id,data,media_type) VALUES(imageid,actor,image,'image/jpeg');
   INSERT INTO realmojis(id,post_id,reactor_id,image_id,reaction_type,created_at)
    VALUES(newid,p.id,actor,imageid,a->>'reactionType',clock_timestamp()) RETURNING * INTO r;
-  RETURN jsonb_build_object('user',result,'reaction',opt_reaction(r));
+  RETURN jsonb_build_object('user',result,'reaction',opt_reaction(r),'initialPost',opt_initial(p.created_at));
  ELSIF action IN ('comment_delete','reaction_delete') THEN
   PERFORM id FROM users WHERE id=actor FOR NO KEY UPDATE;
   IF action='comment_delete' THEN
@@ -516,8 +525,9 @@ BEGIN
    SELECT author_id INTO target FROM posts WHERE id=r.post_id;
    IF actor<>r.reactor_id AND actor<>target THEN PERFORM opt_fail(403,'interaction_forbidden'); END IF;
    UPDATE realmojis SET deleted_at=clock_timestamp() WHERE id=r.id;
+   RETURN jsonb_build_object('reaction',opt_reaction(r),'initialPost',(SELECT opt_initial(pp.created_at) FROM posts pp WHERE pp.id=r.post_id));
   END IF;
-  RETURN '{}'::jsonb;
+  RETURN jsonb_build_object('comment',opt_comment(c),'initialPost',(SELECT opt_initial(pp.created_at) FROM posts pp WHERE pp.id=c.post_id));
  ELSIF action='friend_transition' THEN
   SELECT * INTO req FROM friend_requests WHERE id=a->>'id';
   IF NOT FOUND THEN PERFORM opt_fail(404,'relationship_not_found'); END IF;

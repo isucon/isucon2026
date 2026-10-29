@@ -2,11 +2,13 @@ package isureal
 
 import (
 	"archive/zip"
-	"bytes"
+	"bufio"
+	"compress/flate"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"sync"
@@ -35,6 +37,15 @@ const exportStatementTimeout = 5 * time.Second
 func exportPostsHandler(h *HandlerContext) echo.HandlerFunc {
 	return func(c *echo.Context) error {
 		ctx := c.Request().Context()
+		// A user of the initial data who has not posted since the load has
+		// exactly the history store's posts.
+		if user, ok := hotSessionUser(c, h); ok {
+			if posted, ok := hot.postedSinceLoad(user.ID); ok && !posted {
+				if posts, ok := history.exportPosts(user.ID); ok {
+					return writeExport(c, h, user, posts)
+				}
+			}
+		}
 		userID := GetSession(c).UserID
 		var author User
 		var err error
@@ -63,44 +74,59 @@ func exportPostsHandler(h *HandlerContext) echo.HandlerFunc {
 				return err
 			}
 		}
-		imageData, err := exportImages(ctx, h.DB, posts)
-		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == "57014" {
-			return NewAPIError(http.StatusServiceUnavailable, "export_busy")
-		}
-		if err != nil {
-			return err
-		}
-
-		var body bytes.Buffer
-		writer := zip.NewWriter(&body)
-		defer writer.Close()
-		items := make([]exportPostResponse, 0, len(posts))
-		for i, post := range posts {
-			imagePath := fmt.Sprintf("images/%06d.jpg", i+1)
-			image, err := writer.CreateHeader(&zip.FileHeader{Name: imagePath, Method: zip.Store})
-			if err != nil {
-				return err
-			}
-			if _, err := image.Write(imageData[post.ImageID]); err != nil {
-				return err
-			}
-			items = append(items, exportPostResponse{createPostResponse: newPostResponse(post, author), ImagePath: imagePath})
-		}
-		manifest, err := writer.Create("posts.json")
-		if err != nil {
-			return err
-		}
-		if err := json.NewEncoder(manifest).Encode(items); err != nil {
-			return err
-		}
-		if err := writer.Close(); err != nil {
-			return err
-		}
-		c.Response().Header().Set(echo.HeaderContentDisposition, `attachment; filename="isureal-posts.zip"`)
-		c.Response().Header().Set(echo.HeaderCacheControl, "no-store")
-		return c.Blob(http.StatusOK, "application/zip", body.Bytes())
+		return writeExport(c, h, author, posts)
 	}
+}
+
+// writeExport writes the archive of the author's posts.
+func writeExport(c *echo.Context, h *HandlerContext, author User, posts []Post) error {
+	ctx := c.Request().Context()
+	imageData, err := exportImages(ctx, h.DB, posts)
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "57014" {
+		return NewAPIError(http.StatusServiceUnavailable, "export_busy")
+	}
+	if err != nil {
+		return err
+	}
+
+	items := make([]exportPostResponse, 0, len(posts))
+	for i, post := range posts {
+		items = append(items, exportPostResponse{createPostResponse: newPostResponse(post, author), ImagePath: fmt.Sprintf("images/%06d.jpg", i+1)})
+	}
+	// Everything that can fail is done; the archive is written straight to
+	// the connection instead of being assembled in memory first.
+	c.Response().Header().Set(echo.HeaderContentType, "application/zip")
+	c.Response().Header().Set(echo.HeaderContentDisposition, `attachment; filename="isureal-posts.zip"`)
+	c.Response().Header().Set(echo.HeaderCacheControl, "no-store")
+	c.Response().WriteHeader(http.StatusOK)
+	out := bufio.NewWriterSize(c.Response(), 64<<10)
+	writer := zip.NewWriter(out)
+	for i, post := range posts {
+		image, err := writer.CreateHeader(&zip.FileHeader{Name: items[i].ImagePath, Method: zip.Store})
+		if err != nil {
+			return nil
+		}
+		if _, err := image.Write(imageData[post.ImageID]); err != nil {
+			return nil
+		}
+	}
+	// The manifest shrinks several times; the images are stored as they are.
+	writer.RegisterCompressor(zip.Deflate, func(out io.Writer) (io.WriteCloser, error) {
+		return flate.NewWriter(out, flate.BestSpeed)
+	})
+	manifest, err := writer.Create("posts.json")
+	if err != nil {
+		return nil
+	}
+	if err := json.NewEncoder(manifest).Encode(items); err != nil {
+		return nil
+	}
+	if err := writer.Close(); err != nil {
+		return nil
+	}
+	_ = out.Flush()
+	return nil
 }
 
 // exportImages reads the bodies of the posts' images: in batches pruned by
@@ -109,6 +135,24 @@ func exportPostsHandler(h *HandlerContext) echo.HandlerFunc {
 // image store for images uploaded during the load.
 func exportImages(ctx context.Context, db *sqlx.DB, posts []Post) (map[string][]byte, error) {
 	data := make(map[string][]byte, len(posts))
+	if pack != nil {
+		ids := make([]string, len(posts))
+		for i, p := range posts {
+			ids[i] = p.ImageID
+		}
+		packed, err := pack.readMany(ids)
+		if err != nil {
+			return nil, err
+		}
+		data = packed
+		rest := make([]Post, 0, len(posts)-len(packed))
+		for _, p := range posts {
+			if _, ok := packed[p.ImageID]; !ok {
+				rest = append(rest, p)
+			}
+		}
+		posts = rest
+	}
 	var mu sync.Mutex
 	group, gctx := errgroup.WithContext(ctx)
 	group.SetLimit(4)
