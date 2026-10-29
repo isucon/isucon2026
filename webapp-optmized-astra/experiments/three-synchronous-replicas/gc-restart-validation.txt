@@ -1,0 +1,77 @@
+asia Captured 6 published images: 2 each from Asia, Europe and America stores
+europe Captured 6 published images: 2 each from Asia, Europe and America stores
+america Captured 6 published images: 2 each from Asia, Europe and America stores
+{"retained": 4760, "orphan_files": 13213, "orphan_bytes": 4193222594, "applied": false}
+{"retained": 1374, "orphan_files": 4028, "orphan_bytes": 2106560001, "applied": false}
+{"retained": 1158, "orphan_files": 3256, "orphan_bytes": 1746716527, "applied": false}
+europe: preserving 0 references; live bytes=0; free bytes=10361417728; compact=True
+asia: preserving 0 references; live bytes=0; free bytes=5126868992; compact=True
+america: preserving 0 references; live bytes=0; free bytes=11068817408; compact=True
+BEGIN
+CREATE TABLE
+COPY 0
+DO
+DELETE 0
+COMMIT
+VACUUM
+ retained_assets | database_bytes 
+-----------------+----------------
+               0 |        8002583
+(1 row)
+
+BEGIN
+CREATE TABLE
+BEGIN
+COPY 0
+DO
+DELETE 0
+COMMIT
+CREATE TABLE
+VACUUM
+ retained_assets | database_bytes 
+-----------------+----------------
+               0 |        7961623
+(1 row)
+
+COPY 0
+DO
+DELETE 0
+COMMIT
+VACUUM
+ retained_assets | database_bytes 
+-----------------+----------------
+               0 |        7994391
+(1 row)
+
+{"retained": 1374, "orphan_files": 4028, "orphan_bytes": 2106560001, "applied": true}
+europe: cleanup and vacuum complete
+{"retained": 1158, "orphan_files": 3256, "orphan_bytes": 1746716527, "applied": true}
+america: cleanup and vacuum complete
+{"retained": 4760, "orphan_files": 13213, "orphan_bytes": 4193222594, "applied": true}
+asia: cleanup and vacuum complete
+active
+active
+active
+active
+All regional asset cleanup complete; application processes restarted
+asia applications stopped
+europe applications stopped
+america applications stopped
+asia image database and file-serving Nginx restarted
+europe image database and file-serving Nginx restarted
+america image database and file-serving Nginx restarted
+asia applications ready
+europe applications ready
+america applications ready
+asia Verified 6 images after restart: exact bytes and JPEG types match
+europe Verified 6 images after restart: exact bytes and JPEG types match
+america Verified 6 images after restart: exact bytes and JPEG types match
+asia {"webapp-optmized-astra": "active, enabled, release and runtime match", "webapp-optmized-astra-writer": "active, enabled, release and runtime match", "nginx": "active, enabled", "isureal-guard": "active, enabled", "nginx_malloc_threshold_kib": 128, "metadata": "standby", "images": "durable independent primary; bytes=7961623", "available_disk_gib": 8.7, "listen_backlog": 4096}
+europe {"webapp-optmized-astra": "active, enabled, release and runtime match", "nginx": "active, enabled", "isureal-guard": "active, enabled", "nginx_malloc_threshold_kib": 128, "metadata": "standby", "images": "durable independent primary; bytes=8002583", "available_disk_gib": 11.6, "listen_backlog": 4096}
+america {"webapp-optmized-astra": "active, enabled, release and runtime match", "nginx": "active, enabled", "isureal-guard": "active, enabled", "nginx_malloc_threshold_kib": 128, "metadata": "standby", "images": "durable independent primary; bytes=7994391", "available_disk_gib": 11.9, "listen_backlog": 4096}
+primary synchronous standbys=FIRST 3 (astra_europe, astra_america, astra_asia)
+primary shared buffers MiB=512
+astra_america streaming; replay backlog bytes=0
+astra_asia streaming; replay backlog bytes=0
+astra_europe streaming; replay backlog bytes=0
+Pulumi runtime, artifact, live processes and durable storage verified
