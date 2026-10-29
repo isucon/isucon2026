@@ -399,9 +399,13 @@ function createTeam(t: Team) {
 			{
 				ami: config.teamImages[t.number]?.serviceAmiId ?? serviceAmiId,
 				availabilityZone,
-				instanceType: isDatabase
-					? config.databaseInstanceType
-					: serviceInstanceType,
+				instanceType:
+					config.teamServerInstanceTypes[t.number]?.[network.id] ??
+					(isDatabase
+						? config.databaseInstanceType
+						: network.region === "asia"
+							? config.asiaInstanceType
+							: serviceInstanceType),
 				iamInstanceProfile: instanceProfile.name,
 				subnetId: serverSubnet.id,
 				privateIp: network.serviceIp,
