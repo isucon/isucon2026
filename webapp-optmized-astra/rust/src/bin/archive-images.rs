@@ -16,6 +16,8 @@ use std::{
 
 #[derive(Serialize, Deserialize)]
 struct Report {
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    repacked: bool,
     partition: String,
     archive: String,
     rows: u64,
@@ -49,7 +51,10 @@ fn validate_manifest(path: &Path, report: &Report) -> Result<()> {
     for line in BufReader::new(File::open(path)?).lines() {
         let line = line?;
         let fields: Vec<_> = line.split('\t').collect();
-        ensure!(fields.len() == 5, "invalid manifest columns");
+        ensure!(
+            fields.len() == if report.repacked { 7 } else { 5 },
+            "invalid manifest columns"
+        );
         ensure!(
             uuid::Uuid::parse_str(fields[0])?.to_string() == fields[0],
             "noncanonical image ID"
@@ -59,7 +64,22 @@ fn validate_manifest(path: &Path, report: &Report) -> Result<()> {
             "invalid source version"
         );
         let timestamp = DateTime::parse_from_rfc3339(fields[1])?;
-        let order = (fields[0].to_owned(), timestamp);
+        let owner = if report.repacked {
+            ensure!(
+                uuid::Uuid::parse_str(fields[6])?.to_string() == fields[6],
+                "invalid owner ID"
+            );
+            let old =
+                ArchiveReference::parse(fields[5]).context("invalid source archive reference")?;
+            ensure!(
+                old.length.to_string() == fields[3] && old.archive != report.archive,
+                "invalid source image length or archive"
+            );
+            fields[6]
+        } else {
+            ""
+        };
+        let order = (owner.to_owned(), fields[0].to_owned(), timestamp);
         ensure!(
             previous.as_ref().is_none_or(|old| old < &order),
             "manifest must have unique sorted rows"
@@ -91,6 +111,17 @@ async fn build(
     root: &Path,
     manifest: &Path,
 ) -> Result<Report> {
+    build_layout(db, partition, archive, root, manifest, false).await
+}
+
+async fn build_layout(
+    db: &mut PgConnection,
+    partition: &str,
+    archive: &str,
+    root: &Path,
+    manifest: &Path,
+    repacked: bool,
+) -> Result<Report> {
     let packs = root.join("packs");
     fs::create_dir_all(&packs)?;
     let target = packs.join(archive);
@@ -110,6 +141,7 @@ async fn build(
         .mode(0o600)
         .open(manifest)?;
     let mut report = Report {
+        repacked,
         partition: partition.into(),
         archive: archive.into(),
         rows: 0,
@@ -122,14 +154,45 @@ async fn build(
     sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY")
         .execute(&mut *tx)
         .await?;
-    let query = format!(
-        "SELECT id,created_at,data,xmin::text AS version FROM {partition} WHERE asset_key IS NULL AND created_at<=(SELECT created_at FROM initial_data_boundary) ORDER BY id,created_at"
-    );
+    let query = if repacked {
+        format!(
+            "SELECT id,created_at,asset_key,owner_user_id,xmin::text AS version FROM {partition} WHERE asset_key LIKE 'pack:%' AND created_at<=(SELECT created_at FROM initial_data_boundary) ORDER BY owner_user_id,id,created_at"
+        )
+    } else {
+        format!(
+            "SELECT id,created_at,data,xmin::text AS version FROM {partition} WHERE asset_key IS NULL AND created_at<=(SELECT created_at FROM initial_data_boundary) ORDER BY id,created_at"
+        )
+    };
+    let mut sources = std::collections::HashMap::<String, File>::new();
     let mut rows = sqlx::query(&query).fetch(&mut *tx);
     while let Some(row) = rows.try_next().await? {
         let id: String = row.try_get("id")?;
         let timestamp: DateTime<Utc> = row.try_get("created_at")?;
-        let bytes: Vec<u8> = row.try_get("data")?;
+        let old_key: Option<String> = if repacked {
+            Some(row.try_get("asset_key")?)
+        } else {
+            None
+        };
+        let bytes: Vec<u8> = if let Some(key) = &old_key {
+            use std::os::unix::fs::FileExt;
+            let reference = ArchiveReference::parse(key).context("invalid source reference")?;
+            if !sources.contains_key(&reference.archive) {
+                sources.insert(
+                    reference.archive.clone(),
+                    File::open(packs.join(&reference.archive))?,
+                );
+            }
+            let file = &sources[&reference.archive];
+            ensure!(
+                file.metadata()?.len() <= isureal::archive_store::MAX_ARCHIVE_BYTES,
+                "oversized source archive"
+            );
+            let mut bytes = vec![0; reference.length];
+            file.read_exact_at(&mut bytes, reference.offset)?;
+            bytes
+        } else {
+            row.try_get("data")?
+        };
         let version: String = row.try_get("version")?;
         let key = format!("pack:{archive}:{}:{}", report.bytes, bytes.len());
         ensure!(
@@ -138,21 +201,23 @@ async fn build(
         );
         output.write_all(&bytes)?;
         hash.update(&bytes);
-        writeln!(
+        write!(
             index,
             "{id}\t{}\t{key}\t{}\t{version}",
             timestamp.to_rfc3339(),
             bytes.len()
         )?;
+        if let Some(key) = old_key {
+            let owner: String = row.try_get("owner_user_id")?;
+            write!(index, "\t{key}\t{owner}")?;
+        }
+        writeln!(index)?;
         report.rows += 1;
         report.bytes += bytes.len() as u64;
     }
     drop(rows);
     tx.commit().await?;
-    ensure!(
-        report.rows > 0,
-        "partition has no unmigrated initial images"
-    );
+    ensure!(report.rows > 0, "partition has no selected initial images");
     output.sync_all()?;
     index.sync_all()?;
     report.sha256 = hex::encode(hash.finalize());
@@ -182,9 +247,16 @@ async fn apply(db: &mut PgConnection, manifest: &Path, report: &Report) -> Resul
     ))
     .execute(&mut *tx)
     .await?;
-    sqlx::query("CREATE TEMP TABLE astra_archive_manifest(id text,created_at timestamptz,asset_key text,bytes bigint,version text,PRIMARY KEY(id,created_at)) ON COMMIT DROP").execute(&mut *tx).await?;
+    sqlx::query("CREATE TEMP TABLE astra_archive_manifest(id text,created_at timestamptz,asset_key text,bytes bigint,version text,old_asset_key text,owner_user_id text,PRIMARY KEY(id,created_at)) ON COMMIT DROP").execute(&mut *tx).await?;
+    let columns = if report.repacked {
+        "id,created_at,asset_key,bytes,version,old_asset_key,owner_user_id"
+    } else {
+        "id,created_at,asset_key,bytes,version"
+    };
     let mut copy = tx
-        .copy_in_raw("COPY astra_archive_manifest FROM STDIN")
+        .copy_in_raw(&format!(
+            "COPY astra_archive_manifest ({columns}) FROM STDIN"
+        ))
         .await?;
     let mut input = File::open(manifest)?;
     let mut buffer = [0; 65536];
@@ -199,8 +271,13 @@ async fn apply(db: &mut PgConnection, manifest: &Path, report: &Report) -> Resul
         copy.finish().await? == report.rows,
         "manifest COPY row count mismatch"
     );
+    let source = if report.repacked {
+        "i.asset_key=m.old_asset_key AND i.owner_user_id=m.owner_user_id AND octet_length(i.data)=0"
+    } else {
+        "i.asset_key IS NULL AND octet_length(i.data)=m.bytes"
+    };
     let query = format!(
-        "UPDATE {} i SET data=''::bytea,asset_key=m.asset_key FROM astra_archive_manifest m WHERE i.id=m.id AND i.created_at=m.created_at AND i.asset_key IS NULL AND octet_length(i.data)=m.bytes AND i.xmin::text=m.version AND i.created_at<=(SELECT created_at FROM initial_data_boundary)",
+        "UPDATE {} i SET data=''::bytea,asset_key=m.asset_key FROM astra_archive_manifest m WHERE i.id=m.id AND i.created_at=m.created_at AND {source} AND i.xmin::text=m.version AND i.created_at<=(SELECT created_at FROM initial_data_boundary)",
         report.partition
     );
     let changed = sqlx::query(&query).execute(&mut *tx).await?.rows_affected();
@@ -218,6 +295,10 @@ async fn restore(
     report: &Report,
     packs: &Path,
 ) -> Result<()> {
+    ensure!(
+        !report.repacked,
+        "owner-layout rollback uses restore-layout"
+    );
     validate_manifest(manifest, report)?;
     ensure!(
         hash_file(&packs.join(&report.archive))? == report.sha256,
@@ -294,12 +375,48 @@ async fn verify_source(db: &mut PgConnection, report: &Report) -> Result<()> {
     Ok(())
 }
 
+async fn restore_layout(
+    db: &mut PgConnection,
+    manifest: &Path,
+    report: &Report,
+    packs: &Path,
+) -> Result<()> {
+    ensure!(report.repacked, "not an owner-layout archive");
+    validate_manifest(manifest, report)?;
+    let mut tx = db.begin().await?;
+    sqlx::query("SET LOCAL synchronous_commit=remote_apply")
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query(&format!(
+        "LOCK TABLE {} IN ACCESS EXCLUSIVE MODE",
+        report.partition
+    ))
+    .execute(&mut *tx)
+    .await?;
+    for line in BufReader::new(File::open(manifest)?).lines() {
+        let line = line?;
+        let fields: Vec<_> = line.split('\t').collect();
+        let old = ArchiveReference::parse(fields[5]).context("old reference")?;
+        let new = ArchiveReference::parse(fields[2]).context("new reference")?;
+        ensure!(
+            old.read(packs)? == new.read(packs)?,
+            "rollback image bytes differ"
+        );
+        let timestamp = DateTime::parse_from_rfc3339(fields[1])?.with_timezone(&Utc);
+        let count = sqlx::query(&format!("UPDATE {} SET asset_key=$1 WHERE id=$2 AND created_at=$3 AND asset_key=$4 AND octet_length(data)=0",report.partition))
+            .bind(fields[5]).bind(fields[0]).bind(timestamp).bind(fields[2]).execute(&mut *tx).await?.rows_affected();
+        ensure!(count == 1, "rollback source changed");
+    }
+    tx.commit().await?;
+    Ok(())
+}
+
 #[tokio::main(worker_threads = 2)]
 async fn main() -> Result<()> {
     let args: Vec<_> = std::env::args().collect();
     ensure!(
         args.len() == 4,
-        "expected build|verify|apply|restore|verify-source PARTITION ARCHIVE_UUID_HEX"
+        "expected build|repack|verify|apply|restore|restore-layout|verify-source PARTITION ARCHIVE_UUID_HEX"
     );
     let (mode, partition, archive) = (&args[1], &args[2], &args[3]);
     ensure!(
@@ -315,9 +432,13 @@ async fn main() -> Result<()> {
     fs::create_dir_all(&directory)?;
     let manifest = directory.join(format!("{archive}.tsv"));
     let report_path = directory.join(format!("{archive}.json"));
-    if mode == "build" {
+    if mode == "build" || mode == "repack" {
         let mut db = PgConnection::connect(&config_from_env().database_dsn()).await?;
-        let report = build(&mut db, partition, archive, &root, &manifest).await?;
+        let report = if mode == "repack" {
+            build_layout(&mut db, partition, archive, &root, &manifest, true).await?
+        } else {
+            build(&mut db, partition, archive, &root, &manifest).await?
+        };
         let bytes = serde_json::to_vec(&report)?;
         let mut output = OpenOptions::new()
             .write(true)
@@ -347,6 +468,10 @@ async fn main() -> Result<()> {
             "apply" => {
                 let mut db = PgConnection::connect(&config_from_env().database_dsn()).await?;
                 apply(&mut db, &manifest, &report).await?;
+            }
+            "restore-layout" => {
+                let mut db = PgConnection::connect(&config_from_env().database_dsn()).await?;
+                restore_layout(&mut db, &manifest, &report, &root.join("packs")).await?;
             }
             "restore" => {
                 let mut db = PgConnection::connect(&config_from_env().database_dsn()).await?;
@@ -464,6 +589,100 @@ mod tests {
             assert_eq!(bytes, expected);
             assert!(key.is_none());
         }
+        // Repack already-published immutable bytes by owner, then roll back
+        // references without restoring large image payloads into PostgreSQL.
+        sqlx::query("ALTER TABLE image_objects_202510 ADD COLUMN owner_user_id text")
+            .execute(&mut db)
+            .await?;
+        let mut sorted_ids = ids.clone();
+        sorted_ids.sort();
+        for (i, id) in sorted_ids.iter().enumerate() {
+            let owner = if i == 0 {
+                "ffffffff-ffff-4fff-8fff-ffffffffffff"
+            } else {
+                "00000000-0000-4000-8000-000000000001"
+            };
+            sqlx::query("UPDATE image_objects_202510 SET owner_user_id=$1 WHERE id=$2")
+                .bind(owner)
+                .bind(id)
+                .execute(&mut db)
+                .await?;
+        }
+        let old_archive = uuid::Uuid::new_v4().simple().to_string();
+        let old_manifest = root.join("source.tsv");
+        let old_report = build(
+            &mut db,
+            "image_objects_202510",
+            &old_archive,
+            &root,
+            &old_manifest,
+        )
+        .await?;
+        apply(&mut db, &old_manifest, &old_report).await?;
+        let new_archive = uuid::Uuid::new_v4().simple().to_string();
+        let new_manifest = root.join("owner.tsv");
+        let report = build_layout(
+            &mut db,
+            "image_objects_202510",
+            &new_archive,
+            &root,
+            &new_manifest,
+            true,
+        )
+        .await?;
+        assert_eq!(report.rows, 2);
+        assert_eq!(
+            fs::read_to_string(&new_manifest)?
+                .lines()
+                .next()
+                .unwrap()
+                .split('\t')
+                .next()
+                .unwrap(),
+            sorted_ids[1]
+        );
+        sqlx::query("UPDATE image_objects_202510 SET owner_user_id=owner_user_id WHERE id=$1")
+            .bind(&ids[0])
+            .execute(&mut db)
+            .await?;
+        assert!(apply(&mut db, &new_manifest, &report).await.is_err());
+        assert_eq!(
+            sqlx::query_scalar::<_, i64>(
+                "SELECT count(*) FROM image_objects_202510 WHERE asset_key LIKE $1"
+            )
+            .bind(format!("pack:{old_archive}:%"))
+            .fetch_one(&mut db)
+            .await?,
+            2
+        );
+        let new_archive = uuid::Uuid::new_v4().simple().to_string();
+        let new_manifest = root.join("owner-final.tsv");
+        let report = build_layout(
+            &mut db,
+            "image_objects_202510",
+            &new_archive,
+            &root,
+            &new_manifest,
+            true,
+        )
+        .await?;
+        apply(&mut db, &new_manifest, &report).await?;
+        for (id, expected) in ids.iter().zip(images) {
+            let key: String =
+                sqlx::query_scalar("SELECT asset_key FROM image_objects_202510 WHERE id=$1")
+                    .bind(id)
+                    .fetch_one(&mut db)
+                    .await?;
+            assert_eq!(
+                ArchiveReference::parse(&key)
+                    .unwrap()
+                    .read(&root.join("packs"))?,
+                expected
+            );
+        }
+        assert!(apply(&mut db, &new_manifest, &report).await.is_err());
+        restore_layout(&mut db, &new_manifest, &report, &root.join("packs")).await?;
+        assert_eq!(sqlx::query_scalar::<_,i64>("SELECT count(*) FROM image_objects_202510 WHERE asset_key LIKE $1 AND octet_length(data)=0").bind(format!("pack:{old_archive}:%")).fetch_one(&mut db).await?,2);
         sqlx::query(&format!("DROP SCHEMA {schema} CASCADE"))
             .execute(&mut db)
             .await?;

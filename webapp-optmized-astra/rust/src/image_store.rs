@@ -239,6 +239,32 @@ impl ImageStore {
         Ok(id.to_owned())
     }
 
+    pub async fn get_many(&self, keys: &[String]) -> Result<Vec<Bytes>, sqlx::Error> {
+        use futures_util::{StreamExt, TryStreamExt};
+        let archived = match &self.files {
+            Some(files) => files.archived_images(keys).await?,
+            None => HashMap::new(),
+        };
+        let reads: Vec<_> = keys
+            .iter()
+            .map(|key| {
+                let cached = archived.get(key).cloned();
+                let key = key.clone();
+                let store = self.clone();
+                async move {
+                    match cached {
+                        Some(bytes) => Ok(bytes),
+                        None => store.get(&key).await.map(Bytes::from),
+                    }
+                }
+            })
+            .collect();
+        futures_util::stream::iter(reads)
+            .buffered(8)
+            .try_collect()
+            .await
+    }
+
     pub async fn get(&self, id: &str) -> Result<Vec<u8>, sqlx::Error> {
         if id.starts_with("fs:") || id.starts_with("pack:") {
             let files = self

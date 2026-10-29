@@ -196,6 +196,38 @@ impl FileStore {
         Ok(format!("fs:{}:{id}", self.region))
     }
 
+    pub async fn archived_images(
+        &self,
+        keys: &[String],
+    ) -> Result<HashMap<String, bytes::Bytes>, sqlx::Error> {
+        if self.archive_peer.is_some() {
+            return Ok(HashMap::new());
+        }
+        let mut packed_keys = Vec::new();
+        let mut references = Vec::new();
+        for key in keys.iter().filter(|key| key.starts_with("pack:")) {
+            if !self.archives_enabled {
+                return Err(failure("archive image readers disabled"));
+            }
+            references.push(
+                crate::archive_store::ArchiveReference::parse(key)
+                    .ok_or_else(|| failure("invalid image archive reference"))?,
+            );
+            packed_keys.push(key.clone());
+        }
+        if references.is_empty() {
+            return Ok(HashMap::new());
+        }
+        let directory = self.root.join("packs");
+        tokio::task::spawn_blocking(move || {
+            let images = crate::archive_store::read_many(&directory, &references)?;
+            Ok::<_, io::Error>(packed_keys.into_iter().zip(images).collect())
+        })
+        .await
+        .map_err(|error| sqlx::Error::Io(io::Error::other(error)))?
+        .map_err(io_failure)
+    }
+
     pub async fn get(&self, key: &str) -> Result<Vec<u8>, sqlx::Error> {
         if key.starts_with("pack:") {
             if !self.archives_enabled {
