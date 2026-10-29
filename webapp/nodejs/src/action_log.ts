@@ -62,7 +62,7 @@ export function actionLogMiddleware(minLevel: string, output: NodeJS.WritableStr
     let level: keyof typeof logLevelRanks = "info";
     if (status >= 500) {
       level = "error";
-    } else if (c.req.method === "GET") {
+    } else if (c.req.method === "GET" && !(status === 403 && c.get("abuse") === "invalid_signature")) {
       level = "debug";
     }
     if (logLevelRanks[level] < (lookup(logLevelRanks, minLevel) ?? 0)) {
@@ -84,6 +84,10 @@ export function actionLogMiddleware(minLevel: string, output: NodeJS.WritableStr
       if (typeof username === "string" && usernamePattern.test(username)) {
         entry.username = username;
       }
+    }
+    const abuse = c.get("abuse");
+    if (abuse) {
+      entry.abuse = abuse;
     }
     output.write(encodeJSON(entry));
   };

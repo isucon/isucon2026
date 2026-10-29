@@ -73,7 +73,7 @@ module Isureal
     def write(env, status)
       level = if status >= 500
                 'error'
-              elsif env['REQUEST_METHOD'] == 'GET'
+              elsif env['REQUEST_METHOD'] == 'GET' && !(status == 403 && env['isureal.abuse'] == 'invalid_signature')
                 'debug'
               else
                 'info'
@@ -86,6 +86,7 @@ module Isureal
         username = env['isureal.username']
         entry[:username] = username.is_a?(String) && USERNAME_PATTERN.match?(username) ? username : nil
       end
+      entry[:abuse] = env['isureal.abuse'] if env['isureal.abuse']
       @output.write(Response.encode_json(entry))
     end
 

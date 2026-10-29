@@ -46,6 +46,7 @@ module Isureal
 
       key = ImageSignature.signing_key(secret_key_hash)
       unless OpenSSL.fixed_length_secure_compare(sig, ImageSignature.signature(key, input[:image_id], exp))
+        env['isureal.abuse'] = 'invalid_signature'
         raise APIError.new(403, 'image_forbidden')
       end
 
