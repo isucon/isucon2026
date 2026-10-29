@@ -1,4 +1,4 @@
-"""Metadata replica roles on the existing Team 10 application VMs."""
+"""Metadata replica roles on the existing Team 12 application VMs."""
 
 def asia_synchronous(runtime):
     enabled = runtime.get("asiaReplicaSynchronous", False)

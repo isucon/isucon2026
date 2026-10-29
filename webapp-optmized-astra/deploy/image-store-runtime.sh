@@ -12,7 +12,7 @@ assert not s.get('writesEnabled',False) or enabled
 host=s['host'] if enabled else ''
 port=s.get('port',5433)
 writes=int(enabled and s.get('writesEnabled',False))
-assert host in ('','192.168.145.10') and port==5433
+assert host in ('','192.168.177.10') and port==5433
 regions={app['region']:app['host'] for app in runtime['applications'] if app['region']!='asia'} if runtime.get('regionalImageStoresEnabled',False) else {}
 assert not regions or enabled
 print('[Service]')

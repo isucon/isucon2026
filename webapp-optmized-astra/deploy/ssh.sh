@@ -3,8 +3,8 @@ set -euo pipefail
 instance=${1:?instance ID required}
 shift
 case "$instance" in
-    i-0ecc0569db071b251|i-011601eac543fe5ee|i-072b8ec3440704170|i-07c43b75dd34fbb7e) ;;
-    *) echo 'Only Team 10 answer VMs are allowed' >&2; exit 2 ;;
+    i-000e45b5dad0a1b39|i-055f64431d3006a5f|i-0a062905e0bb9ebb7|i-03c92149bdc1fcfe1) ;;
+    *) echo 'Only Team 12 answer VMs are allowed' >&2; exit 2 ;;
 esac
 key=${ASTRA_SSH_KEY:-$HOME/.ssh/id_ed25519}
 control="/tmp/astra-ssh-$UID"

@@ -39,8 +39,8 @@ def ensure_idle():
         raise RuntimeError("Could not verify existing benchmark tasks")
     for task in description["tasks"]:
         for container in task.get("overrides", {}).get("containerOverrides", []):
-            if "app.team10-aws.127.0.0.1.nip.io" in container.get("command", []):
-                raise RuntimeError("Team 10 benchmark is still running; leave it undisturbed")
+            if "app.team12-aws.127.0.0.1.nip.io" in container.get("command", []):
+                raise RuntimeError("Team 12 benchmark is still running; leave it undisturbed")
 
 
 def reference_sql(reference_path, expected_count):

@@ -68,8 +68,8 @@ mod tests {
 
     fn app() -> Router {
         let policy = WriteIngress(Arc::new(HashMap::from([
-            ("192.168.146.10".parse().unwrap(), "europe".into()),
-            ("192.168.147.10".parse().unwrap(), "america".into()),
+            ("192.168.178.10".parse().unwrap(), "europe".into()),
+            ("192.168.179.10".parse().unwrap(), "america".into()),
         ])));
         Router::new()
             .route(
@@ -92,7 +92,7 @@ mod tests {
             .body(Body::empty())
             .unwrap();
         request.extensions_mut().insert(ConnectInfo(
-            "192.168.146.10:1234".parse::<SocketAddr>().unwrap(),
+            "192.168.178.10:1234".parse::<SocketAddr>().unwrap(),
         ));
         let response = app().oneshot(request).await.unwrap();
         assert_eq!(response.status(), StatusCode::OK);
@@ -100,7 +100,7 @@ mod tests {
             response.into_body().collect().await.unwrap().to_bytes(),
             "europe"
         );
-        for peer in [None, Some("127.0.0.1:1234"), Some("192.168.145.10:1234")] {
+        for peer in [None, Some("127.0.0.1:1234"), Some("192.168.177.10:1234")] {
             let mut request = HttpRequest::builder()
                 .method("POST")
                 .uri("/write")
@@ -123,7 +123,7 @@ mod tests {
             .body(Body::empty())
             .unwrap();
         request.extensions_mut().insert(ConnectInfo(
-            "192.168.147.10:1234".parse::<SocketAddr>().unwrap(),
+            "192.168.179.10:1234".parse::<SocketAddr>().unwrap(),
         ));
         assert_eq!(
             app().oneshot(request).await.unwrap().status(),
@@ -171,8 +171,8 @@ mod region_tests {
             .layer(Extension(session));
         if private {
             let policy = WriteIngress(Arc::new(HashMap::from([
-                ("192.168.146.10".parse().unwrap(), "europe".into()),
-                ("192.168.147.10".parse().unwrap(), "america".into()),
+                ("192.168.178.10".parse().unwrap(), "europe".into()),
+                ("192.168.179.10".parse().unwrap(), "america".into()),
             ])));
             app.layer(from_fn_with_state(policy, write_ingress_middleware))
         } else {
@@ -183,15 +183,15 @@ mod region_tests {
     #[tokio::test]
     async fn forwarding_preserves_ingress_region_and_public_server_stays_asia() {
         for (private, user_region, peer, expected) in [
-            (true, "europe", "192.168.146.10:1234", StatusCode::OK),
-            (true, "america", "192.168.147.10:1234", StatusCode::OK),
-            (true, "asia", "192.168.146.10:1234", StatusCode::FORBIDDEN),
-            (true, "europe", "192.168.147.10:1234", StatusCode::FORBIDDEN),
-            (false, "asia", "192.168.146.10:1234", StatusCode::OK),
+            (true, "europe", "192.168.178.10:1234", StatusCode::OK),
+            (true, "america", "192.168.179.10:1234", StatusCode::OK),
+            (true, "asia", "192.168.178.10:1234", StatusCode::FORBIDDEN),
+            (true, "europe", "192.168.179.10:1234", StatusCode::FORBIDDEN),
+            (false, "asia", "192.168.178.10:1234", StatusCode::OK),
             (
                 false,
                 "europe",
-                "192.168.146.10:1234",
+                "192.168.178.10:1234",
                 StatusCode::FORBIDDEN,
             ),
         ] {

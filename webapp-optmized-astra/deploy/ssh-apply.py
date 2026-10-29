@@ -1,4 +1,4 @@
-"""Apply the Pulumi-referenced runtime configuration to existing Team 10 VMs.
+"""Apply the Pulumi-referenced runtime configuration to existing Team 12 VMs.
 
 No AWS infrastructure resources are created. Transfer files with scp and execute
 configuration scripts over SSH through the existing Instance Connect Endpoint.
@@ -229,7 +229,7 @@ if mode in ("all", "replication") and runtime["replicasEnabled"]:
         remote(write_host, "if systemctl show webapp-optmized-astra -p Environment --value | grep -q ISUREAL_DB_READ_HOST=127.0.0.1 && ! systemctl show webapp-optmized-astra -p Environment --value | grep -q ISUREAL_READ_FENCE=1; then echo 'Restore Asia read fences with an application deployment before removing Asia synchronous acknowledgement' >&2; exit 1; fi")
     secret_file = ROOT / runtime["replicationEnvPath"]
     if not secret_file.exists():
-        raise RuntimeError("Missing private replication env file; restore it from a Team 10 VM before deploying")
+        raise RuntimeError("Missing private replication env file; restore it from a Team 12 VM before deploying")
     secret_file.chmod(0o600)
 
     def credentials(instance):
@@ -269,4 +269,4 @@ if application_mode and not archive_peer["enabled"]:
 if mode == "image-gc":
     subprocess.run([sys.executable, str(DEPLOY / "asset-gc.py")], check=True)
 
-print(f"Applied {mode} configuration to existing Team 10 VMs", flush=True)
+print(f"Applied {mode} configuration to existing Team 12 VMs", flush=True)

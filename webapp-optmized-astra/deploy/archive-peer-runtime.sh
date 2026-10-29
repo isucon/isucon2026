@@ -7,7 +7,7 @@ r=json.loads(Path(sys.argv[1]).read_text());p=r.get('archivePeer',{'enabled':Fal
 assert not p['readsEnabled'] or p['enabled']
 text='# Archive peer disabled by the Pulumi runtime.\n'
 if p['enabled']:
- assert p['host']==r['database']['host']=='192.168.148.10' and p['instanceId']==r['database']['instanceId']
+ assert p['host']==r['database']['host']=='192.168.180.10' and p['instanceId']==r['database']['instanceId']
  assert p['root']=='/var/lib/astra-images/packs' and p['port']==8082
  owner=pwd.getpwnam('isucon')
  for path in [Path('/var/lib/astra-images'),Path(p['root'])]:

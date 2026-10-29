@@ -17,7 +17,7 @@ assert root=='/var/lib/astra-images' and port==8082
 apps=runtime['applications'];host=next(a['host'] for a in apps if a['region']==region)
 peers={a['region']:a['host']+':8082' for a in apps} if enabled else {}
 peer=runtime.get('archivePeer',{})
-archive_peer='192.168.148.10:8082' if peer.get('readsEnabled',False) and region=='asia' and service=='webapp-optmized-astra' else ''
+archive_peer='192.168.180.10:8082' if peer.get('readsEnabled',False) and region=='asia' and service=='webapp-optmized-astra' else ''
 lines=['[Service]',f'Environment=ISUREAL_ARCHIVE_PEER={archive_peer}',f'Environment=ISUREAL_FILE_IMAGE_ROOT={root if enabled else ""}',f'Environment=ISUREAL_FILE_IMAGE_WRITES={int(writes)}',f'Environment=ISUREAL_FILE_IMAGE_ARCHIVES={int(archives)}',"Environment='ISUREAL_FILE_IMAGE_HOSTS_JSON="+json.dumps(peers,separators=(',',':'))+"'"]
 Path(f'/etc/systemd/system/{service}.service.d/file-store.conf').write_text('\n'.join(lines)+'\n')
 text='# File image readers disabled by the Pulumi runtime.\n'

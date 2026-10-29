@@ -177,7 +177,7 @@ impl ImageStore {
         for (region, host) in mapping {
             assert!(matches!(
                 (region.as_str(), host.as_str()),
-                ("europe", "192.168.146.10") | ("america", "192.168.147.10")
+                ("europe", "192.168.178.10") | ("america", "192.168.179.10")
             ));
             let options = PgConnectOptions::new()
                 .host(&host)

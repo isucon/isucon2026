@@ -6,11 +6,11 @@ region=${1:-asia}
 image_host=$(python3 - "$runtime" "$region" <<'PY_CONFIG'
 import json,sys
 runtime=json.load(open(sys.argv[1])); s=runtime['imageStore']; region=sys.argv[2]
-assert s['enabled'] and s['host']=='192.168.145.10' and s['port']==5433
+assert s['enabled'] and s['host']=='192.168.177.10' and s['port']==5433
 assert region in ('asia','europe','america')
 assert region=='asia' or runtime.get('regionalImageStoresEnabled',False)
 app=next(app for app in runtime['applications'] if app['region']==region)
-assert app['host']=={'asia':'192.168.145.10','europe':'192.168.146.10','america':'192.168.147.10'}[region]
+assert app['host']=={'asia':'192.168.177.10','europe':'192.168.178.10','america':'192.168.179.10'}[region]
 print(app['host'])
 PY_CONFIG
 )
@@ -55,9 +55,9 @@ CONF
 cat >"$staging/pg_hba.conf" <<'CONF'
 local all postgres peer
 host isureal_assets all 127.0.0.1/32 scram-sha-256
-host isureal_assets all 192.168.145.10/32 scram-sha-256
-host isureal_assets all 192.168.146.10/32 scram-sha-256
-host isureal_assets all 192.168.147.10/32 scram-sha-256
+host isureal_assets all 192.168.177.10/32 scram-sha-256
+host isureal_assets all 192.168.178.10/32 scram-sha-256
+host isureal_assets all 192.168.179.10/32 scram-sha-256
 CONF
 changed=false
 mkdir -p "$configuration/conf.d"

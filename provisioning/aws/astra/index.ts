@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import * as pulumi from "@pulumi/pulumi";
 
-// ISUCON: use only existing Team 10 VMs. No AWS resources are declared here.
+// ISUCON: use only existing Team 12 VMs. No AWS resources are declared here.
 // Runtime configuration is versioned by this stack and applied via SSH/scp.
 const config = new pulumi.Config();
 export const runtime = JSON.parse(
@@ -160,7 +160,7 @@ if (runtime.archivePeer) {
         || (peer.readsEnabled && !peer.enabled)
         || (peer.aioThreads !== undefined && typeof peer.aioThreads !== "boolean")
         || peer.host !== runtime.database.host || peer.instanceId !== runtime.database.instanceId
-        || peer.host !== "192.168.148.10" || peer.port !== 8082
+        || peer.host !== "192.168.180.10" || peer.port !== 8082
         || peer.root !== "/var/lib/astra-images/packs"
         || (peer.enabled && !runtime.fileImageStore?.archiveReadsEnabled)) {
         throw new Error("Archive peer must use existing db1 with verified immutable packs");

@@ -32,15 +32,15 @@ SELECT pg_create_physical_replication_slot('astra_europe') WHERE NOT EXISTS (SEL
 SELECT pg_create_physical_replication_slot('astra_america') WHERE NOT EXISTS (SELECT FROM pg_replication_slots WHERE slot_name = 'astra_america');
 SQL
 unset ASTRA_REPL_PASSWORD
-replica_ips=(192.168.146.10 192.168.147.10)
+replica_ips=(192.168.178.10 192.168.179.10)
 if [ "$asia_replica" = true ]; then
     sudo -u postgres psql -X -v ON_ERROR_STOP=1 -c "SELECT pg_create_physical_replication_slot('astra_asia') WHERE NOT EXISTS (SELECT FROM pg_replication_slots WHERE slot_name='astra_asia')"
-    replica_ips+=(192.168.145.10)
+    replica_ips+=(192.168.177.10)
 else
     # The deployment controller first verifies that Asia no longer reads this
     # standby and stops its receiver. Refuse to drop a still-active slot.
     sudo -u postgres psql -X -v ON_ERROR_STOP=1 -c "SELECT pg_drop_replication_slot('astra_asia') WHERE EXISTS (SELECT FROM pg_replication_slots WHERE slot_name='astra_asia')"
-    sed -i '\|^host replication astra_repl 192\.168\.145\.10/32 scram-sha-256$|d' /etc/postgresql/16/main/pg_hba.conf
+    sed -i '\|^host replication astra_repl 192\.168\.177\.10/32 scram-sha-256$|d' /etc/postgresql/16/main/pg_hba.conf
 fi
 for ip in "${replica_ips[@]}"; do
     rule="host replication astra_repl $ip/32 scram-sha-256"
