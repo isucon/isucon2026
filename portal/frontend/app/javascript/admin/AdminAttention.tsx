@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import type { DashboardResponse } from "../../../proto/isuxportal/services/admin/dashboard_pb";
 import type { Timestamp } from "@bufbuild/protobuf/wkt";
 import type { AdminApiClient } from "./AdminApiClient";
+import { AdminAttentionSound } from "./AdminAttentionSound";
 import { attentionLevel, waitingMilliseconds } from "./attentionLevel";
 
 export const AdminAttention: React.FC<{ client: AdminApiClient }> = ({ client }) => {
@@ -72,6 +73,7 @@ export const AdminAttention: React.FC<{ client: AdminApiClient }> = ({ client })
       ) : (
         <span>未対応状況を取得中…</span>
       )}
+      <AdminAttentionSound level={level} />
       {stale && (
         <span role="status">
           更新停止・最終取得: {lastUpdated === null ? "未取得" : new Date(lastUpdated).toLocaleTimeString("ja-JP")}
