@@ -14,6 +14,8 @@ final class ActionLogEntry
 
     public ?string $username = null;
 
+    public ?string $abuse = null;
+
     public static function of(ServerRequestInterface $request): self
     {
         $entry = $request->getAttribute(self::ATTRIBUTE);

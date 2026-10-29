@@ -41,6 +41,7 @@ bench ──X-Country-Code, X-Client-IP──▶ Router(Envoy) ──X-Client-IP
   でアクションログを読み、`"action":"login","status":401` を IP ごとに数える。ジャーナルの時刻で 10 秒以内に 10 回なら、`ip_bans` に
   DB の時刻から 2 分後を期限として書く（すでに BAN があれば遅い方の期限を残す）。DB の接続先はアプリと同じ `env.sh` の
   `ISUREAL_DB_*` を使い、`application_name=isureal-guard` で接続する。閾値などは unit の `GUARD_*` で渡し、`-h` で一覧を出す。
+  `put_profile_image` の 400 で `abuse=invalid_image` は 5 秒で 2 回、`get_image` の 403 で `abuse=invalid_signature` は 5 秒で 3 回でも BAN する。全言語のアプリがJPEG復号失敗と署名照合失敗に `abuse` を付ける。Go版はストリーミング判定の実験が復号前に大きな画像を拒否する場合も記録する。
   journalctl の出力を読む流れの中で BAN を順に書くので、DB への書き込みが遅いと検知も遅れる。
 - bench: 全ユーザーに仮想 IP を割り当てる。IP は走行ごとに無作為に選び、攻撃者と正常ユーザーで範囲を分けない。
 

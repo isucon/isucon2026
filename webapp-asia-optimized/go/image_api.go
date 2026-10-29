@@ -64,6 +64,7 @@ func getImageHandler(h *HandlerContext) echo.HandlerFunc {
 			return err
 		}
 		if !hmac.Equal(sig, cachedImageSignature(key, input.ImageID, exp)) {
+			c.Set("abuse", "invalid_signature")
 			return NewAPIError(http.StatusForbidden, "image_forbidden")
 		}
 		if !meta.Visible {

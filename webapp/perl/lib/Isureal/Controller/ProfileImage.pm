@@ -13,7 +13,11 @@ sub update ($c) {
         Isureal::APIError->throw(415, 'unsupported_media_type');
     }
     my $data    = $c->req->body;
-    my $decoded = decode_jpeg($data) or Isureal::APIError->throw(400, 'invalid_profile_image');
+    my $decoded = decode_jpeg($data);
+    unless ($decoded) {
+        $c->stash('isureal.abuse' => 'invalid_image');
+        Isureal::APIError->throw(400, 'invalid_profile_image');
+    }
     Isureal::APIError->throw(400, 'invalid_profile_image') if $decoded->{width} > 512 || $decoded->{height} > 512;
 
     my $user_id = $c->current_session->{user_id};

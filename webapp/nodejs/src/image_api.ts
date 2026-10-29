@@ -53,6 +53,7 @@ export function getImageHandler(h: HandlerContext): Handler<Env> {
     }
     const key = imageSigningKey(owner.secret_key_hash);
     if (!timingSafeEqual(sig, imageSignature(key, input.imageId, input.exp))) {
+      c.set("abuse", "invalid_signature");
       throw new APIError(403, "image_forbidden");
     }
 

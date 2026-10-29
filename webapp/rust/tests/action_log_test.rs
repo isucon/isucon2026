@@ -6,11 +6,11 @@ use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use axum::middleware::from_fn_with_state;
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, post};
+use axum::routing::{get, post, put};
 use chrono::Utc;
 use isureal::Error;
 use isureal::action_log::{ActionLog, Username, action_log_middleware};
-use isureal::api_error::HttpError;
+use isureal::api_error::{HttpError, new_abuse_error};
 use isureal::bind::Bind;
 use isureal::new_api_error;
 use isureal::session::Session;
@@ -84,6 +84,26 @@ fn new_server(min_level: &str) -> (Router, Output) {
             "/api/users/{userId}",
             get(|| async { Error::Internal(anyhow::anyhow!("boom")) }),
         )
+        .route(
+            "/api/images/{imageId}",
+            get(|| async {
+                new_abuse_error(
+                    StatusCode::FORBIDDEN,
+                    "image_forbidden",
+                    "invalid_signature",
+                )
+            }),
+        )
+        .route(
+            "/api/me/profile-image",
+            put(|| async {
+                new_abuse_error(
+                    StatusCode::BAD_REQUEST,
+                    "invalid_profile_image",
+                    "invalid_image",
+                )
+            }),
+        )
         .fallback(|| async { Error::Http(HttpError::new(StatusCode::NOT_FOUND)) })
         .layer(from_fn_with_state(
             ActionLog::new(min_level, output.clone()),
@@ -138,7 +158,12 @@ async fn action_log_middleware_entries() {
     let (app, output) = new_server("info");
     send(&app, "GET", "/api/feeds/friends", "").await;
     send(&app, "POST", "/api/posts", "{}").await;
+    send(&app, "GET", "/api/images/image-id", "").await;
+    send(&app, "PUT", "/api/me/profile-image", "").await;
     let lines = output.lines();
-    assert_eq!(lines.len(), 1, "{lines:?}");
+    assert_eq!(lines.len(), 3, "{lines:?}");
     assert_eq!(lines[0]["action"], "create_post");
+    assert_eq!(lines[1]["abuse"], "invalid_signature");
+    assert_eq!(lines[1]["level"], "info");
+    assert_eq!(lines[2]["abuse"], "invalid_image");
 }
