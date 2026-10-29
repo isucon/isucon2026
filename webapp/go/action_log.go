@@ -97,10 +97,6 @@ func ActionLogMiddleware(minLevel string, output io.Writer) echo.MiddlewareFunc 
 				}
 			}
 			abuse, _ := c.Get("abuse").(string)
-			// The Team 9 streaming JPEG check may reject before jpeg.Decode sets the marker.
-			if abuse == "" && action == "put_profile_image" && status == http.StatusBadRequest && c.Request().ContentLength >= 1<<20 {
-				abuse = "invalid_image"
-			}
 			if abuse != "" {
 				entry["abuse"] = abuse
 			}
