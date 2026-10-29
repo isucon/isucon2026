@@ -21,6 +21,11 @@ func (h *Handler) BenchReceive(w http.ResponseWriter, r *http.Request) error {
 		return &apiError{status: http.StatusBadRequest, name: "Error::Unauthorized", message: "Unauthorized"}
 	}
 
+	workerClass := r.Header.Get("X-Isux-Benchmark-Class")
+	if workerClass != "" && workerClass != "standard" && workerClass != "large" {
+		return &apiError{status: http.StatusBadRequest, name: "Error::InvalidBenchmarkClass", message: "Unknown benchmark class"}
+	}
+
 	for {
 		tx, err := h.db.BeginTx(ctx, nil)
 		if err != nil {
@@ -36,6 +41,25 @@ func (h *Handler) BenchReceive(w http.ResponseWriter, r *http.Request) error {
 		if req.InstanceName != "" {
 			args = append(args, req.InstanceName)
 			query += fmt.Sprintf(` AND instance_name = $%d`, len(args))
+		}
+		if h.cfg.BenchLargeScoreThreshold > 0 {
+			args = append(args, h.cfg.BenchLargeScoreThreshold)
+			qualified := fmt.Sprintf(`EXISTS (
+                SELECT 1 FROM benchmark_results br
+                JOIN benchmark_jobs previous ON previous.id = br.benchmark_job_id
+                WHERE br.team_id = benchmark_jobs.team_id
+                  AND previous.team_id = benchmark_jobs.team_id
+                  AND previous.status = %d AND NOT previous.post_validation
+                  AND br.finished AND br.passed AND br.score > $%d
+            )`, model.JobFinished, len(args))
+			if workerClass == "large" {
+				query += " AND " + qualified
+			} else {
+				query += " AND NOT " + qualified
+			}
+		} else if workerClass == "large" {
+			// A large worker must stay idle until routing is enabled.
+			query += " AND false"
 		}
 		// Newly registered contest environments must wait for the Router.
 		query += ` AND NOT EXISTS (SELECT 1 FROM team_routers r WHERE r.team_id=benchmark_jobs.team_id AND r.public_ipv4_address IS NULL)`

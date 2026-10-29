@@ -150,3 +150,58 @@ AWS に触らずに結果を確かめられます。
 - `pulumi up` は stack の出力 `deployments` の変更だけ（リソース 1 件変更なし）。`ecspresso diff` はタスク定義の
   イメージと環境変数の追加だけで、サービス定義に差分なし。
 - 走行中のジョブがないことを 3 ストリームで確かめてから `ecspresso deploy` した。
+
+## Score-based worker sizing
+
+Score routing is opt-in. The portal reads
+`ISUXPORTAL_BENCH_LARGE_SCORE_THRESHOLD` (nonnegative integer; unset or `0`
+disables routing). A team qualifies when a finished, successful result from a
+finished, non-post-validation job has a score **strictly greater** than the
+threshold. Later low or failed results do not demote the team while that history
+and threshold remain unchanged. The next pending job uses the large pool; the
+qualifying run is not repeated automatically. Post-validation jobs use the same
+team classification but their results do not qualify a team.
+
+Workers send `X-Isux-Benchmark-Class: standard|large` on `/api/bench/receive`,
+configured by `ISUXPORTAL_SUPERVISOR_BENCHMARK_CLASS`. Missing headers mean
+`standard` for compatibility; unknown classes are rejected. With routing
+disabled, large workers receive no jobs. There is no fallback to standard
+workers if the large pool is unavailable; qualified jobs remain pending.
+The benchmark arguments, initial dataset (`--scale large`), and scoring stay
+the same for both pools. This setting changes the worker's CPU and memory only.
+
+To prepare two pools, add this optional object to `pool.json`:
+
+```json
+"largePool": {
+  "desiredCount": 1,
+  "cpu": "8192",
+  "memory": "16384"
+}
+```
+
+`render.py config pool.json` uses the existing standard service as the template
+and stores **both** deployments in the Pulumi stack configuration. The large
+service and task family have a `-large` suffix. Both pools share the pinned
+image, secrets references, network, and benchmark arguments. Supported CPU/MiB
+pairs are `4096/8192`, `8192/16384`, and `16384/32768`; each pair must be specified
+together. `largePool` is intentionally absent from the checked-in default.
+
+Deployment order:
+
+1. Build an image containing the worker-class support, update `pool.json`,
+   generate the deployments, and apply the pool Pulumi stack as described above.
+2. Deploy both generated services through ecspresso (create the large service
+   on its first deployment). Check that each starts with the expected class.
+3. Deploy the updated portal while its threshold is disabled. Keep the threshold
+   in the portal Pulumi stack's `environment` map, never only in ECS overrides.
+4. Set `ISUXPORTAL_BENCH_LARGE_SCORE_THRESHOLD` in that map to the chosen value,
+   apply the portal Pulumi stack, and redeploy the portal through ecspresso.
+   Verify a qualifying team runs on the large service and another team runs on
+   the standard service.
+
+For rollback, disable the portal threshold and redeploy it first; standard
+workers will then accept all pending jobs. Drain large workers before removing
+their service. Changing or deleting historical results can change classification.
+Choose the threshold after comparing scores and worker saturation on both sizes;
+no production threshold or extra service is enabled by this implementation.

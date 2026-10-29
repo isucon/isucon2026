@@ -36,6 +36,8 @@ type Config struct {
 	AdminOnly bool
 
 	BenchToken string
+	// Zero disables score-based routing. Successful scores strictly above this threshold use the large pool.
+	BenchLargeScoreThreshold int64
 
 	BypassTokenSecret []byte
 	CheckerSecret     []byte
@@ -255,6 +257,13 @@ func Load() (*Config, error) {
 		}
 	}
 
+	if raw := os.Getenv("ISUXPORTAL_BENCH_LARGE_SCORE_THRESHOLD"); raw != "" {
+		value, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || value < 0 {
+			return nil, fmt.Errorf("ISUXPORTAL_BENCH_LARGE_SCORE_THRESHOLD must be a nonnegative integer")
+		}
+		c.BenchLargeScoreThreshold = value
+	}
 	return c, nil
 }
 

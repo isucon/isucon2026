@@ -57,3 +57,30 @@ func TestGitHubCallbackPathValidation(t *testing.T) {
 		})
 	}
 }
+
+func TestBenchLargeScoreThreshold(t *testing.T) {
+	for _, tc := range []struct {
+		value   string
+		want    int64
+		invalid bool
+	}{
+		{"", 0, false}, {"0", 0, false}, {"10000", 10000, false}, {"-1", 0, true}, {"oops", 0, true},
+	} {
+		t.Run(tc.value, func(t *testing.T) {
+			t.Setenv("ISUXPORTAL_BENCH_LARGE_SCORE_THRESHOLD", tc.value)
+			cfg, err := Load()
+			if tc.invalid {
+				if err == nil {
+					t.Fatal("expected invalid threshold error")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if cfg.BenchLargeScoreThreshold != tc.want {
+				t.Fatalf("threshold %d", cfg.BenchLargeScoreThreshold)
+			}
+		})
+	}
+}
