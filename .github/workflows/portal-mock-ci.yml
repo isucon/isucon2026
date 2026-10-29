@@ -1,0 +1,237 @@
+name: Portal Mock CI
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/portal-mock-ci.yml"
+      - "buf.gen.yaml"
+      - "buf.yaml"
+      - "mise.toml"
+      - "mise.lock"
+      - ".dockerignore"
+      - "proto/**"
+      - "gen/**"
+      - "portal-mock/**"
+      - "specs/002-portal-mock/**"
+  pull_request:
+    paths:
+      - ".github/workflows/portal-mock-ci.yml"
+      - "buf.gen.yaml"
+      - "buf.yaml"
+      - "mise.toml"
+      - "mise.lock"
+      - ".dockerignore"
+      - "proto/**"
+      - "gen/**"
+      - "portal-mock/**"
+      - "specs/002-portal-mock/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: portal-mock-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GO_VERSION: "1.26.5"
+  NODE_VERSION: "24.14.1"
+  BUF_VERSION: "1.72.0"
+  PROTOC_VERSION: "35.1"
+  PROTOC_GEN_GO_VERSION: "1.36.11"
+  PROTOC_GEN_CONNECT_GO_VERSION: "1.20.0"
+  PROTOC_GEN_ES_VERSION: "2.13.0"
+  PLAYWRIGHT_VERSION: "1.62.1"
+
+jobs:
+  proto:
+    name: Proto lint / build / drift / breaking
+    runs-on: actions-runner-processor
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        with:
+          install: true
+          cache: true
+      - name: Verify pinned tool versions
+        run: |
+          test "$(mise exec -- buf --version)" = "$BUF_VERSION"
+          mise exec -- protoc --version | grep -Fx "libprotoc $PROTOC_VERSION"
+          test "$(mise exec -- protoc-gen-go --version | awk '{print $2}')" = "v$PROTOC_GEN_GO_VERSION"
+          mise exec -- protoc-gen-connect-go --version | grep -F "$PROTOC_GEN_CONNECT_GO_VERSION"
+          mise exec -- protoc-gen-es --version | grep -F "$PROTOC_GEN_ES_VERSION"
+      - run: mise exec -- buf lint
+      - run: mise exec -- buf build -o /tmp/portal.binpb
+      - name: Verify generated source is reproducible
+        run: |
+          cp gen/go/go.mod /tmp/gen-go.mod
+          cp gen/ts/package.json /tmp/gen-ts-package.json
+          cp gen/ts/package-lock.json /tmp/gen-ts-package-lock.json
+          mise exec -- buf generate
+          cp /tmp/gen-go.mod gen/go/go.mod
+          cp /tmp/gen-ts-package.json gen/ts/package.json
+          cp /tmp/gen-ts-package-lock.json gen/ts/package-lock.json
+          git diff --exit-code -- gen/go gen/ts
+      - name: Check compatibility against pull-request base
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if git cat-file -e "$BASE_SHA:proto" 2>/dev/null; then
+            base_dir="$(mktemp -d)"
+            git archive "$BASE_SHA" proto | tar -x -C "$base_dir"
+            mise exec -- buf breaking --against "$base_dir/proto"
+          else
+            echo "Base revision has no proto directory; skipping the initial breaking-change comparison."
+          fi
+      - name: Check compatibility against previous commit
+        if: github.event_name == 'push' && github.event.before != '0000000000000000000000000000000000000000'
+        env:
+          BASE_SHA: ${{ github.event.before }}
+        run: |
+          if git cat-file -e "$BASE_SHA:proto" 2>/dev/null; then
+            base_dir="$(mktemp -d)"
+            git archive "$BASE_SHA" proto | tar -x -C "$base_dir"
+            mise exec -- buf breaking --against "$base_dir/proto"
+          else
+            echo "Previous revision has no proto directory; skipping the initial breaking-change comparison."
+          fi
+
+  go:
+    name: Go format / vet / tests / build
+    runs-on: actions-runner-processor
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: |
+            gen/go/go.sum
+            portal-mock/server/go.sum
+      - name: gofmt
+        run: |
+          files="$(gofmt -l .)"
+          test -z "$files" || { printf '%s\n' "$files"; exit 1; }
+        working-directory: portal-mock/server
+      - run: go vet ./...
+        working-directory: portal-mock/server
+      - name: Unit and package tests
+        run: go test ./internal/... -count=1
+        working-directory: portal-mock/server
+      - name: Connect contract tests
+        run: go test ./tests/contract/... -count=1
+        working-directory: portal-mock/server
+      - name: Integration tests
+        run: go test ./tests/integration/... -count=1
+        working-directory: portal-mock/server
+      - name: Concurrency tests
+        run: go test -race ./tests/concurrency/... -count=1
+        working-directory: portal-mock/server
+      - name: Build server
+        run: CGO_ENABLED=0 go build -trimpath -o /tmp/portal-mock-server ./cmd/portal
+        working-directory: portal-mock/server
+
+  web:
+    name: Web lint / typecheck / Vitest / build
+    runs-on: actions-runner-processor
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: |
+            gen/ts/package-lock.json
+            portal-mock/web/package-lock.json
+      - run: npm ci --ignore-scripts
+        working-directory: gen/ts
+      - run: npm ci
+        working-directory: portal-mock/web
+      - run: npm run lint
+        working-directory: portal-mock/web
+      - run: npm run typecheck
+        working-directory: portal-mock/web
+      - run: npm test -- --run
+        working-directory: portal-mock/web
+      - run: npm run build
+        working-directory: portal-mock/web
+
+  playwright:
+    name: Playwright E2E
+    runs-on: actions-runner-processor
+    container:
+      image: mcr.microsoft.com/playwright:v1.62.1-noble@sha256:dcc5531e97840b9b5e794f2814476b21571c5124a3fca2267d73041f56e7580e
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: |
+            gen/ts/package-lock.json
+            portal-mock/web/package-lock.json
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: |
+            gen/go/go.sum
+            portal-mock/server/go.sum
+      - run: npm ci
+        working-directory: gen/ts
+      - run: npm ci
+        working-directory: portal-mock/web
+      - name: Verify Playwright package matches image
+        run: test "$(node -p "require('@playwright/test/package.json').version")" = "$PLAYWRIGHT_VERSION"
+        working-directory: portal-mock/web
+      - name: Run server, Vite, and Playwright
+        shell: bash
+        run: |
+          go -C portal-mock/server run ./cmd/portal > /tmp/portal-server.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true; cat /tmp/portal-server.log' EXIT
+          for _ in {1..60}; do
+            curl --fail --silent http://127.0.0.1:8080/healthz >/dev/null && break
+            sleep 1
+          done
+          curl --fail --silent http://127.0.0.1:8080/healthz >/dev/null
+          npm --prefix portal-mock/web run test:e2e
+        env:
+          PORTAL_TEAM_NUMBER: "1"
+          PORTAL_TEAM_HASH: "ci123"
+          PORTAL_ROUTER_MODE: stand-in
+          PORTAL_STANDIN_PROFILE: success
+          PORTAL_BENCHMARK_PENDING_MS: "50"
+          PORTAL_BENCHMARK_STEP_MS: "50"
+          PORTAL_STANDIN_DELAY_MS: "25"
+          CI: "true"
+
+  compose-smoke:
+    name: Independent Compose smoke
+    runs-on: actions-runner-processor
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Validate Compose model
+        run: docker compose --env-file portal-mock/.env.example -f portal-mock/compose.yaml config --quiet
+      - name: Build and start isolated Portal Mock
+        run: docker compose --env-file portal-mock/.env.example -f portal-mock/compose.yaml up --build --wait
+      - name: Smoke UI, health, and Connect state endpoint
+        run: |
+          curl --fail --silent --show-error http://127.0.0.1:5174/ >/dev/null
+          curl --fail --silent --show-error http://127.0.0.1:8080/healthz >/dev/null
+          curl --fail --silent --show-error \
+            -H 'Content-Type: application/json' \
+            -H 'Connect-Protocol-Version: 1' \
+            --data '{}' \
+            http://127.0.0.1:5174/portal_mock.v1.PortalMockService/GetState \
+            | grep -q '"state"'
+      - name: Dump logs on failure
+        if: failure()
+        run: docker compose --env-file portal-mock/.env.example -f portal-mock/compose.yaml logs --no-color
+      - name: Stop Compose
+        if: always()
+        run: docker compose --env-file portal-mock/.env.example -f portal-mock/compose.yaml down --remove-orphans
