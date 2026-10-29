@@ -101,6 +101,7 @@ func (g *generator) users() {
 		if g.r.Float64() < 0.5 {
 			user.ProfileImage = &Image{ID: g.ids.next(), OwnerID: user.ID, Kind: ImageProfile, CreatedAt: user.CreatedAt}
 		}
+		localizeUser(g.cfg.Seed, i, user)
 		g.world.Users = append(g.world.Users, user)
 	}
 	g.friends = make([]map[int]bool, len(g.world.Users))
