@@ -449,6 +449,23 @@ function createTeam(t: Team) {
 		);
 	});
 
+	// Keep the guard disabled for selected teams, including after an instance replacement.
+	if (config.guardStoppedTeams.includes(t.number) && instancesEnabled) {
+		new aws.ssm.Association(`${prefix}-guard-stopped`, {
+			name: "AWS-RunShellScript",
+			parameters: { commands: "systemctl disable --now isureal-guard.service" },
+			targets: [
+				{
+					key: "InstanceIds",
+					values: servers.flatMap((server, index) =>
+						server && t.servers[index].region !== undefined ? [server.id] : [],
+					),
+				},
+			],
+			scheduleExpression: "rate(30 minutes)",
+		});
+	}
+
 	// 止めたインスタンスは vCPU の上限に数えられない。このリソースを消しても電源の状態は変わらないので、
 	// stoppedTeams から外したときに起動できるよう、すべてのインスタンスで状態を持つ
 	const powerState = config.stoppedTeams.includes(t.number)
