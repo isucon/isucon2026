@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.10
+# syntax=mirror.gcr.io/docker/dockerfile:1.10
 
 FROM mirror.gcr.io/library/golang:1.26.5-alpine AS build
 
