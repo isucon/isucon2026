@@ -77,6 +77,8 @@ type Config struct {
 	Growth GrowthConfig
 	// Dataset は対象の DB に入っている初期データ。nil なら dataset.Small() から作る。
 	Dataset *dataset.World
+	// ImageDigests は Dataset の画像の SHA-256 の表。nil なら初期データの画像を描き直して比べる。
+	ImageDigests *dataset.ImageDigests
 	// Photos は投稿に使う写真。nil なら生成した小さな画像を使う。
 	Photos *photo.Set
 	// AwaitPhotos は、写真のアーカイブの読み込みを初期化と並行して進めるためのもの。初期化の
@@ -281,6 +283,7 @@ func NewRunner(cfg Config) (*Runner, error) {
 		evilUsers:         map[string]bool{},
 		openedAt:          map[string]time.Time{},
 	}
+	r.initial.ImageDigests = cfg.ImageDigests
 	// 管理者は JP から送る。IP は負荷ユーザーと同じく走行ごとに決める。
 	r.admin = api.WithCountry(geo.Country(geo.Asia, 0)).WithClientIP(r.ips.Next())
 	return r, nil

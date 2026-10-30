@@ -56,6 +56,10 @@ make aws-bench-show RUN=20261026T040000Z-team5
 認証情報の期限で失効するので、URL を作り置きしません。`meta.json` には URL ではなく S3 の場所を残します。
 `PHOTOS=<キー>` で別のアーカイブを、`PHOTOS=none` で生成画像を使います。`BENCH_ARGS` に `-images` があればそちらを使います。
 
+初期データの画像のダイジェストの表（`make bench-image-digests` で作る）は `assets/image-digests-large.bin` に置きます。
+`run.sh` は同じく署名付き URL を作り、bench の環境変数 `ISUXBENCH_IMAGE_DIGESTS` で渡します（`IMAGE` で指定した
+古いベンチは読まずにそのまま走ります）。`DIGESTS=<キー>` で別の表を、`DIGESTS=none` で表なし（画像を描き直す）にします。
+
 ## 使用率
 
 走行のたびに、ベンチと対象チームのサーバーの使用率を記録し、結果のあとに要約を表示します。
@@ -122,6 +126,8 @@ make aws-bench-runner-up
 ```sh
 BUCKET=$(cd provisioning/aws/bench-runner && pulumi stack output infra --json --stack dev | jq -r .bucket)
 aws s3 cp merged.zip "s3://$BUCKET/assets/merged.zip"
+make bench-image-digests   # 初期データが変わったら作り直す
+aws s3 cp var/image-digests/large.bin "s3://$BUCKET/assets/image-digests-large.bin"
 ```
 
 stack の state は `s3://isucon2026-pulumi-state`、secret の暗号化は `awskms://alias/isucon2026-pulumi-secrets` です。

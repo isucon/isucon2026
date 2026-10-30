@@ -3,6 +3,7 @@
 use std::io;
 use std::sync::Arc;
 
+use sha2::{Digest, Sha256};
 use tokio::io::AsyncReadExt;
 use tokio::net::TcpStream;
 use xxhash_rust::xxh3::Xxh3;
@@ -115,14 +116,19 @@ impl Buf {
 
 /// Where a body goes: into a hash or into memory.
 pub enum Sink<'a> {
-    Hash(&'a mut Xxh3, &'a mut u64),
+    Xxh3(&'a mut Xxh3, &'a mut u64),
+    Sha256(&'a mut Sha256, &'a mut u64),
     Collect(&'a mut Vec<u8>),
 }
 
 impl Sink<'_> {
     fn write(&mut self, b: &[u8]) -> io::Result<()> {
         match self {
-            Sink::Hash(h, n) => {
+            Sink::Xxh3(h, n) => {
+                h.update(b);
+                **n += b.len() as u64;
+            }
+            Sink::Sha256(h, n) => {
                 h.update(b);
                 **n += b.len() as u64;
             }
