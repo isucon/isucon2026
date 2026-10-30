@@ -10,6 +10,7 @@ StartLimitIntervalSec=0
 Type=oneshot
 User=root
 ExecStart=/usr/local/bin/isucon-contest-envcheck --record-baseline
+ExecStartPost=/usr/bin/systemctl --no-block start envcheck.service
 TimeoutStartSec=210s
 Restart=on-failure
 RestartSec=20s

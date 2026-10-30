@@ -169,7 +169,11 @@ On the first boot, `envcheck-baseline.service` waits for cloud-init and records
 Router to be running, with the declared AMIs/types and the expected ENI/volume
 counts. It retries while the environment is still being created. The baseline
 must be recorded on a trusted, freshly provisioned environment before handing it
-to participants. It is not regenerated on reboot or during validation. Protect
+to participants. It is not regenerated on reboot or during validation.
+`envcheck.service` runs after baseline collection and server registration on every
+boot, including reboot. CloudFormation also queues it without blocking cloud-init.
+If initial baseline collection needs a retry, its successful completion queues the
+check again. Failed validation does not regenerate the baseline. Protect
 this file and the checker executable as competition-managed files; do not
 capture an already modified environment as a new baseline.
 
