@@ -140,17 +140,6 @@ ISUCON2026のDiscordサーバは競技中ならびにその前後の時間はす
 スタックの作成完了後、数分程度でSSH接続できるようになります。サーバには選手がGitHubに登録しているSSH鍵を利用して、ユーザー名`isucon`でSSH接続ができます。
 サーバのIPアドレスはポータルか、AWSマネジメントコンソールのEC2サーバページから確認できます。
 
-また、AWSマネジメントコンソールから[EC2 Instance Connectを使用して接続する](https://docs.aws.amazon.com/ja_jp/AWSEC2/latest/UserGuide/ec2-instance-connect-methods.html)こともできます。
-EC2 Instance Connectを使用する場合は、以下の手順で接続してください。
-
-1. AWSマネジメントコンソールで、スタックを作成したリージョンのEC2コンソールを開きます。
-2. 「インスタンス」から接続したいサーバ（asia1、europe1、america1、asia2のいずれか）を選択し、「接続」をクリックします。
-3. 「EC2 Instance Connect」タブを選択し、「パブリックIPを使用して接続」を選択します。
-4. 「ユーザー名」に`isucon`を入力し、「接続」をクリックします。
-5. ブラウザ内にターミナルが開き、選択したサーバを操作できます。
-
-サーバ起動後に[ポータルのサーバリスト](https://portal.isucon.net/contestant/contestant_instances)に表示されない場合は、EC2 Instance Connectでログインして[競技環境の確認](#競技環境の確認)を実行し、問題が無いか確認してください。
-
 ポータルのサーバリストに表示されるのは4台です。
 
 ポータルに記載されたサーバにのみSSHすることが可能です。それ以外のサーバについてはSSHを試行しないでください。
