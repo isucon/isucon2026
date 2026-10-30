@@ -33,3 +33,5 @@ recommendationReadRegion=americaを指定すると、Asiaの公開アプリだ�
 短い読み取りの分離は0へ戻した。次の比較は197,417点構成を基準に、recommendationReadRegion=primary、recommendationPoolConnections=4へ変更する。推薦SQL専用の読み取り専用接続を使い、USへの1往復を省く一方で、主DB上の推薦SQLを同時4本に制限する。一般の認証・読み取り・更新プールと待ち行列は共有しない。EU/USアプリの接続先は変わらない。既存の主DBにだけ接続し、AWSリソースは増やさない。
 
 起動時は主DBなら非recovery、レプリカならrecoveryとスロット名を検証する。実DBテストでprimary/replicaの取り違え、異なるスロット名、読み取り専用設定を確認した。既存の推薦SQL独立参照テストも全件一致。Clippy全ターゲットとPulumi TypeScriptも成功。総合点は実機で確認する。
+
+主DB専用4接続4da37ba5、20261030T114906Z-team12は183,523点PASS。基準197,417点から低下し、Asia推薦p90は426.7→504.9ms、負荷ユーザー909→627人だった。地域間通信を省いても主DB側の処理待ちが残り、この構成は採用しない。recommendationReadRegion=america、32接続へ戻す。短い読み取りと履歴専用はともに0を継続する。
