@@ -319,8 +319,6 @@ PGPASSWORD="$ISUREAL_DB_PASSWORD" psql \
   -U "$ISUREAL_DB_USER" -d "$ISUREAL_DB_NAME"
 ```
 
-> TODO（最終チェック）：配布環境の設定で接続できることを確認してください。
-
 ### データベースのデータの初期化
 
 リファレンス実装では、初期化処理（`POST /api/initialize`）においてデータベースのデータをベンチマーカーが想定している状態に戻します。
