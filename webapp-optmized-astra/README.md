@@ -435,3 +435,4 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261030T034141Z-team12 | single-statement owner history cache; no separate loader queue; candidate=b9d6bd3a; seed=1 | PASS | 155,013 |
 | 20261030T035207Z-team12 | month-scoped single-statement history and export metadata; candidate=79fbaf53; seed=1 | PASS | 178,504 |
 | 20261030T035633Z-team12 | repeat month-scoped single-statement history and export metadata; candidate=79fbaf53; seed=1 | PASS | 138,625 |
+| 20261030T041352Z-team12 | fresh single-query memory pages; bounded live interactions; caches and ledger retired; candidate=d9eac37e; seed=1 | PASS | 176,977 |
