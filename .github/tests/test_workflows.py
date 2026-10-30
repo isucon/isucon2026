@@ -42,6 +42,7 @@ class WorkflowRoutingTest(unittest.TestCase):
             "router/tests/e2e/Dockerfile",
             "router/test-fixtures/server/Dockerfile",
             "portal-mock/server/Dockerfile",
+            "portal-mock/web/Dockerfile",
         ]:
             for line in (root / path).read_text().splitlines():
                 if line.startswith("# syntax="):

@@ -1,6 +1,6 @@
-# syntax=docker/dockerfile:1.10
+# syntax=mirror.gcr.io/docker/dockerfile:1.10
 
-FROM node:24.14.1-alpine3.23 AS build
+FROM mirror.gcr.io/library/node:24.14.1-alpine3.23 AS build
 
 WORKDIR /src/portal-mock/web
 
@@ -14,7 +14,7 @@ RUN --mount=type=cache,target=/root/.npm \
 COPY portal-mock/web/ ./
 RUN npm run build
 
-FROM nginx:1.29.1-alpine3.22
+FROM mirror.gcr.io/library/nginx:1.29.1-alpine3.22
 
 COPY portal-mock/web/nginx.conf /etc/nginx/nginx.conf
 COPY --from=build /src/portal-mock/web/dist/ /usr/share/nginx/html/
