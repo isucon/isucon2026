@@ -11,7 +11,12 @@ Team 12で稼働するRust最適化実装。`webapp/rust`と`webapp/sql`を2335d
 [署名検証での発行済みURLキャッシュ利用](experiments/signature-verification/README.md)を追加した。現在の鍵・画像ID・期限が一致すればキャッシュ内の署名と比較し、画像の有効性・期限の確認は毎回行う。キャッシュのロックは待たず、使用中なら従来の検証へ戻る。最終版は179,991点PASS（1走、スコア改善は未確定）。
 
 <!-- astra-final-summary-start -->
-10月30日の追加候補は[履歴](experiments/memory-batch/README.md)、[フィード](experiments/feed-bounded/README.md)、[認証集約](experiments/session-batch/README.md)に記録した。これらは安定した総合改善を確認できず撤回した。現在はSQLの内容を維持し、[履歴APIで認証接続を引き継ぐ改善](experiments/read-phases/README.md)を配備している。通常設定の176,708点、再起動なし反復169,952点はいずれもPASS。Asiaの月履歴p50は対照2走187/234msから119/117msになった。診断ログは無効。同時実行数制限の候補も撤回し、[エクスポート8枠](experiments/export-concurrency/README.md)は維持する。反復で蓄積した未参照画像は公開参照と照合してGCし、配備時の一時展開とベンチ前の容量確認を追加した。
+10月30日の現在の最高は[202,980点PASS](results/20261030T134356Z-team12/result.json)。同設定の前の走行は200,330点、再起動なし反復は188,075点で、安定した改善は未確認。[初期履歴](experiments/initial-history/README.md)、初期画像メタデータ、Asia認証先固定とローカル認証コミット、セッション8接続・受付16枠、US推薦32接続、検索統計更新、[所有者別export画像配置](experiments/owner-export-layout/README.md)を採用している。通常の単一画像は元の配置を使う。exportメタデータキャッシュ、Asia認証キャッシュ、通常フィードのUS転送は無効、Nginx応答バッファは有効。SQLの検索1クエリ化も撤回した。
+
+最新の[履歴段階別診断](experiments/read-phases/README.md)は197,904点PASSで、通常走行とは区別する。Asia月履歴984サンプルの平均114ms中109msが認証前のDB接続取得区間だった。認証SQLは1.5ms、現在状態SQLを含むキャッシュ参照は2.2ms。次の優先事項は一般読み取り接続の占有元と履歴への接続割当。診断ログは無効へ戻し、GC後にPulumi設定・配布物・稼働プロセス・画像・レプリケーションの一致を確認した。
+
+[Go版との再比較](experiments/optimized-gap/README.md)では320,614点との差117,634点の45.0%が履歴・exportで、次にフィードの得点差が大きい。約33万点には未達。別チーム・時刻・配備SHA不明の比較であり、差をそのまま実装による改善見込みとは扱わない。[独立DB化とAsia DB VMの別用途](experiments/next-architecture/README.md)も検討したが、優位性は未測定。全試行・撤回・スコアの詳細は各実験記録と下の結果表に残す。
+<!-- astra-final-summary-end -->
 
 ## Team 10時代の構成と検証記録
 
