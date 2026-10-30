@@ -49,15 +49,17 @@ const (
 	discoveriesPerDay  = 2
 )
 
-// reachOut は、登録したあとでまだ送っていない友達申請を n 件まで送る。
+// reachOut は、登録したあとでまだ送っていない友達申請を n 件まで送る。送れた分だけ減らし、
+// 申請する相手が足りなかった分や送れなかった分は、あとの日に送る。
 func (r *Runner) reachOut(ctx context.Context, u *user, n int) {
 	n = min(n, u.circleLeft)
 	if n <= 0 || u.stopped.Load() {
 		return
 	}
-	u.circleLeft -= n
 	for _, target := range r.chooseFriends(u, n) {
-		r.requestFriend(ctx, u, target, u.rng.IntN(2) == 0)
+		if r.requestFriend(ctx, u, target, u.rng.IntN(2) == 0) {
+			u.circleLeft--
+		}
 	}
 }
 
@@ -128,8 +130,8 @@ func (r *Runner) chooseFriends(u *user, n int) []*user {
 }
 
 // requestFriend は target を検索で探してから友達申請を送る。相手からの申請が保留中なら、
-// その申請が承認されて友達になる。
-func (r *Runner) requestFriend(ctx context.Context, u *user, target *user, search bool) {
+// その申請が承認されて友達になる。申請を送れたら（友達になれたら）true を返す。
+func (r *Runner) requestFriend(ctx context.Context, u *user, target *user, search bool) bool {
 	if search {
 		r.searchUser(ctx, u, target)
 	}
@@ -158,9 +160,11 @@ func (r *Runner) requestFriend(ctx context.Context, u *user, target *user, searc
 		w.Applied()
 		r.addFriendship(u.ID, target.ID)
 		r.award(u, r.dayNow(u.Region), score.TagFriendRequest)
+		return true
 	case err == nil:
 		w.Rejected()
 		r.award(u, r.dayNow(u.Region), score.TagFriendRequest)
+		return true
 	case isStatus(err, http.StatusConflict):
 		// 送る前に友達になったか、同じ申請が保留中。
 		w.Rejected()
@@ -168,6 +172,7 @@ func (r *Runner) requestFriend(ctx context.Context, u *user, target *user, searc
 		settle(w, err)
 		r.requestError(ctx, u, "%s: 友達申請を送れません: %v", u.Username, err)
 	}
+	return false
 }
 
 // searchPages は、検索で target が見つからないときに読むページ数の上限。ユーザー名は
