@@ -34,6 +34,22 @@ const pageSize = 50
 // 張る接続数と同じくらいにする。
 const imageConcurrency = 6
 
+// エクスポートの ZIP を展開するときの上限（バイト）。小さな ZIP から大きな項目を展開させて
+// bench の時間とメモリを使わせないようにする。値は Large の初期データの実際の大きさに十分な
+// 余裕を持たせている。
+const (
+	// maxExportJSONBytes は posts.json を展開した大きさの上限。Large で最も投稿の多いユーザー
+	// （363 件）でも約 300 KB（ASCII 以外を \u でエスケープしても約 330 KB）。
+	maxExportJSONBytes = 16 << 20
+	// maxExportImageBytes は画像の項目 1 つを展開した大きさの上限。初期データの画像は 320 px の
+	// JPEG（Large の投稿で平均約 15 KB、画素をそのまま並べても 300 KB）で、Router が書き換えた
+	// 項目はダイジェスト（数十バイト）。
+	maxExportImageBytes = 4 << 20
+	// maxExportExpandedBytes は 1 回のエクスポートの検証で展開する量の合計の上限。応答の ZIP の
+	// 上限（client の 256 MiB）と同じ。
+	maxExportExpandedBytes = 256 << 20
+)
+
 // Checker は関係の初期データの索引を持つ。投稿は履歴全体を持たず、確かめるユーザーの
 // 確かめる日の分だけ dataset から作り直す。
 type Checker struct {
@@ -49,6 +65,10 @@ type Checker struct {
 	// SHA-256 を返させてこの表と比べ、画像を描き直さない。
 	ImageDigests *dataset.ImageDigests
 
+	// exportJSONLimit、exportImageLimit、exportBudget はエクスポートの ZIP を展開するときの
+	// 上限（maxExportJSONBytes などの値。テストで小さくする）。
+	exportJSONLimit, exportImageLimit, exportBudget int64
+
 	users             map[string]*dataset.User
 	windows           map[string]*dataset.Window
 	friendshipsByUser map[string][]*dataset.Friendship
@@ -61,6 +81,9 @@ func New(world *dataset.World) *Checker {
 		world:             world,
 		MemoryMonths:      2,
 		ImageFetches:      16,
+		exportJSONLimit:   maxExportJSONBytes,
+		exportImageLimit:  maxExportImageBytes,
+		exportBudget:      maxExportExpandedBytes,
 		users:             map[string]*dataset.User{},
 		windows:           map[string]*dataset.Window{},
 		friendshipsByUser: map[string][]*dataset.Friendship{},
@@ -634,8 +657,9 @@ func (u *userCheck) exportPosts(ctx context.Context, images int, isNew func(id s
 	for _, f := range archive.File {
 		files[f.Name] = f
 	}
+	expansion := &zipBudget{total: c.exportBudget, remaining: c.exportBudget}
 	var all []exportedPost
-	if err := decodeZipJSON(files["posts.json"], &all); err != nil {
+	if err := expansion.decodeJSON(ctx, files["posts.json"], c.exportJSONLimit, &all); err != nil {
 		return fmt.Errorf("エクスポートの posts.json を読めません: %w", err)
 	}
 	var got []exportedPost
@@ -662,6 +686,10 @@ func (u *userCheck) exportPosts(ctx context.Context, images int, isNew func(id s
 		}
 	}
 	for i, p := range got {
+		// 画像の比較（描き直すと 1 枚数ミリ秒）が続くので、期限が過ぎたらやめる。
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if err := u.checkPost(p.Post, want[i]); err != nil {
 			return fmt.Errorf("エクスポート: %w", err)
 		}
@@ -671,7 +699,7 @@ func (u *userCheck) exportPosts(ctx context.Context, images int, isNew func(id s
 		if err := imageurl.Verify(p.ImageURL, want[i].Image.ID, a.SecretKey, time.Now()); err != nil {
 			return fmt.Errorf("エクスポート: %w", err)
 		}
-		image, err := readZipFile(files[p.ImagePath])
+		image, err := expansion.read(ctx, files[p.ImagePath], c.exportImageLimit)
 		if err != nil {
 			return fmt.Errorf("エクスポートの %s を読めません: %w", p.ImagePath, err)
 		}
@@ -682,22 +710,66 @@ func (u *userCheck) exportPosts(ctx context.Context, images int, isNew func(id s
 	return nil
 }
 
-func readZipFile(f *zip.File) ([]byte, error) {
+// zipBudget は 1 回のエクスポートの検証で ZIP の項目を展開できる量（バイト）の合計と残り。
+type zipBudget struct {
+	total, remaining int64
+}
+
+// read は ZIP の項目 f を展開して読む。展開した大きさが limit か残りの量を超えれば、全部を
+// 展開する前にやめてエラーにする（項目の見出しの大きさで超えるものは展開しない）。ctx が
+// 終われば読むのをやめて ctx のエラーを返す。
+func (b *zipBudget) read(ctx context.Context, f *zip.File, limit int64) ([]byte, error) {
 	if f == nil {
 		return nil, fmt.Errorf("ファイルがありません")
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	n := min(limit, b.remaining)
+	tooLarge := func() error {
+		if n < limit {
+			return fmt.Errorf("エクスポートを展開した量が合わせて %d バイトを超えます", b.total)
+		}
+		return fmt.Errorf("展開すると %d バイトを超えます", limit)
+	}
+	// 見出しの大きさと実際に展開した大きさが違えば、archive/zip が読み取りのエラーにする。
+	if f.UncompressedSize64 > uint64(n) {
+		return nil, tooLarge()
 	}
 	r, err := f.Open()
 	if err != nil {
 		return nil, err
 	}
 	defer r.Close()
-	return io.ReadAll(r)
+	data, err := io.ReadAll(io.LimitReader(ctxReader{ctx: ctx, r: r}, n+1))
+	b.remaining -= int64(len(data))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(data)) > n {
+		return nil, tooLarge()
+	}
+	return data, nil
 }
 
-func decodeZipJSON(f *zip.File, out any) error {
-	data, err := readZipFile(f)
+// decodeJSON は ZIP の項目 f を read で読み、JSON として out に読む。
+func (b *zipBudget) decodeJSON(ctx context.Context, f *zip.File, limit int64, out any) error {
+	data, err := b.read(ctx, f, limit)
 	if err != nil {
 		return err
 	}
 	return json.Unmarshal(data, out)
+}
+
+// ctxReader は ctx が終わったら読み取りをやめる io.Reader。
+type ctxReader struct {
+	ctx context.Context
+	r   io.Reader
+}
+
+func (c ctxReader) Read(p []byte) (int, error) {
+	if err := c.ctx.Err(); err != nil {
+		return 0, err
+	}
+	return c.r.Read(p)
 }
