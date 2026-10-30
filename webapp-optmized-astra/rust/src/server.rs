@@ -281,7 +281,9 @@ pub async fn new_server(config: Config) -> Router {
         assert!(matches!(target.as_str(), "primary" | "europe" | "america"));
         let connections = std::env::var("ISUREAL_RECOMMENDATION_POOL_CONNECTIONS").unwrap_or_else(|_| "32".into()).parse().expect("recommendation pool capacity");
         let replica = (target != "primary").then(|| format!("astra_{target}"));
-        Some(crate::recommendation_reads::RecommendationReads::connect(&handler_context.config, &recommendation_host, replica.as_deref(), connections).await.expect("connect recommendation database"))
+        let mut reads = crate::recommendation_reads::RecommendationReads::connect(&handler_context.config, &recommendation_host, replica.as_deref(), connections).await.expect("connect recommendation database");
+        reads.all_feeds = std::env::var("ISUREAL_REMOTE_ALL_FEEDS").as_deref() == Ok("1");
+        Some(reads)
     } else { None };
     let primary_sessions_enabled = std::env::var("ISUREAL_PRIMARY_ASIA_SESSIONS").as_deref() == Ok("1");
     let local_session_writes = std::env::var("ISUREAL_LOCAL_ASIA_SESSION_WRITES").as_deref() == Ok("1");

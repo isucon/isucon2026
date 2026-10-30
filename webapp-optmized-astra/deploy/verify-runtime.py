@@ -42,6 +42,7 @@ def inspect(app):
             'ISUREAL_INITIAL_HISTORY_EXPORT':str(int(runtime.get('initialHistoryExportEnabled',False))),
             'ISUREAL_SHORT_READ_POOL_CONNECTIONS':str(runtime.get('shortReadPoolConnections',0)),
             'ISUREAL_MEMORY_POOL_CONNECTIONS':str(runtime.get('memoryPoolConnections',0)),
+            'ISUREAL_REMOTE_ALL_FEEDS':str(int(runtime.get('remoteAllFeedsEnabled',False))),
             'ISUREAL_RECOMMENDATION_READ_REGION':runtime.get('recommendationReadRegion',''),
             'ISUREAL_RECOMMENDATION_DB_HOST':runtime['database']['host'] if runtime.get('recommendationReadRegion')=='primary' else next((a['host'] for a in runtime['applications'] if a['region']==runtime.get('recommendationReadRegion','')),''),
             'ISUREAL_RECOMMENDATION_POOL_CONNECTIONS':str(runtime.get('recommendationPoolConnections',32)),

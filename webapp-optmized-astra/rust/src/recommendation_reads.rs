@@ -1,4 +1,4 @@
-//! Execute only the recommended-feed statement on a dedicated read-only pool.
+//! Execute feed statements on a dedicated read-only pool.
 //! Authentication remains on the ingress application's normal authentication path.
 use anyhow::{Result, ensure};
 use sqlx::{
@@ -8,7 +8,10 @@ use sqlx::{
 use std::{str::FromStr, time::Duration};
 
 #[derive(Clone)]
-pub struct RecommendationReads(pub PgPool);
+pub struct RecommendationReads {
+    pub db: PgPool,
+    pub all_feeds: bool,
+}
 
 impl RecommendationReads {
     pub async fn connect(
@@ -55,7 +58,10 @@ impl RecommendationReads {
             db.close().await;
             anyhow::bail!("recommendation reads require the configured primary or standby");
         }
-        Ok(Self(db))
+        Ok(Self {
+            db,
+            all_feeds: false,
+        })
     }
 }
 
@@ -73,11 +79,11 @@ mod tests {
             .await
             .unwrap();
         let readonly: String = sqlx::query_scalar("SHOW default_transaction_read_only")
-            .fetch_one(&primary.0)
+            .fetch_one(&primary.db)
             .await
             .unwrap();
         assert_eq!(readonly, "on");
-        primary.0.close().await;
+        primary.db.close().await;
         assert!(
             RecommendationReads::connect_options(options, Some("astra_europe"), 4)
                 .await
@@ -104,7 +110,7 @@ mod tests {
             let replica = RecommendationReads::connect_options(options, Some(&slot), 4)
                 .await
                 .unwrap();
-            replica.0.close().await;
+            replica.db.close().await;
         }
     }
 }
