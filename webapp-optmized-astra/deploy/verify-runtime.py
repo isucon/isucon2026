@@ -32,6 +32,7 @@ def inspect(app):
         regional=service=='webapp-optmized-astra' and app['region']!='asia'
         read_host, fenced=read_settings(runtime,app,writer=service.endswith('-writer'))
         expected[service]={
+            'ISUREAL_INITIAL_IMAGE_POOL_CONNECTIONS':str(runtime.get('initialImagePoolConnections',0)),
             'ISUREAL_INITIAL_POST_IMAGES':str(int(runtime.get('initialPostImagesEnabled',False))),
             'ISUREAL_INITIAL_HISTORY_EXPORT':str(int(runtime.get('initialHistoryExportEnabled',False))),
             'ISUREAL_SHORT_READ_POOL_CONNECTIONS':str(runtime.get('shortReadPoolConnections',0)),

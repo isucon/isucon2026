@@ -159,7 +159,11 @@ async fn initial_image_metadata_preserves_fresh_authorization_and_falls_back_on_
         .execute(&db)
         .await
         .unwrap();
-    let cache = Arc::new(InitialPostImages::load(&db, "asia").await.unwrap());
+    let cache = Arc::new(
+        InitialPostImages::load_with_pool(&db, "asia", 1)
+            .await
+            .unwrap(),
+    );
     assert!(cache.resolve(&db, &ids[0]).await.unwrap().is_some());
     for id in &ids[1..7] {
         assert!(cache.resolve(&db, id).await.unwrap().is_none());
@@ -168,6 +172,19 @@ async fn initial_image_metadata_preserves_fresh_authorization_and_falls_back_on_
     let reference = app(db.clone(), files.clone(), None);
     let exp = chrono::Utc::now().timestamp() + 3600;
     let key = [0xab; 32];
+    let mut occupied = Vec::new();
+    for _ in 0..4 {
+        occupied.push(db.acquire().await.unwrap());
+    }
+    let independent = tokio::time::timeout(
+        std::time::Duration::from_secs(2),
+        fetch(&cached, &ids[0], &key, exp),
+    )
+    .await
+    .unwrap();
+    assert_eq!(independent.0, StatusCode::OK);
+    assert_eq!(independent.2, original);
+    drop(occupied);
     for id in &ids {
         let result = fetch(&cached, id, &key, exp).await;
         assert_eq!(result, fetch(&reference, id, &key, exp).await);

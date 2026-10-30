@@ -21,6 +21,7 @@ struct Source {
 }
 
 pub struct InitialPostImages {
+    reads: Option<PgPool>,
     epoch: String,
     images: HashMap<Uuid, Option<Source>>,
     hits: AtomicU64,
@@ -36,6 +37,35 @@ pub struct ResolvedImage<'a> {
 }
 
 impl InitialPostImages {
+    pub async fn load_with_pool(
+        db: &PgPool,
+        region: &str,
+        connections: u32,
+    ) -> Result<Self, sqlx::Error> {
+        assert!(
+            connections <= 16,
+            "initial image pool capacity must be 0–16"
+        );
+        let mut cache = Self::load(db, region).await?;
+        if connections != 0 {
+            cache.reads = Some(
+                crate::db_pool::options(connections)
+                    .min_connections(connections)
+                    .connect_with(
+                        (*db.connect_options())
+                            .clone()
+                            .application_name("astra_initial_images"),
+                    )
+                    .await?,
+            );
+        }
+        Ok(cache)
+    }
+
+    pub(crate) fn read_pool<'a>(&'a self, fallback: &'a PgPool) -> &'a PgPool {
+        self.reads.as_ref().unwrap_or(fallback)
+    }
+
     pub async fn load(db: &PgPool, region: &str) -> Result<Self, sqlx::Error> {
         let started = std::time::Instant::now();
         let mut tx = db
@@ -98,6 +128,7 @@ impl InitialPostImages {
             serde_json::json!({"metric":"initial_post_images_loaded","images":usable,"elapsed_ms":started.elapsed().as_millis()})
         );
         Ok(Self {
+            reads: None,
             epoch,
             images,
             hits: AtomicU64::new(0),

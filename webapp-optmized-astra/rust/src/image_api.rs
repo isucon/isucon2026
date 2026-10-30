@@ -349,7 +349,7 @@ async fn get_image(
     });
     let mut object = if let Some(initial) = initial {
         initial
-            .resolve(&h.db, &input.image_id)
+            .resolve(initial.read_pool(&h.db), &input.image_id)
             .await?
             .map(|source| {
                 let version = format!("asset:{}", source.asset_key);
