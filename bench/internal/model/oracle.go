@@ -6,6 +6,8 @@ package model
 // 判定はフィードを読むたびに投稿の数だけ繰り返すので、偽と決まった時点で残りの条件を
 // 求めない（Kleene の論理積は偽が 1 つあれば偽）。
 
+import "time"
+
 // boolTri は真偽値の履歴 tl が、読み取り r で真か。
 func boolTri(tl *timeline[bool], r Read) Tri {
 	return forAll(tl, r, triOf)
@@ -83,13 +85,52 @@ func (m *Model) windowOpenTri(p *Post, r Read) Tri {
 	})
 }
 
+// pendingWindows は、ID のわからない投稿の作成 p が投稿を作ったかもしれない投稿期間を、読み取り
+// r の時点までについて f に渡す（同じ ID を何度も渡すことがある。"?" は開いた結果のわからない
+// 投稿期間）。作成はアプリが処理した時点で投稿者のリージョンに開いている投稿期間に入る。5xx を
+// 返した作成は応答までに処理されているが、送信中やタイムアウトした作成は、あとで処理されて
+// その後の投稿期間に入ることがある。
+func (m *Model) pendingWindows(p *pendingPost, r Read, f func(id string)) {
+	c := p.exists.changes[0]
+	author := m.users[p.authorID]
+	if author == nil || c.outcome == rejected || c.sent.After(r.Received) {
+		return
+	}
+	span := Read{Sent: c.sent, Received: r.Received, Staleness: m.Staleness}
+	if c.ended && c.received.Before(span.Received) {
+		span.Received = c.received
+	}
+	author.region.each(span, func(region string) {
+		m.currentWindowOf(region).each(span, func(id string) {
+			if id != "" {
+				f(id)
+			}
+		})
+	})
+}
+
+// unknownPostOnTri は、userID に、結果のわからない作成でできた日付 date の投稿があるかもしれないか
+// （不明か偽）。
+func (m *Model) unknownPostOnTri(userID string, date time.Time, r Read) Tri {
+	for _, p := range m.pending[userID] {
+		if boolTri(p.exists, r) == False {
+			continue
+		}
+		on := false
+		m.pendingWindows(p, r, func(id string) {
+			window := m.windows[id]
+			on = on || window == nil || window.LocalDate.Equal(date)
+		})
+		if on {
+			return Unknown
+		}
+	}
+	return False
+}
+
 // postedTodayTri は、閲覧者の（今の）リージョンで開いている投稿期間と同じ日付の投稿を、閲覧者が
 // 持っているか。持っていないと他人の投稿は見えない。
 func (m *Model) postedTodayTri(viewer *User, r Read) Tri {
-	pending := False
-	if m.mayHaveUnknownPost(viewer.ID, r) {
-		pending = Unknown
-	}
 	// 閲覧者がリージョンを移っている最中なら、移る前と後のどちらの投稿期間でも判定する。
 	return forAll(viewer.region, r, func(region string) Tri {
 		return forAll(m.currentWindowOf(region), r, func(id string) Tri {
@@ -100,7 +141,8 @@ func (m *Model) postedTodayTri(viewer *User, r Read) Tri {
 			if window == nil {
 				return Unknown
 			}
-			result := pending
+			// 結果のわからない作成は、その日付に入ったかもしれない場合だけ不明にする。
+			result := m.unknownPostOnTri(viewer.ID, window.LocalDate, r)
 			for _, p := range m.byAuthor[viewer.ID] {
 				if p.LocalDate.Equal(window.LocalDate) {
 					if result = max(result, m.liveTri(p, r)); result == True {
