@@ -88,6 +88,14 @@ interface lists differ. Inter-server routes depend on the Router resource.
 
 ## Administration SSH access
 
+The contest Router purges `ec2-instance-connect` during cloud-init `bootcmd`
+and refreshes the SSH service, disabling Instance Connect authentication on
+every boot. This uses the Router AMI's Ubuntu package management and requires
+no package download. App1, App2, App3, and Database keep Instance Connect and
+are the only contest instances that download participant SSH keys from the
+portal. The Router does not import participant keys; it retains the separate
+administration key described below.
+
 Both templates create `isuadmin` on all five instances using cloud-init `users`,
 with a locked password, `/bin/bash`, and passwordless sudo. The default AMI user
 is preserved. Contestant keys remain under `isucon`; administration keys are not
