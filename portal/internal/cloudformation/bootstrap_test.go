@@ -70,6 +70,29 @@ func TestContestTemplateUploadSizeForPortalDevTeam(t *testing.T) {
 	}
 }
 
+// The image leaves isureal-guard disabled; like Pulumi user-data, only apps start it.
+func TestContestTemplateStartsGuardOnApps(t *testing.T) {
+	cfg := &config.Config{IsuconAdminSSHKeyPath: adminKey(t), PublicURLHost: "portal-dev.isucon.net", ContestAMIID: "ami-service", RouterAMIID: "ami-router", CheckerSecret: []byte("test")}
+	document, err := ContestTemplate(cfg, 60001, "apne1-az2", time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, server := range []string{"App1", "App2", "App3", "Database"} {
+		instance := strings.Split(strings.Split(document, "\n  "+server+":\n")[1], "\n  "+server+"IP:\n")[0]
+		guard := strings.Index(instance, "- systemctl enable --now isureal-guard\n")
+		if server == "Database" {
+			if guard >= 0 {
+				t.Error("the database must not run the guard")
+			}
+			continue
+		}
+		// The guard reads ISUREAL_DB_HOST from env.sh.
+		if env := strings.Index(instance, "ISUREAL_DB_HOST=192.168.4.10"); env < 0 || guard < env {
+			t.Errorf("%s must start the guard after configuring env.sh", server)
+		}
+	}
+}
+
 func TestContestRouterInterfacesAttachedAtLaunch(t *testing.T) {
 	cfg := &config.Config{IsuconAdminSSHKeyPath: adminKey(t), PublicURLHost: "portal-dev.isucon.net", ContestAMIID: "ami-service", RouterAMIID: "ami-router", CheckerSecret: []byte("test")}
 	document, err := ContestTemplate(cfg, 60001, "apne1-az2", time.Now())
