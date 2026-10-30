@@ -92,3 +92,44 @@ func TestContestRouterInterfacesAttachedAtLaunch(t *testing.T) {
 		}
 	}
 }
+
+func TestContestRouterSSHIsolation(t *testing.T) {
+	cfg := &config.Config{IsuconAdminSSHKeyPath: adminKey(t), PublicURLHost: "portal.example", ContestAMIID: "ami-service", RouterAMIID: "ami-router", CheckerSecret: []byte("test")}
+	document, err := ContestTemplate(cfg, 1, "apne1-az1", time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	instance := func(id string) string {
+		t.Helper()
+		_, rest, ok := strings.Cut(document, "\n  "+id+":\n")
+		if !ok {
+			t.Fatalf("missing instance %s", id)
+		}
+		body, _, _ := strings.Cut(rest, "\n  "+id+"IP:\n")
+		return body
+	}
+	router := instance("Router")
+	if !strings.Contains(router, "bootcmd:\n            - [dpkg, --purge, ec2-instance-connect]") {
+		t.Error("Router must remove EC2 Instance Connect during early boot")
+	}
+	if !strings.Contains(router, "- [systemctl, daemon-reload]\n            - [systemctl, try-restart, ssh.service]") {
+		t.Error("Router must refresh SSH after removing Instance Connect configuration")
+	}
+	for _, forbidden := range []string{"/api/ssh_public_keys", "/home/isucon/.ssh", "KeyName:"} {
+		if strings.Contains(router, forbidden) {
+			t.Errorf("Router must not import contestant keys: %s", forbidden)
+		}
+	}
+	if !strings.Contains(router, "- name: isuadmin") {
+		t.Error("Router must retain administration access")
+	}
+	for _, id := range []string{"App1", "App2", "App3", "Database"} {
+		body := instance(id)
+		if strings.Count(body, "/api/ssh_public_keys?token=") != 1 {
+			t.Errorf("%s must import contestant keys exactly once", id)
+		}
+		if strings.Contains(body, "--purge, ec2-instance-connect") {
+			t.Errorf("%s must retain EC2 Instance Connect", id)
+		}
+	}
+}
