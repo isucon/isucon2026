@@ -35,6 +35,7 @@ def inspect(app):
             'ISUREAL_INITIAL_HISTORY_EXPORT':str(int(runtime.get('initialHistoryExportEnabled',False))),
             'ISUREAL_SHORT_READ_POOL_CONNECTIONS':str(runtime.get('shortReadPoolConnections',0)),
             'ISUREAL_MEMORY_POOL_CONNECTIONS':str(runtime.get('memoryPoolConnections',0)),
+            'ISUREAL_SESSION_POOL_CONNECTIONS':str(runtime.get('sessionPoolConnections',0)),
             'ISUREAL_PRIMARY_ASIA_SESSIONS':str(int(runtime.get('primaryAsiaSessionsEnabled',False))),
             'ISUREAL_LOCAL_ASIA_SESSION_WRITES':str(int(runtime.get('localAsiaSessionWritesEnabled',False))),
             'ISUREAL_INITIAL_GRAPH':str(int(runtime.get('initialGraphEnabled',False))),

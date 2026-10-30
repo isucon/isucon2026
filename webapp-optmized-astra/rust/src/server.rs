@@ -272,6 +272,8 @@ pub async fn new_server(config: Config) -> Router {
         }
         _ => handler_context.clone(),
     };
+    let session_connections: u32 = std::env::var("ISUREAL_SESSION_POOL_CONNECTIONS").unwrap_or_else(|_| "0".into()).parse().expect("session pool capacity");
+    let session_writes = crate::db_pool::session_context(&handler_context, session_connections).await.expect("connect session pool");
     let primary_sessions_enabled = std::env::var("ISUREAL_PRIMARY_ASIA_SESSIONS").as_deref() == Ok("1");
     let local_session_writes = std::env::var("ISUREAL_LOCAL_ASIA_SESSION_WRITES").as_deref() == Ok("1");
     assert!(!local_session_writes || primary_sessions_enabled, "local session responses require primary authentication");
@@ -280,7 +282,7 @@ pub async fn new_server(config: Config) -> Router {
         let null_authorities: i64 = sqlx::query_scalar("SELECT count(*) FROM users WHERE auth_home_region IS NULL")
             .fetch_one(&handler_context.db).await.expect("install session authority migration first");
         assert_eq!(null_authorities, 0);
-        Some(crate::primary_session::PrimarySessionPolicy::new(handler_context.db.clone(), Arc::ptr_eq(&read_context, &handler_context), local_session_writes))
+        Some(crate::primary_session::PrimarySessionPolicy::new(session_writes.db.clone(), Arc::ptr_eq(&read_context, &handler_context), local_session_writes))
     } else { None };
     let scope = std::env::var("ISUREAL_DB_READ_SCOPE").unwrap_or_else(|_| "all".into());
     assert!(
@@ -348,8 +350,8 @@ pub async fn new_server(config: Config) -> Router {
     let server = Router::new()
         .route("/api/initialize", post(initialize_handler))
         .route("/api/auth/register", post(register_handler))
-        .route("/api/auth/login", post(login_handler))
-        .route("/api/auth/logout", post(logout_handler).route_layer(session(true)))
+        .route("/api/auth/login", post(login_handler).with_state(session_writes.clone()))
+        .route("/api/auth/logout", post(logout_handler).route_layer(from_fn_with_state((session_writes.clone(), true), session_middleware)).with_state(session_writes.clone()))
         .route("/api/users", get(search_users_handler).route_layer(region()).route_layer(graph_session(true)).route_layer(from_fn_with_state(graph_fence.clone(), read_fence_middleware)).with_state(read_context.clone()))
         .route("/api/users/{userId}", get(get_user_handler).route_layer(region()).route_layer(read_session(true)).with_state(general_reads.clone()))
         .route("/api/me/export", get(export_posts_handler).route_layer(region()).route_layer(export_session()).with_state(export_reads.clone()))

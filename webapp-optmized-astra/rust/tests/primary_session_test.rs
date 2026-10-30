@@ -145,13 +145,16 @@ async fn primary_sessions_remain_fresh_while_replay_is_paused_and_other_writes_s
         .unwrap();
     let primary_h = context(db.clone());
     let replica_h = context(replica.clone());
-    let policy = PrimarySessionPolicy::new(db.clone(), true, true);
+    let session_h = isureal::db_pool::session_context(&primary_h, 1)
+        .await
+        .unwrap();
+    let policy = PrimarySessionPolicy::new(session_h.db.clone(), true, true);
     let writer = Router::new()
         .route("/api/auth/login", post(login_handler))
         .route(
             "/api/auth/logout",
             post(logout_handler).route_layer(from_fn_with_state(
-                (primary_h.clone(), true),
+                (session_h.clone(), true),
                 session_middleware,
             )),
         )
@@ -174,7 +177,7 @@ async fn primary_sessions_remain_fresh_while_replay_is_paused_and_other_writes_s
             write_fence_middleware,
         ))
         .layer(Extension(policy.clone()))
-        .with_state(primary_h);
+        .with_state(session_h.clone());
     let reader = Router::new()
         .route(
             "/probe",
@@ -187,7 +190,7 @@ async fn primary_sessions_remain_fresh_while_replay_is_paused_and_other_writes_s
             memory_session_middleware,
         ))
         .layer(Extension(PrimarySessionPolicy::new(
-            db.clone(),
+            session_h.db.clone(),
             false,
             true,
         )));
@@ -197,6 +200,41 @@ async fn primary_sessions_remain_fresh_while_replay_is_paused_and_other_writes_s
             .0,
         StatusCode::OK
     );
+    let mut ordinary_held = Vec::new();
+    for _ in 0..8 {
+        ordinary_held.push(db.acquire().await.unwrap());
+    }
+    assert_eq!(
+        tokio::time::timeout(
+            Duration::from_millis(500),
+            request(&writer, "POST", "/api/auth/logout", &old.token, Value::Null)
+        )
+        .await
+        .unwrap()
+        .0,
+        StatusCode::NO_CONTENT
+    );
+    let initial_login = tokio::time::timeout(
+        Duration::from_millis(500),
+        request(
+            &writer,
+            "POST",
+            "/api/auth/login",
+            "",
+            json!({"username":"userasia","secretKey":"secret"}),
+        ),
+    )
+    .await
+    .unwrap();
+    assert_eq!(initial_login.0, StatusCode::OK);
+    drop(ordinary_held);
+    let old_token = initial_login.1["token"].as_str().unwrap();
+    let old = Session {
+        token: old_token.to_owned(),
+        token_hash: hex::encode(Sha256::digest(old_token.as_bytes())),
+        ..old
+    };
+    caught_up(&db, &replica_admin).await;
     sqlx::query("SELECT pg_wal_replay_pause()")
         .execute(&replica_admin)
         .await
@@ -231,7 +269,7 @@ async fn primary_sessions_remain_fresh_while_replay_is_paused_and_other_writes_s
         assert_eq!(request(&reader,"GET","/probe",current,Value::Null).await.0,StatusCode::UNAUTHORIZED);
         sqlx::query("UPDATE users SET region='asia' WHERE id='usereurope'").execute(&db).await.unwrap();
         assert!(!policy.is_primary_authority("usereurope").await,"moving to Asia does not change authority");
-        let mut held=Vec::new();for _ in 0..8{held.push(db.acquire().await.unwrap());}
+        let held=session_h.db.acquire().await.unwrap();
         assert_eq!(tokio::time::timeout(Duration::from_millis(500),request(&reader,"GET","/probe",&europe.token,Value::Null)).await.unwrap().0,StatusCode::OK,"non-Asia authority still uses local SQL");
         drop(held);
         sqlx::query("INSERT INTO users(id,username,secret_key_hash,region) VALUES('new','new','unused','america')").execute(&db).await.unwrap();
