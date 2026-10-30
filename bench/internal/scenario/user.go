@@ -444,7 +444,7 @@ func (r *Runner) post(ctx context.Context, u *user, windowID string) (client.Pos
 	}
 	r.model.Created(creation, model.Post{
 		ID: post.ID, AuthorID: u.ID, WindowID: post.PostingWindowID, ImageID: imageurl.ImageID(post.ImageURL),
-		Caption: post.Caption, PostedAt: post.PostedAt,
+		Caption: post.Caption, PostedAt: post.PostedAt, Location: location, OnTime: post.OnTime, LateSeconds: post.LateSeconds,
 		ImageBytes: func() []byte { data, _ := r.photos.Post(region, key); return data },
 	}, visibility)
 	return post, visibility, true
@@ -510,7 +510,13 @@ func (r *Runner) checkMyCurrentPost(ctx context.Context, u *user, post client.Po
 			r.invalid(ctx, u, "%s: 今日の投稿が投稿した投稿 %s と違います（%s）", u.Username, post.ID, current.ID)
 		}
 	default:
-		r.award(u, r.dayNow(u.Region), score.TagPostDetail)
+		problems := r.model.CheckCurrentPost(post.ID, current, read)
+		for _, problem := range problems {
+			r.invalid(ctx, u, "%s: %s", u.Username, problem)
+		}
+		if len(problems) == 0 {
+			r.award(u, r.dayNow(u.Region), score.TagPostDetail)
+		}
 	}
 }
 

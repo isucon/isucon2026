@@ -2,10 +2,12 @@ package model
 
 import (
 	"fmt"
+	"math"
 	"slices"
 	"time"
 
 	"github.com/isucon/isucon2026/bench/internal/client"
+	"github.com/isucon/isucon2026/bench/internal/imageurl"
 )
 
 // Comment は bench が書いたコメント。
@@ -241,8 +243,58 @@ func (m *Model) CheckPost(viewerID, postID string, got *client.Post, r Read) (vi
 		return fmt.Sprintf("見えてはいけない投稿 %s が取得できました", postID), nil
 	}
 	var result FeedResult
-	m.checkPostContent(&result, "投稿の取得", got.FeedPost(), p, r)
+	m.checkPostDetail(&result, "投稿の取得", *got, p, r)
 	return "", result.Errors
+}
+
+// CheckCurrentPost は自分の今日の投稿として返った got を、bench が投稿した postID の投稿と
+// 比べる（ID は一致しているものとする）。bench の知らない投稿なら確かめない。
+func (m *Model) CheckCurrentPost(postID string, got client.Post, r Read) []string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	p := m.posts[postID]
+	if p == nil {
+		return nil
+	}
+	var result FeedResult
+	m.checkPostDetail(&result, "今日の投稿", got, p, r)
+	return result.Errors
+}
+
+// checkPostDetail は投稿 1 件の応答 got を、要求した投稿 want と比べる。フィードと同じ項目に
+// 加えて、ID、投稿期間、画像 ID、位置情報、時間内かどうかと遅延時間を確かめる。
+func (m *Model) checkPostDetail(result *FeedResult, label string, got client.Post, want *Post, r Read) {
+	switch {
+	case got.ID != want.ID:
+		result.error("%s: 投稿 %s を求めたのに投稿 %s が返りました", label, want.ID, got.ID)
+	case got.PostingWindowID != want.WindowID:
+		result.error("%s: 投稿 %s の投稿期間が違います", label, want.ID)
+	case want.ImageID != "" && (imageurl.CheckForm(got.ImageURL) != nil || imageurl.ImageID(got.ImageURL) != want.ImageID):
+		result.error("%s: 投稿 %s の画像 URL %q が投稿の画像を指していません", label, want.ID, got.ImageURL)
+	case want.Location.Kind != "" && !sameLocation(want.Location, got.Location):
+		result.error("%s: 投稿 %s の位置情報が違います", label, want.ID)
+	case got.OnTime != want.OnTime || got.LateSeconds != want.LateSeconds:
+		result.error("%s: 投稿 %s の時間内かどうかか遅延時間が投稿したときと違います", label, want.ID)
+	default:
+		m.checkPostContent(result, label, got.FeedPost(), want, r)
+	}
+}
+
+// sameLocation は応答の位置情報が送ったものと同じか。座標は丸めの差を許す（scenario の
+// 投稿の応答の確認と同じ規則）。
+func sameLocation(sent, got client.Location) bool {
+	if sent.Kind != got.Kind {
+		return false
+	}
+	switch sent.Kind {
+	case "approximate":
+		return got.Locality != nil && sent.Locality != nil && *got.Locality == *sent.Locality
+	case "exact":
+		return got.Latitude != nil && got.Longitude != nil && sent.Latitude != nil && sent.Longitude != nil &&
+			math.Abs(*got.Latitude-*sent.Latitude) < 1e-6 && math.Abs(*got.Longitude-*sent.Longitude) < 1e-6
+	default:
+		return true
+	}
 }
 
 // ReactionID は postID への reactorID の今の RealMoji の ID。確実に決まらなければ ""。

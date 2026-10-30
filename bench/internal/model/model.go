@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/isucon/isucon2026/bench/internal/client"
 	"github.com/isucon/isucon2026/dataset"
 )
 
@@ -46,6 +47,11 @@ type Post struct {
 	Caption    string
 	PostedAt   time.Time
 	LocalDate  time.Time
+	// Location は投稿したときに送った位置情報。OnTime と LateSeconds は作成の応答の値で、
+	// 投稿期間の締め切りと投稿時刻だけで決まるので、あとから変わらない。
+	Location    client.Location
+	OnTime      bool
+	LateSeconds int64
 
 	caption    *timeline[string]
 	visibility *timeline[string]

@@ -69,6 +69,35 @@ func writeJSON(t *testing.T, w http.ResponseWriter, status int, body any) {
 	_, _ = w.Write(data)
 }
 
+// rewrite は偽のアプリへ送り、match に当たる要求の成功した応答だけ、本体を T として読んで
+// edit で書き換えてから返すハンドラー。
+func rewrite[T any](t *testing.T, app *fakeApp, match func(*http.Request) bool, edit func(*T)) http.HandlerFunc {
+	return func(w http.ResponseWriter, req *http.Request) {
+		if !match(req) {
+			app.ServeHTTP(w, req)
+			return
+		}
+		rec := httptest.NewRecorder()
+		app.ServeHTTP(rec, req)
+		if rec.Code >= 300 {
+			w.WriteHeader(rec.Code)
+			_, _ = w.Write(rec.Body.Bytes())
+			return
+		}
+		var body T
+		if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+			t.Error(err)
+		}
+		edit(&body)
+		writeJSON(t, w, rec.Code, body)
+	}
+}
+
+// is は method と path が一致する要求か。
+func is(method, path string) func(*http.Request) bool {
+	return func(req *http.Request) bool { return req.Method == method && req.URL.Path == path }
+}
+
 // TestImageURLWithSchemeIsInvalid は、パスと署名が正しくてもスキームの付いた画像 URL を、
 // 署名の検証で拒否し、取得できないことを応答の誤りとして失敗に数えることを確かめる。
 func TestImageURLWithSchemeIsInvalid(t *testing.T) {
