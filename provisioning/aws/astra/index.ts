@@ -194,3 +194,7 @@ const exportConcurrency = runtime.exportConcurrency ?? 2;
 if (!Number.isInteger(exportConcurrency) || exportConcurrency < 1 || exportConcurrency > 16) {
     throw new Error("Invalid export concurrency");
 }
+
+if (runtime.readTimingEnabled !== undefined && typeof runtime.readTimingEnabled !== "boolean") {
+    throw new Error("Invalid read timing flag");
+}

@@ -17,6 +17,7 @@ use crate::comment_api::{CreateCommentResponse, new_comment_response};
 use crate::db::{args, in_placeholders};
 use crate::post::select_posts_with_author;
 use crate::post_api::{CreatePostResponse, new_post_response};
+use crate::read_probe::ReadProbe;
 use crate::realmoji::select_current_real_mojis;
 use crate::realmoji_api::{ReplaceRealMojiResponse, new_real_moji_response};
 use crate::response::json;
@@ -82,6 +83,7 @@ pub type GetMemoriesByDateResponse = GetMemoriesResponse;
 pub async fn get_memories_handler(
     State(h): State<Arc<HandlerContext>>,
     Extension(session): Extension<Session>,
+    probe: Option<Extension<ReadProbe>>,
     Bind(input): Bind<GetMemoriesRequest>,
 ) -> Result<Response, Error> {
     let Some(start) = parse_year_month(&input.month) else {
@@ -90,21 +92,31 @@ pub async fn get_memories_handler(
             "invalid_memory_period",
         ));
     };
+    let mut probe = probe.map(|Extension(probe)| probe);
+    let mut db = h.db.acquire().await?;
+    ReadProbe::mark(&mut probe, "pool_wait");
     let response = list_memories(
-        &mut *h.db.acquire().await?,
+        &mut db,
         &session.user_id,
         start,
         start + Months::new(1),
         input.before_posted_at,
         &input.before_id,
+        &mut probe,
     )
     .await?;
-    json(StatusCode::OK, response)
+    drop(db);
+    let count = response.items.len();
+    let response = json(StatusCode::OK, response);
+    ReadProbe::mark(&mut probe, "json");
+    ReadProbe::finish(probe, count);
+    response
 }
 
 pub async fn get_memories_by_date_handler(
     State(h): State<Arc<HandlerContext>>,
     Extension(session): Extension<Session>,
+    probe: Option<Extension<ReadProbe>>,
     Bind(input): Bind<GetMemoriesByDateRequest>,
 ) -> Result<Response, Error> {
     let Some(start) = parse_date_only(&input.date) else {
@@ -113,16 +125,25 @@ pub async fn get_memories_by_date_handler(
             "invalid_memory_period",
         ));
     };
+    let mut probe = probe.map(|Extension(probe)| probe);
+    let mut db = h.db.acquire().await?;
+    ReadProbe::mark(&mut probe, "pool_wait");
     let response: GetMemoriesByDateResponse = list_memories(
-        &mut *h.db.acquire().await?,
+        &mut db,
         &session.user_id,
         start,
         start + Days::new(1),
         input.before_posted_at,
         &input.before_id,
+        &mut probe,
     )
     .await?;
-    json(StatusCode::OK, response)
+    drop(db);
+    let count = response.items.len();
+    let response = json(StatusCode::OK, response);
+    ReadProbe::mark(&mut probe, "json");
+    ReadProbe::finish(probe, count);
+    response
 }
 
 pub async fn list_memories(
@@ -132,6 +153,7 @@ pub async fn list_memories(
     end: NaiveDate,
     before_at: Option<DateTime<Utc>>,
     before_id: &str,
+    probe: &mut Option<ReadProbe>,
 ) -> Result<GetMemoriesResponse, Error> {
     let mut response = GetMemoriesResponse::default();
     if before_at.is_none() != before_id.is_empty() {
@@ -147,6 +169,7 @@ pub async fn list_memories(
         args![user_id, start, end, before_at, before_id],
     )
     .await?;
+    ReadProbe::mark(probe, "posts_sql");
     let mut items = Vec::with_capacity(posts.len());
     for post in &posts {
         items.push(MemoryPostResponse {
@@ -159,7 +182,8 @@ pub async fn list_memories(
     if response.has_more {
         items.truncate(50);
     }
-    load_memory_interactions(db, &mut items).await?;
+    ReadProbe::mark(probe, "posts_render");
+    load_memory_interactions(db, &mut items, probe).await?;
     response.items = items;
     Ok(response)
 }
@@ -167,6 +191,7 @@ pub async fn list_memories(
 async fn load_memory_interactions(
     db: &mut PgConnection,
     items: &mut [MemoryPostResponse],
+    probe: &mut Option<ReadProbe>,
 ) -> Result<(), Error> {
     if items.is_empty() {
         return Ok(());
@@ -194,6 +219,7 @@ async fn load_memory_interactions(
         args,
     )
     .await?;
+    ReadProbe::mark(probe, "reactions_sql");
     for reaction in &reactions {
         let item = &mut items[item_by_post_id[&reaction.real_moji.post_id]];
         if item.realmojis.len() < 50 {
@@ -208,6 +234,7 @@ async fn load_memory_interactions(
     for post_id in &post_ids {
         args.add(post_id).map_err(|err| anyhow::anyhow!(err))?;
     }
+    ReadProbe::mark(probe, "reactions_render");
     let comments = select_comments_with_author(
         &mut *db,
         &format!(
@@ -217,6 +244,7 @@ async fn load_memory_interactions(
         args,
     )
     .await?;
+    ReadProbe::mark(probe, "comments_sql");
     for comment in &comments {
         let item = &mut items[item_by_post_id[&comment.comment.post_id]];
         if item.comments.len() < 50 {
@@ -224,5 +252,6 @@ async fn load_memory_interactions(
                 .push(new_comment_response(&comment.comment, &comment.author));
         }
     }
+    ReadProbe::mark(probe, "comments_render");
     Ok(())
 }

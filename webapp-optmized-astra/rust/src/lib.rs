@@ -67,3 +67,5 @@ mod archive_peer;
 pub mod archive_store;
 
 mod notification_batches;
+
+pub mod read_probe;
