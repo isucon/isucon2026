@@ -482,3 +482,4 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261030T133033Z-team12 | Nginx response buffering disabled; owner layout export-only; recommendations-only US scope; seed=1 | PASS | 197,797 |
 | 20261030T133809Z-team12 | Initial export metadata cache with owner-contiguous image layout; response buffering restored; GC then restart; seed=1 | PASS | 194,207 |
 | 20261030T134356Z-team12 | Final repeat after restart: owner-contiguous export images; export SQL; response buffering on; seed=1 | PASS | 202,980 |
+| 20261030T134904Z-team12 | DIAGNOSTIC: one-in-eight memory read phase timings; retained 202980 configuration; seed=1 | PASS | 197,904 |
