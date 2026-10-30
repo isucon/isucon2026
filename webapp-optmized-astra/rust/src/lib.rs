@@ -66,6 +66,7 @@ pub mod file_store;
 
 mod archive_peer;
 pub mod archive_store;
+pub mod owner_archive;
 
 mod notification_batches;
 

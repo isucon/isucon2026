@@ -22,6 +22,7 @@ pub struct FileStore {
     pub writes_enabled: bool,
     archives_enabled: bool,
     archive_peer: Option<std::net::SocketAddr>,
+    owner_archive: Option<Arc<crate::owner_archive::OwnerArchive>>,
     writers: Arc<Semaphore>,
     client: Client<HttpConnector, Body>,
 }
@@ -74,6 +75,7 @@ impl FileStore {
             writes_enabled,
             archives_enabled: false,
             archive_peer: None,
+            owner_archive: None,
             writers: Arc::new(Semaphore::new(16)),
             client: Client::builder().pool_max_idle_per_host(8).build(connector),
         }
@@ -140,9 +142,24 @@ impl FileStore {
             assert_eq!(archives, "1");
             Some(peer.parse().expect("private archive peer address"))
         };
-        let store = Self::new(root.into(), region.into(), targets, writes == "1")
+        let mut store = Self::new(root.into(), region.into(), targets, writes == "1")
             .with_archives(archives == "1")
             .with_archive_peer(peer);
+        let owner_root = std::env::var("ISUREAL_OWNER_ARCHIVE_ROOT").unwrap_or_default();
+        if !owner_root.is_empty() {
+            assert_eq!(owner_root, "/var/lib/astra-owner-images");
+            assert_eq!(archives, "1");
+            assert!(
+                peer.is_none(),
+                "owner layout and remote archive reads are exclusive"
+            );
+            let digest =
+                std::env::var("ISUREAL_OWNER_ARCHIVE_SHA256").expect("owner archive index digest");
+            store.owner_archive = Some(Arc::new(
+                crate::owner_archive::OwnerArchive::load(owner_root.into(), &digest)
+                    .expect("verified owner archive"),
+            ));
+        }
         store
             .prepare()
             .await
@@ -219,8 +236,12 @@ impl FileStore {
             return Ok(HashMap::new());
         }
         let directory = self.root.join("packs");
+        let owner_archive = self.owner_archive.clone();
         tokio::task::spawn_blocking(move || {
-            let images = crate::archive_store::read_many(&directory, &references)?;
+            let images = match owner_archive {
+                Some(layout) => layout.read_many(&directory, &references)?,
+                None => crate::archive_store::read_many(&directory, &references)?,
+            };
             Ok::<_, io::Error>(packed_keys.into_iter().zip(images).collect())
         })
         .await
