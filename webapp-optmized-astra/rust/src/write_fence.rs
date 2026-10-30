@@ -72,11 +72,16 @@ pub async fn write_fence_middleware(
         None
     };
     let mut admission = if mutation && let Some(WriteFence::Native(native)) = &fence {
-        Some(native.admit(
+        let session_mutation = session_policy.as_ref().is_some_and(|p| p.local_writes)
+            && method == Method::POST
+            && matches!(path.as_str(), "/api/auth/login" | "/api/auth/logout");
+        Some(if session_mutation {
+            native.admit_session(req.body().size_hint().exact()).await
+        } else { native.admit(
             req.body().size_hint().exact(),
             req.uri().path() == "/api/admin/posting-window",
             image_upload,
-        ).await)
+        ).await })
     } else {
         None
     };
