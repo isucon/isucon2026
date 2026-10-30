@@ -916,6 +916,9 @@ type NotificationStream struct {
 	body   io.ReadCloser
 	reader *bufio.Reader
 	cancel context.CancelFunc
+	// started は最初の行を読んだか（先頭の BOM はそこで読み飛ばす）。afterCR は直前の行が CR で
+	// 終わったか（続く LF は同じ区切りの一部）。
+	started, afterCR bool
 }
 
 // OpenNotifications はサーバーが購読を確立してから返る。
@@ -967,30 +970,62 @@ func (s *NotificationStream) Close() error {
 	return err
 }
 
-// Receive は次の通知を 1 件読む。
+// Receive は次の通知を 1 件読む。SSE（HTML Standard §9.2.5、§9.2.6）のとおり、行は CRLF、LF、
+// CR のどれで区切ってもよく、ストリームの先頭の UTF-8 の BOM は読み飛ばす。イベントは空行で
+// 確定し、空行の前にストリームが終わったイベントは捨てる。
 func (s *NotificationStream) Receive() (Notification, error) {
 	var data []string
 	for {
-		line, err := s.reader.ReadString('\n')
-		if err != nil && (err != io.EOF || line == "") {
-			if err == io.EOF {
-				return Notification{}, io.EOF
-			}
+		line, err := s.readLine()
+		if err != nil {
 			return Notification{}, err
 		}
-		line = strings.TrimRight(line, "\r\n")
-		if line == "" && len(data) > 0 {
-			var notification Notification
-			err := json.Unmarshal([]byte(strings.Join(data, "\n")), &notification)
-			return notification, err
+		if line == "" {
+			if len(data) > 0 {
+				var notification Notification
+				err := json.Unmarshal([]byte(strings.Join(data, "\n")), &notification)
+				return notification, err
+			}
+			continue
 		}
-		if after, ok := strings.CutPrefix(line, "data:"); ok {
-			data = append(data, strings.TrimPrefix(after, " "))
-		}
-		if err == io.EOF {
-			return Notification{}, io.EOF
+		// コロンのない行は値が空のフィールド。data のほかのフィールドとコメント（コロンで始まる行）は使わない。
+		field, value, _ := strings.Cut(line, ":")
+		if field == "data" {
+			data = append(data, strings.TrimPrefix(value, " "))
 		}
 	}
+}
+
+// readLine は CRLF、LF、CR のどれかで終わる 1 行を、区切りを除いて返す。CR のあとの LF を
+// 待たずに返し（ストリームが次を送らなくても止まらない）、次の行の先頭の LF を読み飛ばす。
+// 終わっていない行の途中でストリームが終われば、その行は捨てて読み取りのエラー（io.EOF など）を返す。
+func (s *NotificationStream) readLine() (string, error) {
+	var line []byte
+	for {
+		b, err := s.reader.ReadByte()
+		if err != nil {
+			return "", err
+		}
+		if s.afterCR {
+			s.afterCR = false
+			if b == '\n' {
+				continue
+			}
+		}
+		if b == '\n' || b == '\r' {
+			s.afterCR = b == '\r'
+			break
+		}
+		if len(line) >= maxErrorBodyBytes {
+			return "", fmt.Errorf("通知の行が %d バイトを超えています", maxErrorBodyBytes)
+		}
+		line = append(line, b)
+	}
+	if !s.started {
+		s.started = true
+		line = bytes.TrimPrefix(line, []byte("\ufeff"))
+	}
+	return string(line), nil
 }
 
 // Image は署名付きの画像 URL を取得する。署名付き URL には Authorization
