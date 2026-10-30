@@ -7,6 +7,14 @@
     group: root
     mode: "0755"
 
+- name: Install participant envcheck command
+  ansible.builtin.file:
+    src: /usr/local/bin/isucon-contest-envcheck
+    path: /usr/local/bin/envcheck
+    state: link
+    owner: root
+    group: root
+
 - name: Create protected checker state directory
   ansible.builtin.file:
     path: /var/lib/isucon-envcheck
