@@ -5,7 +5,7 @@ use sqlx::{Executor, FromRow, PgConnection, Postgres};
 use crate::api_error::Error;
 use crate::user::{User, user_columns_as};
 
-#[derive(Debug, Clone, sqlx::FromRow, serde::Deserialize)]
+#[derive(Debug, Clone, sqlx::FromRow)]
 pub struct Comment {
     pub id: String,
     pub post_id: String,
@@ -28,7 +28,7 @@ pub async fn get_comment<'c>(
     Ok(comment)
 }
 
-#[derive(Debug, Clone, serde::Deserialize)]
+#[derive(Debug, Clone)]
 pub struct CommentWithAuthor {
     pub comment: Comment,
     pub author: User,
