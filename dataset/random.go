@@ -10,6 +10,7 @@ import (
 	"hash/fnv"
 	"math"
 	"math/rand/v2"
+	"strconv"
 	"time"
 )
 
@@ -41,21 +42,34 @@ func (g idGenerator) next() string {
 
 // derivedID は seed、種類、番号の組から決まる UUID v4 の形の ID。投稿のように単独で
 // 作り直すものに使う。
+// bench は初期データを確かめるたびに投稿を作り直すので、fmt を使わずに組み立てる。
 func derivedID(seed uint64, kind string, parts ...int) string {
-	h := sha256.New()
-	fmt.Fprintf(h, "%d:%s", seed, kind)
+	var buf [96]byte
+	message := strconv.AppendUint(buf[:0], seed, 10)
+	message = append(message, ':')
+	message = append(message, kind...)
 	for _, part := range parts {
-		fmt.Fprintf(h, ":%d", part)
+		message = append(message, ':')
+		message = strconv.AppendInt(message, int64(part), 10)
 	}
-	var b [16]byte
-	copy(b[:], h.Sum(nil))
-	return formatUUID(b)
+	sum := sha256.Sum256(message)
+	return formatUUID([16]byte(sum[:16]))
 }
 
 func formatUUID(b [16]byte) string {
 	b[6] = b[6]&0x0f | 0x40
 	b[8] = b[8]&0x3f | 0x80
-	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
+	var s [36]byte
+	hex.Encode(s[0:8], b[0:4])
+	s[8] = '-'
+	hex.Encode(s[9:13], b[4:6])
+	s[13] = '-'
+	hex.Encode(s[14:18], b[6:8])
+	s[18] = '-'
+	hex.Encode(s[19:23], b[8:10])
+	s[23] = '-'
+	hex.Encode(s[24:36], b[10:16])
+	return string(s[:])
 }
 
 // HashCredential はアプリと同じく hex(SHA-256(plain)) を返す。ユーザーのシークレット

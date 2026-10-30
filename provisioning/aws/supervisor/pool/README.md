@@ -63,6 +63,10 @@ workflow](../../../../portal/internal/cloudformation/README.md).
 
 1. 新しいベンチのイメージを作って push する（[Supervisor 構築手順](../README.md) の `make supervisor-image SUPERVISOR_PLATFORM=linux/arm64`）。
    写真のアーカイブを同梱したイメージなら、`benchImages` に同梱した場所（`/opt/isucon/photos/merged.zip`）を指定します。
+   初期データの画像のダイジェストの表は `benchImageDigests`（`/opt/isucon/photos/image-digests-large.bin`、環境変数
+   `ISUXBENCH_IMAGE_DIGESTS`）で指定します。表を同梱していないイメージに指定すると、ベンチは起動時に失敗します。
+   いまの `image` は表を同梱していないので、`pool.json` には `benchImageDigests` を書いていません。表を同梱した
+   イメージに替えるときに `image` と一緒に足します。
 2. `pool.json` のイメージや共通設定を更新する。`image` は digest で固定します。
    ARM64 への初回移行では、既存の amd64 用 digest を ARM64 用の新しい digest に置き換えてから次の手順を実行します。
    IP の変更やチーム追加はポータルのインスタンス登録・同期で反映し、固定IPの転送表は管理しません。

@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # ポータルの Supervisor 用のイメージを作って ECR へ push し、Pulumi の image に書く値（repository@digest）を表示する。
-# supervisor/Dockerfile を PHOTOS=archive でビルドするので、var/photos/merged.zip（投稿に使う写真のアーカイブ）を
-# /opt/isucon/photos/merged.zip に同梱する。アーカイブは make supervisor-photos で S3 から取る。
+# supervisor/Dockerfile を PHOTOS=archive でビルドするので、var/photos/merged.zip（投稿に使う写真のアーカイブ）と
+# var/photos/image-digests-large.bin（初期データの画像のダイジェストの表）を /opt/isucon/photos/ に同梱する。
+# どちらも make supervisor-photos で S3 から取る。
 #
 # 環境変数: SUPERVISOR_STACK（Supervisor stack、既定 portal-dev）、REPOSITORY（ECR の URL。省略時は stack の出力
 # repositoryUrl）、SUPERVISOR_PLATFORM（既定 linux/amd64。共有プールは linux/arm64）、
@@ -11,6 +12,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
 STACK_DIR="$ROOT/provisioning/aws/supervisor"
 PHOTOS="$ROOT/var/photos/merged.zip"
+DIGESTS="$ROOT/var/photos/image-digests-large.bin"
 SUPERVISOR_STACK="${SUPERVISOR_STACK:-portal-dev}"
 SUPERVISOR_PLATFORM="${SUPERVISOR_PLATFORM:-linux/amd64}"
 
@@ -21,6 +23,7 @@ die() {
 }
 
 [[ -s "$PHOTOS" ]] || die "$PHOTOS がない。make supervisor-photos で取得する"
+[[ -s "$DIGESTS" ]] || die "$DIGESTS がない。make supervisor-photos で取得する"
 
 if [[ -z "${REPOSITORY:-}" ]]; then
 	# Supervisor stack の backend と passphrase は provisioning/aws/supervisor/mise.toml と同じ値にする
@@ -42,10 +45,12 @@ docker build --platform "$SUPERVISOR_PLATFORM" --provenance=false --build-arg PH
 	-f "$ROOT/supervisor/Dockerfile" -t isucon2026-supervisor:photos --iidfile "$iid" "$ROOT" >&2
 # containerd image store では iidfile の config digest で実行できないため、登録済みの ID を使う
 id="$(docker image inspect isucon2026-supervisor:photos --format '{{.Id}}')"
-# 同梱したアーカイブが手元のものと一致することを確かめてから push する
-expected="$(sha256sum "$PHOTOS" | cut -d' ' -f1)"
-actual="$(docker run --rm --platform "$SUPERVISOR_PLATFORM" --entrypoint /bin/sh "$id" -c 'sha256sum /opt/isucon/photos/merged.zip 2>/dev/null' | cut -d' ' -f1)"
-[[ "$actual" == "$expected" ]] || die "the image does not contain $PHOTOS (sha256 ${actual:-none} != $expected)"
+# 同梱したアーカイブと表が手元のものと一致することを確かめてから push する
+for file in "$PHOTOS" "$DIGESTS"; do
+	expected="$(sha256sum "$file" | cut -d' ' -f1)"
+	actual="$(docker run --rm --platform "$SUPERVISOR_PLATFORM" --entrypoint /bin/sh "$id" -c "sha256sum /opt/isucon/photos/$(basename "$file") 2>/dev/null" | cut -d' ' -f1)"
+	[[ "$actual" == "$expected" ]] || die "the image does not contain $file (sha256 ${actual:-none} != $expected)"
+done
 tag="${TAG:-photos-$(cut -d: -f2 <<<"$id" | cut -c1-16)}"
 
 if digest="$(aws ecr describe-images --region "$REGION" --repository-name "$REPOSITORY_NAME" --image-ids "imageTag=$tag" \

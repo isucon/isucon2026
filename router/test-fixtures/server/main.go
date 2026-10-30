@@ -113,6 +113,16 @@ func newHandler(config serverConfig) http.Handler {
 		image := fixtureImage(request.PathValue("id"), size)
 		writer.Header().Set("Content-Type", "image/jpeg")
 		writer.Header().Set("X-Fixture-Saw", routerHeaders(request))
+		// With forge an app that has the image does not send it, only the
+		// digest headers the Router answers with.
+		if request.URL.Query().Get("forge") != "" {
+			sum := sha256.Sum256(image)
+			writer.Header().Set("X-Body-Sha256", fmt.Sprintf("%x", sum[:]))
+			writer.Header().Set("X-Body-Xxh3", "0123456789abcdef")
+			writer.Header().Set("X-Body-Length", strconv.Itoa(size))
+			writer.Header().Set("Content-Length", "0")
+			return
+		}
 		if request.URL.Query().Get("encoding") == "gzip" {
 			var compressed bytes.Buffer
 			gz := gzip.NewWriter(&compressed)
@@ -198,7 +208,7 @@ func fixtureImage(id string, size int) []byte {
 
 func routerHeaders(request *http.Request) string {
 	var saw []string
-	for _, name := range []string{"X-Benchmark-Request-Id", "X-Isureal-Upstream", "X-Isureal-Route", "X-Isureal-Limit"} {
+	for _, name := range []string{"X-Benchmark-Request-Id", "X-Benchmark-Digest", "X-Isureal-Upstream", "X-Isureal-Route", "X-Isureal-Limit"} {
 		if request.Header.Get(name) != "" {
 			saw = append(saw, name)
 		}
