@@ -3,7 +3,9 @@
 #
 #   run.sh run           TEAM（必須。8,9,10 のように並べると各チームへ同時に流す）、BENCH_ARGS、
 #                        IMAGE（指定するとビルドと push を省く）、HOST_STATS=0（チームのサーバーの統計を取らない）、
-#                        PHOTOS（投稿に使う写真のアーカイブの S3 キー。既定 assets/merged.zip。none なら生成画像）
+#                        PHOTOS（投稿に使う写真のアーカイブの S3 キー。既定 assets/merged.zip。none なら生成画像）、
+#                        DIGESTS（初期データの画像のダイジェストの表の S3 キー。既定 assets/image-digests-large.bin。
+#                        none なら渡さず、ベンチは画像を描き直して比べる）
 #   run.sh image         ビルドと push だけ行い、イメージ（repository@digest）を表示する
 #   run.sh show [RUN_ID] 取得済みの結果の要約を表示する（省略すると最新）
 #
@@ -318,19 +320,27 @@ cmd_run() {
 		photo_args=(-images "$(aws s3 presign "s3://$BUCKET/$photos" --expires-in 3600)")
 		photo_record=(-images "s3://$BUCKET/$photos")
 	fi
+	# 初期データの画像のダイジェストの表も署名付き URL で渡す。引数ではなく環境変数にするのは、
+	# IMAGE で指定した古いベンチ（表を読まない）でもそのまま走らせるため。
+	local digests="${DIGESTS:-assets/image-digests-large.bin}" digest_url="" digest_record=""
+	if [[ "$digests" != none ]]; then
+		digest_url="$(aws s3 presign "s3://$BUCKET/$digests" --expires-in 3600)"
+		digest_record="s3://$BUCKET/$digests"
+	fi
 	args="$(jq -n '$ARGS.positional' --args -- \
 		-target "$target" -target-port 8080 -host "$host" -scale large "${photo_args[@]}" "${extra[@]}")"
 	record_args="$(jq -n '$ARGS.positional' --args -- \
 		-target "$target" -target-port 8080 -host "$host" -scale large "${photo_record[@]}" "${extra[@]}")"
-	overrides="$(jq -n --argjson cmd "$args" --arg run "$run_id" '{containerOverrides: [
-		{name: "bench", command: $cmd},
+	overrides="$(jq -n --argjson cmd "$args" --arg run "$run_id" --arg digests "$digest_url" '{containerOverrides: [
+		{name: "bench", command: $cmd,
+		 environment: (if $digests == "" then [] else [{name: "ISUXBENCH_IMAGE_DIGESTS", value: $digests}] end)},
 		{name: "uploader", environment: [{name: "RUN_ID", value: $run}]}]}')"
 	started="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 	jq -n --arg runId "$run_id" --arg team "$TEAM" --arg stack "$STACK" --arg target "$target" --arg host "$host" \
 		--arg image "$IMAGE" --arg commit "$commit" \
-		--argjson benchArgs "$record_args" --arg started "$started" \
+		--argjson benchArgs "$record_args" --arg imageDigests "$digest_record" --arg started "$started" \
 		'{runId: $runId, team: ($team | tonumber), stack: $stack, target: $target, host: $host, image: $image,
-		  commit: $commit, benchArgs: $benchArgs, startedAt: $started, exitCode: null}' >"$dir/meta.json"
+		  commit: $commit, benchArgs: $benchArgs, imageDigests: $imageDigests, startedAt: $started, exitCode: null}' >"$dir/meta.json"
 
 	local hosts=""
 	if [[ "${HOST_STATS:-1}" != 0 ]]; then
