@@ -1,0 +1,3552 @@
+[
+  {
+    "mode": "force_custom_plan",
+    "pattern_kind": "one_user",
+    "iteration": 0,
+    "planning_ms": 6.944,
+    "execution_ms": 0.521,
+    "hit_blocks": 45,
+    "read_blocks": 4,
+    "nodes": [
+      {
+        "node": "Limit",
+        "rows": 1,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Unique",
+        "rows": 1,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Sort",
+        "rows": 1,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Append",
+        "rows": 1,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Bitmap Heap Scan",
+        "rows": 1,
+        "estimated": 1,
+        "loops": 1,
+        "relation": "astra_user_search"
+      },
+      {
+        "node": "BitmapOr",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Bitmap Index Scan",
+        "rows": 1,
+        "estimated": 1,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Bitmap Index Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Seq Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 1,
+        "relation": "astra_search_dirty"
+      },
+      {
+        "node": "Sort",
+        "rows": 1,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Nested Loop",
+        "rows": 1,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Nested Loop",
+        "rows": 1,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Nested Loop",
+        "rows": 1,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "CTE Scan",
+        "rows": 1,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Index Scan",
+        "rows": 1,
+        "estimated": 1,
+        "loops": 1,
+        "relation": "users"
+      },
+      {
+        "node": "Index Only Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 1,
+        "relation": "block_relations"
+      },
+      {
+        "node": "Index Only Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 1,
+        "relation": "block_relations"
+      }
+    ]
+  },
+  {
+    "mode": "force_custom_plan",
+    "pattern_kind": "one_user",
+    "iteration": 1,
+    "planning_ms": 0.629,
+    "execution_ms": 0.175,
+    "hit_blocks": 46,
+    "read_blocks": 0,
+    "nodes": [
+      {
+        "node": "Limit",
+        "rows": 1,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Unique",
+        "rows": 1,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Sort",
+        "rows": 1,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Append",
+        "rows": 1,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Bitmap Heap Scan",
+        "rows": 1,
+        "estimated": 1,
+        "loops": 1,
+        "relation": "astra_user_search"
+      },
+      {
+        "node": "BitmapOr",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Bitmap Index Scan",
+        "rows": 1,
+        "estimated": 1,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Bitmap Index Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Seq Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 1,
+        "relation": "astra_search_dirty"
+      },
+      {
+        "node": "Sort",
+        "rows": 1,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Nested Loop",
+        "rows": 1,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Nested Loop",
+        "rows": 1,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Nested Loop",
+        "rows": 1,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "CTE Scan",
+        "rows": 1,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Index Scan",
+        "rows": 1,
+        "estimated": 1,
+        "loops": 1,
+        "relation": "users"
+      },
+      {
+        "node": "Index Only Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 1,
+        "relation": "block_relations"
+      },
+      {
+        "node": "Index Only Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 1,
+        "relation": "block_relations"
+      }
+    ]
+  },
+  {
+    "mode": "force_custom_plan",
+    "pattern_kind": "one_user",
+    "iteration": 2,
+    "planning_ms": 0.618,
+    "execution_ms": 0.125,
+    "hit_blocks": 46,
+    "read_blocks": 0,
+    "nodes": [
+      {
+        "node": "Limit",
+        "rows": 1,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Unique",
+        "rows": 1,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Sort",
+        "rows": 1,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Append",
+        "rows": 1,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Bitmap Heap Scan",
+        "rows": 1,
+        "estimated": 1,
+        "loops": 1,
+        "relation": "astra_user_search"
+      },
+      {
+        "node": "BitmapOr",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Bitmap Index Scan",
+        "rows": 1,
+        "estimated": 1,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Bitmap Index Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Seq Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 1,
+        "relation": "astra_search_dirty"
+      },
+      {
+        "node": "Sort",
+        "rows": 1,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Nested Loop",
+        "rows": 1,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Nested Loop",
+        "rows": 1,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Nested Loop",
+        "rows": 1,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "CTE Scan",
+        "rows": 1,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Index Scan",
+        "rows": 1,
+        "estimated": 1,
+        "loops": 1,
+        "relation": "users"
+      },
+      {
+        "node": "Index Only Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 1,
+        "relation": "block_relations"
+      },
+      {
+        "node": "Index Only Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 1,
+        "relation": "block_relations"
+      }
+    ]
+  },
+  {
+    "mode": "force_custom_plan",
+    "pattern_kind": "one_user",
+    "iteration": 3,
+    "planning_ms": 0.682,
+    "execution_ms": 0.172,
+    "hit_blocks": 46,
+    "read_blocks": 0,
+    "nodes": [
+      {
+        "node": "Limit",
+        "rows": 1,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Unique",
+        "rows": 1,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Sort",
+        "rows": 1,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Append",
+        "rows": 1,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Bitmap Heap Scan",
+        "rows": 1,
+        "estimated": 1,
+        "loops": 1,
+        "relation": "astra_user_search"
+      },
+      {
+        "node": "BitmapOr",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Bitmap Index Scan",
+        "rows": 1,
+        "estimated": 1,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Bitmap Index Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Seq Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 1,
+        "relation": "astra_search_dirty"
+      },
+      {
+        "node": "Sort",
+        "rows": 1,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Nested Loop",
+        "rows": 1,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Nested Loop",
+        "rows": 1,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Nested Loop",
+        "rows": 1,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "CTE Scan",
+        "rows": 1,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Index Scan",
+        "rows": 1,
+        "estimated": 1,
+        "loops": 1,
+        "relation": "users"
+      },
+      {
+        "node": "Index Only Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 1,
+        "relation": "block_relations"
+      },
+      {
+        "node": "Index Only Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 1,
+        "relation": "block_relations"
+      }
+    ]
+  },
+  {
+    "mode": "force_custom_plan",
+    "pattern_kind": "one_user",
+    "iteration": 4,
+    "planning_ms": 0.394,
+    "execution_ms": 0.136,
+    "hit_blocks": 46,
+    "read_blocks": 0,
+    "nodes": [
+      {
+        "node": "Limit",
+        "rows": 1,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Unique",
+        "rows": 1,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Sort",
+        "rows": 1,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Append",
+        "rows": 1,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Bitmap Heap Scan",
+        "rows": 1,
+        "estimated": 1,
+        "loops": 1,
+        "relation": "astra_user_search"
+      },
+      {
+        "node": "BitmapOr",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Bitmap Index Scan",
+        "rows": 1,
+        "estimated": 1,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Bitmap Index Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Seq Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 1,
+        "relation": "astra_search_dirty"
+      },
+      {
+        "node": "Sort",
+        "rows": 1,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Nested Loop",
+        "rows": 1,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Nested Loop",
+        "rows": 1,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Nested Loop",
+        "rows": 1,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "CTE Scan",
+        "rows": 1,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Index Scan",
+        "rows": 1,
+        "estimated": 1,
+        "loops": 1,
+        "relation": "users"
+      },
+      {
+        "node": "Index Only Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 1,
+        "relation": "block_relations"
+      },
+      {
+        "node": "Index Only Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 1,
+        "relation": "block_relations"
+      }
+    ]
+  },
+  {
+    "mode": "force_custom_plan",
+    "pattern_kind": "broad",
+    "iteration": 0,
+    "planning_ms": 0.573,
+    "execution_ms": 30.744,
+    "hit_blocks": 85,
+    "read_blocks": 392,
+    "nodes": [
+      {
+        "node": "Limit",
+        "rows": 64,
+        "estimated": 64,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Aggregate",
+        "rows": 5389,
+        "estimated": 5279,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Append",
+        "rows": 5389,
+        "estimated": 5279,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Seq Scan",
+        "rows": 5389,
+        "estimated": 5278,
+        "loops": 1,
+        "relation": "astra_user_search"
+      },
+      {
+        "node": "Seq Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 1,
+        "relation": "astra_search_dirty"
+      },
+      {
+        "node": "Sort",
+        "rows": 64,
+        "estimated": 5183,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Hash Join",
+        "rows": 5296,
+        "estimated": 5183,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Hash Join",
+        "rows": 5296,
+        "estimated": 5184,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Hash Join",
+        "rows": 5296,
+        "estimated": 5185,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "CTE Scan",
+        "rows": 5389,
+        "estimated": 5279,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Hash",
+        "rows": 6394,
+        "estimated": 6393,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Seq Scan",
+        "rows": 6394,
+        "estimated": 6393,
+        "loops": 1,
+        "relation": "users"
+      },
+      {
+        "node": "Hash",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Index Only Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 1,
+        "relation": "block_relations"
+      },
+      {
+        "node": "Hash",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Index Only Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 1,
+        "relation": "block_relations"
+      }
+    ]
+  },
+  {
+    "mode": "force_custom_plan",
+    "pattern_kind": "broad",
+    "iteration": 1,
+    "planning_ms": 0.929,
+    "execution_ms": 19.115,
+    "hit_blocks": 477,
+    "read_blocks": 0,
+    "nodes": [
+      {
+        "node": "Limit",
+        "rows": 64,
+        "estimated": 64,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Aggregate",
+        "rows": 5389,
+        "estimated": 5279,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Append",
+        "rows": 5389,
+        "estimated": 5279,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Seq Scan",
+        "rows": 5389,
+        "estimated": 5278,
+        "loops": 1,
+        "relation": "astra_user_search"
+      },
+      {
+        "node": "Seq Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 1,
+        "relation": "astra_search_dirty"
+      },
+      {
+        "node": "Sort",
+        "rows": 64,
+        "estimated": 5183,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Hash Join",
+        "rows": 5296,
+        "estimated": 5183,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Hash Join",
+        "rows": 5296,
+        "estimated": 5184,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Hash Join",
+        "rows": 5296,
+        "estimated": 5185,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "CTE Scan",
+        "rows": 5389,
+        "estimated": 5279,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Hash",
+        "rows": 6394,
+        "estimated": 6393,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Seq Scan",
+        "rows": 6394,
+        "estimated": 6393,
+        "loops": 1,
+        "relation": "users"
+      },
+      {
+        "node": "Hash",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Index Only Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 1,
+        "relation": "block_relations"
+      },
+      {
+        "node": "Hash",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Index Only Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 1,
+        "relation": "block_relations"
+      }
+    ]
+  },
+  {
+    "mode": "force_custom_plan",
+    "pattern_kind": "broad",
+    "iteration": 2,
+    "planning_ms": 0.723,
+    "execution_ms": 18.744,
+    "hit_blocks": 477,
+    "read_blocks": 0,
+    "nodes": [
+      {
+        "node": "Limit",
+        "rows": 64,
+        "estimated": 64,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Aggregate",
+        "rows": 5389,
+        "estimated": 5279,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Append",
+        "rows": 5389,
+        "estimated": 5279,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Seq Scan",
+        "rows": 5389,
+        "estimated": 5278,
+        "loops": 1,
+        "relation": "astra_user_search"
+      },
+      {
+        "node": "Seq Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 1,
+        "relation": "astra_search_dirty"
+      },
+      {
+        "node": "Sort",
+        "rows": 64,
+        "estimated": 5183,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Hash Join",
+        "rows": 5296,
+        "estimated": 5183,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Hash Join",
+        "rows": 5296,
+        "estimated": 5184,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Hash Join",
+        "rows": 5296,
+        "estimated": 5185,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "CTE Scan",
+        "rows": 5389,
+        "estimated": 5279,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Hash",
+        "rows": 6394,
+        "estimated": 6393,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Seq Scan",
+        "rows": 6394,
+        "estimated": 6393,
+        "loops": 1,
+        "relation": "users"
+      },
+      {
+        "node": "Hash",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Index Only Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 1,
+        "relation": "block_relations"
+      },
+      {
+        "node": "Hash",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Index Only Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 1,
+        "relation": "block_relations"
+      }
+    ]
+  },
+  {
+    "mode": "force_custom_plan",
+    "pattern_kind": "broad",
+    "iteration": 3,
+    "planning_ms": 0.707,
+    "execution_ms": 17.994,
+    "hit_blocks": 477,
+    "read_blocks": 0,
+    "nodes": [
+      {
+        "node": "Limit",
+        "rows": 64,
+        "estimated": 64,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Aggregate",
+        "rows": 5389,
+        "estimated": 5279,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Append",
+        "rows": 5389,
+        "estimated": 5279,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Seq Scan",
+        "rows": 5389,
+        "estimated": 5278,
+        "loops": 1,
+        "relation": "astra_user_search"
+      },
+      {
+        "node": "Seq Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 1,
+        "relation": "astra_search_dirty"
+      },
+      {
+        "node": "Sort",
+        "rows": 64,
+        "estimated": 5183,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Hash Join",
+        "rows": 5296,
+        "estimated": 5183,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Hash Join",
+        "rows": 5296,
+        "estimated": 5184,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Hash Join",
+        "rows": 5296,
+        "estimated": 5185,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "CTE Scan",
+        "rows": 5389,
+        "estimated": 5279,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Hash",
+        "rows": 6394,
+        "estimated": 6393,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Seq Scan",
+        "rows": 6394,
+        "estimated": 6393,
+        "loops": 1,
+        "relation": "users"
+      },
+      {
+        "node": "Hash",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Index Only Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 1,
+        "relation": "block_relations"
+      },
+      {
+        "node": "Hash",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Index Only Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 1,
+        "relation": "block_relations"
+      }
+    ]
+  },
+  {
+    "mode": "force_custom_plan",
+    "pattern_kind": "broad",
+    "iteration": 4,
+    "planning_ms": 0.719,
+    "execution_ms": 18.65,
+    "hit_blocks": 477,
+    "read_blocks": 0,
+    "nodes": [
+      {
+        "node": "Limit",
+        "rows": 64,
+        "estimated": 64,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Aggregate",
+        "rows": 5389,
+        "estimated": 5279,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Append",
+        "rows": 5389,
+        "estimated": 5279,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Seq Scan",
+        "rows": 5389,
+        "estimated": 5278,
+        "loops": 1,
+        "relation": "astra_user_search"
+      },
+      {
+        "node": "Seq Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 1,
+        "relation": "astra_search_dirty"
+      },
+      {
+        "node": "Sort",
+        "rows": 64,
+        "estimated": 5183,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Hash Join",
+        "rows": 5296,
+        "estimated": 5183,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Hash Join",
+        "rows": 5296,
+        "estimated": 5184,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Hash Join",
+        "rows": 5296,
+        "estimated": 5185,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "CTE Scan",
+        "rows": 5389,
+        "estimated": 5279,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Hash",
+        "rows": 6394,
+        "estimated": 6393,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Seq Scan",
+        "rows": 6394,
+        "estimated": 6393,
+        "loops": 1,
+        "relation": "users"
+      },
+      {
+        "node": "Hash",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Index Only Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 1,
+        "relation": "block_relations"
+      },
+      {
+        "node": "Hash",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Index Only Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 1,
+        "relation": "block_relations"
+      }
+    ]
+  },
+  {
+    "mode": "force_custom_plan",
+    "pattern_kind": "absent",
+    "iteration": 0,
+    "planning_ms": 0.705,
+    "execution_ms": 2.007,
+    "hit_blocks": 95,
+    "read_blocks": 0,
+    "nodes": [
+      {
+        "node": "Limit",
+        "rows": 0,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Unique",
+        "rows": 0,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Sort",
+        "rows": 0,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Append",
+        "rows": 0,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Seq Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 1,
+        "relation": "astra_user_search"
+      },
+      {
+        "node": "Seq Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 1,
+        "relation": "astra_search_dirty"
+      },
+      {
+        "node": "Sort",
+        "rows": 0,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Nested Loop",
+        "rows": 0,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Nested Loop",
+        "rows": 0,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Nested Loop",
+        "rows": 0,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "CTE Scan",
+        "rows": 0,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Index Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 0,
+        "relation": "users"
+      },
+      {
+        "node": "Index Only Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 0,
+        "relation": "block_relations"
+      },
+      {
+        "node": "Index Only Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 0,
+        "relation": "block_relations"
+      }
+    ]
+  },
+  {
+    "mode": "force_custom_plan",
+    "pattern_kind": "absent",
+    "iteration": 1,
+    "planning_ms": 0.433,
+    "execution_ms": 1.696,
+    "hit_blocks": 95,
+    "read_blocks": 0,
+    "nodes": [
+      {
+        "node": "Limit",
+        "rows": 0,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Unique",
+        "rows": 0,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Sort",
+        "rows": 0,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Append",
+        "rows": 0,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Seq Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 1,
+        "relation": "astra_user_search"
+      },
+      {
+        "node": "Seq Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 1,
+        "relation": "astra_search_dirty"
+      },
+      {
+        "node": "Sort",
+        "rows": 0,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Nested Loop",
+        "rows": 0,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Nested Loop",
+        "rows": 0,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Nested Loop",
+        "rows": 0,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "CTE Scan",
+        "rows": 0,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Index Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 0,
+        "relation": "users"
+      },
+      {
+        "node": "Index Only Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 0,
+        "relation": "block_relations"
+      },
+      {
+        "node": "Index Only Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 0,
+        "relation": "block_relations"
+      }
+    ]
+  },
+  {
+    "mode": "force_custom_plan",
+    "pattern_kind": "absent",
+    "iteration": 2,
+    "planning_ms": 0.624,
+    "execution_ms": 1.907,
+    "hit_blocks": 95,
+    "read_blocks": 0,
+    "nodes": [
+      {
+        "node": "Limit",
+        "rows": 0,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Unique",
+        "rows": 0,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Sort",
+        "rows": 0,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Append",
+        "rows": 0,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Seq Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 1,
+        "relation": "astra_user_search"
+      },
+      {
+        "node": "Seq Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 1,
+        "relation": "astra_search_dirty"
+      },
+      {
+        "node": "Sort",
+        "rows": 0,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Nested Loop",
+        "rows": 0,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Nested Loop",
+        "rows": 0,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Nested Loop",
+        "rows": 0,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "CTE Scan",
+        "rows": 0,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Index Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 0,
+        "relation": "users"
+      },
+      {
+        "node": "Index Only Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 0,
+        "relation": "block_relations"
+      },
+      {
+        "node": "Index Only Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 0,
+        "relation": "block_relations"
+      }
+    ]
+  },
+  {
+    "mode": "force_custom_plan",
+    "pattern_kind": "absent",
+    "iteration": 3,
+    "planning_ms": 0.606,
+    "execution_ms": 1.887,
+    "hit_blocks": 95,
+    "read_blocks": 0,
+    "nodes": [
+      {
+        "node": "Limit",
+        "rows": 0,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Unique",
+        "rows": 0,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Sort",
+        "rows": 0,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Append",
+        "rows": 0,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Seq Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 1,
+        "relation": "astra_user_search"
+      },
+      {
+        "node": "Seq Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 1,
+        "relation": "astra_search_dirty"
+      },
+      {
+        "node": "Sort",
+        "rows": 0,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Nested Loop",
+        "rows": 0,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Nested Loop",
+        "rows": 0,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Nested Loop",
+        "rows": 0,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "CTE Scan",
+        "rows": 0,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Index Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 0,
+        "relation": "users"
+      },
+      {
+        "node": "Index Only Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 0,
+        "relation": "block_relations"
+      },
+      {
+        "node": "Index Only Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 0,
+        "relation": "block_relations"
+      }
+    ]
+  },
+  {
+    "mode": "force_custom_plan",
+    "pattern_kind": "absent",
+    "iteration": 4,
+    "planning_ms": 0.589,
+    "execution_ms": 1.903,
+    "hit_blocks": 95,
+    "read_blocks": 0,
+    "nodes": [
+      {
+        "node": "Limit",
+        "rows": 0,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Unique",
+        "rows": 0,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Sort",
+        "rows": 0,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Append",
+        "rows": 0,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Seq Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 1,
+        "relation": "astra_user_search"
+      },
+      {
+        "node": "Seq Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 1,
+        "relation": "astra_search_dirty"
+      },
+      {
+        "node": "Sort",
+        "rows": 0,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Nested Loop",
+        "rows": 0,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Nested Loop",
+        "rows": 0,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Nested Loop",
+        "rows": 0,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "CTE Scan",
+        "rows": 0,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Index Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 0,
+        "relation": "users"
+      },
+      {
+        "node": "Index Only Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 0,
+        "relation": "block_relations"
+      },
+      {
+        "node": "Index Only Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 0,
+        "relation": "block_relations"
+      }
+    ]
+  },
+  {
+    "mode": "force_generic_plan",
+    "pattern_kind": "one_user",
+    "iteration": 0,
+    "planning_ms": 0.578,
+    "execution_ms": 11.947,
+    "hit_blocks": 7014,
+    "read_blocks": 89,
+    "nodes": [
+      {
+        "node": "Limit",
+        "rows": 1,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Aggregate",
+        "rows": 1,
+        "estimated": 66,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Append",
+        "rows": 1,
+        "estimated": 66,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Bitmap Heap Scan",
+        "rows": 1,
+        "estimated": 65,
+        "loops": 1,
+        "relation": "astra_user_search"
+      },
+      {
+        "node": "BitmapOr",
+        "rows": 0,
+        "estimated": 65,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Bitmap Index Scan",
+        "rows": 1,
+        "estimated": 33,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Bitmap Index Scan",
+        "rows": 0,
+        "estimated": 33,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Seq Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 1,
+        "relation": "astra_search_dirty"
+      },
+      {
+        "node": "Nested Loop",
+        "rows": 1,
+        "estimated": 22,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Nested Loop",
+        "rows": 1,
+        "estimated": 22,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Nested Loop",
+        "rows": 1,
+        "estimated": 22,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Index Scan",
+        "rows": 6394,
+        "estimated": 2152,
+        "loops": 1,
+        "relation": "users"
+      },
+      {
+        "node": "CTE Scan",
+        "rows": 1,
+        "estimated": 66,
+        "loops": 6394,
+        "relation": null
+      },
+      {
+        "node": "Index Only Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 1,
+        "relation": "block_relations"
+      },
+      {
+        "node": "Index Only Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 1,
+        "relation": "block_relations"
+      }
+    ]
+  },
+  {
+    "mode": "force_generic_plan",
+    "pattern_kind": "one_user",
+    "iteration": 1,
+    "planning_ms": 0.016,
+    "execution_ms": 8.901,
+    "hit_blocks": 6611,
+    "read_blocks": 0,
+    "nodes": [
+      {
+        "node": "Limit",
+        "rows": 1,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Aggregate",
+        "rows": 1,
+        "estimated": 66,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Append",
+        "rows": 1,
+        "estimated": 66,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Bitmap Heap Scan",
+        "rows": 1,
+        "estimated": 65,
+        "loops": 1,
+        "relation": "astra_user_search"
+      },
+      {
+        "node": "BitmapOr",
+        "rows": 0,
+        "estimated": 65,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Bitmap Index Scan",
+        "rows": 1,
+        "estimated": 33,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Bitmap Index Scan",
+        "rows": 0,
+        "estimated": 33,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Seq Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 1,
+        "relation": "astra_search_dirty"
+      },
+      {
+        "node": "Nested Loop",
+        "rows": 1,
+        "estimated": 22,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Nested Loop",
+        "rows": 1,
+        "estimated": 22,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Nested Loop",
+        "rows": 1,
+        "estimated": 22,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Index Scan",
+        "rows": 6394,
+        "estimated": 2152,
+        "loops": 1,
+        "relation": "users"
+      },
+      {
+        "node": "CTE Scan",
+        "rows": 1,
+        "estimated": 66,
+        "loops": 6394,
+        "relation": null
+      },
+      {
+        "node": "Index Only Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 1,
+        "relation": "block_relations"
+      },
+      {
+        "node": "Index Only Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 1,
+        "relation": "block_relations"
+      }
+    ]
+  },
+  {
+    "mode": "force_generic_plan",
+    "pattern_kind": "one_user",
+    "iteration": 2,
+    "planning_ms": 0.017,
+    "execution_ms": 8.521,
+    "hit_blocks": 6611,
+    "read_blocks": 0,
+    "nodes": [
+      {
+        "node": "Limit",
+        "rows": 1,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Aggregate",
+        "rows": 1,
+        "estimated": 66,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Append",
+        "rows": 1,
+        "estimated": 66,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Bitmap Heap Scan",
+        "rows": 1,
+        "estimated": 65,
+        "loops": 1,
+        "relation": "astra_user_search"
+      },
+      {
+        "node": "BitmapOr",
+        "rows": 0,
+        "estimated": 65,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Bitmap Index Scan",
+        "rows": 1,
+        "estimated": 33,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Bitmap Index Scan",
+        "rows": 0,
+        "estimated": 33,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Seq Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 1,
+        "relation": "astra_search_dirty"
+      },
+      {
+        "node": "Nested Loop",
+        "rows": 1,
+        "estimated": 22,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Nested Loop",
+        "rows": 1,
+        "estimated": 22,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Nested Loop",
+        "rows": 1,
+        "estimated": 22,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Index Scan",
+        "rows": 6394,
+        "estimated": 2152,
+        "loops": 1,
+        "relation": "users"
+      },
+      {
+        "node": "CTE Scan",
+        "rows": 1,
+        "estimated": 66,
+        "loops": 6394,
+        "relation": null
+      },
+      {
+        "node": "Index Only Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 1,
+        "relation": "block_relations"
+      },
+      {
+        "node": "Index Only Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 1,
+        "relation": "block_relations"
+      }
+    ]
+  },
+  {
+    "mode": "force_generic_plan",
+    "pattern_kind": "one_user",
+    "iteration": 3,
+    "planning_ms": 0.016,
+    "execution_ms": 8.816,
+    "hit_blocks": 6611,
+    "read_blocks": 0,
+    "nodes": [
+      {
+        "node": "Limit",
+        "rows": 1,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Aggregate",
+        "rows": 1,
+        "estimated": 66,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Append",
+        "rows": 1,
+        "estimated": 66,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Bitmap Heap Scan",
+        "rows": 1,
+        "estimated": 65,
+        "loops": 1,
+        "relation": "astra_user_search"
+      },
+      {
+        "node": "BitmapOr",
+        "rows": 0,
+        "estimated": 65,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Bitmap Index Scan",
+        "rows": 1,
+        "estimated": 33,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Bitmap Index Scan",
+        "rows": 0,
+        "estimated": 33,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Seq Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 1,
+        "relation": "astra_search_dirty"
+      },
+      {
+        "node": "Nested Loop",
+        "rows": 1,
+        "estimated": 22,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Nested Loop",
+        "rows": 1,
+        "estimated": 22,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Nested Loop",
+        "rows": 1,
+        "estimated": 22,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Index Scan",
+        "rows": 6394,
+        "estimated": 2152,
+        "loops": 1,
+        "relation": "users"
+      },
+      {
+        "node": "CTE Scan",
+        "rows": 1,
+        "estimated": 66,
+        "loops": 6394,
+        "relation": null
+      },
+      {
+        "node": "Index Only Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 1,
+        "relation": "block_relations"
+      },
+      {
+        "node": "Index Only Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 1,
+        "relation": "block_relations"
+      }
+    ]
+  },
+  {
+    "mode": "force_generic_plan",
+    "pattern_kind": "one_user",
+    "iteration": 4,
+    "planning_ms": 0.017,
+    "execution_ms": 8.257,
+    "hit_blocks": 6611,
+    "read_blocks": 0,
+    "nodes": [
+      {
+        "node": "Limit",
+        "rows": 1,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Aggregate",
+        "rows": 1,
+        "estimated": 66,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Append",
+        "rows": 1,
+        "estimated": 66,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Bitmap Heap Scan",
+        "rows": 1,
+        "estimated": 65,
+        "loops": 1,
+        "relation": "astra_user_search"
+      },
+      {
+        "node": "BitmapOr",
+        "rows": 0,
+        "estimated": 65,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Bitmap Index Scan",
+        "rows": 1,
+        "estimated": 33,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Bitmap Index Scan",
+        "rows": 0,
+        "estimated": 33,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Seq Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 1,
+        "relation": "astra_search_dirty"
+      },
+      {
+        "node": "Nested Loop",
+        "rows": 1,
+        "estimated": 22,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Nested Loop",
+        "rows": 1,
+        "estimated": 22,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Nested Loop",
+        "rows": 1,
+        "estimated": 22,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Index Scan",
+        "rows": 6394,
+        "estimated": 2152,
+        "loops": 1,
+        "relation": "users"
+      },
+      {
+        "node": "CTE Scan",
+        "rows": 1,
+        "estimated": 66,
+        "loops": 6394,
+        "relation": null
+      },
+      {
+        "node": "Index Only Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 1,
+        "relation": "block_relations"
+      },
+      {
+        "node": "Index Only Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 1,
+        "relation": "block_relations"
+      }
+    ]
+  },
+  {
+    "mode": "force_generic_plan",
+    "pattern_kind": "broad",
+    "iteration": 0,
+    "planning_ms": 0.013,
+    "execution_ms": 101.414,
+    "hit_blocks": 480,
+    "read_blocks": 11,
+    "nodes": [
+      {
+        "node": "Limit",
+        "rows": 64,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Aggregate",
+        "rows": 5389,
+        "estimated": 66,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Append",
+        "rows": 5389,
+        "estimated": 66,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Bitmap Heap Scan",
+        "rows": 5389,
+        "estimated": 65,
+        "loops": 1,
+        "relation": "astra_user_search"
+      },
+      {
+        "node": "BitmapOr",
+        "rows": 0,
+        "estimated": 65,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Bitmap Index Scan",
+        "rows": 6523,
+        "estimated": 33,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Bitmap Index Scan",
+        "rows": 6523,
+        "estimated": 33,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Seq Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 1,
+        "relation": "astra_search_dirty"
+      },
+      {
+        "node": "Nested Loop",
+        "rows": 64,
+        "estimated": 22,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Nested Loop",
+        "rows": 64,
+        "estimated": 22,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Nested Loop",
+        "rows": 64,
+        "estimated": 22,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Index Scan",
+        "rows": 64,
+        "estimated": 2152,
+        "loops": 1,
+        "relation": "users"
+      },
+      {
+        "node": "CTE Scan",
+        "rows": 5332,
+        "estimated": 66,
+        "loops": 64,
+        "relation": null
+      },
+      {
+        "node": "Index Only Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 64,
+        "relation": "block_relations"
+      },
+      {
+        "node": "Index Only Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 64,
+        "relation": "block_relations"
+      }
+    ]
+  },
+  {
+    "mode": "force_generic_plan",
+    "pattern_kind": "broad",
+    "iteration": 1,
+    "planning_ms": 0.03,
+    "execution_ms": 96.577,
+    "hit_blocks": 491,
+    "read_blocks": 0,
+    "nodes": [
+      {
+        "node": "Limit",
+        "rows": 64,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Aggregate",
+        "rows": 5389,
+        "estimated": 66,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Append",
+        "rows": 5389,
+        "estimated": 66,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Bitmap Heap Scan",
+        "rows": 5389,
+        "estimated": 65,
+        "loops": 1,
+        "relation": "astra_user_search"
+      },
+      {
+        "node": "BitmapOr",
+        "rows": 0,
+        "estimated": 65,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Bitmap Index Scan",
+        "rows": 6523,
+        "estimated": 33,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Bitmap Index Scan",
+        "rows": 6523,
+        "estimated": 33,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Seq Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 1,
+        "relation": "astra_search_dirty"
+      },
+      {
+        "node": "Nested Loop",
+        "rows": 64,
+        "estimated": 22,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Nested Loop",
+        "rows": 64,
+        "estimated": 22,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Nested Loop",
+        "rows": 64,
+        "estimated": 22,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Index Scan",
+        "rows": 64,
+        "estimated": 2152,
+        "loops": 1,
+        "relation": "users"
+      },
+      {
+        "node": "CTE Scan",
+        "rows": 5332,
+        "estimated": 66,
+        "loops": 64,
+        "relation": null
+      },
+      {
+        "node": "Index Only Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 64,
+        "relation": "block_relations"
+      },
+      {
+        "node": "Index Only Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 64,
+        "relation": "block_relations"
+      }
+    ]
+  },
+  {
+    "mode": "force_generic_plan",
+    "pattern_kind": "broad",
+    "iteration": 2,
+    "planning_ms": 0.03,
+    "execution_ms": 102.338,
+    "hit_blocks": 491,
+    "read_blocks": 0,
+    "nodes": [
+      {
+        "node": "Limit",
+        "rows": 64,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Aggregate",
+        "rows": 5389,
+        "estimated": 66,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Append",
+        "rows": 5389,
+        "estimated": 66,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Bitmap Heap Scan",
+        "rows": 5389,
+        "estimated": 65,
+        "loops": 1,
+        "relation": "astra_user_search"
+      },
+      {
+        "node": "BitmapOr",
+        "rows": 0,
+        "estimated": 65,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Bitmap Index Scan",
+        "rows": 6523,
+        "estimated": 33,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Bitmap Index Scan",
+        "rows": 6523,
+        "estimated": 33,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Seq Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 1,
+        "relation": "astra_search_dirty"
+      },
+      {
+        "node": "Nested Loop",
+        "rows": 64,
+        "estimated": 22,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Nested Loop",
+        "rows": 64,
+        "estimated": 22,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Nested Loop",
+        "rows": 64,
+        "estimated": 22,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Index Scan",
+        "rows": 64,
+        "estimated": 2152,
+        "loops": 1,
+        "relation": "users"
+      },
+      {
+        "node": "CTE Scan",
+        "rows": 5332,
+        "estimated": 66,
+        "loops": 64,
+        "relation": null
+      },
+      {
+        "node": "Index Only Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 64,
+        "relation": "block_relations"
+      },
+      {
+        "node": "Index Only Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 64,
+        "relation": "block_relations"
+      }
+    ]
+  },
+  {
+    "mode": "force_generic_plan",
+    "pattern_kind": "broad",
+    "iteration": 3,
+    "planning_ms": 0.028,
+    "execution_ms": 101.0,
+    "hit_blocks": 491,
+    "read_blocks": 0,
+    "nodes": [
+      {
+        "node": "Limit",
+        "rows": 64,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Aggregate",
+        "rows": 5389,
+        "estimated": 66,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Append",
+        "rows": 5389,
+        "estimated": 66,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Bitmap Heap Scan",
+        "rows": 5389,
+        "estimated": 65,
+        "loops": 1,
+        "relation": "astra_user_search"
+      },
+      {
+        "node": "BitmapOr",
+        "rows": 0,
+        "estimated": 65,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Bitmap Index Scan",
+        "rows": 6523,
+        "estimated": 33,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Bitmap Index Scan",
+        "rows": 6523,
+        "estimated": 33,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Seq Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 1,
+        "relation": "astra_search_dirty"
+      },
+      {
+        "node": "Nested Loop",
+        "rows": 64,
+        "estimated": 22,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Nested Loop",
+        "rows": 64,
+        "estimated": 22,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Nested Loop",
+        "rows": 64,
+        "estimated": 22,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Index Scan",
+        "rows": 64,
+        "estimated": 2152,
+        "loops": 1,
+        "relation": "users"
+      },
+      {
+        "node": "CTE Scan",
+        "rows": 5332,
+        "estimated": 66,
+        "loops": 64,
+        "relation": null
+      },
+      {
+        "node": "Index Only Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 64,
+        "relation": "block_relations"
+      },
+      {
+        "node": "Index Only Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 64,
+        "relation": "block_relations"
+      }
+    ]
+  },
+  {
+    "mode": "force_generic_plan",
+    "pattern_kind": "broad",
+    "iteration": 4,
+    "planning_ms": 0.03,
+    "execution_ms": 100.209,
+    "hit_blocks": 491,
+    "read_blocks": 0,
+    "nodes": [
+      {
+        "node": "Limit",
+        "rows": 64,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Aggregate",
+        "rows": 5389,
+        "estimated": 66,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Append",
+        "rows": 5389,
+        "estimated": 66,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Bitmap Heap Scan",
+        "rows": 5389,
+        "estimated": 65,
+        "loops": 1,
+        "relation": "astra_user_search"
+      },
+      {
+        "node": "BitmapOr",
+        "rows": 0,
+        "estimated": 65,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Bitmap Index Scan",
+        "rows": 6523,
+        "estimated": 33,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Bitmap Index Scan",
+        "rows": 6523,
+        "estimated": 33,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Seq Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 1,
+        "relation": "astra_search_dirty"
+      },
+      {
+        "node": "Nested Loop",
+        "rows": 64,
+        "estimated": 22,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Nested Loop",
+        "rows": 64,
+        "estimated": 22,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Nested Loop",
+        "rows": 64,
+        "estimated": 22,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Index Scan",
+        "rows": 64,
+        "estimated": 2152,
+        "loops": 1,
+        "relation": "users"
+      },
+      {
+        "node": "CTE Scan",
+        "rows": 5332,
+        "estimated": 66,
+        "loops": 64,
+        "relation": null
+      },
+      {
+        "node": "Index Only Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 64,
+        "relation": "block_relations"
+      },
+      {
+        "node": "Index Only Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 64,
+        "relation": "block_relations"
+      }
+    ]
+  },
+  {
+    "mode": "force_generic_plan",
+    "pattern_kind": "absent",
+    "iteration": 0,
+    "planning_ms": 0.03,
+    "execution_ms": 7.559,
+    "hit_blocks": 6658,
+    "read_blocks": 0,
+    "nodes": [
+      {
+        "node": "Limit",
+        "rows": 0,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Aggregate",
+        "rows": 0,
+        "estimated": 66,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Append",
+        "rows": 0,
+        "estimated": 66,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Bitmap Heap Scan",
+        "rows": 0,
+        "estimated": 65,
+        "loops": 1,
+        "relation": "astra_user_search"
+      },
+      {
+        "node": "BitmapOr",
+        "rows": 0,
+        "estimated": 65,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Bitmap Index Scan",
+        "rows": 0,
+        "estimated": 33,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Bitmap Index Scan",
+        "rows": 0,
+        "estimated": 33,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Seq Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 1,
+        "relation": "astra_search_dirty"
+      },
+      {
+        "node": "Nested Loop",
+        "rows": 0,
+        "estimated": 22,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Nested Loop",
+        "rows": 0,
+        "estimated": 22,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Nested Loop",
+        "rows": 0,
+        "estimated": 22,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Index Scan",
+        "rows": 6394,
+        "estimated": 2152,
+        "loops": 1,
+        "relation": "users"
+      },
+      {
+        "node": "CTE Scan",
+        "rows": 0,
+        "estimated": 66,
+        "loops": 6394,
+        "relation": null
+      },
+      {
+        "node": "Index Only Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 0,
+        "relation": "block_relations"
+      },
+      {
+        "node": "Index Only Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 0,
+        "relation": "block_relations"
+      }
+    ]
+  },
+  {
+    "mode": "force_generic_plan",
+    "pattern_kind": "absent",
+    "iteration": 1,
+    "planning_ms": 0.027,
+    "execution_ms": 7.737,
+    "hit_blocks": 6658,
+    "read_blocks": 0,
+    "nodes": [
+      {
+        "node": "Limit",
+        "rows": 0,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Aggregate",
+        "rows": 0,
+        "estimated": 66,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Append",
+        "rows": 0,
+        "estimated": 66,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Bitmap Heap Scan",
+        "rows": 0,
+        "estimated": 65,
+        "loops": 1,
+        "relation": "astra_user_search"
+      },
+      {
+        "node": "BitmapOr",
+        "rows": 0,
+        "estimated": 65,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Bitmap Index Scan",
+        "rows": 0,
+        "estimated": 33,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Bitmap Index Scan",
+        "rows": 0,
+        "estimated": 33,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Seq Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 1,
+        "relation": "astra_search_dirty"
+      },
+      {
+        "node": "Nested Loop",
+        "rows": 0,
+        "estimated": 22,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Nested Loop",
+        "rows": 0,
+        "estimated": 22,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Nested Loop",
+        "rows": 0,
+        "estimated": 22,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Index Scan",
+        "rows": 6394,
+        "estimated": 2152,
+        "loops": 1,
+        "relation": "users"
+      },
+      {
+        "node": "CTE Scan",
+        "rows": 0,
+        "estimated": 66,
+        "loops": 6394,
+        "relation": null
+      },
+      {
+        "node": "Index Only Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 0,
+        "relation": "block_relations"
+      },
+      {
+        "node": "Index Only Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 0,
+        "relation": "block_relations"
+      }
+    ]
+  },
+  {
+    "mode": "force_generic_plan",
+    "pattern_kind": "absent",
+    "iteration": 2,
+    "planning_ms": 0.025,
+    "execution_ms": 7.487,
+    "hit_blocks": 6658,
+    "read_blocks": 0,
+    "nodes": [
+      {
+        "node": "Limit",
+        "rows": 0,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Aggregate",
+        "rows": 0,
+        "estimated": 66,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Append",
+        "rows": 0,
+        "estimated": 66,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Bitmap Heap Scan",
+        "rows": 0,
+        "estimated": 65,
+        "loops": 1,
+        "relation": "astra_user_search"
+      },
+      {
+        "node": "BitmapOr",
+        "rows": 0,
+        "estimated": 65,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Bitmap Index Scan",
+        "rows": 0,
+        "estimated": 33,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Bitmap Index Scan",
+        "rows": 0,
+        "estimated": 33,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Seq Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 1,
+        "relation": "astra_search_dirty"
+      },
+      {
+        "node": "Nested Loop",
+        "rows": 0,
+        "estimated": 22,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Nested Loop",
+        "rows": 0,
+        "estimated": 22,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Nested Loop",
+        "rows": 0,
+        "estimated": 22,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Index Scan",
+        "rows": 6394,
+        "estimated": 2152,
+        "loops": 1,
+        "relation": "users"
+      },
+      {
+        "node": "CTE Scan",
+        "rows": 0,
+        "estimated": 66,
+        "loops": 6394,
+        "relation": null
+      },
+      {
+        "node": "Index Only Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 0,
+        "relation": "block_relations"
+      },
+      {
+        "node": "Index Only Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 0,
+        "relation": "block_relations"
+      }
+    ]
+  },
+  {
+    "mode": "force_generic_plan",
+    "pattern_kind": "absent",
+    "iteration": 3,
+    "planning_ms": 0.018,
+    "execution_ms": 6.633,
+    "hit_blocks": 6658,
+    "read_blocks": 0,
+    "nodes": [
+      {
+        "node": "Limit",
+        "rows": 0,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Aggregate",
+        "rows": 0,
+        "estimated": 66,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Append",
+        "rows": 0,
+        "estimated": 66,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Bitmap Heap Scan",
+        "rows": 0,
+        "estimated": 65,
+        "loops": 1,
+        "relation": "astra_user_search"
+      },
+      {
+        "node": "BitmapOr",
+        "rows": 0,
+        "estimated": 65,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Bitmap Index Scan",
+        "rows": 0,
+        "estimated": 33,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Bitmap Index Scan",
+        "rows": 0,
+        "estimated": 33,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Seq Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 1,
+        "relation": "astra_search_dirty"
+      },
+      {
+        "node": "Nested Loop",
+        "rows": 0,
+        "estimated": 22,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Nested Loop",
+        "rows": 0,
+        "estimated": 22,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Nested Loop",
+        "rows": 0,
+        "estimated": 22,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Index Scan",
+        "rows": 6394,
+        "estimated": 2152,
+        "loops": 1,
+        "relation": "users"
+      },
+      {
+        "node": "CTE Scan",
+        "rows": 0,
+        "estimated": 66,
+        "loops": 6394,
+        "relation": null
+      },
+      {
+        "node": "Index Only Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 0,
+        "relation": "block_relations"
+      },
+      {
+        "node": "Index Only Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 0,
+        "relation": "block_relations"
+      }
+    ]
+  },
+  {
+    "mode": "force_generic_plan",
+    "pattern_kind": "absent",
+    "iteration": 4,
+    "planning_ms": 0.019,
+    "execution_ms": 6.7,
+    "hit_blocks": 6658,
+    "read_blocks": 0,
+    "nodes": [
+      {
+        "node": "Limit",
+        "rows": 0,
+        "estimated": 2,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Aggregate",
+        "rows": 0,
+        "estimated": 66,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Append",
+        "rows": 0,
+        "estimated": 66,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Bitmap Heap Scan",
+        "rows": 0,
+        "estimated": 65,
+        "loops": 1,
+        "relation": "astra_user_search"
+      },
+      {
+        "node": "BitmapOr",
+        "rows": 0,
+        "estimated": 65,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Bitmap Index Scan",
+        "rows": 0,
+        "estimated": 33,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Bitmap Index Scan",
+        "rows": 0,
+        "estimated": 33,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Seq Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 1,
+        "relation": "astra_search_dirty"
+      },
+      {
+        "node": "Nested Loop",
+        "rows": 0,
+        "estimated": 22,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Nested Loop",
+        "rows": 0,
+        "estimated": 22,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Nested Loop",
+        "rows": 0,
+        "estimated": 22,
+        "loops": 1,
+        "relation": null
+      },
+      {
+        "node": "Index Scan",
+        "rows": 6394,
+        "estimated": 2152,
+        "loops": 1,
+        "relation": "users"
+      },
+      {
+        "node": "CTE Scan",
+        "rows": 0,
+        "estimated": 66,
+        "loops": 6394,
+        "relation": null
+      },
+      {
+        "node": "Index Only Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 0,
+        "relation": "block_relations"
+      },
+      {
+        "node": "Index Only Scan",
+        "rows": 0,
+        "estimated": 1,
+        "loops": 0,
+        "relation": "block_relations"
+      }
+    ]
+  }
+]
