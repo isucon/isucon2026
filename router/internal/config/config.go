@@ -8,7 +8,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strconv"
 	"time"
 
@@ -21,26 +20,6 @@ type ServerNetwork struct {
 	Subnet   netip.Prefix
 	RouterIP netip.Addr
 	ServerIP netip.Addr
-}
-
-type Hostnames struct {
-	App  string
-	App1 string
-	App2 string
-	App3 string
-}
-
-func (h Hostnames) For(server domain.ServerID) string {
-	switch server {
-	case domain.App1:
-		return h.App1
-	case domain.App2:
-		return h.App2
-	case domain.App3:
-		return h.App3
-	default:
-		return ""
-	}
 }
 
 type Config struct {
@@ -63,7 +42,6 @@ type Config struct {
 	// benchmark's image and export downloads, and the apps directly while it is
 	// down. Empty sends them to the apps.
 	DigestAddress       string
-	Hosts               Hostnames
 	Servers             map[domain.ServerID]ServerNetwork
 	Traffic             domain.TrafficProfile
 	CommandTimeout      time.Duration
@@ -98,13 +76,7 @@ func Load(lookup LookupFunc) (Config, error) {
 		HAProxyDir:            stringValue(lookup, "ROUTER_HAPROXY_DIR", "/run/isureal-haproxy"),
 		HAProxyRuntimeAddress: stringValue(lookup, "ROUTER_HAPROXY_RUNTIME_ADDRESS", "127.0.0.1:18001"),
 		DigestAddress:         stringValue(lookup, "ROUTER_DIGEST_ADDRESS", "127.0.0.1:18010"),
-		Hosts: Hostnames{
-			App:  stringValue(lookup, "ROUTER_APP_HOST", "app.team1-abc123.isucon2026.westens.tokyo"),
-			App1: stringValue(lookup, "ROUTER_APP1_HOST", "app1.team1-abc123.isucon2026.westens.tokyo"),
-			App2: stringValue(lookup, "ROUTER_APP2_HOST", "app2.team1-abc123.isucon2026.westens.tokyo"),
-			App3: stringValue(lookup, "ROUTER_APP3_HOST", "app3.team1-abc123.isucon2026.westens.tokyo"),
-		},
-		Servers: make(map[domain.ServerID]ServerNetwork, 4),
+		Servers:               make(map[domain.ServerID]ServerNetwork, 4),
 	}
 
 	serverDefaults := map[domain.ServerID][3]string{
@@ -178,8 +150,6 @@ func Load(lookup LookupFunc) (Config, error) {
 	return cfg, nil
 }
 
-var hostnamePattern = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$`)
-
 func (c Config) Validate() error {
 	portalURL, err := url.Parse(c.PortalEndpoint)
 	if err != nil || (portalURL.Scheme != "http" && portalURL.Scheme != "https") || portalURL.Host == "" {
@@ -208,17 +178,6 @@ func (c Config) Validate() error {
 	}
 	if !filepath.IsAbs(c.HAProxyDir) {
 		return errors.New("ROUTER_HAPROXY_DIR must be an absolute path")
-	}
-	hosts := []string{c.Hosts.App, c.Hosts.App1, c.Hosts.App2, c.Hosts.App3}
-	seenHosts := make(map[string]struct{}, len(hosts))
-	for _, host := range hosts {
-		if !hostnamePattern.MatchString(host) {
-			return fmt.Errorf("invalid hostname %q", host)
-		}
-		if _, ok := seenHosts[host]; ok {
-			return fmt.Errorf("duplicate hostname %q", host)
-		}
-		seenHosts[host] = struct{}{}
 	}
 	for i, leftID := range domain.ServerIDs() {
 		left := c.Servers[leftID]

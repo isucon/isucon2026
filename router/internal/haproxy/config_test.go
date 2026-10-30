@@ -51,7 +51,11 @@ func TestRenderRouteMatrix(t *testing.T) {
 		"filter bwlim-out down_800000 limit 100000 key var(txn.route) table bandwidth",
 		"filter bwlim-in up_80000000 limit 10000000 key var(txn.route) table bandwidth",
 		"str(default),map(/run/test-haproxy/default-country.map)",
-		"http-request set-var(txn.target) str(app2) if { var(txn.host) -m str app2.team1-abc123.isucon2026.westens.tokyo }",
+		// Any Host goes by country unless it begins with a region's prefix.
+		"http-request set-var(txn.target) str(app)",
+		"http-request set-var(txn.target) str(app1) if { req.hdr(host) -i -m beg asia. }",
+		"http-request set-var(txn.target) str(app2) if { req.hdr(host) -i -m beg europe. }",
+		"http-request set-var(txn.target) str(app3) if { req.hdr(host) -i -m beg america. }",
 		"http-request set-var(txn.pair) var(txn.target),concat(/AP) if { var(txn.country) -m str AU CN JP KR }",
 		"http-request lua.isureal_delay 90 if { var(txn.pair) -m str app2/US app3/EU }",
 		"http-request lua.isureal_delay 125 if { var(txn.pair) -m str app1/EU app2/AP }",
@@ -92,7 +96,7 @@ func TestRenderRouteMatrix(t *testing.T) {
 	}
 	// The checks that answer without an upstream must come before routing, and
 	// the stream backend must be chosen before the general one of each server.
-	order := []string{"return status 503", "return status 404", "return status 400 if", "return status 400 unless", "lua.isureal_delay", "acl bench_digest", "use_backend app1_digest", "use_backend app1_stream", "use_backend app1 if"}
+	order := []string{"return status 503", "set-var(txn.target) str(app3)", "return status 400 if", "return status 400 unless", "lua.isureal_delay", "acl bench_digest", "use_backend app1_digest", "use_backend app1_stream", "use_backend app1 if"}
 	last := -1
 	for _, marker := range order {
 		index := strings.Index(text, marker)

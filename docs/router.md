@@ -57,7 +57,7 @@ Compose の interface 名には依存しない。Controller は `172.31.1.2` な
 |---|---|---|
 | Portal | desired snapshot 配信、applied/failure 受理 | control network のみ |
 | Router Controller | 検証、latest-wins reconcile、nft/tc、HAProxy の既定の国、診断 | `NET_ADMIN`。Docker socket と host network は持たない |
-| HAProxy | Host/国別 routing、HTTP delay/rate | 非 root、追加 capability なし（AWS では 443 のための `CAP_NET_BIND_SERVICE` だけ）。Router namespace を共有 |
+| HAProxy | 国と Host の接頭辞による routing、HTTP delay/rate | 非 root、追加 capability なし（AWS では 443 のための `CAP_NET_BIND_SERVICE` だけ）。Router namespace を共有 |
 | app1〜3 | アプリを表す E2E fixture | 各専用 segment のみ。E2E では static route 設定用 `NET_ADMIN` のみ |
 | db1 | DB ネットワーク検証用 fixture（E2E のみ HTTP を使用。本配備は PostgreSQL 16） | 専用 segment のみ。公開 HTTP cluster/Host は持たない |
 | E2E runner | Connect/HTTP の外部観測と自動判定 | control/edge のみ。server segment と Docker socket へ接続しない |
@@ -67,24 +67,25 @@ Compose の interface 名には依存しない。Controller は `172.31.1.2` な
 
 ## HTTP data plane
 
-HAProxy 2.8 の設定は、Router の環境変数（Host 名、サーバーの IP と上流のポート、traffic profile、待ち受けと TLS
+HAProxy 2.8 の設定は、Router の環境変数（サーバーの IP と上流のポート、traffic profile、待ち受けと TLS
 証明書）だけから `isureal-router haproxy-config` が `ROUTER_HAPROXY_DIR` に作る。HAProxy のサービスは起動のたびに
 これを実行してから HAProxy を起動するので、設定は Controller と同じ環境から決まる。Portal の snapshot で変わるのは
 `defaultCountry` だけなので、Controller は HAProxy の runtime API で既定の国の map を書き換え、HAProxy を再読み込み
 しない。書き換えは次の要求から全接続に効く。
 
-- app Host はクライアントの国に対応するリージョンへ送る。JP/KR/CN/AU は app1 (AP)、GB/DE/FR は app2 (EU)、US/CA/MX は app3 (US) を使う。
-- app1〜3 Host は各固定 server へ送る。db1 は HTTP routing の対象にせず、db1 Host は 404 とする。
-- Host は port と大文字小文字を無視して照合する。
+- 要求はクライアントの国に対応するリージョンへ送る。JP/KR/CN/AU は app1 (AP)、GB/DE/FR は app2 (EU)、US/CA/MX は app3 (US) を使う。
+  Host は見ないので、IP アドレスや任意の名前でも同じように届く。
+- Host が `asia.`、`europe.`、`america.` で始まる要求だけは、それぞれ app1、app2、app3 の固定 server へ送る。接頭辞は大文字小文字を区別しない。
+- db1 は HTTP routing の対象にしない。
 - `X-Country-Code` は US/CA/MX、JP/KR/CN/AU、GB/DE/FR の10値だけを exact match する（カンマで分割しない）。
 - header がない場合だけ Portal の `defaultCountry` を1値挿入する。最初の snapshot を反映するまでは既定の国の map が
   空なので、HAProxy はすべての要求に `503` を返す。
-- 空値、未知値、小文字、複数値は `400`、未知 Host は `404` を HAProxy が直接返す。
+- 空値、未知値、小文字、複数値は `400` を HAProxy が直接返す。
 - `X-Client-IP` は検証せずにそのまま転送し、header がない場合だけ接続元アドレスを挿入する。bench が宣言する値なので
   偽装対策はせず、HAProxy の CPU を使う検証も入れない。
 - client country と target server の region が同じ route は same profile、異なる route はその region pair の profile を使う。
 - delay は Lua の action（`core.msleep`。イベントループを止めない）で1要求に1回足す。ミリ秒単位に切り上げる。
-- rate は `bwlim-in`（要求）と `bwlim-out`（応答）の filter で、Host と国の組ごとの bucket を stick-table で共有する。
+- rate は `bwlim-in`（要求）と `bwlim-out`（応答）の filter で、宛先（国で決まるか app1〜3 か）と国の組ごとの bucket を stick-table で共有する。
   header のない要求は、国を明示した要求とは別の bucket を使う。
 - タイムアウトは接続 2 秒、要求 header の受信 30 秒、上流の無応答 60 秒、要求中のクライアントの無通信 5 分、
   次の要求を待つ keep-alive 1 時間。上流への再試行はしない（接続できなければすぐ 503）。
@@ -234,7 +235,7 @@ HTTP の帯域は HAProxy の route に任せて default class の上限を外�
 - `Content-Encoding` の付いた応答（`identity` を除く）もそのまま返す。ベンチの HTTP クライアントは
   `Accept-Encoding: gzip` を付けて、gzip の本体を展開してから比べる。圧縮したバイト列のダイジェストでは画像と
   合わない（Perl の初期実装は Mojolicious の既定で JPEG も gzip していて、事前テストで落ちた）。
-- アプリのアドレス（`X-Isureal-Upstream`）、帯域制限の route（`X-Isureal-Route`、bwlim と同じ Host と国の組）、
+- アプリのアドレス（`X-Isureal-Upstream`）、帯域制限の route（`X-Isureal-Route`、bwlim と同じ宛先と国の組）、
   上限（`X-Isureal-Limit`、bytes/s）は HAProxy が付け、isureal-digest がアプリへ送る前に消す。
 - 帯域制限は isureal-digest がアプリからの読み込みで行う。route ごとに 1 秒分まで溜まる共有の bucket を持ち、
   HAProxy の bwlim の表（`show table bandwidth`）を 100 ms ごとに読んで、HAProxy 自身がその route で送っている分を
@@ -335,7 +336,7 @@ report の送信成功で消さず、次の apply 開始または active commit 
 `router/tests/e2e/run.sh` は固定 project `isureal-router-e2e` の専用資源だけを操作する。次を実コンテナで検証する。
 
 1. Portal desired/applied と Router readiness の初期収束。
-2. 4 Host、10か国、default、invalid/duplicate、unknown Host と upstream header（`X-Client-IP` の転送と挿入を含む）。
+2. 接頭辞の付いた3 Host と国で振り分ける Host（IP アドレスと未知の名前を含む）、10か国、default、invalid/duplicate と upstream header（`X-Client-IP` の転送と挿入を含む）。
 3. HTTP same/cross delay と 1 Mbps cross rate の実測。
 4. defaultCountry の無停止動的変更と変更後100要求、明示された国がデフォルト国に優先すること、server region 変更の拒否。
 5. 12方向すべての peer route と cross-region peer transfer の rate。
