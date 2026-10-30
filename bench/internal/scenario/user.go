@@ -557,10 +557,13 @@ func (r *Runner) afterPost(ctx context.Context, u *user, post client.Post, visib
 		updated, err := u.API.UpdatePostVisibility(client.MayFailWith(ctx, http.StatusForbidden), u.Token, post.ID, next)
 		settle(w, err)
 		switch {
+		case r.bannedErr(u, err):
+			// BAN されたユーザーは止める。失敗には数えない。
 		case isStatus(err, http.StatusForbidden):
-			// 投稿してから変えるまでに次の投稿期間が開けば、編集できないのが正しい。
-			if r.model.WindowOpen(post.ID, r.model.ReadBetween(sent, time.Now())) == model.True {
-				r.requestError(ctx, u, "%s: 投稿の公開範囲を変えられません: %v", u.Username, err)
+			// 投稿してから変えるまでに次の投稿期間が開けば、編集できないのが正しい。403 は計測上の
+			// 失敗から外しているので、確実に開いていたのに拒否されたときは検証の失敗として数える。
+			if isRejection(err) && r.model.WindowOpen(post.ID, r.model.ReadBetween(sent, time.Now())) == model.True {
+				r.invalid(ctx, u, "%s: 開いている投稿期間の投稿の公開範囲を変えられません: %v", u.Username, err)
 			}
 		case err != nil:
 			r.requestError(ctx, u, "%s: 投稿の公開範囲を変えられません: %v", u.Username, err)
