@@ -319,7 +319,8 @@ pub async fn new_server(config: Config) -> Router {
         Some(history)
     } else { None };
     let initial_post_images = if std::env::var("ISUREAL_INITIAL_POST_IMAGES").as_deref() == Ok("1") && WriteIngress::from_env().is_none() {
-        let cache = Arc::new(crate::initial_post_images::InitialPostImages::load(&general_reads.db, &handler_context.config.region).await.expect("load initial post images"));
+        let connections = std::env::var("ISUREAL_INITIAL_IMAGE_POOL_CONNECTIONS").unwrap_or_else(|_| "0".into()).parse().expect("initial image pool capacity");
+        let cache = Arc::new(crate::initial_post_images::InitialPostImages::load_with_pool(&general_reads.db, &handler_context.config.region, connections).await.expect("load initial post images"));
         cache.observe();
         Some(cache)
     } else { None };

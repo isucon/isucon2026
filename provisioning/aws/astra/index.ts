@@ -262,3 +262,9 @@ if (!Number.isInteger(recommendationPoolConnections) || recommendationPoolConnec
 if (typeof runtime.initialPostImagesEnabled !== "boolean" || (runtime.initialPostImagesEnabled && (!runtime.imageStore?.enabled || !runtime.initialHistoryEnabled))) {
     throw new Error("Initial post images require immutable image storage and initial history migrations");
 }
+
+const initialImagePoolConnections = runtime.initialImagePoolConnections ?? 0;
+if (!Number.isInteger(initialImagePoolConnections) || initialImagePoolConnections < 0 || initialImagePoolConnections > 16
+    || (initialImagePoolConnections && !runtime.initialPostImagesEnabled)) {
+    throw new Error("Invalid initial image pool capacity");
+}
