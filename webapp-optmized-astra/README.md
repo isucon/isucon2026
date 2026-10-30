@@ -450,3 +450,4 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261030T054432Z-team12 | Memory phase diagnostic, baseline reads and export eight candidate=17bad8c2; seed=1 | PASS | 151,558 |
 | 20261030T055415Z-team12 | Graph SQL admission four with memory timing candidate=3ad08eb3; seed=1 | PASS | 164,536 |
 | 20261030T060147Z-team12 | Graph SQL admission eight with memory timing; seed=1 | PASS | 158,296 |
+| 20261030T061210Z-team12 | Reuse memory authentication connection; graph admission removed; timing enabled; seed=1 | PASS | 175,865 |

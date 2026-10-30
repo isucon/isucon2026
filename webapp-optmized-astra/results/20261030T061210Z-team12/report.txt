@@ -1,0 +1,154 @@
+load window: 06:13:14 +66s
+
+host    cpus  cpu avg    p95    max  usr/sys/sirq/steal/iow %        mem MiB  rx Mbps avg/max  tx Mbps avg/max    tcp
+bench      4    27.8%    58%    71%    23/  3/   2/ 0.0/  0      3623/9790      17.0/42.0       314.8/2088.6     4573
+router     2    24.5%    50%    53%     6/  5/  13/ 0.0/  0      1379/3812    1031.0/2746.1     390.0/1196.3     9641
+app1       2    44.7%    92%    97%    24/ 15/   6/ 0.0/  6      2041/3790     159.2/654.4      281.1/659.0      6765
+app2       2    38.7%   100%   100%    27/  9/   2/ 0.0/ 12      2312/3812     111.5/553.5      228.0/907.6      3046
+app3       2    29.6%    80%   100%    21/  7/   2/ 0.0/ 16      2220/3812      89.5/398.0      172.9/980.7      2261
+db1        2    63.9%    98%   100%    49/ 10/   5/ 0.0/  8      1536/3790      10.4/19.6        41.3/91.0         64
+
+processes in the load window (cores):
+  bench   isureal-bench 1.06, sh 0.02
+  router  haproxy 0.21, isureal-digest 0.07, sh 0.02, ksoftirqd/0 0.00, ksoftirqd/1 0.00
+  app1    isureal 0.65, nginx 0.14, sh 0.02, kcompactd0 0.01, kswapd0 0.01
+  app2    postgres 0.43, isureal 0.18, nginx 0.08, sh 0.02, kcompactd0 0.00
+  app3    postgres 0.33, isureal 0.14, nginx 0.06, sh 0.02, kswapd0 0.00
+  db1     postgres 1.21, sh 0.02, kswapd0 0.00, kworker 0.00, kcompactd0 0.00
+
+cpu % every 5s from the load start:
+     t   bench  router    app1    app2    app3     db1
+    0s       2       1       1       2       2       2
+    5s       4       4       7       5       3      32
+   10s       5       4       6       7       7      13
+   15s       9       9      20      11       7      69
+   20s      15      10      19      18      14      42
+   25s      21      19      43      29      10      99
+   30s      33      24      51      33      36      72
+   35s      35      33      66      61      23      94
+   40s      55      39      73      42      62      88
+   45s      49      42      75      96      40      94
+   50s      40      37      69      87      62      96
+   55s      45      45      65      48      57      86
+   60s      45      50      91      68      51      70
+
+disk in the load window (avg/max):
+  host    device       r IOPS        w IOPS       r MB/s      w MB/s      util %   await ms   queue   dirty MiB
+  bench   nvme0n1      0.0/0.0       1.3/28.5     0.0/0.0     0.0/0.2       0/0       0.94  0.0/0.0        0
+  bench   nvme1n1      0.0/0.0       0.9/13.8     0.0/0.0     0.0/0.1       0/1       0.80  0.0/0.0        0
+  router  nvme0n1      0.0/0.0       0.8/22.7     0.0/0.0     0.1/2.8       0/0       1.73  0.0/0.1        3
+                    limit: gp3 3000 IOPS 125 MiB/s; c6in.large baseline 6250 IOPS 195 MB/s, burst 100000 IOPS 3125 MB/s
+  app1    nvme0n1    237.8/641.5   270.0/797.1   19.4/64.1   15.0/63.2     26/51      1.09  0.6/1.3       17
+                    limit: gp3 3000 IOPS 125 MiB/s; c5.large baseline 4000 IOPS 81 MB/s, burst 20000 IOPS 594 MB/s
+  app2    nvme0n1    209.5/806.3   657.3/1446.1   1.7/6.5    17.8/69.5     39/67      0.97  0.8/2.0       43
+                    limit: gp3 3000 IOPS 125 MiB/s; c7i.large baseline 3600 IOPS 81 MB/s, burst 40000 IOPS 1250 MB/s
+  app3    nvme0n1    300.7/889.2   678.0/1951.3   2.6/7.4    15.7/62.8     41/67      0.91  0.9/2.2       41
+                    limit: gp3 3000 IOPS 125 MiB/s; c7i.large baseline 3600 IOPS 81 MB/s, burst 40000 IOPS 1250 MB/s
+  db1     nvme0n1    912.8/2232.9  519.8/2807.7   9.0/22.3    6.7/59.7     43/62      0.72  1.0/3.7      103
+                    limit: gp3 6000 IOPS 200 MiB/s; c5.large baseline 4000 IOPS 81 MB/s, burst 20000 IOPS 594 MB/s
+
+disk util % / await ms every 5s from the load start:
+     t      app1:nvme0n1      app2:nvme0n1      app3:nvme0n1       db1:nvme0n1
+    0s         0%/  0.0ms         2%/  1.0ms         2%/  1.0ms         0%/  1.0ms
+    5s         5%/  1.0ms        12%/  1.0ms        10%/  1.0ms        19%/  0.7ms
+   10s         6%/  0.9ms        11%/  1.0ms        12%/  1.0ms        27%/  0.7ms
+   15s        15%/  1.0ms        27%/  1.1ms        28%/  1.0ms        41%/  0.7ms
+   20s        17%/  1.0ms        28%/  0.9ms        31%/  0.9ms        46%/  0.7ms
+   25s        28%/  1.0ms        43%/  0.9ms        41%/  0.9ms        51%/  0.8ms
+   30s        36%/  1.0ms        48%/  0.9ms        50%/  0.9ms        55%/  0.7ms
+   35s        39%/  1.1ms        52%/  1.0ms        56%/  0.8ms        54%/  0.7ms
+   40s        38%/  1.1ms        51%/  0.9ms        55%/  0.9ms        54%/  0.7ms
+   45s        44%/  1.1ms        56%/  1.0ms        60%/  0.9ms        55%/  0.7ms
+   50s        37%/  1.1ms        52%/  1.0ms        56%/  0.9ms        52%/  0.8ms
+   55s        29%/  1.1ms        58%/  0.9ms        60%/  1.0ms        55%/  0.8ms
+   60s        47%/  1.2ms        62%/  1.0ms        61%/  0.9ms        57%/  0.7ms
+
+pressure stall in the load window (% of time, avg/max):
+  host      cpu.some     io.some      io.full    memory.some  memory.full
+  bench      1.3/4        0.0/0        0.0/0        0.0/0        0.0/0
+  router     5.6/19       0.0/0        0.0/0        0.0/0        0.0/0
+  app1      24.0/86      18.7/43       6.7/15       0.6/5        0.5/4
+  app2      26.8/96      25.0/58      12.3/32       0.3/4        0.2/1
+  app3      18.2/89      26.0/52      16.0/33       0.3/3        0.2/2
+  db1       50.6/97      32.3/56       8.1/25       0.3/3        0.1/0
+
+network by interface in the load window (Mbps, avg/max):
+  bench   eth0       rx     0.0/0.0      tx     0.0/0.0
+  bench   eth1       rx    17.0/42.0     tx   314.8/2088.6
+  router  ens5       rx   304.6/2191.7   tx    16.8/38.3
+  router  data0      rx   726.3/2340.9   tx   373.2/1157.9
+  app1    enp39s0    rx   159.2/654.4    tx   281.1/659.0
+  app2    enp39s0    rx   111.5/553.5    tx   228.0/907.6
+  app3    enp39s0    rx    89.5/398.0    tx   172.9/980.7
+  db1     ens5       rx    10.4/19.6     tx    41.3/91.0
+
+router qdisc (whole run):
+  data0    sent    3579.0 MB  dropped    83360  overlimits   222096
+  ens5     sent     141.2 MB  dropped        0  overlimits        0
+  lo       sent       0.0 MB  dropped        0  overlimits        0
+
+router haproxy counters (whole run, non-zero):
+  app1.app1.cli_abrt: +1006
+  app1.BACKEND.cli_abrt: +1006
+  app1_stream.app1.cli_abrt: +429
+  app1_stream.BACKEND.cli_abrt: +429
+  app2.app2.cli_abrt: +271
+  app2.BACKEND.cli_abrt: +271
+  app3.app3.cli_abrt: +169
+  app3.BACKEND.cli_abrt: +169
+  app1_digest.digest.cli_abrt: +122
+  app1_digest.BACKEND.cli_abrt: +122
+  app2_stream.app2.cli_abrt: +88
+  app2_stream.BACKEND.cli_abrt: +88
+  edge.FRONTEND.hrsp_5xx: +56
+  app3_stream.app3.cli_abrt: +53
+  app3_stream.BACKEND.cli_abrt: +53
+
+! app2: CPU is saturated (avg 39%, p95 100%)
+! db1: CPU is saturated (avg 64%, p95 98%)
+! app2: all tasks stalled on I/O 12% of the time (PSI io full)
+! app3: all tasks stalled on I/O 16% of the time (PSI io full)
+! router: 83360 packets dropped by qdisc on data0
+timeline: /home/nomeaning/.codex/worktrees/7a9b/isucon2026/var/aws-bench/20261030T061210Z-team12/timeline.csv
+
+score by day and region (points; day 0 = before the region's first day)
+  day                  asia   europe  america    total
+  0                       0       24      115      139
+  1                    1266      388      372     2026
+  2                    3834     1427     1001     6262
+  3                    9913     4133     3167    17213
+  4                   16951    10462     8316    35729
+  5                   22756    25635    14414    62805
+  6                   19028    17878    14785    51691
+  all                 73748    59947    42170   175865
+score by element and region (points)
+  grand_prix           9060    10120     7580    26760
+  gate_pass           10480     7600     5250    23330
+  friend_request       9332     5886     4656    19874
+  feed                 5519     8561     5094    19174
+  image                5368     5588     3800    14756
+  history_month        6459     2703     2355    11517
+  export               5400     2440     1840     9680
+  search               4580     2838     2238     9656
+  post_detail          2473     2520     1753     6746
+  realmoji             2240     2760     1665     6665
+  friend_accept        3692     1194      954     5840
+  comment               954     1857      774     3585
+  profile_image        1662      975      744     3381
+  reaction_list         858     1057      687     2602
+  notification         1159      741      561     2461
+  history_date         1372      544      458     2374
+  memory                743      743      541     2027
+  profile_view          528      611      406     1545
+  follow                654      364      244     1262
+  profile_update        461      245      191      897
+  spot_check            476      188      158      822
+  delete_reaction       131      206      100      437
+  relationships          56       76       44      176
+  friend_decline         45       66       34      145
+  caption                17       31       18       66
+  block                  13       20        8       41
+  unfollow                6        3        8       17
+  unfriend                9        4        4       17
+  delete_account          0        5        5       10
+  unblock                 1        1        0        2
