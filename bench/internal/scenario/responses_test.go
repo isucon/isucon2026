@@ -109,6 +109,62 @@ func TestHistoryLoginValidation(t *testing.T) {
 	}
 }
 
+// TestPretestChecksDisplayName は、事前検証が登録したときの表示名をプロフィールと比べることを
+// 確かめる（フィードより先は 500 で止める）。
+func TestPretestChecksDisplayName(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		display func(username string) string
+		ok      bool
+	}{
+		{"same", func(username string) string { return username }, true},
+		{"empty", func(string) string { return "" }, false},
+		{"another", func(username string) string { return username + "-x" }, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r, _ := newTestRunner(t, 1, metrics.DefaultSLO)
+			var registered atomic.Value
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+				var input map[string]string
+				_ = json.NewDecoder(req.Body).Decode(&input)
+				switch req.URL.Path {
+				case "/api/admin/auth/login":
+					fmt.Fprint(w, `{"token":"admin"}`)
+				case "/api/auth/register":
+					if registered.Load() != nil {
+						w.WriteHeader(http.StatusConflict)
+						fmt.Fprint(w, `{"error":"username_taken"}`)
+						return
+					}
+					registered.Store(input)
+					w.WriteHeader(http.StatusCreated)
+					_ = json.NewEncoder(w).Encode(map[string]any{"secretKey": "secret", "user": map[string]string{"id": "u1", "username": input["username"]}})
+				case "/api/auth/login":
+					if input["secretKey"] != "secret" {
+						w.WriteHeader(http.StatusUnauthorized)
+						fmt.Fprint(w, `{"error":"invalid_credentials"}`)
+						return
+					}
+					_ = json.NewEncoder(w).Encode(map[string]any{"token": "token", "user": map[string]string{"id": "u1", "username": input["username"]}})
+				case "/api/me":
+					sent := registered.Load().(map[string]string)
+					_ = json.NewEncoder(w).Encode(map[string]any{"id": "u1", "username": sent["username"], "displayName": tc.display(sent["displayName"]), "region": sent["region"]})
+				default:
+					w.WriteHeader(http.StatusInternalServerError)
+					fmt.Fprint(w, `{"error":"internal_server_error"}`)
+				}
+			}))
+			defer server.Close()
+			r.api = client.New(server.URL)
+			r.admin = r.api.WithCountry("JP")
+			reason := r.pretest(t.Context())
+			if failed := strings.Contains(reason, "プロフィールの内容が登録した内容と違います"); failed == tc.ok || reason == "" {
+				t.Fatalf("reason=%q", reason)
+			}
+		})
+	}
+}
+
 // TestNewcomerRegistrationValidation は、走行中に来たユーザーの登録が 201 で ID かシークレット
 // キーのない応答や、要求と違うユーザー名を返したとき、検証の失敗として数えることを確かめる。
 // 500 は Observer が 1 回だけ数える。

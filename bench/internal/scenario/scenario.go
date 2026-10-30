@@ -545,7 +545,8 @@ func (r *Runner) pretest(ctx context.Context) string {
 	a := agent.New(r.api, geo.Asia, 0)
 	a.API = a.API.WithClientIP(r.ips.Next())
 	username, _ := r.newName()
-	if err := a.Register(ctx, username, username); err != nil {
+	displayName := username
+	if err := a.Register(ctx, username, displayName); err != nil {
 		return fmt.Sprintf("ユーザーの登録またはログインに失敗しました: %v", err)
 	}
 	if _, err := a.API.Register(ctx, a.Username, "duplicate", a.Region); !isStatus(err, http.StatusConflict) {
@@ -558,7 +559,7 @@ func (r *Runner) pretest(ctx context.Context) string {
 	if err != nil {
 		return fmt.Sprintf("プロフィールを取得できません: %v", err)
 	}
-	if profile.ID != a.ID || profile.Username != a.Username || profile.Region != a.Region {
+	if profile.ID != a.ID || profile.Username != a.Username || profile.DisplayName != displayName || profile.Region != a.Region {
 		return fmt.Sprintf("プロフィールの内容が登録した内容と違います: %+v", profile)
 	}
 	feed, err := a.API.Feed(ctx, a.Token, "public", nil)
