@@ -445,11 +445,14 @@ func (r *Runner) post(ctx context.Context, u *user, windowID string) (client.Pos
 		}
 		return client.Post{}, "", false
 	}
-	r.model.Created(creation, model.Post{
+	if !r.model.Created(creation, model.Post{
 		ID: post.ID, AuthorID: u.ID, WindowID: post.PostingWindowID, ImageID: imageurl.ImageID(post.ImageURL),
 		Caption: post.Caption, PostedAt: post.PostedAt, Location: location, OnTime: post.OnTime, LateSeconds: post.LateSeconds,
 		ImageBytes: func() []byte { data, _ := r.photos.Post(region, key); return data },
-	}, visibility)
+	}, visibility) {
+		r.invalid(ctx, u, "%s: 投稿の ID %s が受け付けられたほかの投稿と同じです", u.Username, post.ID)
+		return client.Post{}, "", false
+	}
 	return post, visibility, true
 }
 
