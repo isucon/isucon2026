@@ -18,6 +18,9 @@ print('ISUREAL_AUTH_TIMING='+str(int(auth_timing)))
 post_timing=runtime.get('postTimingEnabled',False)
 assert type(post_timing) is bool
 print('ISUREAL_POST_TIMING='+str(int(post_timing)))
+read_timing=runtime.get('readTimingEnabled',False)
+assert type(read_timing) is bool
+print('ISUREAL_READ_TIMING='+str(int(read_timing)))
 entries=runtime['issuedImageUrlCacheEntries']
 assert type(entries) is int and 16 <= entries <= 262144 and entries % 16 == 0
 print('ISUREAL_ISSUED_URL_CACHE_ENTRIES='+str(entries))

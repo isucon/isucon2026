@@ -12,6 +12,7 @@ use uuid::Uuid;
 
 use crate::api_error::{Error, new_api_error};
 use crate::logger;
+use crate::read_probe::ReadProbe;
 use crate::server::HandlerContext;
 
 #[derive(Debug, Clone, sqlx::FromRow)]
@@ -66,7 +67,12 @@ pub async fn session_middleware(
     mut req: Request,
     next: Next,
 ) -> Result<Response, Error> {
+    let mut probe = ReadProbe::sample(req.uri().path());
     let session = get_session_from_header(req.headers(), &handler_context.db).await?;
+    ReadProbe::mark(&mut probe, "auth");
+    if let Some(probe) = probe {
+        req.extensions_mut().insert(probe);
+    }
     if session.is_none() && auth_required {
         return Err(new_api_error(StatusCode::UNAUTHORIZED, "invalid_session"));
     }
