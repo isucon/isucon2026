@@ -1,0 +1,34 @@
+   Compiling isureal v0.1.0 (<repo>/webapp-optmized-astra/rust)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 7.64s
+     Running tests/feed_query_test.rs (webapp-optmized-astra/rust/target/debug/deps/feed_query_test-b4c66ef12b0c0e79)
+
+running 1 test
+test feed_sql_matches_original_graph_and_filters_before_pagination ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.51s
+
+     Running tests/image_cache_test.rs (webapp-optmized-astra/rust/target/debug/deps/image_cache_test-01870273c5ca65d0)
+
+running 1 test
+test cached_image_checks_current_content_visibility_and_credentials ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.22s
+
+     Running tests/image_signature_test.rs (webapp-optmized-astra/rust/target/debug/deps/image_signature_test-5e18fce73c46eeda)
+
+running 4 tests
+test image_signature_vector ... ok
+test signed_image_url_lifetime ... ok
+test image_rejects_malformed_and_expired_url ... ok
+test cached_signature_preserves_reference_and_isolates_inputs ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.96s
+
+     Running tests/login_test.rs (webapp-optmized-astra/rust/target/debug/deps/login_test-6ad5698d535d05fa)
+
+running 1 test
+{"time":"2026-10-30T04:24:57.711Z","level":"ERROR","msg":"request failed","error":"failed to insert session: error returned from database: forced session failure: forced session failure"}
+test login_replacement_stays_atomic_and_serializes_with_account_changes ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.25s
+

@@ -437,3 +437,4 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261030T035633Z-team12 | repeat month-scoped single-statement history and export metadata; candidate=79fbaf53; seed=1 | PASS | 138,625 |
 | 20261030T041352Z-team12 | fresh single-query memory pages; bounded live interactions; caches and ledger retired; candidate=d9eac37e; seed=1 | PASS | 176,977 |
 | 20261030T042605Z-team12 | fresh flat history rows; group and sign after returning pool connection; candidate=81a069d3; seed=1 | PASS | 177,013 |
+| 20261030T042927Z-team12 | repeat fresh flat history rows; candidate=81a069d3; seed=1 | PASS | 149,716 |
