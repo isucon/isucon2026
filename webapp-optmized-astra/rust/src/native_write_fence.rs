@@ -14,6 +14,7 @@ const WRITE_SLOTS: u32 = 64;
 const BYTES_PER_SLOT: u64 = 256 * 1024;
 const SMALL_BODY_BYTES: u64 = 64 * 1024;
 pub(crate) const SMALL_WRITE_SLOTS: usize = 128;
+const SESSION_WRITE_SLOTS: usize = 16;
 pub(crate) const IMAGE_RESPONSE_SLOTS: usize = 64;
 
 #[derive(Default)]
@@ -29,6 +30,7 @@ struct Inner {
     in_flight: Semaphore,
     mutations: Semaphore,
     small_mutations: Semaphore,
+    session_mutations: Semaphore,
     control_mutations: Semaphore,
     image_responses: Semaphore,
 }
@@ -45,6 +47,7 @@ impl NativeWriteFence {
             in_flight: Semaphore::new(VISIBILITY_BATCHES),
             mutations: Semaphore::new(WRITE_SLOTS as usize),
             small_mutations: Semaphore::new(SMALL_WRITE_SLOTS),
+            session_mutations: Semaphore::new(SESSION_WRITE_SLOTS),
             control_mutations: Semaphore::new(4),
             image_responses: Semaphore::new(IMAGE_RESPONSE_SLOTS),
         }))
@@ -55,6 +58,18 @@ impl NativeWriteFence {
     pub async fn admit_image_response(&self) -> SemaphorePermit<'_> {
         self.0.image_responses.acquire().await
             .expect("image response admission stays open")
+    }
+
+    /// Sessions with primary authority can complete without a remote barrier.
+    /// Keep their bounded queue separate from ordinary globally visible writes.
+    /// Unknown or large bodies still use the existing weighted byte budget.
+    pub async fn admit_session(&self, body_bytes: Option<u64>) -> SemaphorePermit<'_> {
+        if body_bytes.is_some_and(|bytes| bytes <= SMALL_BODY_BYTES) {
+            self.0.session_mutations.acquire().await
+                .expect("session write admission stays open")
+        } else {
+            self.admit(body_bytes, false, false).await
+        }
     }
 
     /// Bound bytes during image processing and metadata writes until visibility.
@@ -172,6 +187,27 @@ impl NativeWriteFence {
 mod admission_tests {
     use super::*;
     use sqlx::postgres::PgPoolOptions;
+
+    #[tokio::test]
+    async fn sessions_have_a_bounded_queue_independent_of_ordinary_mutations() {
+        let db = PgPoolOptions::new().connect_lazy("postgres://localhost/unused").unwrap();
+        let fence = NativeWriteFence::new(db, Duration::from_secs(1));
+        let mut ordinary = Vec::new();
+        for _ in 0..SMALL_WRITE_SLOTS {
+            ordinary.push(fence.admit(Some(16), false, false).await);
+        }
+        let mut sessions = Vec::new();
+        for _ in 0..SESSION_WRITE_SLOTS {
+            sessions.push(tokio::time::timeout(Duration::from_millis(100), fence.admit_session(Some(16))).await.unwrap());
+        }
+        assert!(tokio::time::timeout(Duration::from_millis(20), fence.admit_session(Some(16))).await.is_err());
+        ordinary.pop();
+        let normal = tokio::time::timeout(Duration::from_millis(100), fence.admit(Some(16), false, false)).await.unwrap();
+        let weighted = fence.admit(None, false, false).await;
+        assert!(tokio::time::timeout(Duration::from_millis(20), fence.admit_session(None)).await.is_err());
+        assert!(tokio::time::timeout(Duration::from_millis(20), fence.admit_session(Some(SMALL_BODY_BYTES + 1))).await.is_err());
+        drop((ordinary, sessions, normal, weighted));
+    }
 
     #[tokio::test]
     async fn tiny_images_cannot_consume_account_or_control_admission() {
