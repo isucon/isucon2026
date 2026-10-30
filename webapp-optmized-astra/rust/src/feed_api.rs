@@ -159,10 +159,9 @@ pub async fn get_feed_handler(
         format!("{select}{order}")
     };
     if ranked {
-        let viewer_relations = ranked_viewer_relations();
         let query = format!(
             r#"
-        {viewer_relations}{RANKING_RELATIONS}
+        {VIEWER_RELATIONS}{RANKING_RELATIONS}
         SELECT ranked.* FROM (
           SELECT fof_posts.*, (10 * coalesce(engaged.n, 0) + 3 * coalesce(mutual.n, 0)
               + least(30, coalesce(connection.n, 0)))::bigint AS score
@@ -197,12 +196,9 @@ pub async fn get_feed_handler(
     }
     // Each active window contributes at most 51 already-authorized rows. Its
     // top 51 contains every possible member of the globally ordered top 51.
-    let viewer_relations = format!(
-        "{VIEWER_AND_FRIENDS}, friends_of_friends AS (SELECT DISTINCT id FROM ({TWO_HOP_PATHS}) path)"
-    );
     let query = format!(
         r#"
-        {viewer_relations}
+        {VIEWER_RELATIONS}
         SELECT candidate.* FROM posting_windows w
         CROSS JOIN LATERAL ({candidates}) candidate
         WHERE w.ended_at IS NULL
@@ -230,7 +226,13 @@ const RANKING_RELATIONS: &str = r#"
 , fof_posts AS MATERIALIZED (
   {CANDIDATES}
 ), mutual AS (
-  SELECT id,n FROM friends_of_friends WHERE id <> $1
+  SELECT path.id, count(*) AS n FROM (
+    SELECT f.user_high_id AS id FROM friends one JOIN friendships f ON f.user_low_id = one.id
+    UNION ALL
+    SELECT f.user_low_id AS id FROM friends one JOIN friendships f ON f.user_high_id = one.id
+  ) path
+  WHERE path.id <> $1
+  GROUP BY path.id
 ), connection AS (
   SELECT side.id, sum(mutual.n) AS n FROM (
     SELECT f.user_low_id AS id, f.user_high_id AS friend_id
@@ -255,26 +257,16 @@ const RANKING_RELATIONS: &str = r#"
 )
 "#;
 
-// Reuse the same two-hop paths for membership and mutual-friend counts.
-fn ranked_viewer_relations() -> String {
-    format!(
-        "{VIEWER_AND_FRIENDS}, friends_of_friends AS MATERIALIZED (\n\
-         SELECT path.id,count(*) AS n FROM ({TWO_HOP_PATHS}) path GROUP BY path.id)"
-    )
-}
-
-const VIEWER_AND_FRIENDS: &str = r#"
+const VIEWER_RELATIONS: &str = r#"
 WITH viewer AS (
   SELECT id, region FROM users WHERE id = $1 AND status = 'active'
 ), friends AS (
   SELECT user_high_id AS id FROM friendships WHERE user_low_id = $1
   UNION
   SELECT user_low_id AS id FROM friendships WHERE user_high_id = $1
-)
-"#;
-
-const TWO_HOP_PATHS: &str = r#"
+), friends_of_friends AS (
   SELECT f.user_high_id AS id FROM friends one JOIN friendships f ON f.user_low_id = one.id
-  UNION ALL
+  UNION
   SELECT f.user_low_id AS id FROM friends one JOIN friendships f ON f.user_high_id = one.id
+)
 "#;

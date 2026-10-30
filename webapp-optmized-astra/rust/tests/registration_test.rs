@@ -74,7 +74,6 @@ async fn registration_is_unique_and_independent_users_do_not_serialize() {
         .await
         .unwrap();
     let context = Arc::new(HandlerContext {
-        session_lookups: Default::default(),
         db: db.clone(),
         config: config_from_env(),
         ip_bans: Default::default(),

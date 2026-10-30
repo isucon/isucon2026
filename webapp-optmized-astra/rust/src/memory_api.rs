@@ -90,8 +90,8 @@ pub async fn get_memories_handler(
             "invalid_memory_period",
         ));
     };
-    let response = crate::memory_batch::list_memories(
-        &h.db,
+    let response = list_memories(
+        &mut *h.db.acquire().await?,
         &session.user_id,
         start,
         start + Months::new(1),
@@ -113,8 +113,8 @@ pub async fn get_memories_by_date_handler(
             "invalid_memory_period",
         ));
     };
-    let response: GetMemoriesByDateResponse = crate::memory_batch::list_memories(
-        &h.db,
+    let response: GetMemoriesByDateResponse = list_memories(
+        &mut *h.db.acquire().await?,
         &session.user_id,
         start,
         start + Days::new(1),

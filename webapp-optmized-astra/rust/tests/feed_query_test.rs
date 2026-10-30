@@ -415,7 +415,6 @@ async fn feed_sql_matches_original_graph_and_filters_before_pagination() {
       UPDATE posts SET deleted_at=now() WHERE id='post004';
     "#).execute(&db).await.unwrap();
     let h = Arc::new(HandlerContext {
-        session_lookups: Default::default(),
         db: db.clone(),
         config: config_from_env(),
         ip_bans: Default::default(),
