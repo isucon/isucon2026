@@ -4,7 +4,7 @@
 # CMD でどのサービスを起動するか選ぶ（docker-entrypoint.sh）。
 
 # --- React SPA（webpack 5 + pnpm 9）→ public/packs + manifest.json + sw.js（CT-3 / CT-4）
-FROM node:24-alpine AS frontend
+FROM mirror.gcr.io/library/node:24-alpine AS frontend
 WORKDIR /src/frontend
 RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
 COPY frontend/package.json frontend/pnpm-lock.yaml ./
@@ -14,7 +14,7 @@ ENV NODE_ENV=production
 RUN pnpm run webpack
 
 # --- Go バイナリ 6 本（CGO 無効の静的リンク）
-FROM golang:1.26-trixie AS build
+FROM mirror.gcr.io/library/golang:1.26-trixie AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
@@ -24,7 +24,7 @@ ARG GO_BUILD_MEMORY=1GiB
 RUN CGO_ENABLED=0 GOMEMLIMIT=${GO_BUILD_MEMORY} GOGC=50 go build -p ${GO_BUILD_PROCS} -trimpath -ldflags='-s -w' -o /out/ ./cmd/portal ./cmd/worker ./cmd/bot ./cmd/notifyloop ./cmd/migrate ./cmd/import-registration
 
 # --- 実行イメージ
-FROM debian:trixie-slim
+FROM mirror.gcr.io/library/debian:trixie-slim
 RUN apt-get update \
   && apt-get install -y --no-install-recommends ca-certificates curl tzdata \
   && rm -rf /var/lib/apt/lists/* \
