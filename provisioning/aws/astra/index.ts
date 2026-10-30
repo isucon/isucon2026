@@ -272,3 +272,9 @@ if (!Number.isInteger(initialImagePoolConnections) || initialImagePoolConnection
     || (initialImagePoolConnections && !runtime.initialPostImagesEnabled)) {
     throw new Error("Invalid initial image pool capacity");
 }
+
+const ownerArchive = runtime.ownerArchive ?? {enabled: false, root: "/var/lib/astra-owner-images", indexSha256: ""};
+if (typeof ownerArchive.enabled !== "boolean" || ownerArchive.root !== "/var/lib/astra-owner-images"
+    || (ownerArchive.enabled && (!runtime.fileImageStore?.archiveReadsEnabled || runtime.archivePeer?.readsEnabled || !/^[0-9a-f]{64}$/.test(ownerArchive.indexSha256)))) {
+    throw new Error("Invalid owner archive layout");
+}

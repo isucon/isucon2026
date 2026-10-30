@@ -27,6 +27,11 @@ def inspect(app):
         local_hash=hashlib.file_digest(open(root/runtime['signatureFileCachePath'],'rb'),'sha256').hexdigest()
         assert remote(app['instanceId'], 'sha256sum /home/isucon/.astra-signatures.bin').split()[0]==local_hash
         assert remote(app['instanceId'], "stat -c %a /home/isucon/.astra-signatures.bin").strip()=='600'
+    if runtime.get('ownerArchive',{}).get('enabled'):
+        expected_index=runtime['ownerArchive']['indexSha256']
+        assert remote(app['instanceId'], 'sha256sum /var/lib/astra-owner-images/index.bin').split()[0]==expected_index
+        layout_check="import json,pathlib; r=pathlib.Path('/var/lib/astra-owner-images'); m=json.loads((r/'report.json').read_text()); assert all((r/p['name']).stat().st_size==p['bytes'] for p in m['packs']); print('owner archive sizes verified')"
+        remote(app['instanceId'], 'python3 -c '+shlex.quote(layout_check))
     expected={}
     for service in services:
         regional=service=='webapp-optmized-astra' and app['region']!='asia'
@@ -59,6 +64,8 @@ def inspect(app):
             'ISUREAL_EXPORT_CONCURRENCY':str(runtime.get('exportConcurrency',2)),
             'ISUREAL_METADATA_POOL_CONNECTIONS':str(runtime['metadataPoolConnections']),
             'ISUREAL_NOTIFICATION_BATCH_WRITES':str(int(runtime['notificationBatchWritesEnabled'])),
+            'ISUREAL_OWNER_ARCHIVE_ROOT':runtime.get('ownerArchive',{}).get('root','') if runtime.get('ownerArchive',{}).get('enabled') else '',
+            'ISUREAL_OWNER_ARCHIVE_SHA256':runtime.get('ownerArchive',{}).get('indexSha256','') if runtime.get('ownerArchive',{}).get('enabled') else '',
             'ISUREAL_FILE_IMAGE_ROOT':runtime.get('fileImageStore',{}).get('root','') if runtime.get('fileImageStore',{}).get('enabled') else '',
             'ISUREAL_ARCHIVE_PEER':'192.168.180.10:8082' if runtime.get('archivePeer',{}).get('readsEnabled',False) and app['region']=='asia' and service=='webapp-optmized-astra' else '',
             'ISUREAL_FILE_IMAGE_ARCHIVES':str(int(runtime.get('fileImageStore',{}).get('archiveReadsEnabled',False))),
