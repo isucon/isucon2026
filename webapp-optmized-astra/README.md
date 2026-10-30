@@ -476,3 +476,4 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261030T123225Z-team12 | Asia-only coherent session cache; image guard pool reverted to 0; candidate=90ab1b5a; seed=1 | PASS | 193,650 |
 | 20261030T124007Z-team12 | Single-statement search with Asia-local session cache; candidate=b4067b6c; seed=1 | PASS | 169,733 |
 | 20261030T130035Z-team12 | Owner-contiguous cross-month export image layout; original SQL and image reads preserved; seed=1 | PASS | 200,330 |
+| 20261030T130443Z-team12 | Repeat owner-contiguous export layout without restarting applications; source=277191d8; seed=1 | PASS | 188,075 |
