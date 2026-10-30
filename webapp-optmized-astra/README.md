@@ -468,3 +468,4 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261030T105331Z-team12 | Asia recommendation SQL on existing America replica, 32 connections; candidate=7fbcd678; seed=1 | PASS | 196,591 |
 | 20261030T111549Z-team12 | remote recommendation phase diagnostics; candidate=60fa472c; seed=1; read/auth logging and 500ms SQL sampling | PASS | 188,619 |
 | 20261030T112413Z-team12 | session admission 16; candidate=05760028; seed=1; diagnostics off; remote recommendation32 sessionpool8 | PASS | 181,990 |
+| 20261030T113121Z-team12 | search dirty-set statistics after initialize; candidate=1ba00c91; seed=1; diagnostics off; session admission16 remote recommendation32 | PASS | 197,417 |
