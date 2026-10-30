@@ -119,9 +119,9 @@ func Calculate(team TeamKey, host HostnameConfig, cfg Config) (CalculatedConfig,
 	base := fmt.Sprintf("team%d-%s.%s", team.Number, host.RandomHash, host.DomainSuffix)
 	calculated := CalculatedConfig{
 		AppHostname:          "app." + base,
-		App1Hostname:         "app1." + base,
-		App2Hostname:         "app2." + base,
-		App3Hostname:         "app3." + base,
+		App1Hostname:         "asia." + base,
+		App2Hostname:         "europe." + base,
+		App3Hostname:         "america." + base,
 		DefaultCountryRegion: countryByCode[cfg.DefaultCountry].Region,
 	}
 	calculated.TargetHostname = calculated.AppHostname
