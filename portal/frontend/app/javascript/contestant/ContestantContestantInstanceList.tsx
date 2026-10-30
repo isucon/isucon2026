@@ -74,68 +74,50 @@ export const ContestantContestantInstanceList: React.FC<Props> = ({ session, cli
         <tbody>{(session.contestantInstances || []).map((ci) => renderRow(ci))}</tbody>
       </table>
 
-      <section className="notification is-info is-light my-5" aria-labelledby="router-preview-title">
-        <header className="mb-3">
-          <h1 id="router-preview-title" className="title is-4 mb-2">
+      <section className="my-5" aria-labelledby="router-preview-title">
+        <header>
+          <h1 id="router-preview-title" className="title is-1">
             ルーター IP
           </h1>
-          <p>ルーター経由でISURealを開き、アプリケーションの表示を確認できます。</p>
         </header>
         {previewURL ? (
           <>
-            <p className="is-size-4 is-family-monospace mb-4" aria-label="ルーターIPアドレス">
-              {session.routerPublicIpv4Address}
-            </p>
-            <label className="label is-size-7" htmlFor="router-preview-url">
-              表示確認用 URL
-            </label>
-            <div className="field has-addons mb-4">
-              <div className="control is-expanded">
-                <input
-                  className="input is-family-monospace"
-                  id="router-preview-url"
-                  aria-label="表示確認用URL"
-                  value={previewURL}
-                  readOnly
-                />
-              </div>
-              <div className="control">
-                <button
-                  className="button is-info is-light"
-                  aria-label="URLをコピー"
-                  onClick={async () => {
-                    await navigator.clipboard.writeText(previewURL);
-                    setCopiedURL(previewURL);
-                  }}
-                >
-                  <span className="icon">
-                    <span className="material-icons-outlined" aria-hidden="true">
+            <div className="content">
+              <ul>
+                <li>
+                  IPアドレス: <code aria-label="ルーターIPアドレス">{session.routerPublicIpv4Address}</code>
+                </li>
+                <li>
+                  表示確認用 URL: <code aria-label="表示確認用URL">{previewURL}</code>
+                  <button
+                    className="button is-small ml-2"
+                    aria-label="URLをコピー"
+                    onClick={async () => {
+                      await navigator.clipboard.writeText(previewURL);
+                      setCopiedURL(previewURL);
+                    }}
+                  >
+                    <span className="material-icons-outlined is-size-6" aria-hidden="true">
                       content_copy
                     </span>
+                  </button>
+                  <span className="is-size-7 ml-2" role="status">
+                    {copiedURL === previewURL ? "コピーしました" : ""}
                   </span>
-                  <span>コピー</span>
-                </button>
-              </div>
+                </li>
+              </ul>
             </div>
-            <div className="is-flex is-align-items-center is-flex-wrap-wrap" style={{ gap: "0.75rem" }}>
-              <a className="button is-info" href={previewURL} target="_blank" rel="noopener noreferrer">
-                <span>ISURealを開く</span>
-                <span className="icon">
-                  <span className="material-icons-outlined" aria-hidden="true">
-                    open_in_new
-                  </span>
+            <a className="button is-info" href={previewURL} target="_blank" rel="noopener noreferrer">
+              <span>ISURealを開く</span>
+              <span className="icon">
+                <span className="material-icons-outlined" aria-hidden="true">
+                  open_in_new
                 </span>
-              </a>
-              <span className="is-size-7">新しいタブで開きます</span>
-              <span className="is-size-7" role="status">
-                {copiedURL === previewURL ? "コピーしました" : ""}
               </span>
-            </div>
+            </a>
           </>
         ) : (
-          <p>
-            <span className="tag is-light mr-2">未登録</span>ルーターの登録後に、表示確認用のURLが表示されます。
-          </p>
+          <p>未登録（ルーターの登録後に、表示確認用のURLが表示されます。）</p>
         )}
       </section>
 

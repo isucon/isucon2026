@@ -29,15 +29,25 @@ for (const ip of ["203.0.113.5", "", undefined]) {
     });
     try {
       assert.ok(renderer.root.findAllByType("h1").some((h) => h.children.join("") === "ルーター IP"));
+      assert.equal(renderer.root.findByProps({ id: "router-preview-title" }).props.className, "title is-1");
+      assert.equal(renderer.root.findByProps({ "aria-labelledby": "router-preview-title" }).props.className, "my-5");
       const links = renderer.root.findAllByType("a").filter((a) => a.props.href.startsWith("http://"));
       assert.equal(links.length, ip ? 1 : 0);
       if (ip) {
         const url = `http://${ip}:8080`;
         assert.equal(renderer.root.findByProps({ "aria-label": "ルーターIPアドレス" }).children.join(""), ip);
-        assert.ok(renderer.root.findAllByType("label").some((label) => label.children.join("") === "表示確認用 URL"));
+        assert.ok(
+          renderer.root
+            .findAllByType("li")
+            .some((item) =>
+              JSON.stringify(item.children.map((child) => (typeof child === "string" ? child : child.type))).includes(
+                "表示確認用 URL",
+              ),
+            ),
+        );
         assert.equal(links[0].props.href, url);
         assert.match(JSON.stringify(renderer.toJSON()), /ISURealを開く/);
-        assert.equal(renderer.root.findByProps({ "aria-label": "表示確認用URL" }).props.value, url);
+        assert.equal(renderer.root.findByProps({ "aria-label": "表示確認用URL" }).children.join(""), url);
         const button = renderer.root.findByProps({ "aria-label": "URLをコピー" });
         let copied;
         const previousNavigator = Object.getOwnPropertyDescriptor(globalThis, "navigator");
