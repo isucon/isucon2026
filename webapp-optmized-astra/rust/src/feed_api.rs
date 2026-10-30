@@ -90,7 +90,7 @@ pub async fn get_feed_handler(
     }
     let ranked_db = recommendation_reads
         .as_ref()
-        .map_or(&h.db, |Extension(reads)| &reads.0);
+        .map_or(&h.db, |Extension(reads)| &reads.db);
     if ranked
         && let Some(Extension(graph)) = graph
         && let Some(mut posts) = graph
@@ -229,7 +229,11 @@ pub async fn get_feed_handler(
         ORDER BY candidate.posted_at DESC, candidate.id DESC LIMIT 51
     "#
     );
-    let mut posts: Vec<PostWithAuthor> = sqlx::query_as_with(&query, args).fetch_all(&h.db).await?;
+    let db = recommendation_reads
+        .as_ref()
+        .filter(|Extension(reads)| reads.all_feeds)
+        .map_or(&h.db, |Extension(reads)| &reads.db);
+    let mut posts: Vec<PostWithAuthor> = sqlx::query_as_with(&query, args).fetch_all(db).await?;
     let has_more = posts.len() > 50;
     let mut items = Vec::with_capacity(posts.len().min(50));
     for post in posts.iter_mut().take(50) {

@@ -166,13 +166,14 @@ async fn compare_ranked(h: &Arc<HandlerContext>, stage: &str) -> usize {
             .unwrap(),
     );
     let all = ranked_reference(&h.db).await;
-    let remote = isureal::recommendation_reads::RecommendationReads(
-        PgPoolOptions::new()
+    let remote = isureal::recommendation_reads::RecommendationReads {
+        all_feeds: false,
+        db: PgPoolOptions::new()
             .max_connections(1)
             .connect_with((*h.db.connect_options()).clone())
             .await
             .unwrap(),
-    );
+    };
     let mut occupied = Vec::new();
     for _ in 0..3 {
         occupied.push(h.db.acquire().await.unwrap());
@@ -257,53 +258,74 @@ fn session() -> Session {
 
 async fn compare(h: &Arc<HandlerContext>, stage: &str) -> usize {
     compare_post_permissions(h, stage).await;
+    let remote = isureal::recommendation_reads::RecommendationReads {
+        all_feeds: true,
+        db: PgPoolOptions::new()
+            .max_connections(1)
+            .connect_with(
+                (*h.db.connect_options())
+                    .clone()
+                    .options([("default_transaction_read_only", "on")]),
+            )
+            .await
+            .unwrap(),
+    };
     for feed in ["public", "friends", "following"] {
         let mut before = None;
         let mut before_id = String::new();
         loop {
             let expected = reference(&h.db, feed, before, &before_id).await;
-            // Other feeds ignore an integer beforeScore.
-            let input = GetFeedRequest {
-                feed: feed.into(),
-                before_score: before.map(|_| 7),
-                before_posted_at: before,
-                before_id: before_id.clone(),
-            };
-            let response = get_feed_handler(
-                State(h.clone()),
-                Extension(session()),
-                None,
-                None,
-                Bind(input),
-            )
-            .await
-            .unwrap();
-            assert_eq!(response.status(), StatusCode::OK);
-            let bytes = response.into_body().collect().await.unwrap().to_bytes();
-            let body: Value = serde_json::from_slice(&bytes).unwrap();
-            let ids: Vec<&str> = body["items"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .map(|item| {
-                    assert!(item.get("score").is_none(), "feed={feed} has no score");
-                    item["id"].as_str().unwrap()
-                })
-                .collect();
-            let expected_ids: Vec<&str> = expected
-                .iter()
-                .take(50)
-                .map(|row| row.post.id.as_str())
-                .collect();
-            assert_eq!(
-                ids, expected_ids,
-                "stage={stage}, feed={feed}, cursor={before_id}"
-            );
-            assert_eq!(
-                body["hasMore"],
-                expected.len() > 50,
-                "stage={stage}, feed={feed}"
-            );
+            for remote in [None, Some(Extension(remote.clone()))] {
+                let mut occupied = Vec::new();
+                if remote.is_some() {
+                    for _ in 0..3 {
+                        occupied.push(h.db.acquire().await.unwrap());
+                    }
+                }
+                // Other feeds ignore an integer beforeScore.
+                let input = GetFeedRequest {
+                    feed: feed.into(),
+                    before_score: before.map(|_| 7),
+                    before_posted_at: before,
+                    before_id: before_id.clone(),
+                };
+                let response = get_feed_handler(
+                    State(h.clone()),
+                    Extension(session()),
+                    None,
+                    remote,
+                    Bind(input),
+                )
+                .await
+                .unwrap();
+                assert_eq!(response.status(), StatusCode::OK);
+                let bytes = response.into_body().collect().await.unwrap().to_bytes();
+                let body: Value = serde_json::from_slice(&bytes).unwrap();
+                let ids: Vec<&str> = body["items"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|item| {
+                        assert!(item.get("score").is_none(), "feed={feed} has no score");
+                        item["id"].as_str().unwrap()
+                    })
+                    .collect();
+                let expected_ids: Vec<&str> = expected
+                    .iter()
+                    .take(50)
+                    .map(|row| row.post.id.as_str())
+                    .collect();
+                assert_eq!(
+                    ids, expected_ids,
+                    "stage={stage}, feed={feed}, cursor={before_id}"
+                );
+                assert_eq!(
+                    body["hasMore"],
+                    expected.len() > 50,
+                    "stage={stage}, feed={feed}"
+                );
+                drop(occupied);
+            }
             if expected.len() <= 50 {
                 break;
             }

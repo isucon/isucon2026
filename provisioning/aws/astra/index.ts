@@ -278,3 +278,10 @@ if (typeof ownerArchive.enabled !== "boolean" || ownerArchive.root !== "/var/lib
     || (ownerArchive.enabled && (!runtime.fileImageStore?.archiveReadsEnabled || runtime.archivePeer?.readsEnabled || !/^[0-9a-f]{64}$/.test(ownerArchive.indexSha256)))) {
     throw new Error("Invalid owner archive layout");
 }
+
+if (runtime.remoteAllFeedsEnabled !== undefined && typeof runtime.remoteAllFeedsEnabled !== "boolean") {
+    throw new Error("Invalid remote feed scope");
+}
+if (runtime.remoteAllFeedsEnabled && !runtime.recommendationReadRegion) {
+    throw new Error("All-feed routing requires the validated dedicated read pool");
+}

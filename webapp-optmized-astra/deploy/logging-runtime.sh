@@ -39,6 +39,7 @@ print('ISUREAL_MEMORY_POOL_CONNECTIONS='+str(memory_pool))
 short_pool=runtime.get('shortReadPoolConnections',0)
 assert type(short_pool) is int and 0 <= short_pool <= 16
 print('ISUREAL_SHORT_READ_POOL_CONNECTIONS='+str(short_pool))
+print('ISUREAL_REMOTE_ALL_FEEDS='+str(int(runtime.get('remoteAllFeedsEnabled',False))))
 recommendation_region=runtime.get('recommendationReadRegion','')
 assert recommendation_region in ('','primary','europe','america')
 recommendation_host=runtime['database']['host'] if recommendation_region=='primary' else next((a['host'] for a in runtime['applications'] if a['region']==recommendation_region),'')
