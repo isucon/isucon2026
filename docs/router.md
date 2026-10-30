@@ -231,6 +231,9 @@ HTTP の帯域は HAProxy の route に任せて default class の上限を外�
 
 - 対象は `GET` で、ヘッダーがあり、パスが `/api/images/` で始まるか `/api/me/export` の要求だけ。ブラウザの要求は
   これまでどおりアプリへ送る。200 以外の応答はそのまま返す。
+- `Content-Encoding` の付いた応答（`identity` を除く）もそのまま返す。ベンチの HTTP クライアントは
+  `Accept-Encoding: gzip` を付けて、gzip の本体を展開してから比べる。圧縮したバイト列のダイジェストでは画像と
+  合わない（Perl の初期実装は Mojolicious の既定で JPEG も gzip していて、事前テストで落ちた）。
 - アプリのアドレス（`X-Isureal-Upstream`）、帯域制限の route（`X-Isureal-Route`、bwlim と同じ Host と国の組）、
   上限（`X-Isureal-Limit`、bytes/s）は HAProxy が付け、isureal-digest がアプリへ送る前に消す。
 - 帯域制限は isureal-digest がアプリからの読み込みで行う。route ごとに 1 秒分まで溜まる共有の bucket を持ち、
