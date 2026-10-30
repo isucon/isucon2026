@@ -90,6 +90,7 @@ type fakeApp struct {
 	ignoreBlocks bool                                 // ブロックを無視する不具合
 	pageSize     int                                  // フィードの 1 ページの件数（0 なら 50）
 	keepDeleted  bool                                 // 削除した投稿を Memories に残す不具合
+	keepImages   bool                                 // 削除した投稿の画像を返し続ける不具合
 	losePosts    bool                                 // 投稿を Memories から失う不具合
 	dropFeeds    bool                                 // ゲート通過のあとのフィードを空で返す不具合
 	banned       map[string]bool                      // X-Client-IP ごとの BAN
@@ -666,7 +667,7 @@ func (a *fakeApp) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		for _, p := range a.posts {
-			if p.deleted && strings.Contains(p.ImageURL, "/"+path[1]+"?") {
+			if p.deleted && !a.keepImages && strings.Contains(p.ImageURL, "/"+path[1]+"?") {
 				ok = false
 			}
 		}
