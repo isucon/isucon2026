@@ -74,7 +74,6 @@ async fn login_replacement_stays_atomic_and_serializes_with_account_changes() {
     let app = Router::new()
         .route("/login", post(login_handler))
         .with_state(Arc::new(HandlerContext {
-            session_lookups: Default::default(),
             db: db.clone(),
             config: config_from_env(),
             ip_bans: Default::default(),

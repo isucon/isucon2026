@@ -128,7 +128,6 @@ async fn search_preserves_unicode_pagination_and_fresh_account_visibility() {
         .await
         .unwrap();
     let h = Arc::new(HandlerContext {
-        session_lookups: Default::default(),
         db: db.clone(),
         config: config_from_env(),
         ip_bans: Default::default(),

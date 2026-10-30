@@ -93,7 +93,6 @@ async fn verify_creation(batch_writes: bool) {
     sqlx::raw_sql("CREATE VIEW observed_notifications AS SELECT * FROM notifications UNION ALL SELECT n.id,n.user_id,b.posting_window_id,b.created_at FROM astra_notification_batches b CROSS JOIN LATERAL unnest(b.notification_ids,b.user_ids) AS n(id,user_id)")
         .execute(&db).await.unwrap();
     let h = Arc::new(HandlerContext {
-        session_lookups: Default::default(),
         db: db.clone(),
         config: config_from_env(),
         ip_bans: Default::default(),

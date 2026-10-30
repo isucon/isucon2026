@@ -113,7 +113,6 @@ async fn image_rejects_malformed_and_expired_url() {
         .connect_lazy("postgres://isureal:isureal@127.0.0.1:1/isureal")
         .unwrap();
     let h = Arc::new(HandlerContext {
-        session_lookups: Default::default(),
         db,
         config: config_from_env(),
         ip_bans: IpBanList::default(),

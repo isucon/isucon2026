@@ -148,7 +148,6 @@ mod region_tests {
         let mut config = config_from_env();
         config.region = "asia".into();
         let h = Arc::new(HandlerContext {
-            session_lookups: Default::default(),
             db: PgPoolOptions::new()
                 .connect_lazy("postgres://postgres@127.0.0.1:1/unreachable")
                 .unwrap(),
