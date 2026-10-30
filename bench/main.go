@@ -221,7 +221,7 @@ func run(parent context.Context, args []string, stdout, stderr io.Writer) int {
 	runner, err := scenario.NewRunner(scenario.Config{
 		Photos: photos, AwaitPhotos: awaitPhotos, Seed: *seed, Evil: evilFunc, Growth: growth,
 		Target: normalized, Host: *host, Users: *users, Duration: *duration, VerifyRate: *verifyRate, MoveRate: *moveRate, SignOffRate: *signOffRate,
-		Dataset: world, ImageDigests: digests, Logger: progressLogger,
+		Dataset: world, ImageDigests: digests, Logger: progressLogger, OperatorLogger: logger,
 		OnProgress: func(result scenario.Result) {
 			if reportErr != nil {
 				return
