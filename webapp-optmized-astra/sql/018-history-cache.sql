@@ -22,7 +22,17 @@ CREATE OR REPLACE FUNCTION astra_history_changed() RETURNS trigger LANGUAGE plpg
 DECLARE owner_ids text[]; post_ids text[];
 BEGIN
   IF TG_LEVEL = 'STATEMENT' THEN
-    owner_ids := ARRAY['']; -- window changes and explicit TRUNCATE invalidate all owners
+    owner_ids := ARRAY['']; -- explicit TRUNCATE invalidates all owners
+  ELSIF TG_TABLE_NAME = 'posting_windows' THEN
+    -- Memories/export use local_date and on_time_deadline, not ended_at.
+    -- A new window has no cached posts; their later insertion invalidates its
+    -- owner. Closing a window must not evict every owner's historical records.
+    IF TG_OP = 'INSERT' THEN RETURN NULL; END IF;
+    IF TG_OP = 'UPDATE' AND (OLD.id, OLD.local_date, OLD.on_time_deadline)
+      IS NOT DISTINCT FROM (NEW.id, NEW.local_date, NEW.on_time_deadline) THEN
+      RETURN NULL;
+    END IF;
+    owner_ids := ARRAY[''];
   ELSIF TG_TABLE_NAME = 'posts' THEN
     IF TG_OP <> 'INSERT' THEN owner_ids := array_append(owner_ids, OLD.author_id); END IF;
     IF TG_OP <> 'DELETE' THEN owner_ids := array_append(owner_ids, NEW.author_id); END IF;
@@ -49,5 +59,8 @@ DO $$ DECLARE name text; BEGIN
   END LOOP;
 END $$;
 DROP TRIGGER IF EXISTS astra_history_change ON posting_windows;
-CREATE TRIGGER astra_history_change AFTER INSERT OR UPDATE OR DELETE OR TRUNCATE ON posting_windows
+CREATE TRIGGER astra_history_change AFTER INSERT OR UPDATE OR DELETE ON posting_windows
+  FOR EACH ROW EXECUTE FUNCTION astra_history_changed();
+DROP TRIGGER IF EXISTS astra_history_truncate ON posting_windows;
+CREATE TRIGGER astra_history_truncate AFTER TRUNCATE ON posting_windows
   FOR EACH STATEMENT EXECUTE FUNCTION astra_history_changed();
