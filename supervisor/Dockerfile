@@ -1,5 +1,6 @@
 # Build context: repository root. Includes the ISUReal benchmark executable.
-# PHOTOS=archive で var/photos/merged.zip（投稿に使う写真のアーカイブ）を /opt/isucon/photos/ に同梱する。
+# PHOTOS=archive で var/photos/merged.zip（投稿に使う写真のアーカイブ）と var/photos/image-digests-large.bin
+# （初期データの画像のダイジェストの表）を /opt/isucon/photos/ に同梱する。
 # 既定の none では同梱しないので、アーカイブがなくてもビルドできる（bench-runner はこちらで、走行ごとに URL を渡す）。
 ARG PHOTOS=none
 FROM rust:1.90-bookworm@sha256:3914072ca0c3b8aad871db9169a651ccfce30cf58303e5d6f2db16d1d8a7e58f AS source
@@ -28,7 +29,7 @@ RUN CGO_ENABLED=0 go build -trimpath -o /out/isureal-bench .
 FROM scratch AS photos-none
 WORKDIR /photos
 FROM scratch AS photos-archive
-COPY var/photos/merged.zip /photos/merged.zip
+COPY var/photos/merged.zip var/photos/image-digests-large.bin /photos/
 FROM photos-${PHOTOS} AS photos
 
 FROM debian:bookworm-slim@sha256:3783cc01769c7b2b1b83a5c5ad96c815348e28ed7da68e2e3687004faa906251 AS runtime

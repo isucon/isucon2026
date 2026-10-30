@@ -192,18 +192,31 @@ aws-bench-image:
 aws-bench-show:
 	provisioning/aws/bench-runner/run.sh show $(RUN)
 
-# ポータルの Supervisor（provisioning/aws/supervisor）用のイメージ。supervisor/Dockerfile に投稿用の写真のアーカイブを
-# 同梱して linux/amd64 でビルドし、Supervisor stack の ECR へ push して、Pulumi の image に書く値を表示する。
-# アーカイブは bench-runner の結果バケットの assets/merged.zip から var/photos/ に取る（PHOTOS_S3 で別の場所を指定できる）
+# ポータルの Supervisor（provisioning/aws/supervisor）用のイメージ。supervisor/Dockerfile に投稿用の写真のアーカイブと
+# 初期データの画像のダイジェストの表を同梱して linux/amd64 でビルドし、Supervisor stack の ECR へ push して、
+# Pulumi の image に書く値を表示する。どちらも bench-runner の結果バケットの assets/ から var/photos/ に取る
+# （PHOTOS_S3、DIGESTS_S3 で別の場所を指定できる）
 .PHONY: supervisor-photos supervisor-image
 SUPERVISOR_PHOTOS = var/photos/merged.zip
-supervisor-photos: $(SUPERVISOR_PHOTOS)
+SUPERVISOR_DIGESTS = var/photos/image-digests-large.bin
+SUPERVISOR_ASSETS = s3://$$($(BENCH_RUNNER_PULUMI) stack output infra --json --stack "$(or $(RUNNER_STACK),dev)" | jq -r .bucket)/assets
+supervisor-photos: $(SUPERVISOR_PHOTOS) $(SUPERVISOR_DIGESTS)
 $(SUPERVISOR_PHOTOS):
 	mkdir -p $(dir $@)
-	$(AWS_SDK_ENV) aws s3 cp "$(or $(PHOTOS_S3),s3://$$($(BENCH_RUNNER_PULUMI) stack output infra --json --stack "$(or $(RUNNER_STACK),dev)" | jq -r .bucket)/assets/merged.zip)" $@
+	$(AWS_SDK_ENV) aws s3 cp "$(or $(PHOTOS_S3),$(SUPERVISOR_ASSETS)/merged.zip)" $@
+$(SUPERVISOR_DIGESTS):
+	mkdir -p $(dir $@)
+	$(AWS_SDK_ENV) aws s3 cp "$(or $(DIGESTS_S3),$(SUPERVISOR_ASSETS)/image-digests-large.bin)" $@
 
-supervisor-image: $(SUPERVISOR_PHOTOS)
+supervisor-image: $(SUPERVISOR_PHOTOS) $(SUPERVISOR_DIGESTS)
 	$(AWS_SDK_ENV) SUPERVISOR_STACK="$(or $(SUPERVISOR_STACK),portal-dev)" provisioning/aws/supervisor/image.sh
+
+# 初期データ（Large）の画像のダイジェストの表（bench -image-digests）を作る。すべての画像を描くので CPU 時間で
+# 50 分ほどかかる。できた表は bench-runner の結果バケットの assets/image-digests-large.bin に置く
+# （bench-runner の run.sh と make supervisor-photos がそこから取る）
+.PHONY: bench-image-digests
+bench-image-digests:
+	cd bench && go run ./cmd/imagedigests -scale large -out ../var/image-digests/large.bin
 
 check: proto-lint vet frontend-lint frontend-typecheck contract test build
 
