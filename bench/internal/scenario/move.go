@@ -193,7 +193,7 @@ func (r *Runner) closeApp(ctx context.Context, u *user, day int, stop func(), no
 	fresh := *u.Agent
 	if err := fresh.Login(ctx); err != nil {
 		if !r.bannedErr(u, err) {
-			r.requestError(ctx, u, "%s: ログインし直せません: %v", u.Username, err)
+			r.agentError(ctx, u, err, "%s: ログインし直せません: %v", u.Username, err)
 		}
 		return func() {}
 	}

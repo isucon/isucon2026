@@ -461,7 +461,7 @@ func (r *Runner) runNewcomer(ctx context.Context, region string) {
 		// 登録できなかった人は r.users に入らず、走行の終わりに接続を閉じられないので、ここで閉じる。
 		u.API.CloseIdleConnections()
 		r.arrived(region)
-		r.requestError(ctx, u, "%s: 新しいユーザーを登録できません: %v", username, err)
+		r.agentError(ctx, u, err, "%s: 新しいユーザーを登録できません: %v", username, err)
 		return
 	}
 	u.displayNames, u.bios = []string{displayName}, []string{""}

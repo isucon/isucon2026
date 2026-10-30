@@ -21,6 +21,19 @@ type Agent struct {
 	API *client.Client
 }
 
+// ResponseError は、登録やログインの応答が期待どおりのステータスで届いて読めたが、内容が
+// 要求と合わないこと（別のユーザー、空のトークンなど）。計測（client の Observer）は成功として
+// 数えているので、呼び出し側が検証の失敗として数える。
+type ResponseError struct {
+	Message string
+}
+
+func (e *ResponseError) Error() string { return e.Message }
+
+func invalidResponse(format string, args ...any) error {
+	return &ResponseError{Message: fmt.Sprintf(format, args...)}
+}
+
 // New は region のユーザーを作る。index でリージョン内の国を選ぶ。
 // ユーザーは自分専用の接続を持つ。
 func New(api *client.Client, region string, index int) *Agent {
@@ -37,7 +50,7 @@ func (a *Agent) Register(ctx context.Context, username, displayName string) erro
 		return err
 	}
 	if registered.ID == "" || registered.SecretKey == "" {
-		return fmt.Errorf("%s の登録の応答にユーザー ID かシークレットキーがありません", username)
+		return invalidResponse("%s の登録の応答にユーザー ID かシークレットキーがありません", username)
 	}
 	a.ID, a.Username, a.SecretKey = registered.ID, username, registered.SecretKey
 	return a.Login(ctx)
@@ -50,7 +63,7 @@ func (a *Agent) Login(ctx context.Context) error {
 		return err
 	}
 	if user.ID != a.ID || user.Username != a.Username || user.Token == "" {
-		return fmt.Errorf("%s のログインの応答のユーザーかトークンが違います", a.Username)
+		return invalidResponse("%s のログインの応答のユーザーかトークンが違います", a.Username)
 	}
 	a.Token = user.Token
 	return nil
