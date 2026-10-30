@@ -32,15 +32,26 @@ pub struct ExportPostResponse {
 pub async fn export_posts_handler(
     State(h): State<Arc<HandlerContext>>,
     Extension(session): Extension<Session>,
+    history: Option<Extension<Arc<crate::initial_history::InitialHistory>>>,
 ) -> Result<Response, Error> {
     let user_id = &session.user_id;
-    let author = get_user(&h.db, user_id).await?;
+    let snapshot = if let Some(Extension(history)) =
+        history.filter(|Extension(cache)| cache.can_export(user_id))
+    {
+        history.export(&mut *h.db.acquire().await?, user_id).await?
+    } else {
+        None
+    };
+    let (author, initial) = match snapshot {
+        Some((author, posts)) => (author, Some(posts)),
+        None => (get_user(&h.db, user_id).await?, None),
+    };
     let permit = EXPORTS
         .acquire()
         .await
         .expect("export semaphore is never closed");
     let cached = crate::image_api::cached_export_images(user_id);
-    let query = export_query();
+    let query = export_query(initial.is_some());
     let mut rows = sqlx::query_as::<_, ExportPost>(&query)
         .bind(user_id)
         .bind(&cached.ids)
@@ -48,6 +59,22 @@ pub async fn export_posts_handler(
         .bind(&cached.timestamps)
         .fetch_all(&h.db)
         .await?;
+    if let Some(initial) = initial {
+        let versions: std::collections::HashMap<_, _> =
+            cached.ids.iter().zip(&cached.versions).collect();
+        rows.extend(initial.into_iter().map(|(post, key)| {
+            let cache_hit = versions
+                .get(&post.image_id)
+                .is_some_and(|v| v.strip_prefix("asset:") == Some(key.as_str()));
+            ExportPost {
+                post,
+                image_data: Bytes::new(),
+                asset_key: Some(key),
+                cache_hit,
+            }
+        }));
+        rows.sort_by(|a, b| (a.post.posted_at, &a.post.id).cmp(&(b.post.posted_at, &b.post.id)));
+    }
     let mut missing = Vec::new();
     let mut keys = Vec::new();
     for (index, row) in rows.iter_mut().enumerate() {
@@ -103,7 +130,12 @@ pub async fn export_posts_handler(
 
 // Posts and their images normally share a creation timestamp. Treat it only
 // as a partition hint: imported or moved images still use the complete lookup.
-fn export_query() -> String {
+fn export_query(initial: bool) -> String {
+    let boundary = if initial {
+        "AND p.created_at > (SELECT created_at FROM initial_data_boundary)"
+    } else {
+        ""
+    };
     format!(
         r#"
    WITH cached AS MATERIALIZED (
@@ -126,7 +158,7 @@ fn export_query() -> String {
      WHERE id = p.image_id AND NOT EXISTS (SELECT 1 FROM hinted)
    ) i ON true
    LEFT JOIN cached c ON c.id=i.id
-   WHERE p.author_id = $1 AND p.deleted_at IS NULL
+   WHERE p.author_id = $1 AND p.deleted_at IS NULL {boundary}
    ORDER BY p.posted_at, p.id
   "#
     )
@@ -137,7 +169,10 @@ static EXPORTS: LazyLock<Semaphore> = LazyLock::new(|| {
         .unwrap_or_else(|_| "2".into())
         .parse::<usize>()
         .expect("export concurrency");
-    assert!((1..=16).contains(&concurrency), "invalid export concurrency");
+    assert!(
+        (1..=16).contains(&concurrency),
+        "invalid export concurrency"
+    );
     Semaphore::new(concurrency)
 });
 
@@ -416,7 +451,7 @@ mod tests {
                 .fetch_all(&db)
                 .await
                 .unwrap();
-            let new: Vec<ExportPost> = sqlx::query_as(&export_query())
+            let new: Vec<ExportPost> = sqlx::query_as(&export_query(false))
                 .bind(actor)
                 .bind(Vec::<String>::new())
                 .bind(Vec::<String>::new())
@@ -430,7 +465,7 @@ mod tests {
         let ids: Vec<_> = memo.iter().map(|r| r.0.clone()).collect();
         let versions: Vec<_> = memo.iter().map(|r| r.1.clone()).collect();
         let timestamps: Vec<_> = memo.iter().map(|r| r.2).collect();
-        let cached: Vec<ExportPost> = sqlx::query_as(&export_query())
+        let cached: Vec<ExportPost> = sqlx::query_as(&export_query(false))
             .bind("matched")
             .bind(&ids)
             .bind(&versions)
@@ -456,7 +491,7 @@ mod tests {
             .fetch_all(&db)
             .await
             .unwrap();
-        let new: Vec<ExportPost> = sqlx::query_as(&export_query())
+        let new: Vec<ExportPost> = sqlx::query_as(&export_query(false))
             .bind("matched")
             .bind(Vec::<String>::new())
             .bind(Vec::<String>::new())
@@ -465,7 +500,7 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(format!("{new:?}"), format!("{old:?}"));
-        let cached: Vec<ExportPost> = sqlx::query_as(&export_query())
+        let cached: Vec<ExportPost> = sqlx::query_as(&export_query(false))
             .bind("matched")
             .bind(&ids)
             .bind(&versions)
@@ -501,7 +536,7 @@ mod tests {
             .execute(&db)
             .await
             .unwrap();
-        let deleted: Vec<ExportPost> = sqlx::query_as(&export_query())
+        let deleted: Vec<ExportPost> = sqlx::query_as(&export_query(false))
             .bind("matched")
             .bind(&ids)
             .bind(&versions)

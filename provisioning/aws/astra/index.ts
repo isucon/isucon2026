@@ -209,3 +209,10 @@ if (runtime.sessionCacheEnabled && (!runtime.writeFenceEnabled || runtime.writeF
 if (runtime.initialHistoryEnabled !== undefined && typeof runtime.initialHistoryEnabled !== "boolean") {
     throw new Error("Invalid initial history flag");
 }
+
+if (runtime.initialHistoryExportEnabled !== undefined && typeof runtime.initialHistoryExportEnabled !== "boolean") {
+    throw new Error("Invalid initial history export flag");
+}
+if (runtime.initialHistoryExportEnabled && !runtime.initialHistoryEnabled) {
+    throw new Error("Initial export requires the initial history snapshot");
+}

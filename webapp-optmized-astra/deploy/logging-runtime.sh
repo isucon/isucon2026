@@ -24,6 +24,9 @@ print('ISUREAL_READ_TIMING='+str(int(read_timing)))
 history=runtime.get('initialHistoryEnabled',False)
 assert type(history) is bool
 print('ISUREAL_INITIAL_HISTORY='+str(int(history)))
+history_export=runtime.get('initialHistoryExportEnabled',False)
+assert type(history_export) is bool
+print('ISUREAL_INITIAL_HISTORY_EXPORT='+str(int(history_export)))
 session_cache=runtime.get('sessionCacheEnabled',False)
 assert type(session_cache) is bool
 print('ISUREAL_SESSION_CACHE='+str(int(session_cache)))

@@ -22,7 +22,7 @@ program = r'''
 import json, subprocess
 rows = subprocess.check_output(['journalctl', '-u', 'webapp-optmized-astra', '-u', 'webapp-optmized-astra-writer', '--since', SINCE, '--until', UNTIL, '-o', 'json'], text=True)
 keys = ['hits', 'fallbacks']
-optional = []
+optional = ['export_hits', 'export_fallbacks']
 result = []
 for line in rows.splitlines():
     try:

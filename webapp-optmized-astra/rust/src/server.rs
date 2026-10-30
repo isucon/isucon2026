@@ -290,7 +290,7 @@ pub async fn new_server(config: Config) -> Router {
         read_context.clone()
     };
     let history = if std::env::var("ISUREAL_INITIAL_HISTORY").as_deref() == Ok("1") && WriteIngress::from_env().is_none() {
-        let history = Arc::new(crate::initial_history::InitialHistory::load(&general_reads.db, &handler_context.config.region).await.expect("load initial history"));
+        let history = Arc::new(crate::initial_history::InitialHistory::load_with_export(&general_reads.db, &handler_context.config.region, std::env::var("ISUREAL_INITIAL_HISTORY_EXPORT").as_deref() == Ok("1")).await.expect("load initial history"));
         history.observe();
         Some(history)
     } else { None };
