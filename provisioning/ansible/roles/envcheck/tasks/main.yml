@@ -35,3 +35,9 @@
     name: envcheck-baseline.service
     enabled: true
     daemon_reload: true
+
+- name: Enable environment validation on every boot
+  ansible.builtin.systemd_service:
+    name: envcheck.service
+    enabled: true
+    daemon_reload: true

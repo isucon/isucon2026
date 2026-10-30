@@ -275,6 +275,7 @@ Resources:
 {{end}}
             - systemctl daemon-reload
             - systemctl enable --now --no-block isucon-register.service
+            - systemctl enable --now --no-block envcheck.service
   {{.ID}}IP:
     Type: AWS::EC2::EIP
     DependsOn: InternetGatewayAttachment
@@ -444,6 +445,7 @@ Resources:
             - systemctl daemon-reload
             - systemctl enable --now --no-block isucon-router-bootstrap.service
             - systemctl enable --now --no-block isucon-register.service
+            - systemctl enable --now --no-block envcheck.service
   RouterIP:
     Type: AWS::EC2::EIP
     DependsOn: InternetGatewayAttachment
