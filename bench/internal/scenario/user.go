@@ -367,11 +367,13 @@ func (r *Runner) enterWindow(ctx context.Context, u *user, windowID string, prev
 		if u.rng.Float64() >= u.persona.retake {
 			return nil, previous
 		}
-		retaken, _, ok := r.post(ctx, u, post.PostingWindowID)
+		retaken, _, ok := r.postTake(ctx, u, post.PostingWindowID, 1)
 		if !ok {
 			return nil, previous
 		}
+		// 撮り直した投稿も、今日の投稿と画像を確かめる（画像の加点は初めの投稿の分だけ）。
 		r.checkMyCurrentPost(ctx, u, retaken)
+		r.checkImage(ctx, u, retaken.FeedPost())
 		post = retaken
 	}
 	s := &session{windowID: post.PostingWindowID, day: day, postID: post.ID, budget: budgetOf(u)}
@@ -403,6 +405,12 @@ func (r *Runner) visibilityOf(u *user) string {
 
 // post は windowID の投稿期間に写真を投稿する。投稿できたら投稿と公開範囲を返す。
 func (r *Runner) post(ctx context.Context, u *user, windowID string) (client.Post, string, bool) {
+	return r.postTake(ctx, u, windowID, 0)
+}
+
+// postTake は post と同じく投稿する。take はその日付の何回目（0 から）の投稿か。撮り直しの
+// 投稿は別の投稿なので、初めの投稿とは別の写真を選ぶ（投稿ごとにバイト列を変える、§8.3）。
+func (r *Runner) postTake(ctx context.Context, u *user, windowID string, take int) (client.Post, string, bool) {
 	sent := time.Now()
 	status, err := u.API.CurrentWindow(ctx, u.Token)
 	if err != nil {
@@ -413,7 +421,11 @@ func (r *Runner) post(ctx context.Context, u *user, windowID string) (client.Pos
 		return client.Post{}, "", false
 	}
 	visibility := r.visibilityOf(u)
-	region, key := u.Region, hashOf(r.seed, "post", u.Username, itoa(r.dayOfWindow(windowID)))
+	parts := []string{"post", u.Username, itoa(r.dayOfWindow(windowID))}
+	if take > 0 {
+		parts = append(parts, "take", itoa(take))
+	}
+	region, key := u.Region, hashOf(r.seed, parts...)
 	image, caption := r.photos.Post(region, key)
 	location := r.locationOf(u, r.dayOfWindow(windowID))
 	creation := r.model.BeginCreatePost(u.ID)
