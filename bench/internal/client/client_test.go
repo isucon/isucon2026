@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -737,6 +738,52 @@ func TestTruncatedBodyIsRequestError(t *testing.T) {
 	var requestErr *client.RequestError
 	if !errors.As(err, &requestErr) {
 		t.Fatalf("err=%v (%T), want RequestError", err, err)
+	}
+}
+
+// TestOversizedBody は、上限（JSON は 1 MiB）を超える応答を切り詰めて使わず、エラーにする
+// ことを確かめる。先頭の 1 MiB が正しい JSON と空白でも通さない。期待外のステータスの応答は
+// 上限までで error を読む。
+func TestOversizedBody(t *testing.T) {
+	const limit = 1 << 20
+	prefix := `{"id":"u1","username":"alice"}`
+	for _, tc := range []struct {
+		name   string
+		status int
+		body   string
+		ok     bool
+	}{
+		{"exactly the limit", http.StatusOK, prefix + strings.Repeat(" ", limit-len(prefix)), true},
+		{"one byte over", http.StatusOK, prefix + strings.Repeat(" ", limit-len(prefix)+1), false},
+		{"invalid trailer", http.StatusOK, prefix + strings.Repeat(" ", limit-len(prefix)) + "INVALID_TRAILER", false},
+		{"error status", http.StatusForbidden, `{"error":"forbidden"}` + strings.Repeat(" ", limit), false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(tc.status)
+				_, _ = io.WriteString(w, tc.body)
+			}))
+			defer server.Close()
+			observed := &recorder{}
+			user, err := fastRetry(observed, server.URL).GetUser(t.Context(), "token", "u1")
+			if tc.ok {
+				if err != nil || user.ID != "u1" {
+					t.Fatalf("user=%+v err=%v", user, err)
+				}
+				return
+			}
+			var bodyErr *client.BodyError
+			var apiErr *client.APIError
+			switch {
+			case tc.status == http.StatusOK && !errors.As(err, &bodyErr):
+				t.Fatalf("err=%v (%T), want BodyError", err, err)
+			case tc.status != http.StatusOK && (!errors.As(err, &apiErr) || apiErr.Code != "forbidden"):
+				t.Fatalf("err=%v (%T), want APIError with the code", err, err)
+			}
+			if records := observed.all(); len(records) != 1 || records[0].Err == nil {
+				t.Fatalf("records=%+v", records)
+			}
+		})
 	}
 }
 
