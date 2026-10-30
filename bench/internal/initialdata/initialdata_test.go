@@ -25,6 +25,9 @@ import (
 	"github.com/zeebo/xxh3"
 )
 
+// testSeed は検証の対象と抽選を決める走行の種。
+const testSeed = 1
+
 var testWorld = func() *dataset.World {
 	cfg := dataset.Small()
 	cfg.Users, cfg.Days = 120, 35
@@ -260,7 +263,7 @@ func (f *fakeApp) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func TestChecker(t *testing.T) {
 	c := New(testWorld)
 	c.MemoryMonths = 0
-	targets := c.Targets()
+	targets := c.Targets(testSeed)
 	if len(targets) < 3 {
 		t.Fatalf("targets=%d", len(targets))
 	}
@@ -350,7 +353,7 @@ func TestChecker(t *testing.T) {
 				defer server.Close()
 				var err error
 				for _, user := range targets {
-					if err = c.Check(t.Context(), client.New(server.URL), user); err != nil {
+					if _, err = c.Check(t.Context(), client.New(server.URL), user, testSeed); err != nil {
 						break
 					}
 				}
@@ -371,9 +374,12 @@ func TestCheckerSampled(t *testing.T) {
 	c := New(testWorld)
 	server := httptest.NewServer(newFakeApp(c))
 	defer server.Close()
-	for _, user := range c.Targets() {
-		if err := c.Check(t.Context(), client.New(server.URL), user); err != nil {
-			t.Fatal(err)
+	// 種によって対象と抽選が変わるので、いくつかの種で確かめる。
+	for seed := range uint64(3) {
+		for _, user := range c.Targets(seed) {
+			if _, err := c.Check(t.Context(), client.New(server.URL), user, seed); err != nil {
+				t.Fatal(err)
+			}
 		}
 	}
 	for _, user := range c.HistoryUsers(dataset.Asia)[:5] {
@@ -397,7 +403,7 @@ func TestCheckMemoriesSampledSignatures(t *testing.T) {
 	app.signer = func(*dataset.Image) *dataset.User { return testWorld.Users[1] }
 	server := httptest.NewServer(app)
 	defer server.Close()
-	user := c.Targets()[0]
+	user := c.Targets(testSeed)[0]
 	a := agent.New(client.New(server.URL), user.Region, 0)
 	a.ID, a.Username, a.SecretKey = user.ID, user.Username, user.SecretKey
 	if err := a.Login(t.Context()); err != nil {
@@ -428,7 +434,7 @@ func TestCheckExportImages(t *testing.T) {
 	app.image = func(_ *dataset.Image, data []byte) []byte { return append(slices.Clone(data), 0) }
 	server := httptest.NewServer(app)
 	defer server.Close()
-	user := c.Targets()[0]
+	user := c.Targets(testSeed)[0]
 	a := agent.New(client.New(server.URL), user.Region, 0)
 	a.ID, a.Username, a.SecretKey = user.ID, user.Username, user.SecretKey
 	if err := a.Login(t.Context()); err != nil {
@@ -455,7 +461,7 @@ func TestCheckExportForgedDigests(t *testing.T) {
 	app := newFakeApp(c)
 	server := httptest.NewServer(app)
 	defer server.Close()
-	user := c.Targets()[0]
+	user := c.Targets(testSeed)[0]
 	a := agent.New(client.New(server.URL), user.Region, 0)
 	a.ID, a.Username, a.SecretKey = user.ID, user.Username, user.SecretKey
 	if err := a.Login(t.Context()); err != nil {

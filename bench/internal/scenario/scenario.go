@@ -532,14 +532,26 @@ func (r *Runner) checkInitialData(ctx context.Context) string {
 	r.step("初期データの検証")
 	// phase 行も含め、初期データの検証の経過は運営向け（参加者には不要）。
 	r.operatorLogger().Info("phase: initial data")
-	targets := r.initial.Targets()
+	// 対象、Memories の月、取得する画像は走行の種で決まり、同じ種なら同じ検証になる。
+	targets := r.initial.Targets(r.seed)
+	usernames := make([]string, len(targets))
+	for i, target := range targets {
+		usernames[i] = target.Username
+	}
+	r.operatorLogger().Info("initial data targets", "users", strings.Join(usernames, ","), "seed", r.seed)
 	failures := make([]error, len(targets))
 	api := r.api.WithClientIP(r.ips.Next())
 	parallel(len(targets), func(i int) {
 		start := time.Now()
-		failures[i] = r.initial.Check(ctx, api, targets[i])
-		// 誰を検証したかと所要時間も運営向け。
-		r.operatorLogger().Info("initial user checked", "username", targets[i].Username, "region", targets[i].Region, "elapsed", time.Since(start).Round(time.Millisecond))
+		var report initialdata.Report
+		report, failures[i] = r.initial.Check(ctx, api, targets[i], r.seed)
+		// 誰を検証したか、読んだ月、段階ごとの所要時間と件数も運営向け。遅いときに、どの段階で
+		// 時間がかかったかを見分ける。
+		attrs := []any{"username", targets[i].Username, "region", targets[i].Region, "elapsed", time.Since(start).Round(time.Millisecond), "months", strings.Join(report.Months, ",")}
+		for _, s := range report.Steps {
+			attrs = append(attrs, slog.Group(s.Name, "elapsed", s.Elapsed.Round(time.Millisecond), "count", s.Count))
+		}
+		r.operatorLogger().Info("initial user checked", attrs...)
 		if failures[i] != nil {
 			r.step(fmt.Sprintf("初期データのユーザー %s の検証", targets[i].Username))
 		}

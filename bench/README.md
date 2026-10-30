@@ -129,7 +129,7 @@ VM 環境では `make vm-benchmark BENCH_ARGS='-users 2 -duration 25s'` でも�
 事前検証のあと、初期データのユーザーとしてログインし、アプリが初期データどおりの内容を返すことを
 確かめる。期待値は bench がリポジトリ直下の `dataset` から計算する（seed を作った `datagen` と同じもの）。
 対象は友達の最も多い通常ユーザー、各リージョンから無作為に選んだ通常ユーザー、無作為に選んだ認定公開アカウントで、
-走行ごとに変わる。並行に確かめる。
+走行の種（`-seed`）で決まり、同じ種なら Memories の月と取得する画像も同じになる。並行に確かめる。
 
 - Memories: 履歴のある月から無作為に 2 か月を選び、最後のページまで読んで、投稿（キャプション、公開範囲、位置、投稿時刻と
   on-time）、RealMoji（新しい順、最大 50 件）、コメント（古い順、最大 50 件）を比べる。
@@ -340,7 +340,7 @@ ISUXPORTAL_SUPERVISOR_HARD_TIMEOUT=210 \
 （210 秒）は、ベンチの全体上限と報告処理の余裕を含めて長く設定する。
 
 supervisor 実行時の stdout はシナリオの進行ログ（Story、ユーザー移動）と、`pass`、`score`、参加者向けの `messages` を含む JSON を出す。
-phase 行はすべて参加者に不要なため、運営向けの stderr にだけ出す（`scenario.Config.OperatorLogger`）。対象は `phase: initialize`、`phase: pretest`、`phase: initial data`、`phase: prepare users`、`phase: load`（実行条件 `usersPerRegion`、`duration`、`seed`、`photos` を含む）、`phase: final check`、`final check done`。同じく `prepare users`（準備の内訳と所要時間）、`initial user checked`（検証したユーザーと所要時間）、不正な利用者の通信記録（`不正な利用者の通信`、`不正アップロードの応答`）も運営向けにだけ出す。単独実行では進行ログと運営向けログはどちらも stderr に出るので、この振り分けは supervisor 実行時にだけ効く。
+phase 行はすべて参加者に不要なため、運営向けの stderr にだけ出す（`scenario.Config.OperatorLogger`）。対象は `phase: initialize`、`phase: pretest`、`phase: initial data`、`phase: prepare users`、`phase: load`（実行条件 `usersPerRegion`、`duration`、`seed`、`photos` を含む）、`phase: final check`、`final check done`。同じく `prepare users`（準備の内訳と所要時間）、`initial data targets`（対象のユーザー）、`initial user checked`（検証したユーザー、Memories の月、段階ごとの所要時間と件数）、不正な利用者の通信記録（`不正な利用者の通信`、`不正アップロードの応答`）も運営向けにだけ出す。単独実行では進行ログと運営向けログはどちらも stderr に出るので、この振り分けは supervisor 実行時にだけ効く。
 ポータルの失敗理由には結果の `reason` を送り、初期化失敗やエラー率超過などの原因を参加者に表示する。
 採点内訳や言語を含む詳細 JSON は運営向けの stderr に出す。
 通常の不合格は終了コード 0 として、運営通知の対象となる実行障害と区別する。

@@ -109,6 +109,38 @@ func TestHistoryLoginValidation(t *testing.T) {
 	}
 }
 
+// TestInitialDataLogsDraws は、初期データの検証の対象が走行の種で決まり、運営向けのログに対象と、
+// ユーザーごとの段階の所要時間と件数が出ることを確かめる（アプリはログインで失敗させる）。
+func TestInitialDataLogsDraws(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+	var targets []string
+	for range 2 {
+		var operator bytes.Buffer
+		r, err := NewRunner(Config{Target: server.URL, Users: 1, Seed: 4967, Dataset: tinyDataset,
+			Logger: slog.New(slog.NewTextHandler(io.Discard, nil)), OperatorLogger: slog.New(slog.NewTextHandler(&operator, nil))})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if reason := r.checkInitialData(t.Context()); reason == "" {
+			t.Fatal("initial data check passed against a failing app")
+		}
+		log := operator.String()
+		for _, want := range []string{`msg="initial data targets"`, `msg="initial user checked"`, "months=", "login.elapsed=", "login.count=1"} {
+			if !strings.Contains(log, want) {
+				t.Fatalf("%s missing from the operator log: %s", want, log)
+			}
+		}
+		line, _, _ := strings.Cut(log[strings.Index(log, "users="):], " ")
+		targets = append(targets, line)
+	}
+	if targets[0] != targets[1] {
+		t.Fatalf("the same seed chose %s and %s", targets[0], targets[1])
+	}
+}
+
 // TestPretestChecksDisplayName は、事前検証が登録したときの表示名をプロフィールと比べることを
 // 確かめる（フィードより先は 500 で止める）。
 func TestPretestChecksDisplayName(t *testing.T) {
