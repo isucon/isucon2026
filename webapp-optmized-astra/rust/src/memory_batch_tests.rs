@@ -13,16 +13,9 @@ async fn compare(
     before: Option<DateTime<Utc>>,
     id: &str,
 ) -> serde_json::Value {
-    let actual = super::list_memories(
-        &mut db.acquire().await.unwrap(),
-        owner,
-        start,
-        end,
-        before,
-        id,
-    )
-    .await
-    .unwrap();
+    let actual = super::list_memories(db, owner, start, end, before, id)
+        .await
+        .unwrap();
     let expected = crate::memory_api::list_memories(
         &mut db.acquire().await.unwrap(),
         owner,
@@ -116,7 +109,7 @@ async fn batched_memory_matches_reference_visibility_limits_and_pagination() {
     compare(&db, "owner", start, start + chrono::Days::new(1), None, "").await;
     assert!(
         super::list_memories(
-            &mut db.acquire().await.unwrap(),
+            &db,
             "owner",
             start,
             end,

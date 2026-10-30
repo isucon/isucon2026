@@ -5,7 +5,7 @@ use sqlx::{Executor, FromRow, Postgres};
 use crate::api_error::Error;
 use crate::user::{User, user_columns_as};
 
-#[derive(Debug, Clone, sqlx::FromRow, serde::Deserialize)]
+#[derive(Debug, Clone, sqlx::FromRow)]
 pub struct RealMoji {
     pub id: String,
     pub post_id: String,
@@ -28,7 +28,7 @@ pub async fn get_real_moji<'c>(
     Ok(reaction)
 }
 
-#[derive(Debug, Clone, serde::Deserialize)]
+#[derive(Debug, Clone)]
 pub struct RealMojiWithReactor {
     pub real_moji: RealMoji,
     pub reactor: User,

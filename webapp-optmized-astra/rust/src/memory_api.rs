@@ -91,7 +91,7 @@ pub async fn get_memories_handler(
         ));
     };
     let response = crate::memory_batch::list_memories(
-        &mut *h.db.acquire().await?,
+        &h.db,
         &session.user_id,
         start,
         start + Months::new(1),
@@ -114,7 +114,7 @@ pub async fn get_memories_by_date_handler(
         ));
     };
     let response: GetMemoriesByDateResponse = crate::memory_batch::list_memories(
-        &mut *h.db.acquire().await?,
+        &h.db,
         &session.user_id,
         start,
         start + Days::new(1),
