@@ -451,3 +451,4 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261030T055415Z-team12 | Graph SQL admission four with memory timing candidate=3ad08eb3; seed=1 | PASS | 164,536 |
 | 20261030T060147Z-team12 | Graph SQL admission eight with memory timing; seed=1 | PASS | 158,296 |
 | 20261030T061210Z-team12 | Reuse memory authentication connection; graph admission removed; timing enabled; seed=1 | PASS | 175,865 |
+| 20261030T061823Z-team12 | Memory authentication connection reuse; timing disabled; seed=1 | PASS | 176,708 |
