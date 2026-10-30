@@ -3,7 +3,7 @@
 use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, LazyLock, Mutex};
 
-use chrono::NaiveDate;
+use chrono::{Datelike, Months, NaiveDate};
 use sqlx::{FromRow, PgConnection, PgPool, Row};
 
 use crate::Error;
@@ -58,6 +58,9 @@ impl<T> Cache<T> {
             .filter(|e| &e.revision == revision)
             .map(|e| e.value.clone())
     }
+    pub(crate) fn contains(&self, key: &str) -> bool {
+        self.entries.contains_key(key)
+    }
     pub(crate) fn insert(&mut self, owner: &str, revision: Revision, value: Arc<T>, bytes: usize) {
         if let Some(old) = self.entries.remove(owner) {
             self.bytes -= old.bytes;
@@ -107,11 +110,13 @@ pub(crate) struct History {
 
 static HISTORIES: LazyLock<Mutex<Cache<History>>> =
     LazyLock::new(|| Mutex::new(Cache::new(96 * 1024 * 1024)));
-pub(crate) async fn load(db: &PgPool, owner: &str) -> Result<Arc<History>, Error> {
-    let present = HISTORIES.lock().unwrap().entries.contains_key(owner);
+pub(crate) async fn load(db: &PgPool, owner: &str, date: NaiveDate) -> Result<Arc<History>, Error> {
+    let month = date.with_day(1).expect("valid month start");
+    let key = format!("{owner}:{month}");
+    let present = HISTORIES.lock().unwrap().contains(&key);
     if present {
         let version = revision(&mut *db.acquire().await?, owner).await?;
-        if let Some(history) = HISTORIES.lock().unwrap().get(owner, &version) {
+        if let Some(history) = HISTORIES.lock().unwrap().get(&key, &version) {
             return Ok(history);
         }
     }
@@ -126,7 +131,7 @@ pub(crate) async fn load(db: &PgPool, owner: &str) -> Result<Arc<History>, Error
           FROM astra_history_epoch WHERE singleton
         ), owned AS MATERIALIZED (
           SELECT {POST_COLUMNS}, w.local_date FROM posts p JOIN posting_windows w ON w.id=p.posting_window_id
-          WHERE p.author_id=$1 AND p.deleted_at IS NULL
+          WHERE p.author_id=$1 AND p.deleted_at IS NULL AND w.local_date >= $2 AND w.local_date < $3
         )
         SELECT version.*, owned.*,
           coalesce((SELECT json_agg(c ORDER BY c.created_at,c.id)::text FROM (
@@ -138,7 +143,7 @@ pub(crate) async fn load(db: &PgPool, owner: &str) -> Result<Arc<History>, Error
             WHERE post_id=owned.id AND replaced_at IS NULL AND deleted_at IS NULL
           ) r),'[]') AS reactions_json
         FROM version LEFT JOIN owned ON true ORDER BY owned.posted_at DESC,owned.id DESC
-    "#)).bind(owner).fetch_all(db).await?;
+    "#)).bind(owner).bind(month).bind(month + Months::new(1)).fetch_all(db).await?;
     let version = Revision::from_row(rows.first().ok_or(sqlx::Error::RowNotFound)?)?;
     let mut posts = Vec::new();
     let mut comments = Vec::<Comment>::new();
@@ -204,7 +209,7 @@ pub(crate) async fn load(db: &PgPool, owner: &str) -> Result<Arc<History>, Error
     HISTORIES
         .lock()
         .unwrap()
-        .insert(owner, version, history.clone(), bytes);
+        .insert(&key, version, history.clone(), bytes);
     Ok(history)
 }
 

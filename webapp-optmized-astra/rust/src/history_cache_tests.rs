@@ -3,6 +3,10 @@ use crate::memory_api::{cached_memories, list_memories};
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 use std::str::FromStr;
 
+async fn load(db: &PgPool, owner: &str) -> Result<Arc<History>, Error> {
+    super::load(db, owner, NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()).await
+}
+
 async fn assert_matches(
     db: &PgPool,
     owner: &str,
@@ -99,6 +103,16 @@ async fn cached_records_follow_commits_user_changes_pagination_and_reset() {
     .await;
     assert_eq!(next["items"].as_array().unwrap().len(), 5);
     assert_eq!(next["hasMore"], false);
+    // Month and date requests share only the matching month's snapshot.
+    let january_day = super::load(&db, "owner", NaiveDate::from_ymd_opt(2026, 1, 17).unwrap())
+        .await
+        .unwrap();
+    assert!(Arc::ptr_eq(&snapshot, &january_day));
+    let february = super::load(&db, "owner", NaiveDate::from_ymd_opt(2026, 2, 1).unwrap())
+        .await
+        .unwrap();
+    assert!(february.posts.is_empty());
+    assert!(!Arc::ptr_eq(&snapshot, &february));
     // The single-statement loader must retain a revision even for no rows,
     // and an empty cached history must not hide the first subsequent post.
     assert_eq!(
