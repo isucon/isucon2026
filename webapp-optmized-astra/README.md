@@ -465,3 +465,4 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261030T101825Z-team12 | primary Asia session authority; local login/logout response; candidate=fc1737d8; seed=1 | PASS | 192,515 |
 | 20261030T102348Z-team12 | repeat primary Asia session authority; no restart or configuration change; candidate=fc1737d8; seed=1 | PASS | 170,867 |
 | 20261030T103602Z-team12 | primary session authority with isolated 8-session pool; candidate=43412d6; seed=1 | PASS | 173,130 |
+| 20261030T105331Z-team12 | Asia recommendation SQL on existing America replica, 32 connections; candidate=7fbcd678; seed=1 | PASS | 196,591 |
