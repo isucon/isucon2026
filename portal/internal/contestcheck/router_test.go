@@ -53,3 +53,28 @@ func TestHAProxyStateIgnoresUptimeButDetectsBackendRerouting(t *testing.T) {
 		t.Fatal("rerouting ignored")
 	}
 }
+
+func TestTCClassesUbuntuTextOutput(t *testing.T) {
+	first := "class htb 1:33 root leaf 33: prio 0 rate 1Gbit ceil 1Gbit burst 1600b cburst 1600b"
+	second := "class htb 1:11 root leaf 11: prio 0 rate 1Gbit ceil 1Gbit burst 1600b cburst 1600b"
+	x, err := NormalizeTCClasses([]byte(first + "\n" + second + "\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	y, err := NormalizeTCClasses([]byte(second + "\n  " + first + "\n"))
+	if err != nil || x != y {
+		t.Fatalf("class ordering or whitespace changed snapshot: %v", err)
+	}
+	for _, change := range []string{"rate 2Gbit", "ceil 2Gbit", "burst 3200b", "leaf 44:"} {
+		old := map[string]string{"rate 2Gbit": "rate 1Gbit", "ceil 2Gbit": "ceil 1Gbit", "burst 3200b": "burst 1600b", "leaf 44:": "leaf 33:"}[change]
+		z, err := NormalizeTCClasses([]byte(strings.Replace(first, old, change, 1) + "\n" + second))
+		if err != nil || z == x {
+			t.Fatalf("configuration change %q not detected: %v", change, err)
+		}
+	}
+	for _, invalid := range []string{"", "[]", "Error: device missing"} {
+		if _, err := NormalizeTCClasses([]byte(invalid)); err == nil {
+			t.Fatalf("accepted %q", invalid)
+		}
+	}
+}
