@@ -33,6 +33,7 @@ func (m *Model) CheckOwnPosts(userID string, got []client.Post, r Read) []string
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	var violations []string
+	var unknown []client.Post
 	seen := make(map[string]bool, len(got))
 	for _, item := range got {
 		if seen[item.ID] {
@@ -42,11 +43,10 @@ func (m *Model) CheckOwnPosts(userID string, got []client.Post, r Read) []string
 		seen[item.ID] = true
 		p := m.posts[item.ID]
 		switch {
-		case p == nil && !m.mayHaveUnknownPost(userID, r):
-			violations = append(violations, fmt.Sprintf("bench の知らない投稿 %s があります", item.ID))
 		case p == nil && item.Author.ID != userID:
 			violations = append(violations, fmt.Sprintf("ほかのユーザーの投稿 %s があります", item.ID))
 		case p == nil:
+			unknown = append(unknown, item)
 		case p.AuthorID != userID:
 			violations = append(violations, fmt.Sprintf("ほかのユーザーの投稿 %s があります", item.ID))
 		case m.liveTri(p, r) == False:
@@ -57,12 +57,59 @@ func (m *Model) CheckOwnPosts(userID string, got []client.Post, r Read) []string
 			}
 		}
 	}
+	violations = append(violations, m.checkUnknownOwnPosts(userID, unknown, r)...)
 	for _, p := range m.byAuthor[userID] {
 		if !seen[p.ID] && m.liveTri(p, r) == True {
 			violations = append(violations, fmt.Sprintf("受け付けられた投稿 %s がありません", p.ID))
 		}
 	}
 	return violations
+}
+
+// checkUnknownOwnPosts は、userID の Memories に返った bench の知らない投稿 got を、結果の
+// わからない作成と突き合わせる。作成 1 回でできる投稿は 1 件まで、1 人が同じ日付に持てる
+// （削除していない）投稿も 1 件まで（bench は知らない投稿を削除しない）。作成の回数より多い、
+// 作成が入りえない日付にある、同じ日付にほかの知らない投稿や確実に残っている投稿があるものを
+// 違反として返す。
+func (m *Model) checkUnknownOwnPosts(userID string, got []client.Post, r Read) []string {
+	if len(got) == 0 {
+		return nil
+	}
+	var pending []*pendingPost
+	for _, p := range m.pending[userID] {
+		if boolTri(p.exists, r) != False {
+			pending = append(pending, p)
+		}
+	}
+	var violations []string
+	dates := map[string]bool{}
+	for i, item := range got {
+		if i >= len(pending) {
+			violations = append(violations, fmt.Sprintf("bench の知らない投稿 %s があります（結果のわからない作成は %d 回）", item.ID, len(pending)))
+			continue
+		}
+		window := m.windows[item.PostingWindowID]
+		if window == nil {
+			// bench の知らない投稿期間の投稿は、日付では確かめない。
+			continue
+		}
+		date := window.LocalDate.Format(time.DateOnly)
+		switch {
+		case dates[date] || m.liveOn(userID, window.LocalDate, r):
+			violations = append(violations, fmt.Sprintf("bench の知らない投稿 %s と同じ日付（%s）の投稿がほかにもあります", item.ID, date))
+		case !slices.ContainsFunc(pending, func(p *pendingPost) bool { return m.landsOn(p, window.LocalDate, r) }):
+			violations = append(violations, fmt.Sprintf("bench の知らない投稿 %s があります（%s に入りえた結果のわからない作成はありません）", item.ID, date))
+		}
+		dates[date] = true
+	}
+	return violations
+}
+
+// liveOn は、userID が日付 date に確実に残っている（記録のある）投稿を持つか。
+func (m *Model) liveOn(userID string, date time.Time, r Read) bool {
+	return slices.ContainsFunc(m.byAuthor[userID], func(p *Post) bool {
+		return p.LocalDate.Equal(date) && m.liveTri(p, r) == True
+	})
 }
 
 // CheckOwnPost は、Memories などで返った自分の投稿 got の内容を記録と比べ、違えば理由を返す。
