@@ -441,3 +441,4 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261030T043703Z-team12 | shared two-hop counts and bounded positive recommendation terms; candidate=b53f0973; seed=1 | PASS | 177,733 |
 | 20261030T044739Z-team12 | reuse two-hop counts; retain set-based connection aggregation; candidate=4279a28; seed=1 | PASS | 157,753 |
 | 20261030T045444Z-team12 | fresh queued authentication batches; max128; no result caching; candidate=2e878071; seed=1 | PASS | 172,640 |
+| 20261030T050123Z-team12 | streaming export concurrency 2 to 8; fresh auth batching retained; candidate=3b89c4e6; seed=1 | PASS | 184,044 |
