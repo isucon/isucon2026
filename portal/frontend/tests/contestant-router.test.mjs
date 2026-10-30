@@ -28,11 +28,13 @@ for (const ip of ["203.0.113.5", "", undefined]) {
       );
     });
     try {
-      assert.ok(renderer.root.findAllByType("h1").some((h) => h.children.join("") === "ルーター IP（表示確認用）"));
+      assert.ok(renderer.root.findAllByType("h1").some((h) => h.children.join("") === "ルーター IP"));
       const links = renderer.root.findAllByType("a").filter((a) => a.props.href.startsWith("http://"));
       assert.equal(links.length, ip ? 1 : 0);
       if (ip) {
         const url = `http://${ip}:8080`;
+        assert.equal(renderer.root.findByProps({ "aria-label": "ルーターIPアドレス" }).children.join(""), ip);
+        assert.ok(renderer.root.findAllByType("label").some((label) => label.children.join("") === "表示確認用 URL"));
         assert.equal(links[0].props.href, url);
         assert.match(JSON.stringify(renderer.toJSON()), /ISURealを開く/);
         assert.equal(renderer.root.findByProps({ "aria-label": "表示確認用URL" }).props.value, url);
