@@ -20,12 +20,15 @@ const serverNames: Record<string, string> = {
 
 export const ContestantContestantInstanceList: React.FC<Props> = ({ session, client }) => {
   const [template, setTemplate] = useState("");
+  const [copiedURL, setCopiedURL] = useState("");
   useEffect(() => {
     (async () => {
       const res = await client.getCloudFormation();
       setTemplate(res.template);
     })();
   }, []);
+
+  const previewURL = session.routerPublicIpv4Address ? `http://${session.routerPublicIpv4Address}:8080` : "";
 
   const templateBase64 = `data:text/plain,${encodeURIComponent(template)}`;
 
@@ -70,6 +73,46 @@ export const ContestantContestantInstanceList: React.FC<Props> = ({ session, cli
 
         <tbody>{(session.contestantInstances || []).map((ci) => renderRow(ci))}</tbody>
       </table>
+
+      <section className="my-5" aria-labelledby="router-preview-title">
+        <header>
+          <h1 id="router-preview-title" className="title is-1">
+            ルーター IP
+          </h1>
+        </header>
+        {previewURL ? (
+          <div className="content">
+            <ul>
+              <li>
+                IPアドレス: <code aria-label="ルーターIPアドレス">{session.routerPublicIpv4Address}</code>
+              </li>
+              <li>
+                表示確認用 URL:{" "}
+                <a href={previewURL} target="_blank" rel="noopener noreferrer" aria-label="表示確認用URL">
+                  {previewURL}
+                </a>
+                <button
+                  className="button is-small ml-2"
+                  aria-label="URLをコピー"
+                  onClick={async () => {
+                    await navigator.clipboard.writeText(previewURL);
+                    setCopiedURL(previewURL);
+                  }}
+                >
+                  <span className="material-icons-outlined is-size-6" aria-hidden="true">
+                    content_copy
+                  </span>
+                </button>
+                <span className="is-size-7 ml-2" role="status">
+                  {copiedURL === previewURL ? "コピーしました" : ""}
+                </span>
+              </li>
+            </ul>
+          </div>
+        ) : (
+          <p>未登録（ルーターの登録後に、表示確認用のURLが表示されます。）</p>
+        )}
+      </section>
 
       {true && (
         <>
