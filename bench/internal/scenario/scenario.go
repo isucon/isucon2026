@@ -641,6 +641,7 @@ func (r *Runner) load(ctx context.Context) string {
 	// supervisor の下では運営向けロガー（標準エラー出力）にだけ出す。単独実行ではどちらも
 	// 標準エラー出力につながるので、bench.log を読む report.py の負荷区間の特定は従来どおり。
 	r.operatorLogger().Info("phase: load", "usersPerRegion", r.cfg.Users, "duration", r.cfg.Duration, "seed", r.seed, "photos", r.photos.Count())
+	parent := ctx
 	ctx, abort := context.WithCancelCause(ctx)
 	defer abort(nil)
 	var wg sync.WaitGroup
@@ -709,8 +710,10 @@ wait:
 	wg.Wait()
 	<-monitorDone
 	r.tellGrandPrix()
-	if err := r.admin.AdminLogout(context.WithoutCancel(ctx), r.adminToken); err != nil {
-		r.board.Errorf("管理者としてログアウトできません: %v", err)
+	// 負荷走行の時間が過ぎてもログアウトはするが、全体の期限や中断（CLI の -timeout、SIGTERM）
+	// では打ち切る。
+	if err := r.admin.AdminLogout(parent, r.adminToken); err != nil {
+		r.adminError(parent, "管理者としてログアウトできません: %v", err)
 	}
 
 	if cause := context.Cause(ctx); cause != nil && !errors.Is(cause, context.Canceled) && !errors.Is(cause, context.DeadlineExceeded) {
