@@ -235,7 +235,7 @@ type notice struct {
 //
 // 通知を待つ間にストリームが切れる（ルーターのタイムアウトなど）のは実際の端末でも起きる
 // ので、エラーにせず購読し直す。通知が届かなければゲートを通過できないので、それで数に
-// 表れる。すぐに切れ続ける場合に備えて、1 秒未満で切れたら 1 秒待つ。
+// 表れる。すぐに切れ続ける場合に備えて、新しい通知を受けずに 1 秒未満で切れたら 1 秒待つ。
 func (r *Runner) listen(ctx context.Context, u *user, out chan notice, subscribed chan<- struct{}) {
 	// 同じ投稿期間の通知は 1 回だけ数えて渡す。購読し直すたびに同じ通知を返す実装に、
 	// 通知の点を繰り返し与えない。
@@ -262,15 +262,11 @@ func (r *Runner) listen(ctx context.Context, u *user, out chan notice, subscribe
 			continue
 		}
 		n, err := stream.Receive()
-		received := time.Now()
+		received, day := time.Now(), r.dayNow(u.Region)
 		valid := err == nil && n.ID != "" && n.PostingWindowID != "" && n.Region == u.Region
-		if valid && seen[n.PostingWindowID] {
-			_ = stream.Close()
-			continue
-		}
-		if valid {
+		fresh := valid && !seen[n.PostingWindowID]
+		if fresh {
 			seen[n.PostingWindowID] = true
-			r.award(u, r.dayNow(u.Region), score.TagNotification)
 			// 古い通知が残っていれば新しい通知で置き換える。
 			select {
 			case <-out:
@@ -286,13 +282,23 @@ func (r *Runner) listen(ctx context.Context, u *user, out chan notice, subscribe
 		// 残りを読み切って接続を使い回す。応答を終えない実装でも通知を待たせないよう、
 		// 通知を渡してから閉じる。
 		_ = stream.Close()
-		switch {
-		case err != nil:
-			if time.Since(opened) < time.Second {
-				_ = sleepUntil(ctx, opened.Add(time.Second))
-			}
-		case !valid:
+		if err == nil && !valid {
 			r.invalid(ctx, u, "%s: 通知の内容が不正です（リージョン %s）", u.Username, n.Region)
+		}
+		if fresh {
+			// 通知の点は、bench が開いたことを確かめた投稿期間の通知にだけ与える。通知は開く要求への
+			// 応答より先に届くことがあるので、記録されるまで待つ。開いていない投稿期間の通知は
+			// enterWindow がエラーにする。
+			if _, err := r.model.WaitForNotifiedWindow(ctx, u.Region, n.PostingWindowID, received); err == nil {
+				r.award(u, day, score.TagNotification)
+			}
+			// 新しい通知のあとは、次の通知を逃さないようすぐに購読し直す。
+			continue
+		}
+		// 新しい通知を受けずに切れた（空の応答、重複した通知、不正な通知）。すぐに切れ続ける
+		// 実装に購読を繰り返さないよう、1 秒未満なら 1 秒まで待つ。
+		if time.Since(opened) < time.Second {
+			_ = sleepUntil(ctx, opened.Add(time.Second))
 		}
 	}
 }
