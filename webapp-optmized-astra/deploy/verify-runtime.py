@@ -36,7 +36,7 @@ def inspect(app):
             'ISUREAL_SHORT_READ_POOL_CONNECTIONS':str(runtime.get('shortReadPoolConnections',0)),
             'ISUREAL_MEMORY_POOL_CONNECTIONS':str(runtime.get('memoryPoolConnections',0)),
             'ISUREAL_RECOMMENDATION_READ_REGION':runtime.get('recommendationReadRegion',''),
-            'ISUREAL_RECOMMENDATION_DB_HOST':next((a['host'] for a in runtime['applications'] if a['region']==runtime.get('recommendationReadRegion','')),''),
+            'ISUREAL_RECOMMENDATION_DB_HOST':runtime['database']['host'] if runtime.get('recommendationReadRegion')=='primary' else next((a['host'] for a in runtime['applications'] if a['region']==runtime.get('recommendationReadRegion','')),''),
             'ISUREAL_RECOMMENDATION_POOL_CONNECTIONS':str(runtime.get('recommendationPoolConnections',32)),
             'ISUREAL_SESSION_POOL_CONNECTIONS':str(runtime.get('sessionPoolConnections',0)),
             'ISUREAL_PRIMARY_ASIA_SESSIONS':str(int(runtime.get('primaryAsiaSessionsEnabled',False))),

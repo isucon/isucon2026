@@ -248,7 +248,7 @@ if (!Number.isInteger(sessionPoolConnections) || sessionPoolConnections < 0 || s
     throw new Error("Invalid session pool capacity");
 }
 
-if (!["", "europe", "america"].includes(runtime.recommendationReadRegion ?? "")) {
+if (!["", "primary", "europe", "america"].includes(runtime.recommendationReadRegion ?? "")) {
     throw new Error("Invalid recommendation read region");
 }
 if (runtime.recommendationReadRegion && (!runtime.replicasEnabled || !runtime.writeFenceEnabled || runtime.writeFenceMode !== "native")) {

@@ -278,9 +278,10 @@ pub async fn new_server(config: Config) -> Router {
     let recommendation_reads = if !recommendation_host.is_empty() && handler_context.config.region == "asia" && WriteIngress::from_env().is_none() {
         assert!(matches!(&write_fence, Some(WriteFence::Native(_))), "remote recommendation reads require native write visibility");
         let target = std::env::var("ISUREAL_RECOMMENDATION_READ_REGION").expect("recommendation replica region");
-        assert!(matches!(target.as_str(), "europe" | "america"));
+        assert!(matches!(target.as_str(), "primary" | "europe" | "america"));
         let connections = std::env::var("ISUREAL_RECOMMENDATION_POOL_CONNECTIONS").unwrap_or_else(|_| "32".into()).parse().expect("recommendation pool capacity");
-        Some(crate::recommendation_reads::RecommendationReads::connect(&handler_context.config, &recommendation_host, &format!("astra_{target}"), connections).await.expect("connect recommendation replica"))
+        let replica = (target != "primary").then(|| format!("astra_{target}"));
+        Some(crate::recommendation_reads::RecommendationReads::connect(&handler_context.config, &recommendation_host, replica.as_deref(), connections).await.expect("connect recommendation database"))
     } else { None };
     let primary_sessions_enabled = std::env::var("ISUREAL_PRIMARY_ASIA_SESSIONS").as_deref() == Ok("1");
     let local_session_writes = std::env::var("ISUREAL_LOCAL_ASIA_SESSION_WRITES").as_deref() == Ok("1");
