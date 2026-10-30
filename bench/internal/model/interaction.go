@@ -10,6 +10,19 @@ import (
 	"github.com/isucon/isucon2026/bench/internal/imageurl"
 )
 
+// InteractionPageSize は RealMoji とコメントの一覧の 1 ページの件数（アプリの仕様）。
+const InteractionPageSize = 50
+
+// pageSizeProblem は、1 ページの件数が仕様と合わなければ問題を返す。続きがあるのに足りない
+// ページを返すと、それより後ろの交流の欠落を確かめられなくなる（空のページでも続きがあると
+// して隠せてしまう）。
+func pageSizeProblem(kind string, n int, hasMore bool) string {
+	if (hasMore && n < InteractionPageSize) || n > InteractionPageSize {
+		return fmt.Sprintf("%sが %d 件です（1 ページ %d 件、続きがあるか %t）", kind, n, InteractionPageSize, hasMore)
+	}
+	return ""
+}
+
 // Comment は bench が書いたコメント。
 type Comment struct {
 	ID        string
@@ -88,6 +101,9 @@ func (m *Model) BeginDeleteComment(commentID string) *Write {
 // viewer とブロックの関係にある（かもしれない）人のコメントは、仕様では見えないが、参照実装は
 // 返すので、あってもなくてもよい。
 func (m *Model) CheckComments(viewerID, postID string, after *client.Comment, page client.CommentPage, r Read) []string {
+	if problem := pageSizeProblem("コメント", len(page.Items), page.HasMore); problem != "" {
+		return []string{problem}
+	}
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	var problems []string
@@ -189,6 +205,9 @@ func (m *Model) BeginDeleteRealMoji(postID, reactorID string) *Write {
 // 2 件ある、確実に残っている RealMoji がない（続きがないとき）、新しい順に並んでいない場合を
 // 返す。viewer とブロックの関係にある人の RealMoji は、CheckComments と同じくあってもなくてもよい。
 func (m *Model) CheckRealMojis(viewerID, postID string, page client.RealMojiPage, r Read) []string {
+	if problem := pageSizeProblem("RealMoji ", len(page.Items), page.HasMore); problem != "" {
+		return []string{problem}
+	}
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	var problems []string
