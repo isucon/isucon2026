@@ -472,3 +472,4 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261030T113727Z-team12 | short read pool8 after search statistics and session admission; candidate=2b6d4ceb; seed=1; memorypool0; diagnostics off | PASS | 197,586 |
 | 20261030T114906Z-team12 | primary recommendation pool4; candidate=4da37ba5; seed=1; short/memory pool0; diagnostics off | PASS | 183,523 |
 | 20261030T120422Z-team12 | initial post image metadata cache; candidate=a6e766ba; seed=1; remote recommendations32; diagnostics off | PASS | 199,704 |
+| 20261030T121452Z-team12 | initial image guard pool4; candidate=bbc994dd; seed=1; remote recommendation32; diagnostics off | PASS | 192,508 |
