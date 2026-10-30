@@ -77,15 +77,27 @@ export const ContestantContestantInstanceList: React.FC<Props> = ({ session, cli
       <section className="notification is-info is-light my-5" aria-labelledby="router-preview-title">
         <header className="mb-3">
           <h1 id="router-preview-title" className="title is-4 mb-2">
-            ルーター IP（表示確認用）
+            ルーター IP
           </h1>
           <p>ルーター経由でISURealを開き、アプリケーションの表示を確認できます。</p>
         </header>
         {previewURL ? (
           <>
+            <p className="is-size-4 is-family-monospace mb-4" aria-label="ルーターIPアドレス">
+              {session.routerPublicIpv4Address}
+            </p>
+            <label className="label is-size-7" htmlFor="router-preview-url">
+              表示確認用 URL
+            </label>
             <div className="field has-addons mb-4">
               <div className="control is-expanded">
-                <input className="input is-family-monospace" aria-label="表示確認用URL" value={previewURL} readOnly />
+                <input
+                  className="input is-family-monospace"
+                  id="router-preview-url"
+                  aria-label="表示確認用URL"
+                  value={previewURL}
+                  readOnly
+                />
               </div>
               <div className="control">
                 <button
