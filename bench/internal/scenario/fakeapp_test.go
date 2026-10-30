@@ -85,6 +85,7 @@ type fakeApp struct {
 	nextID    int
 
 	postStatus   int                                  // 0 以外なら POST /api/posts をこのステータスにする
+	loseCreation int                                  // 0 以外なら、投稿をこの件数に 1 件、作ったうえで 500 にする
 	extraFeed    []client.Post                        // すべてのフィードのページに追加する
 	ignoreBlocks bool                                 // ブロックを無視する不具合
 	pageSize     int                                  // フィードの 1 ページの件数（0 なら 50）
@@ -601,6 +602,10 @@ func (a *fakeApp) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			Location: fakeLocation(r),
 		}
 		a.posts = append(a.posts, p)
+		if a.loseCreation > 0 && len(a.posts)%a.loseCreation == 0 {
+			fail(http.StatusInternalServerError, "lost")
+			return
+		}
 		respond(http.StatusCreated, p.Post)
 	case path[0] == "posts" && path[1] == "me":
 		for _, p := range a.posts {

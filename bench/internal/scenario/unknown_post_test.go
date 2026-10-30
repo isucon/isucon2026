@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -65,6 +66,33 @@ func (l *lostCreation) replay() {
 		}
 	}
 	l.pending, l.body = nil, nil
+}
+
+// TestCorrectAppWithLostCreations は、投稿を作ったうえで 500 を返すことがある正しいアプリが、
+// 削除、撮り直し、公開範囲の変更、ページ送りを混ぜて何日も走らせても、bench の知らない投稿の
+// せいで失格や検証の失敗にならず、走行後の整合性チェックも通ることを確かめる。
+func TestCorrectAppWithLostCreations(t *testing.T) {
+	r, app := newTestRunner(t, 3, metrics.SLO{FailRate: 1000, MinOps: 1})
+	app.pageSize, r.model.PageSize = 2, 2
+	app.loseCreation = 3
+	r.setDuration(2 * time.Second)
+	r.deleteRate, r.changeRate = 0.2, 0.3
+	if reason := r.load(t.Context()); reason != "" || r.board.CriticalCount() != 0 {
+		t.Fatalf("reason=%q critical=%v", reason, r.board.Critical())
+	}
+	lost := 0
+	for _, message := range r.board.Errors() {
+		if !strings.Contains(message, "投稿できません") {
+			t.Fatalf("errors=%v", r.board.Errors())
+		}
+		lost++
+	}
+	if lost == 0 {
+		t.Fatal("no creation was lost")
+	}
+	if reason := r.finalCheck(t.Context()); reason != "" {
+		t.Fatalf("final check: %s", reason)
+	}
 }
 
 // TestUnknownPostPrivacyOverHTTP は、投稿作成が 5xx で終わって bench が ID を知らない投稿でも、

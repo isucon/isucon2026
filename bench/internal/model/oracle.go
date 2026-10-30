@@ -114,19 +114,21 @@ func (m *Model) pendingWindows(p *pendingPost, r Read, f func(id string)) {
 	})
 }
 
+// landsOn は、結果のわからない作成 p が日付 date の投稿を作ったかもしれないか。
+func (m *Model) landsOn(p *pendingPost, date time.Time, r Read) bool {
+	on := false
+	m.pendingWindows(p, r, func(id string) {
+		window := m.windows[id]
+		on = on || window == nil || window.LocalDate.Equal(date)
+	})
+	return on
+}
+
 // unknownPostOnTri は、userID に、結果のわからない作成でできた日付 date の投稿があるかもしれないか
 // （不明か偽）。
 func (m *Model) unknownPostOnTri(userID string, date time.Time, r Read) Tri {
 	for _, p := range m.pending[userID] {
-		if boolTri(p.exists, r) == False {
-			continue
-		}
-		on := false
-		m.pendingWindows(p, r, func(id string) {
-			window := m.windows[id]
-			on = on || window == nil || window.LocalDate.Equal(date)
-		})
-		if on {
+		if boolTri(p.exists, r) != False && m.landsOn(p, date, r) {
 			return Unknown
 		}
 	}
