@@ -298,3 +298,10 @@ portalとworkerのecspresso差分が残っていないことも確認してい�
 追加レビューで、各言語賞はそれぞれの対象言語を使用して解いたチームが対象と確認しました。
 この条件を共通の説明にまとめ、ミラー賞の対象言語はGoと明記しました。
 対象は1チームとありますが、同率時の最後の条件に「同時受賞」とあるため、この例外も記載しました。
+
+## 2026年10月30日のクライアントIPの説明
+
+`router/internal/haproxy/config.go`を確認し、`X-Client-IP`がない場合だけ接続元IPを設定し、指定された値は検証や上書きをせず転送することを確認しました。
+`router/tests/e2e/main.go`の`assertClientIP`には指定値の転送と未指定時の補完を確認する既存の検査があります。
+`bench/internal/client/client.go`の`WithClientIP`と`bench/internal/scenario/user.go`などを照合し、ベンチマーカーがユーザーごとにIPを指定する説明を競技環境に追加しました。
+現在のヘッダー名は`X-Client-IP`で、`X-Real-IP`はこの用途には使用しません。
