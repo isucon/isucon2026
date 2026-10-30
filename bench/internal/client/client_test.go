@@ -787,6 +787,61 @@ func TestOversizedBody(t *testing.T) {
 	}
 }
 
+// TestDecodeFailureIsObservedOnce は、JSON の解釈まで含めた 1 操作の結果を Observer に 1 回だけ
+// 渡すことを確かめる。解釈できない応答と型の違う応答は失敗、正しい応答は成功、許した 4xx は
+// 許したものとして記録し、キャンセルした操作は記録しない。
+func TestDecodeFailureIsObservedOnce(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		status  int
+		body    string
+		allowed bool
+		fail    bool
+	}{
+		{"valid", http.StatusOK, `{"id":"u1","username":"alice"}`, false, false},
+		{"malformed", http.StatusOK, `{"id":`, false, true},
+		{"type mismatch", http.StatusOK, `{"id":1,"username":"alice"}`, false, true},
+		{"allowed 404", http.StatusNotFound, `{"error":"not_found"}`, true, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(tc.status)
+				_, _ = io.WriteString(w, tc.body)
+			}))
+			defer server.Close()
+			observed := &recorder{}
+			_, err := fastRetry(observed, server.URL).GetUser(client.MayFailWith(t.Context(), http.StatusNotFound), "token", "u1")
+			var bodyErr *client.BodyError
+			if tc.fail != errors.As(err, &bodyErr) {
+				t.Fatalf("err=%v (%T)", err, err)
+			}
+			records := observed.all()
+			if len(records) != 1 {
+				t.Fatalf("records=%+v, want exactly one", records)
+			}
+			record := records[0]
+			if failed := record.Err != nil && !record.Allowed; failed != tc.fail || record.Allowed != tc.allowed || record.Route != "GET /api/users/:userId" {
+				t.Fatalf("record=%+v", record)
+			}
+		})
+	}
+	t.Run("canceled", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			_, _ = io.WriteString(w, `{"id":`)
+		}))
+		defer server.Close()
+		observed := &recorder{}
+		ctx, cancel := context.WithCancel(t.Context())
+		cancel()
+		if _, err := fastRetry(observed, server.URL).GetUser(ctx, "token", "u1"); err == nil {
+			t.Fatal("expected error")
+		}
+		if records := observed.all(); len(records) != 0 {
+			t.Fatalf("records=%+v", records)
+		}
+	})
+}
+
 // TestMayFailWithTruncatedBody は、許したステータスの応答でも本体を読み切れなかったときは、
 // 許さずに通信の失敗として記録することを確かめる。
 func TestMayFailWithTruncatedBody(t *testing.T) {

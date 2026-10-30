@@ -108,7 +108,7 @@ type Record struct {
 	Saw503   bool
 	Status   int    // 最後の試行のステータス。レスポンスを受け取れなければ 0
 	Code     string // 最後の試行が期待外のステータスのときの応答の error（ip_banned など）
-	Err      error  // 最後のステータスが期待どおりなら nil
+	Err      error  // 最後のステータスが期待どおりで、本体も読めた（JSON なら解釈できた）なら nil
 	Timeout  bool
 	// Allowed は、期待したステータスではないが、呼び出し側が許したステータスで終わったこと
 	// （MayFailWith）。計測では失敗に数えない。
@@ -124,7 +124,8 @@ func MayFailWith(ctx context.Context, statuses ...int) context.Context {
 	return context.WithValue(ctx, allowedStatusKey{}, statuses)
 }
 
-// Observer は完了した操作ごとに Record を受け取る。呼び出し側の context で
+// Observer は完了した操作ごとに Record を受け取る。応答の JSON の解釈まで済んでから 1 回だけ
+// 渡すので、解釈できない応答も失敗として届く。呼び出し側の context で
 // キャンセルされた操作は渡さないので、負荷走行の終了時に処理中だった
 // リクエストは集計から外れる。
 type Observer interface {
@@ -386,8 +387,9 @@ func ImageSHA256(got []byte) (sum [sha256.Size]byte, ok bool) {
 }
 
 // send は r を送り、503 なら再試行ポリシーに従って再試行し、最後の
-// レスポンスの本体を返す。
-func (c *Client) send(ctx context.Context, r request) ([]byte, error) {
+// レスポンスの本体を返す。decode があれば期待どおりの応答の本体を渡し、その失敗も操作の
+// 失敗として 1 回だけ Observer に届ける。所要時間は応答を受け取るまで（解釈の時間は含めない）。
+func (c *Client) send(ctx context.Context, r request, decode func([]byte) error) ([]byte, error) {
 	record := Record{Route: r.route, Country: c.country, Start: time.Now()}
 	if record.Route == "" {
 		path, _, _ := strings.Cut(r.path, "?")
@@ -398,6 +400,11 @@ func (c *Client) send(ctx context.Context, r request) ([]byte, error) {
 	}
 	data, err := c.attempts(ctx, r, &record)
 	record.Duration = time.Since(record.Start)
+	if err == nil && decode != nil {
+		if decodeErr := decode(data); decodeErr != nil {
+			err = &BodyError{Method: r.method, Path: r.path, Err: fmt.Errorf("応答の JSON を解釈できません: %w", decodeErr)}
+		}
+	}
 	record.Err = err
 	var apiErr *APIError
 	if errors.As(err, &apiErr) {
@@ -496,17 +503,15 @@ func (c *Client) attempts(ctx context.Context, r request, record *Record) ([]byt
 	}
 }
 
+// do は r を送り、応答の JSON を out に読む（out が nil なら読まない）。JSON を読めなければ
+// BodyError を返し、計測でもその操作を失敗として数える。
 func (c *Client) do(ctx context.Context, r request, out any) error {
-	data, err := c.send(ctx, r)
-	if err != nil {
-		return err
-	}
+	var decode func([]byte) error
 	if out != nil {
-		if err := json.Unmarshal(data, out); err != nil {
-			return fmt.Errorf("%s %s: 応答の JSON を解釈できません: %w", r.method, r.path, err)
-		}
+		decode = func(data []byte) error { return json.Unmarshal(data, out) }
 	}
-	return nil
+	_, err := c.send(ctx, r, decode)
+	return err
 }
 
 // RequestError は応答を受け取れなかったリクエスト（タイムアウト、通信エラー）。
@@ -986,7 +991,7 @@ func (c *Client) Image(ctx context.Context, path string) ([]byte, error) {
 	if !strings.HasPrefix(path, apiPrefix+"/images/") {
 		return nil, fmt.Errorf("画像 URL %q が /api/images/ で始まりません", path)
 	}
-	return c.send(ctx, request{method: http.MethodGet, path: path, route: "GET /api/images/:imageId", want: http.StatusOK, maxBody: maxImageBytes, digest: true})
+	return c.send(ctx, request{method: http.MethodGet, path: path, route: "GET /api/images/:imageId", want: http.StatusOK, maxBody: maxImageBytes, digest: true}, nil)
 }
 
 // InitialImage は Image と同じく画像を取得するが、Router に XXH3 の代わりに SHA-256 を返させる。
@@ -995,7 +1000,7 @@ func (c *Client) InitialImage(ctx context.Context, path string) ([]byte, error) 
 	if !strings.HasPrefix(path, apiPrefix+"/images/") {
 		return nil, fmt.Errorf("画像 URL %q が /api/images/ で始まりません", path)
 	}
-	return c.send(ctx, request{method: http.MethodGet, path: path, route: "GET /api/images/:imageId", want: http.StatusOK, maxBody: maxImageBytes, digest: true, sha256: true})
+	return c.send(ctx, request{method: http.MethodGet, path: path, route: "GET /api/images/:imageId", want: http.StatusOK, maxBody: maxImageBytes, digest: true, sha256: true}, nil)
 }
 
 type Profile struct {
@@ -1081,7 +1086,7 @@ func (c *Client) Relationships(ctx context.Context, token, kind string, before *
 func (c *Client) Export(ctx context.Context, token string) (*Export, error) {
 	// 項目のダイジェストがこの要求のものかを確かめるので、再試行でも同じ種を使う（0 は使わない）。
 	seed := rand.Uint64() | 1
-	data, err := c.send(ctx, request{method: http.MethodGet, path: apiPrefix + "/me/export", token: token, want: http.StatusOK, maxBody: maxExportBytes, digest: true, seed: seed})
+	data, err := c.send(ctx, request{method: http.MethodGet, path: apiPrefix + "/me/export", token: token, want: http.StatusOK, maxBody: maxExportBytes, digest: true, seed: seed}, nil)
 	if err != nil {
 		return nil, err
 	}

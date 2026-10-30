@@ -751,8 +751,15 @@ func (r *Runner) deleteAccount(ctx context.Context, u *user) {
 	u.stopped.Store(true)
 	r.dropFriendsOf(u)
 	r.award(u, r.dayNow(u.Region), score.TagDeleteAccount)
-	if _, err := u.API.Me(client.MayFailWith(ctx, http.StatusUnauthorized), u.Token); !isStatus(err, http.StatusUnauthorized) {
-		r.invalid(ctx, u, "%s: 退会したユーザーのセッションが無効になっていません: %v", u.Username, err)
+	_, err = u.API.Me(client.MayFailWith(ctx, http.StatusUnauthorized), u.Token)
+	switch {
+	case isStatus(err, http.StatusUnauthorized):
+	case err == nil:
+		r.invalid(ctx, u, "%s: 退会したユーザーのセッションが無効になっていません", u.Username)
+	case ctx.Err() == nil && !r.bannedErr(u, err):
+		// 期待外のステータスや読めない応答は Observer が失敗として数えているので、ログだけ残す
+		// （u は止めたので requestError は使えない）。
+		r.board.Errorf("%s: 退会したユーザーのセッションが無効になっていません: %v", u.Username, err)
 	}
 }
 
