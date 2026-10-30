@@ -11,6 +11,8 @@ import (
 
 	"github.com/isucon/isucon2026/bench/internal/client"
 	"github.com/isucon/isucon2026/bench/internal/geo"
+	"github.com/isucon/isucon2026/bench/internal/metrics"
+	"github.com/isucon/isucon2026/bench/internal/score"
 )
 
 // notificationServer は、購読のたびに handle の返す通知を 1 件送って閉じるサーバーにつなぐ。
@@ -73,4 +75,93 @@ func TestNotificationRequeueStopsOnCancel(t *testing.T) {
 			}
 		}
 	}
+}
+
+// TestNotificationReconnectBackoff は、新しい通知を受けずにすぐ切れる購読（空の応答、重複した
+// 通知、不正な通知）を 1 秒に 1 回までにし（#177）、新しい通知のあとはすぐに購読し直すことを
+// 確かめる。
+func TestNotificationReconnectBackoff(t *testing.T) {
+	for _, tc := range []struct {
+		mode     string
+		min, max int64
+	}{
+		{"empty", 1, 2},
+		{"duplicate", 1, 2},
+		{"invalid", 1, 2},
+		{"fresh", 5, 1 << 30},
+	} {
+		t.Run(tc.mode, func(t *testing.T) {
+			r, _, window := newWindowRunner(t)
+			u := r.users[geo.Asia][0]
+			subscriptions := notificationServer(t, u, func(n int64) string {
+				switch tc.mode {
+				case "duplicate":
+					return fmt.Sprintf(`{"id":"n1","postingWindowId":%q,"region":"asia"}`, window)
+				case "invalid":
+					return fmt.Sprintf(`{"id":"n1","postingWindowId":%q,"region":"europe"}`, window)
+				case "fresh":
+					return fmt.Sprintf(`{"id":"n%d","postingWindowId":"next-%d","region":"asia"}`, n, n)
+				}
+				return ""
+			})
+			ctx, cancel := context.WithTimeout(t.Context(), 300*time.Millisecond)
+			defer cancel()
+			r.listen(ctx, u, make(chan notice, 1), nil)
+			if got := subscriptions.Load(); got < tc.min || got > tc.max {
+				t.Fatalf("subscriptions in 300ms = %d, want %d..%d", got, tc.min, tc.max)
+			}
+		})
+	}
+}
+
+// TestNotificationPointsOnlyForOpenedWindows は、通知の点を、bench が開いたことを確かめた投稿期間の
+// 通知にだけ与え（#255）、開く要求への応答より先に届いた通知にも、記録されてから与えることを確かめる。
+func TestNotificationPointsOnlyForOpenedWindows(t *testing.T) {
+	t.Run("never opened", func(t *testing.T) {
+		r, _, window := newWindowRunner(t)
+		u := r.users[geo.Asia][0]
+		notificationServer(t, u, func(n int64) string {
+			switch n {
+			case 1:
+				return `{"id":"n1","postingWindowId":"never-opened","region":"asia"}`
+			case 2:
+				return fmt.Sprintf(`{"id":"n2","postingWindowId":%q,"region":"asia"}`, window)
+			}
+			return ""
+		})
+		ctx, cancel := context.WithTimeout(t.Context(), 200*time.Millisecond)
+		defer cancel()
+		r.listen(ctx, u, make(chan notice, 1), nil)
+		if got := r.board.Count(score.TagNotification); got != 1 {
+			t.Fatalf("notification points = %d, want 1", got)
+		}
+	})
+	t.Run("before the open response", func(t *testing.T) {
+		r, app := newTestRunner(t, 1, metrics.SLO{FailRate: 1000, MinOps: 1})
+		r.setDuration(1000 * time.Second)
+		r.books.Store(newBook(r.tt, time.Now()))
+		app.mu.Lock()
+		app.openDelay = 300 * time.Millisecond
+		app.mu.Unlock()
+		u := r.users[geo.Asia][0]
+		notifications := make(chan notice, 1)
+		subscribed := make(chan struct{}, 1)
+		stop := r.startListening(t.Context(), u, notifications, subscribed)
+		defer stop()
+		<-subscribed
+		opened := make(chan string, 1)
+		go func() {
+			id, _ := r.openDay(t.Context(), geo.Asia, 1)
+			opened <- id
+		}()
+		n := <-notifications
+		points := r.board.Count(score.TagNotification)
+		id := <-opened
+		for deadline := time.Now().Add(time.Second); r.board.Count(score.TagNotification) == 0 && time.Now().Before(deadline); {
+			time.Sleep(10 * time.Millisecond)
+		}
+		if n.PostingWindowID != id || points != 0 || r.board.Count(score.TagNotification) != 1 {
+			t.Fatalf("notified %s (opened %s), points before the response=%d, after=%d", n.PostingWindowID, id, points, r.board.Count(score.TagNotification))
+		}
+	})
 }
