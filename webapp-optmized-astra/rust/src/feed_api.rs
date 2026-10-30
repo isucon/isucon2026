@@ -73,6 +73,7 @@ impl FromRow<'_, PgRow> for RankedPost {
 pub async fn get_feed_handler(
     State(h): State<Arc<HandlerContext>>,
     Extension(session): Extension<Session>,
+    graph: Option<Extension<Arc<crate::initial_graph::InitialGraph>>>,
     Bind(input): Bind<GetFeedRequest>,
 ) -> Result<Response, Error> {
     match input.feed.as_str() {
@@ -85,6 +86,21 @@ pub async fn get_feed_handler(
     let ranked = input.feed == "friends-of-friends";
     if ranked && input.before_score.is_none() != input.before_id.is_empty() {
         return Err(new_api_error(StatusCode::BAD_REQUEST, "invalid_pagination"));
+    }
+    if ranked
+        && let Some(Extension(graph)) = graph
+        && let Some(mut posts) = graph.recommended(&h.db, &session.user_id, &input).await?
+    {
+        let has_more = posts.len() > 50;
+        let mut items = Vec::with_capacity(posts.len().min(50));
+        for (post, score) in posts.iter_mut().take(50) {
+            post.author.set_image_key()?;
+            items.push(FeedItemResponse {
+                create_post_response: new_post_response(&post.post, &post.author),
+                score: Some(*score),
+            });
+        }
+        return json(StatusCode::OK, GetFeedResponse { items, has_more });
     }
     // Filter permissions before LIMIT so hidden posts cannot consume page slots.
     // A single fresh snapshot supplies the viewer, relationships and post gate.

@@ -160,6 +160,11 @@ async fn ranked_reference(db: &PgPool) -> Vec<(PostWithAuthor, i64)> {
 }
 
 async fn compare_ranked(h: &Arc<HandlerContext>, stage: &str) -> usize {
+    let graph = Arc::new(
+        isureal::initial_graph::InitialGraph::load(&h.db)
+            .await
+            .unwrap(),
+    );
     let all = ranked_reference(&h.db).await;
     let mut cursor: Option<(i64, DateTime<Utc>, String)> = None;
     let mut pages = 0;
@@ -167,10 +172,12 @@ async fn compare_ranked(h: &Arc<HandlerContext>, stage: &str) -> usize {
         let expected: Vec<&(PostWithAuthor, i64)> = all
             .iter()
             .filter(|(post, score)| {
-                cursor.as_ref().is_none_or(|(before_score, before, before_id)| {
-                    (*score, post.post.posted_at, post.post.id.as_str())
-                        < (*before_score, *before, before_id.as_str())
-                })
+                cursor
+                    .as_ref()
+                    .is_none_or(|(before_score, before, before_id)| {
+                        (*score, post.post.posted_at, post.post.id.as_str())
+                            < (*before_score, *before, before_id.as_str())
+                    })
             })
             .collect();
         let input = GetFeedRequest {
@@ -182,9 +189,14 @@ async fn compare_ranked(h: &Arc<HandlerContext>, stage: &str) -> usize {
                 .map(|cursor| cursor.2.clone())
                 .unwrap_or_default(),
         };
-        let response = get_feed_handler(State(h.clone()), Extension(session()), Bind(input))
-            .await
-            .unwrap();
+        let response = get_feed_handler(
+            State(h.clone()),
+            Extension(session()),
+            Some(Extension(graph.clone())),
+            Bind(input),
+        )
+        .await
+        .unwrap();
         assert_eq!(response.status(), StatusCode::OK);
         let bytes = response.into_body().collect().await.unwrap().to_bytes();
         let body: Value = serde_json::from_slice(&bytes).unwrap();
@@ -192,7 +204,12 @@ async fn compare_ranked(h: &Arc<HandlerContext>, stage: &str) -> usize {
             .as_array()
             .unwrap()
             .iter()
-            .map(|item| (item["id"].as_str().unwrap(), item["score"].as_i64().unwrap()))
+            .map(|item| {
+                (
+                    item["id"].as_str().unwrap(),
+                    item["score"].as_i64().unwrap(),
+                )
+            })
             .collect();
         let expected_items: Vec<(&str, i64)> = expected
             .iter()
@@ -238,9 +255,10 @@ async fn compare(h: &Arc<HandlerContext>, stage: &str) -> usize {
                 before_posted_at: before,
                 before_id: before_id.clone(),
             };
-            let response = get_feed_handler(State(h.clone()), Extension(session()), Bind(input))
-                .await
-                .unwrap();
+            let response =
+                get_feed_handler(State(h.clone()), Extension(session()), None, Bind(input))
+                    .await
+                    .unwrap();
             assert_eq!(response.status(), StatusCode::OK);
             let bytes = response.into_body().collect().await.unwrap().to_bytes();
             let body: Value = serde_json::from_slice(&bytes).unwrap();
@@ -414,6 +432,14 @@ async fn feed_sql_matches_original_graph_and_filters_before_pagination() {
       UPDATE users SET status='deleted' WHERE id='author003';
       UPDATE posts SET deleted_at=now() WHERE id='post004';
     "#).execute(&db).await.unwrap();
+    sqlx::raw_sql("CREATE TABLE initial_friendships AS SELECT * FROM friendships")
+        .execute(&db)
+        .await
+        .unwrap();
+    sqlx::raw_sql(include_str!("../../sql/022-initial-graph.sql"))
+        .execute(&db)
+        .await
+        .unwrap();
     let h = Arc::new(HandlerContext {
         db: db.clone(),
         config: config_from_env(),
@@ -440,7 +466,8 @@ async fn feed_sql_matches_original_graph_and_filters_before_pagination() {
       INSERT INTO comments VALUES ('post090','author071',NULL),('post090','author073',now()),
         ('post091','author074',NULL),('post091','author074',NULL),('post094','author078',NULL);
     "#).execute(&db).await.unwrap();
-    let scores = recommendation_scores(&db, &reference(&db, "friends-of-friends", None, "").await).await;
+    let scores =
+        recommendation_scores(&db, &reference(&db, "friends-of-friends", None, "").await).await;
     // post090: E=2 (070 RealMoji, 071 RealMoji and comment), M=2 (070, 071), C=1 (150 via 072).
     assert_eq!(scores["post090"], 10 * 2 + 3 * 2 + 1);
     // post091: E=1 (074 commented twice), M=2, C=1.
@@ -455,7 +482,8 @@ async fn feed_sql_matches_original_graph_and_filters_before_pagination() {
     // author095 has 41 more friends that each share author000 with the viewer.
     sqlx::raw_sql("INSERT INTO friendships SELECT 'author095', 'author'||lpad(i::text,3,'0') FROM generate_series(100,140) i;")
         .execute(&db).await.unwrap();
-    let scores = recommendation_scores(&db, &reference(&db, "friends-of-friends", None, "").await).await;
+    let scores =
+        recommendation_scores(&db, &reference(&db, "friends-of-friends", None, "").await).await;
     // M=2 (000 and 070); C is capped at 30.
     assert_eq!(scores["post095"], 3 * 2 + 30);
     assert!(compare(&h, "dense graph and multiple pages").await > 1);
@@ -466,6 +494,141 @@ async fn feed_sql_matches_original_graph_and_filters_before_pagination() {
     sqlx::raw_sql("INSERT INTO block_relations VALUES ('author065','viewer'); INSERT INTO friendships VALUES ('viewer','author120'); DELETE FROM friendships WHERE user_low_id='viewer' AND user_high_id='author070';")
         .execute(&db).await.unwrap();
     compare(&h, "fresh block and friendship mutations").await;
+    // Keep one loaded graph across rollback, concurrent writes, and reset.
+    let cached_graph = Arc::new(
+        isureal::initial_graph::InitialGraph::load(&db)
+            .await
+            .unwrap(),
+    );
+    let graph_input = GetFeedRequest {
+        feed: "friends-of-friends".into(),
+        ..Default::default()
+    };
+    let expected_graph: Vec<_> = ranked_reference(&db)
+        .await
+        .into_iter()
+        .take(51)
+        .map(|(post, score)| (post.post.id, score))
+        .collect();
+    assert!(!expected_graph.is_empty());
+    let mut rolled_back = db.begin().await.unwrap();
+    sqlx::query("DELETE FROM friendships")
+        .execute(&mut *rolled_back)
+        .await
+        .unwrap();
+    rolled_back.rollback().await.unwrap();
+    let actual: Vec<_> = cached_graph
+        .recommended(&db, "viewer", &graph_input)
+        .await
+        .unwrap()
+        .unwrap()
+        .into_iter()
+        .map(|(post, score)| (post.post.id, score))
+        .collect();
+    assert_eq!(
+        actual, expected_graph,
+        "rolled back changes remain invisible"
+    );
+
+    // Block candidate SQL after the graph snapshot, then commit a graph change.
+    // One response must not mix old edges with new permissions or engagement.
+    let mut writer = db.begin().await.unwrap();
+    sqlx::query("LOCK TABLE users IN ACCESS EXCLUSIVE MODE")
+        .execute(&mut *writer)
+        .await
+        .unwrap();
+    let reader_db = db.clone();
+    let reader_graph = cached_graph.clone();
+    let reader = tokio::spawn(async move {
+        reader_graph
+            .recommended(
+                &reader_db,
+                "viewer",
+                &GetFeedRequest {
+                    feed: "friends-of-friends".into(),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap()
+            .unwrap()
+    });
+    let mut blocked = false;
+    for _ in 0..200 {
+        blocked = sqlx::query_scalar::<_, bool>("SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE pid<>pg_backend_pid() AND wait_event_type='Lock' AND query LIKE '%astra_initial_graph_candidates%')")
+            .fetch_one(&admin).await.unwrap();
+        if blocked {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+    assert!(
+        blocked,
+        "candidate query reached the lock after reading graph changes"
+    );
+    sqlx::query("DELETE FROM friendships")
+        .execute(&mut *writer)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE users SET display_name='Concurrent name' WHERE id='author090'")
+        .execute(&mut *writer)
+        .await
+        .unwrap();
+    writer.commit().await.unwrap();
+    let actual: Vec<_> = reader
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|(post, score)| (post.post.id, score))
+        .collect();
+    assert_eq!(
+        actual, expected_graph,
+        "single snapshot during concurrent mutation"
+    );
+    assert!(
+        cached_graph
+            .recommended(&db, "viewer", &graph_input)
+            .await
+            .unwrap()
+            .unwrap()
+            .is_empty()
+    );
+
+    let mut reset = db.begin().await.unwrap();
+    sqlx::raw_sql("SET LOCAL session_replication_role=replica; TRUNCATE friendships,astra_graph_changes; INSERT INTO friendships SELECT * FROM initial_friendships;")
+        .execute(&mut *reset).await.unwrap();
+    reset.commit().await.unwrap();
+    let expected_reset: Vec<_> = ranked_reference(&db)
+        .await
+        .into_iter()
+        .take(51)
+        .map(|(post, score)| (post.post.id, score))
+        .collect();
+    let actual: Vec<_> = cached_graph
+        .recommended(&db, "viewer", &graph_input)
+        .await
+        .unwrap()
+        .unwrap()
+        .into_iter()
+        .map(|(post, score)| (post.post.id, score))
+        .collect();
+    assert_eq!(
+        actual, expected_reset,
+        "reset restores the immutable graph with an empty overlay"
+    );
+    sqlx::query("DELETE FROM initial_friendships WHERE user_low_id='author070'")
+        .execute(&db)
+        .await
+        .unwrap();
+    assert!(
+        cached_graph
+            .recommended(&db, "viewer", &graph_input)
+            .await
+            .unwrap()
+            .is_none(),
+        "epoch mismatch falls back to SQL"
+    );
+    compare_ranked(&h, "reload after initial graph change").await;
     sqlx::query("UPDATE users SET status='deleted' WHERE id='viewer'")
         .execute(&db)
         .await
@@ -516,7 +679,7 @@ async fn feed_sql_matches_original_graph_and_filters_before_pagination() {
             ..Default::default()
         },
     ] {
-        let error = get_feed_handler(State(h.clone()), Extension(session()), Bind(input))
+        let error = get_feed_handler(State(h.clone()), Extension(session()), None, Bind(input))
             .await
             .unwrap_err();
         assert_eq!(error.into_response().status(), StatusCode::BAD_REQUEST);

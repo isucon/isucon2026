@@ -35,6 +35,7 @@ def inspect(app):
             'ISUREAL_INITIAL_HISTORY_EXPORT':str(int(runtime.get('initialHistoryExportEnabled',False))),
             'ISUREAL_SHORT_READ_POOL_CONNECTIONS':str(runtime.get('shortReadPoolConnections',0)),
             'ISUREAL_MEMORY_POOL_CONNECTIONS':str(runtime.get('memoryPoolConnections',0)),
+            'ISUREAL_INITIAL_GRAPH':str(int(runtime.get('initialGraphEnabled',False))),
             'ISUREAL_INITIAL_HISTORY':str(int(runtime.get('initialHistoryEnabled',False))),
             'ISUREAL_SESSION_CACHE':str(int(runtime.get('sessionCacheEnabled',False))),
             'ISUREAL_SESSION_CACHE_PEERS':json.dumps([app['host']+':8080' for app in runtime['applications']],separators=(',',':')),
