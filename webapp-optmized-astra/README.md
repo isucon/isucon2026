@@ -478,3 +478,4 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261030T130035Z-team12 | Owner-contiguous cross-month export image layout; original SQL and image reads preserved; seed=1 | PASS | 200,330 |
 | 20261030T130443Z-team12 | Repeat owner-contiguous export layout without restarting applications; source=277191d8; seed=1 | PASS | 188,075 |
 | 20261030T131429Z-team12 | All Asia feed SQL on existing US replica; owner-contiguous export images; GC then application deployment; seed=1 | PASS | 194,157 |
+| 20261030T132244Z-team12 | Shared owner-contiguous layout for exports and initial image reads; recommendations-only remote scope; seed=1 | PASS | 189,772 |
