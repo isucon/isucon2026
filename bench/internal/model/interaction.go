@@ -231,12 +231,13 @@ func (m *Model) BeginReplaceRealMoji(postID, reactorID string) *ReactionWrite {
 	return &ReactionWrite{Write: w, postID: postID, reactorID: reactorID, change: tl.changes[len(tl.changes)-1]}
 }
 
-// ReplacedRealMoji は置き換えた RealMoji を作成の応答の値で記録する。置き換えは新しい ID を
-// 発行するので、ID が空か、すでにほかの RealMoji に使われていれば記録せずに false を返す
-// （呼び出し側は結果を不明として記録する）。
+// ReplacedRealMoji は置き換えた RealMoji を作成の応答の値で記録する。ID が空か、ほかの投稿や
+// ほかの人の RealMoji に使われていれば記録せずに false を返す（呼び出し側は結果を不明として
+// 記録する）。置き換えで ID を変えない実装もあるので、同じ人が同じ投稿に付けた RealMoji の
+// ID なら、その記録を応答の値で書き換える。
 func (m *Model) ReplacedRealMoji(w *ReactionWrite, reaction client.RealMoji) bool {
 	m.mu.Lock()
-	if reaction.ID == "" || reaction.ID == "?" || m.realMojiByID[reaction.ID] != nil {
+	if known := m.realMojiByID[reaction.ID]; reaction.ID == "" || reaction.ID == "?" || known != nil && (known.PostID != w.postID || known.ReactorID != w.reactorID) {
 		m.mu.Unlock()
 		return false
 	}
