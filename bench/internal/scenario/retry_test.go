@@ -152,6 +152,43 @@ func TestOpenWindowAppliedBefore503(t *testing.T) {
 	}
 }
 
+// TestWindowRecoverySkipsBannedUser は、投稿期間を開いた結果がわからず今の投稿期間を読んで
+// 確かめるとき、読んだユーザーが BAN されていれば止めて悪評に記録し、次のユーザーで読み直す
+// ことを確かめる（#197）。セッションが切れていたときも次のユーザーで読む。
+func TestWindowRecoverySkipsBannedUser(t *testing.T) {
+	for _, status := range []int{http.StatusUnauthorized, http.StatusForbidden} {
+		r, app := newTestRunner(t, 2, metrics.SLO{FailRate: 1000, MinOps: 1})
+		r.setDuration(4 * time.Second)
+		victim := r.users[geo.Asia][0]
+		var victimReads atomic.Int32
+		serveThrough(t, r, app, func(w http.ResponseWriter, req *http.Request) bool {
+			switch {
+			case req.URL.Path == "/api/admin/posting-window":
+				// 開いたうえで応答を失う。
+				app.ServeHTTP(httptest.NewRecorder(), req)
+				w.WriteHeader(http.StatusInternalServerError)
+				return true
+			case req.URL.Path == "/api/posting-window/current" && req.Header.Get("X-Client-IP") == victim.API.ClientIP():
+				victimReads.Add(1)
+				w.WriteHeader(status)
+				code := map[int]string{http.StatusUnauthorized: "invalid_session", http.StatusForbidden: "ip_banned"}[status]
+				_, _ = w.Write([]byte(`{"error":"` + code + `"}`))
+				return true
+			}
+			return false
+		})
+		r.books.Store(newBook(r.tt, time.Now()))
+		start := time.Now()
+		id, err := r.openDay(t.Context(), geo.Asia, 1)
+		if err != nil || id == "" || victimReads.Load() != 1 || time.Since(start) > 300*time.Millisecond {
+			t.Fatalf("status %d: id=%q err=%v victim reads=%d took=%v errors=%v", status, id, err, victimReads.Load(), time.Since(start), r.board.Errors())
+		}
+		if banned := status == http.StatusForbidden; victim.stopped.Load() != banned || (r.reputations() == 1) != banned {
+			t.Fatalf("status %d: stopped=%v reputation=%d", status, victim.stopped.Load(), r.reputations())
+		}
+	}
+}
+
 // TestFriendRequestAppliedBefore503 は、友達申請で友達になって 503 になり、送り直しが 409 に
 // なっても、友達になっていないと決めつけず、走行後の整合性チェックで友達を許すことを確かめる。
 func TestFriendRequestAppliedBefore503(t *testing.T) {
