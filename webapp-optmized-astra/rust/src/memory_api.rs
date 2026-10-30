@@ -22,7 +22,7 @@ use crate::realmoji::select_current_real_mojis;
 use crate::realmoji_api::{ReplaceRealMojiResponse, new_real_moji_response};
 use crate::response::json;
 use crate::server::HandlerContext;
-use crate::session::Session;
+use crate::session::{Session, SessionConnection};
 use crate::timefmt::{parse_date_only, parse_year_month};
 
 #[derive(Default, Deserialize)]
@@ -84,6 +84,7 @@ pub async fn get_memories_handler(
     State(h): State<Arc<HandlerContext>>,
     Extension(session): Extension<Session>,
     probe: Option<Extension<ReadProbe>>,
+    connection: Option<Extension<SessionConnection>>,
     Bind(input): Bind<GetMemoriesRequest>,
 ) -> Result<Response, Error> {
     let Some(start) = parse_year_month(&input.month) else {
@@ -93,7 +94,10 @@ pub async fn get_memories_handler(
         ));
     };
     let mut probe = probe.map(|Extension(probe)| probe);
-    let mut db = h.db.acquire().await?;
+    let mut db = match connection.and_then(|Extension(connection)| connection.take()) {
+        Some(db) => db,
+        None => h.db.acquire().await?,
+    };
     ReadProbe::mark(&mut probe, "pool_wait");
     let response = list_memories(
         &mut db,
@@ -117,6 +121,7 @@ pub async fn get_memories_by_date_handler(
     State(h): State<Arc<HandlerContext>>,
     Extension(session): Extension<Session>,
     probe: Option<Extension<ReadProbe>>,
+    connection: Option<Extension<SessionConnection>>,
     Bind(input): Bind<GetMemoriesByDateRequest>,
 ) -> Result<Response, Error> {
     let Some(start) = parse_date_only(&input.date) else {
@@ -126,7 +131,10 @@ pub async fn get_memories_by_date_handler(
         ));
     };
     let mut probe = probe.map(|Extension(probe)| probe);
-    let mut db = h.db.acquire().await?;
+    let mut db = match connection.and_then(|Extension(connection)| connection.take()) {
+        Some(db) => db,
+        None => h.db.acquire().await?,
+    };
     ReadProbe::mark(&mut probe, "pool_wait");
     let response: GetMemoriesByDateResponse = list_memories(
         &mut db,

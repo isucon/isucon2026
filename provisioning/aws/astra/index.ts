@@ -198,8 +198,3 @@ if (!Number.isInteger(exportConcurrency) || exportConcurrency < 1 || exportConcu
 if (runtime.readTimingEnabled !== undefined && typeof runtime.readTimingEnabled !== "boolean") {
     throw new Error("Invalid read timing flag");
 }
-
-const graphQueryConcurrency = runtime.graphQueryConcurrency ?? 0;
-if (!Number.isInteger(graphQueryConcurrency) || graphQueryConcurrency < 0 || graphQueryConcurrency > 16) {
-    throw new Error("Invalid graph query concurrency");
-}
