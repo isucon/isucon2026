@@ -242,3 +242,8 @@ if (runtime.localAsiaSessionWritesEnabled && (!runtime.primaryAsiaSessionsEnable
 if (runtime.primaryAsiaSessionsEnabled && runtime.sessionCacheEnabled) {
     throw new Error("Primary session routing requires fresh SQL authentication");
 }
+
+const sessionPoolConnections = runtime.sessionPoolConnections ?? 0;
+if (!Number.isInteger(sessionPoolConnections) || sessionPoolConnections < 0 || sessionPoolConnections > 16) {
+    throw new Error("Invalid session pool capacity");
+}

@@ -47,6 +47,14 @@ pub async fn short_read_context(
     isolated_context(context, connections, "astra_short_reads").await
 }
 
+/// Login/logout and primary session checks must not queue behind graph SQL.
+pub async fn session_context(
+    context: &std::sync::Arc<crate::server::HandlerContext>,
+    connections: u32,
+) -> Result<std::sync::Arc<crate::server::HandlerContext>, sqlx::Error> {
+    isolated_context(context, connections, "astra_sessions").await
+}
+
 async fn isolated_context(
     context: &std::sync::Arc<crate::server::HandlerContext>,
     connections: u32,
