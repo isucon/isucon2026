@@ -139,8 +139,9 @@ func (r *Runner) requestFriend(ctx context.Context, u *user, target *user, searc
 	creation := r.model.BeginFriendRequest(u.ID, target.ID)
 	sent := time.Now()
 	request, err := u.API.CreateFriendRequest(client.MayFailWith(ctx, http.StatusConflict, http.StatusNotFound), u.Token, target.ID)
-	// 保留中になった申請だけを記録する（相手の申請で友達になれば、この申請は残らない）。
-	if err == nil && request.Status != "accepted" {
+	// 保留中になった申請だけを記録する（相手の申請で友達になれば、この申請は残らない）。応答が
+	// 不正なら、保留中の申請として記録しない（あとの承認の拒否まで誤りに数えない）。
+	if err == nil && request.Status == "pending" && request.RelationID != "" {
 		r.model.RequestedFriend(creation, request.RelationID)
 	} else {
 		creation.Rejected()
