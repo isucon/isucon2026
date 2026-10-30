@@ -32,6 +32,7 @@ def inspect(app):
         regional=service=='webapp-optmized-astra' and app['region']!='asia'
         read_host, fenced=read_settings(runtime,app,writer=service.endswith('-writer'))
         expected[service]={
+            'ISUREAL_INITIAL_HISTORY':str(int(runtime.get('initialHistoryEnabled',False))),
             'ISUREAL_SESSION_CACHE':str(int(runtime.get('sessionCacheEnabled',False))),
             'ISUREAL_SESSION_CACHE_PEERS':json.dumps([app['host']+':8080' for app in runtime['applications']],separators=(',',':')),
             'ISUREAL_READ_TIMING':str(int(runtime.get('readTimingEnabled',False))),

@@ -289,6 +289,11 @@ pub async fn new_server(config: Config) -> Router {
     } else {
         read_context.clone()
     };
+    let history = if std::env::var("ISUREAL_INITIAL_HISTORY").as_deref() == Ok("1") && WriteIngress::from_env().is_none() {
+        let history = Arc::new(crate::initial_history::InitialHistory::load(&general_reads.db, &handler_context.config.region).await.expect("load initial history"));
+        history.observe();
+        Some(history)
+    } else { None };
     let session_cache = crate::session_cache::SessionCacheCoordinator::from_env(
         handler_context.db.clone(), &general_reads.db, &handler_context.config.db_password,
     ).await;
@@ -376,6 +381,8 @@ pub async fn new_server(config: Config) -> Router {
                 .layer(from_fn_with_state(general_reads.clone(), ip_ban_middleware)),
         )
         .with_state(handler_context.clone());
+
+    let server = if let Some(history) = history { server.layer(axum::Extension(history)) } else { server };
 
     let server = if let Some(cache) = &session_cache {
         server.layer(crate::session_cache::layer(cache.clone()))

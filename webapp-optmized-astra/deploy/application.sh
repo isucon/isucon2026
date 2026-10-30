@@ -49,7 +49,16 @@ bash "$(dirname "$0")/upload-proxy-runtime.sh" webapp-optmized-astra "$region"
 systemctl daemon-reload
 systemctl enable webapp-optmized-astra
 systemctl restart webapp-optmized-astra
-sleep 2
+# A startup history snapshot must be ready before deployment is complete.
+ready=0
+for attempt in $(seq 1 120); do
+    if [ "$(curl -s -o /dev/null --max-time 2 -w '%{http_code}' http://127.0.0.1:8080/api/me || true)" = 401 ]; then
+        ready=1
+        break
+    fi
+    sleep 1
+done
+[ "$ready" = 1 ] || { echo 'Application did not become ready' >&2; exit 1; }
 systemctl is-active webapp-optmized-astra
 bash "$(dirname "$0")/nginx-runtime.sh"
 bash "$(dirname "$0")/guard-runtime.sh"

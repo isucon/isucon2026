@@ -85,6 +85,7 @@ pub async fn get_memories_handler(
     Extension(session): Extension<Session>,
     probe: Option<Extension<ReadProbe>>,
     connection: Option<Extension<SessionConnection>>,
+    history: Option<Extension<Arc<crate::initial_history::InitialHistory>>>,
     Bind(input): Bind<GetMemoriesRequest>,
 ) -> Result<Response, Error> {
     let Some(start) = parse_year_month(&input.month) else {
@@ -99,16 +100,34 @@ pub async fn get_memories_handler(
         None => h.db.acquire().await?,
     };
     ReadProbe::mark(&mut probe, "pool_wait");
-    let response = list_memories(
-        &mut db,
-        &session.user_id,
-        start,
-        start + Months::new(1),
-        input.before_posted_at,
-        &input.before_id,
-        &mut probe,
-    )
-    .await?;
+    let cached = if let Some(Extension(history)) = history {
+        history
+            .memories(
+                &mut db,
+                &session.user_id,
+                start,
+                start + Months::new(1),
+                input.before_posted_at,
+                &input.before_id,
+            )
+            .await?
+    } else {
+        None
+    };
+    let response = if let Some(response) = cached {
+        response
+    } else {
+        list_memories(
+            &mut db,
+            &session.user_id,
+            start,
+            start + Months::new(1),
+            input.before_posted_at,
+            &input.before_id,
+            &mut probe,
+        )
+        .await?
+    };
     drop(db);
     let count = response.items.len();
     let response = json(StatusCode::OK, response);
@@ -122,6 +141,7 @@ pub async fn get_memories_by_date_handler(
     Extension(session): Extension<Session>,
     probe: Option<Extension<ReadProbe>>,
     connection: Option<Extension<SessionConnection>>,
+    history: Option<Extension<Arc<crate::initial_history::InitialHistory>>>,
     Bind(input): Bind<GetMemoriesByDateRequest>,
 ) -> Result<Response, Error> {
     let Some(start) = parse_date_only(&input.date) else {
@@ -136,16 +156,34 @@ pub async fn get_memories_by_date_handler(
         None => h.db.acquire().await?,
     };
     ReadProbe::mark(&mut probe, "pool_wait");
-    let response: GetMemoriesByDateResponse = list_memories(
-        &mut db,
-        &session.user_id,
-        start,
-        start + Days::new(1),
-        input.before_posted_at,
-        &input.before_id,
-        &mut probe,
-    )
-    .await?;
+    let cached = if let Some(Extension(history)) = history {
+        history
+            .memories(
+                &mut db,
+                &session.user_id,
+                start,
+                start + Days::new(1),
+                input.before_posted_at,
+                &input.before_id,
+            )
+            .await?
+    } else {
+        None
+    };
+    let response: GetMemoriesByDateResponse = if let Some(response) = cached {
+        response
+    } else {
+        list_memories(
+            &mut db,
+            &session.user_id,
+            start,
+            start + Days::new(1),
+            input.before_posted_at,
+            &input.before_id,
+            &mut probe,
+        )
+        .await?
+    };
     drop(db);
     let count = response.items.len();
     let response = json(StatusCode::OK, response);
