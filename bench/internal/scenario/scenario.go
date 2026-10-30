@@ -751,6 +751,7 @@ func (r *Runner) deleteAccount(ctx context.Context, u *user) {
 		return
 	}
 	u.stopped.Store(true)
+	r.dropFriendsOf(u)
 	r.award(u, r.dayNow(u.Region), score.TagDeleteAccount)
 	if _, err := u.API.Me(client.MayFailWith(ctx, http.StatusUnauthorized), u.Token); !isStatus(err, http.StatusUnauthorized) {
 		r.invalid(ctx, u, "%s: 退会したユーザーのセッションが無効になっていません: %v", u.Username, err)

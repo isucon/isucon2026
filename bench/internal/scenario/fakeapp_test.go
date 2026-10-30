@@ -420,6 +420,12 @@ func (a *fakeApp) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		var input map[string]string
 		_ = json.NewDecoder(r.Body).Decode(&input)
 		id := "u-" + input["username"]
+		// 初期データのユーザー（addUser で足した人）は ID がユーザー名から作れないので探す。
+		for _, u := range a.users {
+			if u.username == input["username"] {
+				id = u.id
+			}
+		}
 		if u := a.users[id]; u == nil || u.secret != input["secretKey"] || u.deleted {
 			fail(http.StatusUnauthorized, "invalid_credentials")
 			return

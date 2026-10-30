@@ -367,6 +367,7 @@ func (r *Runner) unfriend(ctx context.Context, u *user) {
 	settleRelation(w, err)
 	switch {
 	case err == nil:
+		r.removeFriendship(u.ID, target.ID)
 		r.award(u, r.dayNow(u.Region), score.TagUnfriend)
 	case isStatus(err, http.StatusConflict):
 		// 送っている間に相手が解除するかブロックしていれば 409 が正しい。
@@ -380,6 +381,38 @@ func (r *Runner) unfriend(ctx context.Context, u *user) {
 		}
 	default:
 		r.requestError(ctx, u, "%s: 友達を解除できません: %v", u.Username, err)
+	}
+}
+
+// removeFriendship は a と b が友達でなくなったことを、友達申請の相手を選ぶ重み
+// （r.friendCount）に反映する。
+func (r *Runner) removeFriendship(a, b string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, id := range []string{a, b} {
+		r.friendCount[id] = max(0, r.friendCount[id]-1)
+	}
+}
+
+// countFriends は初期データの友達関係を持つ u の、今の友達（退会した人を除く）の数を
+// r.friendCount に入れる。
+func (r *Runner) countFriends(u *user) {
+	now := r.model.Now()
+	n := 0
+	for _, id := range r.model.FriendsOf(u.ID, now) {
+		if r.model.Visible(u.ID, id, now) == model.True {
+			n++
+		}
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.friendCount[u.ID] += n
+}
+
+// dropFriendsOf は退会した u の友達それぞれの友達の数を 1 ずつ減らす。
+func (r *Runner) dropFriendsOf(u *user) {
+	for _, id := range r.model.FriendsOf(u.ID, r.model.Now()) {
+		r.removeFriendship(u.ID, id)
 	}
 }
 
