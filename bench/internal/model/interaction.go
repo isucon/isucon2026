@@ -71,15 +71,22 @@ func (m *Model) removePendingComment(postID string, exists *timeline[bool]) {
 	}
 }
 
-// CreatedComment は作成できたコメントを記録する。
-func (m *Model) CreatedComment(creation *CommentCreation, comment client.Comment, authorID string) {
+// CreatedComment は作成できたコメントを記録する。ID が空か、すでにほかのコメントに使われて
+// いれば記録せずに false を返す（呼び出し側は結果を不明として記録する）。同じ ID の 2 件を
+// 記録すると、一覧の 1 件で両方を見たことになり、もう 1 件の欠落を見逃す。
+func (m *Model) CreatedComment(creation *CommentCreation, comment client.Comment, authorID string) bool {
 	m.mu.Lock()
+	if comment.ID == "" || m.commentByID[comment.ID] != nil {
+		m.mu.Unlock()
+		return false
+	}
 	c := &Comment{ID: comment.ID, PostID: creation.postID, AuthorID: authorID, Body: comment.Body, CreatedAt: comment.CreatedAt, exists: creation.exists}
 	m.comments[c.PostID] = append(m.comments[c.PostID], c)
 	m.commentByID[c.ID] = c
 	creation.after = func(outcome) { m.removePendingComment(c.PostID, creation.exists) }
 	m.mu.Unlock()
 	creation.Applied()
+	return true
 }
 
 // BeginDeleteComment はコメントの削除を記録する。
@@ -95,8 +102,8 @@ func (m *Model) BeginDeleteComment(commentID string) *Write {
 
 // CheckComments は viewer が投稿 postID のコメントの一覧で after より後を読んだ 1 ページを、
 // bench が書いたコメントと突き合わせる。削除されたコメントや bench の知らないコメント
-// （結果のわからない作成がなければ）が返った、確実に残っているコメントがない、古い順に
-// 並んでいない場合を返す。
+// （その作成者の結果のわからない作成がなければ）が返った、書いた人、本文、作成時刻が作成の
+// 応答と違う、確実に残っているコメントがない、古い順に並んでいない場合を返す。
 //
 // viewer とブロックの関係にある（かもしれない）人のコメントは、仕様では見えないが、参照実装は
 // 返すので、あってもなくてもよい。
@@ -120,7 +127,10 @@ func (m *Model) CheckComments(viewerID, postID string, after *client.Comment, pa
 		c := m.commentByID[item.ID]
 		switch {
 		case c == nil:
-			if !slices.ContainsFunc(m.pendingComments[postID], func(c pendingComment) bool { return boolTri(c.exists, r) != False }) {
+			// 結果のわからない作成のコメントかもしれないのは、その作成を送った人のコメントだけ。
+			if !slices.ContainsFunc(m.pendingComments[postID], func(c pendingComment) bool {
+				return c.authorID == item.Author.ID && boolTri(c.exists, r) != False
+			}) {
 				problems = append(problems, fmt.Sprintf("bench の知らないコメント %s が返りました", item.ID))
 			}
 		case c.PostID != postID:
@@ -129,7 +139,7 @@ func (m *Model) CheckComments(viewerID, postID string, after *client.Comment, pa
 			problems = append(problems, fmt.Sprintf("削除したコメント %s が返りました", item.ID))
 		case m.activeTri(c.AuthorID, r) == False:
 			problems = append(problems, fmt.Sprintf("退会したユーザーのコメント %s が返りました", item.ID))
-		case item.Author.ID != c.AuthorID || item.Body != c.Body:
+		case item.Author.ID != c.AuthorID || item.Body != c.Body || !item.CreatedAt.Equal(c.CreatedAt):
 			problems = append(problems, fmt.Sprintf("コメント %s の内容が違います", item.ID))
 		}
 	}

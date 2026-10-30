@@ -1,7 +1,9 @@
 package scenario
 
 import (
+	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -163,5 +165,75 @@ func TestRealMojiListMustMatchSent(t *testing.T) {
 				t.Fatalf("stats=%+v lists=%d errors=%v", stats, lists, f.r.board.Errors())
 			}
 		})
+	}
+}
+
+// TestCommentListMustMatchCreated は、作成したコメントの作成時刻、書いた人を一覧で書き換えると
+// 失敗に数えることを確かめる。作成の結果がわからなくても、その作成を送った人でない人の
+// コメントにはできない。
+func TestCommentListMustMatchCreated(t *testing.T) {
+	for _, unknown := range []bool{false, true} {
+		for name, edit := range map[string]func(f *interactionFixture, c *client.Comment){
+			"correct": func(*interactionFixture, *client.Comment) {},
+			"time":    func(_ *interactionFixture, c *client.Comment) { c.CreatedAt = c.CreatedAt.Add(24 * time.Hour) },
+			"author":  func(f *interactionFixture, c *client.Comment) { c.Author.ID = f.owner.ID },
+		} {
+			if unknown && name == "time" {
+				continue // 結果のわからない作成は作成時刻を知らない
+			}
+			t.Run(fmt.Sprintf("unknown=%v/%s", unknown, name), func(t *testing.T) {
+				f := newInteractionFixture(t)
+				f.route(t, f.guest, func(w http.ResponseWriter, req *http.Request) {
+					if unknown && is(http.MethodPost, "/api/posts/"+f.post.ID+"/comments")(req) {
+						f.app.ServeHTTP(httptest.NewRecorder(), req)
+						writeJSON(t, w, http.StatusInternalServerError, map[string]string{"error": "response_lost"})
+						return
+					}
+					rewrite(t, f.app, is(http.MethodGet, "/api/posts/"+f.post.ID+"/comments"), func(page *client.CommentPage) {
+						for i := range page.Items {
+							edit(f, &page.Items[i])
+						}
+					})(w, req)
+				})
+				if sent := f.r.comment(t.Context(), f.guest, &session{day: 1}, f.post.FeedPost()); sent == unknown {
+					t.Fatalf("sent=%v errors=%v", sent, f.r.board.Errors())
+				}
+				before := f.r.board.ErrorCount()
+				f.r.listComments(t.Context(), f.guest, &session{day: 1}, f.post.ID)
+				added, lists := f.r.board.ErrorCount()-before, f.r.board.Count(score.TagReactionList)
+				if name == "correct" && (added != 0 || lists != 1) {
+					t.Fatalf("added=%d lists=%d errors=%v", added, lists, f.r.board.Errors())
+				}
+				if name != "correct" && (added != 1 || lists != 0) {
+					t.Fatalf("added=%d lists=%d errors=%v", added, lists, f.r.board.Errors())
+				}
+			})
+		}
+	}
+}
+
+// TestDuplicateCommentIDs は、2 つのコメントの作成に同じ ID を返されたら 2 件目を送れたとせず、
+// 一覧の 1 件で 2 件を見たことにしないことを確かめる。
+func TestDuplicateCommentIDs(t *testing.T) {
+	f := newInteractionFixture(t)
+	var last atomic.Pointer[client.Comment]
+	f.route(t, f.guest, func(w http.ResponseWriter, req *http.Request) {
+		switch {
+		case is(http.MethodPost, "/api/posts/"+f.post.ID+"/comments")(req):
+			rewrite(t, f.app, func(*http.Request) bool { return true }, func(c *client.Comment) {
+				c.ID = "duplicate-comment"
+				last.Store(c)
+			})(w, req)
+		case is(http.MethodGet, "/api/posts/"+f.post.ID+"/comments")(req):
+			writeJSON(t, w, http.StatusOK, client.CommentPage{Items: []client.Comment{*last.Load()}})
+		default:
+			f.app.ServeHTTP(w, req)
+		}
+	})
+	s := &session{day: 1}
+	first, second := f.r.comment(t.Context(), f.guest, s, f.post.FeedPost()), f.r.comment(t.Context(), f.guest, s, f.post.FeedPost())
+	f.r.listComments(t.Context(), f.guest, s, f.post.ID)
+	if !first || second || f.r.board.Count(score.TagComment) != 1 || f.r.board.Count(score.TagReactionList) != 0 || f.r.board.ErrorCount() != 2 {
+		t.Fatalf("first=%v second=%v comments=%d lists=%d errors=%v", first, second, f.r.board.Count(score.TagComment), f.r.board.Count(score.TagReactionList), f.r.board.Errors())
 	}
 }
