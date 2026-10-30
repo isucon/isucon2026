@@ -96,11 +96,18 @@ func run(parent context.Context, args []string, stdout, stderr io.Writer) int {
 		// 減点はないので、素点がそのままスコアになる。
 		p := &pb.BenchmarkResult{Finished: finished, Passed: finished && result.Pass, Score: result.Score,
 			ScoreBreakdown: &pb.BenchmarkResult_ScoreBreakdown{Raw: result.Score}}
+		// アプリが返した値を含む項目は supervisor の上限に収め、報告できずに終わらないようにする
+		// （scenario も初期化の応答を確かめているので、ふつうは切り詰めない）。
 		if result.Language != "" {
-			p.SurveyResponse = &pb.SurveyResponse{Language: result.Language, Agent: result.Agent, Harness: result.Harness, Model: result.Model}
+			p.SurveyResponse = &pb.SurveyResponse{
+				Language: benchrun.Truncate(result.Language, benchrun.MaxLanguageBytes),
+				Agent:    benchrun.Truncate(result.Agent, benchrun.MaxSurveyBytes),
+				Harness:  benchrun.Truncate(result.Harness, benchrun.MaxSurveyBytes),
+				Model:    benchrun.Truncate(result.Model, benchrun.MaxSurveyBytes),
+			}
 		}
 		if finished {
-			p.Execution = &pb.BenchmarkResult_Execution{Reason: reason}
+			p.Execution = &pb.BenchmarkResult_Execution{Reason: benchrun.Truncate(reason, benchrun.MaxReasonBytes)}
 		}
 		return reporter.Report(p)
 	}

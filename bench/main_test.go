@@ -239,6 +239,97 @@ func TestSupervisorIntegration(t *testing.T) {
 	}
 }
 
+// readReports は supervisor への報告のフレームを、パイプが閉じるまで読む。
+func readReports(t *testing.T, read io.Reader) []*pb.BenchmarkResult {
+	t.Helper()
+	var reports []*pb.BenchmarkResult
+	for {
+		var size uint16
+		err := binary.Read(read, binary.BigEndian, &size)
+		if err == io.EOF {
+			return reports
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		data := make([]byte, int(size))
+		if _, err := io.ReadFull(read, data); err != nil {
+			t.Fatal(err)
+		}
+		p := new(pb.BenchmarkResult)
+		if err := proto.Unmarshal(data, p); err != nil {
+			t.Fatal(err)
+		}
+		reports = append(reports, p)
+	}
+}
+
+// TestSurveyBoundsStillReportFailure は、初期化の応答の申告が supervisor への報告の上限を超えても、
+// 報告に失敗せず最後の報告（Finished=true）まで送ることを確かめる。長すぎる language は初期化の
+// fail、長すぎる agent、harness、model は切り詰めて報告する。
+func TestSurveyBoundsStillReportFailure(t *testing.T) {
+	for _, tc := range []struct {
+		name, language, model string
+		wantReason, wantModel string
+		survey                bool
+	}{
+		{name: "control", language: "go", model: "normal", wantReason: "管理者としてログインできません", wantModel: "normal", survey: true},
+		{name: "longest language", language: strings.Repeat("g", 140), model: "normal", wantReason: "管理者としてログインできません", wantModel: "normal", survey: true},
+		{name: "long language", language: strings.Repeat("g", 141), model: "normal", wantReason: "初期化の応答の language が 140 バイトを超えています"},
+		{name: "long model", language: "go", model: strings.Repeat("m", 70000), wantReason: "管理者としてログインできません", wantModel: strings.Repeat("m", 1024), survey: true},
+		{name: "long multibyte model", language: "go", model: strings.Repeat("模", 1000), wantReason: "管理者としてログインできません", wantModel: strings.Repeat("模", 341), survey: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/api/initialize" {
+					_ = json.NewEncoder(w).Encode(map[string]string{"language": tc.language, "agent": "agent", "harness": "harness", "model": tc.model})
+					return
+				}
+				w.WriteHeader(http.StatusInternalServerError)
+			}))
+			defer server.Close()
+			read, write, err := os.Pipe()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer read.Close()
+			args := []string{"--target", server.URL, "--duration", "1s", "--timeout", "10s", "--evil=false"}
+			cmd := exec.Command(os.Args[0], "-test.run=^TestSupervisorChild$")
+			cmd.Env = append(os.Environ(), "BENCH_TEST_CHILD=1", "ISUXBENCH_REPORT_FD=3", "BENCH_TEST_ARGS="+strings.Join(args, "\n"))
+			cmd.ExtraFiles = []*os.File{write}
+			var stdout, stderr bytes.Buffer
+			cmd.Stdout = &stdout
+			cmd.Stderr = &stderr
+			if err := cmd.Start(); err != nil {
+				write.Close()
+				t.Fatal(err)
+			}
+			write.Close()
+			reports := readReports(t, read)
+			_ = cmd.Wait()
+			if code := cmd.ProcessState.ExitCode(); code != 0 || len(reports) == 0 {
+				t.Fatalf("exit=%d frames=%d stderr=%s", code, len(reports), &stderr)
+			}
+			final := reports[len(reports)-1]
+			if !final.Finished || final.Passed || final.GetExecution().GetReason() != tc.wantReason {
+				t.Fatalf("final: %v", final)
+			}
+			for _, report := range reports {
+				survey := report.GetSurveyResponse()
+				if survey == nil {
+					continue
+				}
+				if !tc.survey || survey.Language != tc.language || survey.Model != tc.wantModel {
+					t.Fatalf("survey: language %d bytes, model %d bytes", len(survey.Language), len(survey.Model))
+				}
+			}
+			if tc.survey && final.GetSurveyResponse() == nil {
+				t.Fatal("survey missing from the final report")
+			}
+		})
+	}
+}
+
 func TestHostOverrideSurvivesSupervisorIntegration(t *testing.T) {
 	var host string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

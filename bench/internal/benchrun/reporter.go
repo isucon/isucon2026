@@ -7,14 +7,41 @@ import (
 	"io"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
+	"unicode/utf8"
 
 	pb "github.com/isucon/isucon2026/portal/gen/pb/isuxportal/resources"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
+
+// 報告の項目の上限（バイト）。supervisor は language が MaxLanguageBytes を超える報告と、
+// maxFrameBytes を超えるフレームを受け付けない。アプリが返した値は報告の前にこれらに収め、
+// 最後の報告まで送れるようにする（各項目を上限まで使ってもフレームの上限より十分小さい）。
+const (
+	MaxLanguageBytes = 140
+	// MaxSurveyBytes は agent、harness、model のそれぞれの上限。
+	MaxSurveyBytes = 1024
+	// MaxReasonBytes は Execution.Reason の上限。
+	MaxReasonBytes = 4096
+	maxFrameBytes  = 65535
+)
+
+// Truncate は s を有効な UTF-8 にし（不正なバイト列は U+FFFD にする）、n バイト以下になるよう
+// 文字の境目で切り詰める。
+func Truncate(s string, n int) string {
+	s = strings.ToValidUTF8(s, "\uFFFD")
+	if len(s) <= n {
+		return s
+	}
+	for n > 0 && !utf8.RuneStart(s[n]) {
+		n--
+	}
+	return s[:n]
+}
 
 type Reporter struct {
 	mu     sync.Mutex
@@ -57,8 +84,8 @@ func (r *Reporter) Report(result *pb.BenchmarkResult) error {
 	if result == nil {
 		return fmt.Errorf("nil result")
 	}
-	if len(result.GetSurveyResponse().GetLanguage()) > 140 {
-		return fmt.Errorf("language exceeds 140 bytes")
+	if len(result.GetSurveyResponse().GetLanguage()) > MaxLanguageBytes {
+		return fmt.Errorf("language exceeds %d bytes", MaxLanguageBytes)
 	}
 	result = proto.Clone(result).(*pb.BenchmarkResult)
 	now := time.Now()
@@ -83,8 +110,8 @@ func (r *Reporter) Report(result *pb.BenchmarkResult) error {
 }
 
 func writeFrame(w io.Writer, data []byte) error {
-	if len(data) > 65535 {
-		return fmt.Errorf("result exceeds 65535 bytes")
+	if len(data) > maxFrameBytes {
+		return fmt.Errorf("result exceeds %d bytes", maxFrameBytes)
 	}
 	frame := make([]byte, 2+len(data))
 	binary.BigEndian.PutUint16(frame, uint16(len(data)))
