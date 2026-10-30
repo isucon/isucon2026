@@ -955,6 +955,15 @@ func (c *Client) InitialImage(ctx context.Context, path string) ([]byte, error) 
 	return c.send(ctx, request{method: http.MethodGet, path: path, route: "GET /api/images/:imageId", want: http.StatusOK, maxBody: maxImageBytes, digest: true, sha256: true})
 }
 
+// ImageBytes retrieves the actual body for evidence that must survive a fresh
+// process; normal Image uses a randomized per-request digest.
+func (c *Client) ImageBytes(ctx context.Context, path string) ([]byte, error) {
+	if !strings.HasPrefix(path, apiPrefix+"/images/") {
+		return nil, fmt.Errorf("invalid image path")
+	}
+	return c.send(ctx, request{method: http.MethodGet, path: path, route: "GET /api/images/:imageId", want: http.StatusOK, maxBody: maxImageBytes})
+}
+
 type Profile struct {
 	ID              string  `json:"id"`
 	Username        string  `json:"username"`

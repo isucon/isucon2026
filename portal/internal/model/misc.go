@@ -79,6 +79,7 @@ type InstanceCommandExecuteRequestResult struct {
 	ID                   int64
 	RequestID            int64
 	ContestantInstanceID int64
+	RouterTeamID         sql.NullInt64
 	Output               sql.NullString
 	ExitCode             sql.NullInt64
 	FinishedAt           sql.NullTime
@@ -135,9 +136,9 @@ func (r *InstanceCommandExecuteRequest) ToPB(ctx context.Context, db DBTX) (*pbr
 func FindCommandRequestResult(ctx context.Context, db DBTX, id int64) (*InstanceCommandExecuteRequestResult, error) {
 	r := &InstanceCommandExecuteRequestResult{}
 	err := db.QueryRowContext(ctx, `
-		SELECT id, instance_command_execute_request_id, contestant_instance_id, output, exit_code, finished_at
+		SELECT id, instance_command_execute_request_id, COALESCE(contestant_instance_id,0), router_team_id, output, exit_code, finished_at
 		FROM instance_command_execute_request_results WHERE id = $1`, id).
-		Scan(&r.ID, &r.RequestID, &r.ContestantInstanceID, &r.Output, &r.ExitCode, &r.FinishedAt)
+		Scan(&r.ID, &r.RequestID, &r.ContestantInstanceID, &r.RouterTeamID, &r.Output, &r.ExitCode, &r.FinishedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -149,7 +150,7 @@ func FindCommandRequestResult(ctx context.Context, db DBTX, id int64) (*Instance
 
 func ListCommandRequestResults(ctx context.Context, db DBTX, requestID int64) ([]*InstanceCommandExecuteRequestResult, error) {
 	rows, err := db.QueryContext(ctx, `
-		SELECT id, instance_command_execute_request_id, contestant_instance_id, output, exit_code, finished_at
+		SELECT id, instance_command_execute_request_id, COALESCE(contestant_instance_id,0), router_team_id, output, exit_code, finished_at
 		FROM instance_command_execute_request_results WHERE instance_command_execute_request_id = $1`, requestID)
 	if err != nil {
 		return nil, err
@@ -158,7 +159,7 @@ func ListCommandRequestResults(ctx context.Context, db DBTX, requestID int64) ([
 	var out []*InstanceCommandExecuteRequestResult
 	for rows.Next() {
 		r := &InstanceCommandExecuteRequestResult{}
-		if err := rows.Scan(&r.ID, &r.RequestID, &r.ContestantInstanceID, &r.Output, &r.ExitCode, &r.FinishedAt); err != nil {
+		if err := rows.Scan(&r.ID, &r.RequestID, &r.ContestantInstanceID, &r.RouterTeamID, &r.Output, &r.ExitCode, &r.FinishedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, r)

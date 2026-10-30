@@ -33,6 +33,10 @@ class RegistrationTest(unittest.TestCase):
             "instance-id": "i-0123456789abcdef0",
             "local-ipv4": "192.168.11.10",
             "public-ipv4": "203.0.113.5",
+            "network/interfaces/macs/": "aa/\nbb/",
+            "network/interfaces/macs/aa/device-number": "0",
+            "network/interfaces/macs/bb/device-number": "1",
+            "network/interfaces/macs/bb/local-ipv4s": "192.168.10.10",
         }
         requests = []
 
@@ -56,7 +60,7 @@ class RegistrationTest(unittest.TestCase):
                 "token": "signed",
                 "number": 5,
                 "instance_id": metadata["instance-id"],
-                "private_ipv4_address": metadata["local-ipv4"],
+                "private_ipv4_address": "192.168.10.10",
                 "public_ipv4_address": metadata["public-ipv4"],
             },
         )

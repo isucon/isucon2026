@@ -9,12 +9,13 @@ import (
 // are exposed separately for preview links, never as servers or benchmark targets.
 type TeamRouter struct {
 	PublicIP      sql.NullString
+	PrivateIP     sql.NullString
 	BenchmarkHost sql.NullString
 }
 
 func FindTeamRouter(ctx context.Context, db DBTX, teamID int64) (*TeamRouter, error) {
 	var router TeamRouter
-	err := db.QueryRowContext(ctx, `SELECT public_ipv4_address, benchmark_host FROM team_routers WHERE team_id=$1`, teamID).Scan(&router.PublicIP, &router.BenchmarkHost)
+	err := db.QueryRowContext(ctx, `SELECT public_ipv4_address, benchmark_host, private_ipv4_address FROM team_routers WHERE team_id=$1`, teamID).Scan(&router.PublicIP, &router.BenchmarkHost, &router.PrivateIP)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
