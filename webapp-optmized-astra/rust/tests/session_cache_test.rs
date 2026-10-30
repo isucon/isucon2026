@@ -60,8 +60,13 @@ fn invalidation_blocks_late_lookup_results_and_hits_do_not_extend_the_lease() {
     cache.insert(session("other", "other"), generation, Instant::now());
     cache.invalidate(Some("user"));
     assert!(cache.lookup("other").0.is_some());
+    // Unrelated writes during the SQL lookup must not discard its result.
+    cache.insert(session("unrelated", "late"), generation, Instant::now());
+    assert!(cache.lookup("late").0.is_some());
     cache.invalidate(None);
     assert!(cache.lookup("other").0.is_none());
+    cache.insert(session("unrelated", "late"), generation, Instant::now());
+    assert!(cache.lookup("late").0.is_none());
 }
 
 async fn request(app: &Router, method: &str, token: &str) -> StatusCode {

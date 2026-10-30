@@ -33,6 +33,8 @@ struct Entry {
 #[derive(Default)]
 struct Entries {
     generation: u64,
+    all_generation: u64,
+    user_generations: HashMap<String, u64>,
     hits: u64,
     misses: u64,
     values: HashMap<String, Entry>,
@@ -70,9 +72,16 @@ impl SessionCache {
             return;
         }
         let mut cache = self.0.lock().unwrap();
-        // A lookup started before an invalidation may have read the old MVCC
-        // snapshot. Never publish its result into the next cache generation.
-        if cache.generation != generation {
+        // Only changes to this user (or a full reset) can make this lookup's
+        // MVCC snapshot stale. Other users must not prevent a cache fill.
+        if cache.all_generation > generation
+            || cache
+                .user_generations
+                .get(&session.user_id)
+                .copied()
+                .unwrap_or(0)
+                > generation
+        {
             return;
         }
         if !cache.values.contains_key(&session.token_hash) {
@@ -92,8 +101,17 @@ impl SessionCache {
         let mut cache = self.0.lock().unwrap();
         cache.generation = cache.generation.wrapping_add(1);
         match user {
-            Some(user) => cache.values.retain(|_, e| e.session.user_id != user),
-            None => cache.values.clear(),
+            Some(user) if cache.user_generations.len() < 65536 => {
+                let generation = cache.generation;
+                cache.user_generations.insert(user.to_owned(), generation);
+                cache.values.retain(|_, e| e.session.user_id != user);
+            }
+            _ => {
+                // Bound version metadata while rejecting all pre-reset fills.
+                cache.all_generation = cache.generation;
+                cache.user_generations.clear();
+                cache.values.clear();
+            }
         }
         // Keep eviction metadata bounded as tokens are invalidated/replaced.
         let Entries { values, order, .. } = &mut *cache;
