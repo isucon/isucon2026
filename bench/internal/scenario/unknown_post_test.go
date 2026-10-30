@@ -3,6 +3,7 @@ package scenario
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/isucon/isucon2026/bench/internal/client"
 	"github.com/isucon/isucon2026/bench/internal/metrics"
+	"github.com/isucon/isucon2026/bench/internal/model"
 )
 
 // lostCreation は POST /api/posts の応答を失わせる中継。mode が "5xx" ならアプリで投稿を
@@ -63,6 +65,61 @@ func (l *lostCreation) replay() {
 		}
 	}
 	l.pending, l.body = nil, nil
+}
+
+// TestUnknownPostPrivacyOverHTTP は、投稿作成が 5xx で終わって bench が ID を知らない投稿でも、
+// ブロックした相手や今日まだ投稿していない人のフィードに返すアプリを失格にし、正しいアプリは
+// 通すことを確かめる。
+func TestUnknownPostPrivacyOverHTTP(t *testing.T) {
+	for _, kind := range []string{"blocked", "viewer-not-posted"} {
+		for _, broken := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/broken=%t", kind, broken), func(t *testing.T) {
+				count := 2
+				if kind == "blocked" {
+					count = 4 // 0 番目の人が 3 番目の人をブロックしている
+				}
+				r, app := newTestRunner(t, count, metrics.DefaultSLO)
+				r.setDuration(1000 * time.Second)
+				r.visibility = func() string { return "public" }
+				r.books.Store(newBook(r.tt, time.Now()))
+				ctx := t.Context()
+				window, err := r.openDay(ctx, "asia", 1)
+				if err != nil {
+					t.Fatal(err)
+				}
+				viewer, author := r.users["asia"][0], r.users["asia"][count-1]
+				if kind == "blocked" {
+					if _, _, ok := r.post(ctx, viewer, window); !ok {
+						t.Fatal(r.board.Errors())
+					}
+					if r.model.Blocked(viewer.ID, author.ID, r.model.Now()) != model.True {
+						t.Fatal("block not settled")
+					}
+				}
+				server := httptest.NewServer(&lostCreation{t: t, app: app, mode: "5xx"})
+				defer server.Close()
+				author.API = client.New(server.URL).WithCountry(author.Country())
+				if _, _, ok := r.post(ctx, author, window); ok {
+					t.Fatal("the creation must have an unknown outcome")
+				}
+				app.mu.Lock()
+				app.ignoreBlocks = broken && kind == "blocked"
+				app.ignoreGate = broken && kind == "viewer-not-posted"
+				app.mu.Unlock()
+				feed := "public"
+				if kind == "viewer-not-posted" {
+					feed = "friends"
+				}
+				page, ok := r.readFeed(ctx, viewer, feed, nil, 1)
+				if broken && (len(page.Items) != 1 || r.model.Post(page.Items[0].ID) != nil) {
+					t.Fatalf("not an unknown returned post: %+v", page)
+				}
+				if critical := r.board.CriticalCount() > 0; critical != broken || ok == broken {
+					t.Fatalf("critical=%v ok=%t, want critical=%t (page=%+v)", r.board.Critical(), ok, broken, page)
+				}
+			})
+		}
+	}
 }
 
 // TestUnknownCreationAndNextDayGate は、投稿作成の応答が失われた人の翌日のゲートを確かめる。
