@@ -31,14 +31,17 @@ const luaScript = `core.register_action("isureal_delay", { "http-req" }, functio
 end, 1)
 `
 
+// A Host that begins with a region's prefix goes to that region's server; any
+// other Host, including an IP address, goes by the client's country.
 var targets = []struct {
 	name   string
 	server domain.ServerID
+	prefix string
 }{
 	{name: "app"},
-	{name: string(domain.App1), server: domain.App1},
-	{name: string(domain.App2), server: domain.App2},
-	{name: string(domain.App3), server: domain.App3},
+	{name: string(domain.App1), server: domain.App1, prefix: "asia."},
+	{name: string(domain.App2), server: domain.App2, prefix: "europe."},
+	{name: string(domain.App3), server: domain.App3, prefix: "america."},
 }
 
 var regions = []domain.Region{domain.RegionAP, domain.RegionEU, domain.RegionUS}
@@ -72,8 +75,8 @@ var digestResponseHeaders = []string{"x-body-sha256", "x-body-xxh3", "x-body-len
 
 func digestBackend(server domain.ServerID) string { return string(server) + "_digest" }
 
-// route is one target host and client region. Each country still gets its own
-// bandwidth bucket, keyed by host and country.
+// route is one target and client region. Each country still gets its own
+// bandwidth bucket, keyed by target and country.
 type route struct {
 	key    string
 	server domain.ServerID
@@ -152,7 +155,7 @@ func Render(cfg config.Config) (map[string]string, error) {
 	if cfg.HTTPSListenAddress != "" {
 		line("    bind %s ssl crt %s", cfg.HTTPSListenAddress, cfg.TLSCertificate)
 	}
-	// Requests and responses each get the route's bandwidth; every host and
+	// Requests and responses each get the route's bandwidth; every target and
 	// country pair has its own bucket in the bandwidth table.
 	for _, bps := range slices.Sorted(maps.Keys(bandwidths)) {
 		bytes := max(bps/8, 1)
@@ -161,15 +164,12 @@ func Render(cfg config.Config) (map[string]string, error) {
 	}
 	line("    http-request set-var(txn.default_country) str(%s),map(%s)", defaultCountryKey, mapPath)
 	line("    http-request return status 503 unless { var(txn.default_country) -m found }")
-	line("    http-request set-var(txn.host) req.hdr(host),field(1,:),lower")
+	line("    http-request set-var(txn.target) str(app)")
 	for _, target := range targets {
-		host := cfg.Hosts.App
-		if target.server != "" {
-			host = cfg.Hosts.For(target.server)
+		if target.prefix != "" {
+			line("    http-request set-var(txn.target) str(%s) if { req.hdr(host) -i -m beg %s }", target.name, target.prefix)
 		}
-		line("    http-request set-var(txn.target) str(%s) if { var(txn.host) -m str %s }", target.name, host)
 	}
-	line("    http-request return status 404 unless { var(txn.target) -m found }")
 	line("    http-request set-var(txn.country_headers) req.fhdr_cnt(x-country-code)")
 	line("    http-request return status 400 if { var(txn.country_headers) -m int gt 1 }")
 	line("    http-request set-var(txn.country) req.fhdr(x-country-code) if { var(txn.country_headers) -m int eq 1 }")

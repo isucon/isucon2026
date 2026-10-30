@@ -36,9 +36,9 @@ const (
 	statusEndpoint = "http://router:18081"
 
 	appHost  = "app.team1-abc123.isucon2026.westens.tokyo"
-	app1Host = "app1.team1-abc123.isucon2026.westens.tokyo"
-	app2Host = "app2.team1-abc123.isucon2026.westens.tokyo"
-	app3Host = "app3.team1-abc123.isucon2026.westens.tokyo"
+	app1Host = "asia.team1-abc123.isucon2026.westens.tokyo"
+	app2Host = "europe.team1-abc123.isucon2026.westens.tokyo"
+	app3Host = "america.team1-abc123.isucon2026.westens.tokyo"
 )
 
 var initialConfig = expectedConfig{
@@ -194,7 +194,7 @@ func (r *runner) full(ctx context.Context) error {
 	if sameDB+750*time.Millisecond >= crossDB || crossDB < 1500*time.Millisecond {
 		return fmt.Errorf("DB shaping: same=%s cross=%s", sameDB, crossDB)
 	}
-	if err := r.assertHTTPStatus(ctx, "db1.team1-abc123.isucon2026.westens.tokyo", []string{"JP"}, "/identity", http.StatusNotFound); err != nil {
+	if err := r.assertIdentity(ctx, "db1.team1-abc123.isucon2026.westens.tokyo", []string{"JP"}, "app1", []string{"JP"}); err != nil {
 		return fmt.Errorf("DB must not be an HTTP target: %w", err)
 	}
 	log.Printf("PASS db1 AP placement: same=%s cross=%s; DB excluded from HTTP routing", sameDB, crossDB)
@@ -335,8 +335,10 @@ func (r *runner) assertInitialHTTP(ctx context.Context) error {
 	if err := r.assertHTTPStatus(ctx, appHost, []string{"US", "JP"}, "/identity", http.StatusBadRequest); err != nil {
 		return fmt.Errorf("duplicate country: %w", err)
 	}
-	if err := r.assertHTTPStatus(ctx, "unknown.team1.invalid", []string{"JP"}, "/identity", http.StatusNotFound); err != nil {
-		return fmt.Errorf("unknown host: %w", err)
+	for _, host := range []string{"203.0.113.10", "unknown.team1.invalid"} {
+		if err := r.assertIdentity(ctx, host, []string{"DE"}, "app2", []string{"DE"}); err != nil {
+			return fmt.Errorf("other host %s: %w", host, err)
+		}
 	}
 	if err := r.assertClientIP(ctx, "203.0.113.7", "203.0.113.7"); err != nil {
 		return fmt.Errorf("given client IP: %w", err)
