@@ -109,7 +109,7 @@ func TestCheckIsReproducible(t *testing.T) {
 }
 
 // TestExportDecompressionLimit は、小さな ZIP から上限を超える posts.json を展開させるエクスポートを、
-// 全部を展開する前に拒否し、期限が過ぎていれば期限切れとして返すことを確かめる。
+// 全部を展開する前にすぐ拒否することを確かめる。
 func TestExportDecompressionLimit(t *testing.T) {
 	archive := zipOf(t, "posts.json", append(bytes.Repeat([]byte(" "), 32<<20), "[]"...))
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
