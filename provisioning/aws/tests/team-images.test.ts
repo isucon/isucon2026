@@ -4,6 +4,9 @@ import { expect, test, vi } from "vitest";
 process.env.PULUMI_CONFIG = JSON.stringify({
 	"isucon2026:teamCount": "7",
 	"isucon2026:teamRouterInstanceTypes": JSON.stringify({ 7: "c6i.large" }),
+	"isucon2026:teamServerInstanceTypes": JSON.stringify({
+		7: { app2: "c6i.large" },
+	}),
 	"isucon2026:guardTeams": "[7]",
 	"isucon2026:independentTlsTeams": "[7]",
 	"isucon2026:protectedDatabaseTeams": "[7]",
@@ -68,6 +71,16 @@ test("uses new images only for the selected team and preserves existing instance
 				: ["associatePublicIpAddress"],
 		);
 	}
+	const instanceType = (name: string) =>
+		instances.find((r) => r.name === name)?.inputs.instanceType;
+	// asia（app1 と db1）は c5.large、海外の app は c7i.large。チームごとの指定がそれより優先される
+	for (const team of [6, 7]) {
+		expect(instanceType(`team${team}-db1-instance`)).toBe("c5.large");
+		expect(instanceType(`team${team}-app1-instance`)).toBe("c5.large");
+		expect(instanceType(`team${team}-app3-instance`)).toBe("c7i.large");
+	}
+	expect(instanceType("team6-app2-instance")).toBe("c7i.large");
+	expect(instanceType("team7-app2-instance")).toBe("c6i.large");
 	expect(options.get("team7-db1-instance")?.protect).toBe(true);
 	expect(options.get("team7-app1-instance")?.protect).not.toBe(true);
 	const certificates = resources.filter(

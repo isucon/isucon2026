@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/labstack/echo/v5"
 )
 
@@ -45,19 +46,24 @@ func replaceRealMojiHandler(h *HandlerContext) echo.HandlerFunc {
 			return err
 		}
 		defer file.Close()
-		data, ok, err := readJPEG(file, 512)
+		data, ok, err := readJPEG(file, 512, input.Image.Size)
 		if err != nil {
 			return err
 		}
 		if !ok {
 			return NewAPIError(http.StatusBadRequest, "invalid_realmoji")
 		}
+		imageID := uuid.NewString()
+		if err := storeUploadedImage(imageID, data); err != nil {
+			return err
+		}
 		result, err := runWrite(c.Request().Context(), h.DB, "reaction_create", GetSession(c).UserID,
-			map[string]any{"postId": input.PostID, "reactionType": input.ReactionType}, data)
+			map[string]any{"postId": input.PostID, "reactionType": input.ReactionType, "imageId": imageID}, []byte{})
 		if err != nil {
 			return err
 		}
 		reaction, user := result.Reaction, result.User
+		cacheUploadedImage(imageID, user.SecretKeyHash, data)
 		return c.JSON(http.StatusCreated, newRealMojiResponse(reaction, user))
 	}
 }
@@ -83,7 +89,8 @@ func getRealMojisHandler(h *HandlerContext) echo.HandlerFunc {
 			return NewAPIError(http.StatusBadRequest, "invalid_pagination")
 		}
 		ctx := c.Request().Context()
-		reactions, allowed, err := readInteractions(ctx, h.ReadDB, GetSession(c).UserID, input.PostID, false, input.BeforeCreatedAt, input.BeforeID)
+		hotSessionUser(c, h)
+		reactions, allowed, err := readInteractions(ctx, h.DB, GetSession(c).UserID, input.PostID, false, input.BeforeCreatedAt, input.BeforeID)
 		if err != nil {
 			return err
 		}

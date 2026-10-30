@@ -64,6 +64,8 @@ type DashboardResponse struct {
 	Leaderboard                       *resources.Leaderboard `protobuf:"bytes,1,opt,name=leaderboard,proto3" json:"leaderboard,omitempty"`
 	EarliestUnansweredClarificationAt *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=earliest_unanswered_clarification_at,json=earliestUnansweredClarificationAt,proto3" json:"earliest_unanswered_clarification_at,omitempty"`
 	UnansweredClarificationCount      int64                  `protobuf:"varint,3,opt,name=unanswered_clarification_count,json=unansweredClarificationCount,proto3" json:"unanswered_clarification_count,omitempty"`
+	PendingBenchmarkJobCount          int64                  `protobuf:"varint,4,opt,name=pending_benchmark_job_count,json=pendingBenchmarkJobCount,proto3" json:"pending_benchmark_job_count,omitempty"`
+	EarliestPendingBenchmarkJobAt     *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=earliest_pending_benchmark_job_at,json=earliestPendingBenchmarkJobAt,proto3" json:"earliest_pending_benchmark_job_at,omitempty"`
 	unknownFields                     protoimpl.UnknownFields
 	sizeCache                         protoimpl.SizeCache
 }
@@ -117,6 +119,20 @@ func (x *DashboardResponse) GetUnansweredClarificationCount() int64 {
 		return x.UnansweredClarificationCount
 	}
 	return 0
+}
+
+func (x *DashboardResponse) GetPendingBenchmarkJobCount() int64 {
+	if x != nil {
+		return x.PendingBenchmarkJobCount
+	}
+	return 0
+}
+
+func (x *DashboardResponse) GetEarliestPendingBenchmarkJobAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.EarliestPendingBenchmarkJobAt
+	}
+	return nil
 }
 
 type SoloDashboardQuery struct {
@@ -204,11 +220,13 @@ var File_isuxportal_services_admin_dashboard_proto protoreflect.FileDescriptor
 const file_isuxportal_services_admin_dashboard_proto_rawDesc = "" +
 	"\n" +
 	")isuxportal/services/admin/dashboard.proto\x12\x1fisuxportal.proto.services.admin\x1a&isuxportal/resources/leaderboard.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\x10\n" +
-	"\x0eDashboardQuery\"\x91\x02\n" +
+	"\x0eDashboardQuery\"\xb6\x03\n" +
 	"\x11DashboardResponse\x12I\n" +
 	"\vleaderboard\x18\x01 \x01(\v2'.isuxportal.proto.resources.LeaderboardR\vleaderboard\x12k\n" +
 	"$earliest_unanswered_clarification_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR!earliestUnansweredClarificationAt\x12D\n" +
-	"\x1eunanswered_clarification_count\x18\x03 \x01(\x03R\x1cunansweredClarificationCount\"\x14\n" +
+	"\x1eunanswered_clarification_count\x18\x03 \x01(\x03R\x1cunansweredClarificationCount\x12=\n" +
+	"\x1bpending_benchmark_job_count\x18\x04 \x01(\x03R\x18pendingBenchmarkJobCount\x12d\n" +
+	"!earliest_pending_benchmark_job_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\x1dearliestPendingBenchmarkJobAt\"\x14\n" +
 	"\x12SoloDashboardQuery\"o\n" +
 	"\x15SoloDashboardResponse\x12V\n" +
 	"\x10leaderboard_item\x18\x01 \x01(\v2+.isuxportal.proto.resources.LeaderboardItemR\x0fleaderboardItemB\x9b\x02\n" +
@@ -239,12 +257,13 @@ var file_isuxportal_services_admin_dashboard_proto_goTypes = []any{
 var file_isuxportal_services_admin_dashboard_proto_depIdxs = []int32{
 	4, // 0: isuxportal.proto.services.admin.DashboardResponse.leaderboard:type_name -> isuxportal.proto.resources.Leaderboard
 	5, // 1: isuxportal.proto.services.admin.DashboardResponse.earliest_unanswered_clarification_at:type_name -> google.protobuf.Timestamp
-	6, // 2: isuxportal.proto.services.admin.SoloDashboardResponse.leaderboard_item:type_name -> isuxportal.proto.resources.LeaderboardItem
-	3, // [3:3] is the sub-list for method output_type
-	3, // [3:3] is the sub-list for method input_type
-	3, // [3:3] is the sub-list for extension type_name
-	3, // [3:3] is the sub-list for extension extendee
-	0, // [0:3] is the sub-list for field type_name
+	5, // 2: isuxportal.proto.services.admin.DashboardResponse.earliest_pending_benchmark_job_at:type_name -> google.protobuf.Timestamp
+	6, // 3: isuxportal.proto.services.admin.SoloDashboardResponse.leaderboard_item:type_name -> isuxportal.proto.resources.LeaderboardItem
+	4, // [4:4] is the sub-list for method output_type
+	4, // [4:4] is the sub-list for method input_type
+	4, // [4:4] is the sub-list for extension type_name
+	4, // [4:4] is the sub-list for extension extendee
+	0, // [0:4] is the sub-list for field type_name
 }
 
 func init() { file_isuxportal_services_admin_dashboard_proto_init() }

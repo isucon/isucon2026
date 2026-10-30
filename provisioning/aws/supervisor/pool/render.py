@@ -62,12 +62,15 @@ def build(task, service, config):
         "memory",
         "networkMode",
         "requiresCompatibilities",
-        "runtimePlatform",
         "executionRoleArn",
         "taskRoleArn",
         "containerDefinitions",
     ]
     result = {k: copy.deepcopy(task[k]) for k in keys if k in task}
+    result["runtimePlatform"] = {
+        "cpuArchitecture": "ARM64",
+        "operatingSystemFamily": "LINUX",
+    }
     result["family"] = config["name"]
     c = result["containerDefinitions"][0]
     c["image"] = config["image"]
@@ -94,6 +97,8 @@ def build(task, service, config):
         + f'exec /usr/local/bin/isureal-bench "$@"{bench_args}\n'
     )
     c["command"] = ["/bin/sh", "-c", script, "bench-proxy"]
+    network = copy.deepcopy(service["networkConfiguration"])
+    network["awsvpcConfiguration"]["assignPublicIp"] = "ENABLED"
     return {
         "taskDefinition": result,
         "serviceDefinition": {
@@ -107,7 +112,7 @@ def build(task, service, config):
                 "maximumPercent": 100,
                 "deploymentCircuitBreaker": {"enable": True, "rollback": True},
             },
-            "networkConfiguration": copy.deepcopy(service["networkConfiguration"]),
+            "networkConfiguration": network,
         },
         "ecspressoConfig": {
             "region": "ap-northeast-1",

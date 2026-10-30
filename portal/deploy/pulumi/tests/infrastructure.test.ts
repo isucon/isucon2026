@@ -219,6 +219,20 @@ describe("portal infrastructure", () => {
     ) expect(actions).toContain(action);
     expect(actions).not.toContain("secretsmanager:GetSecretValue");
   });
+  test("limits the environment administration key to portal and worker execution roles", () => {
+    for (const name of ["portal", "worker", "notifyloop", "bot", "migrate"]) {
+      const policy = JSON.parse(
+        ofType("aws:iam/rolePolicy:RolePolicy").find((r) =>
+          r.name === `${name}-secrets`
+        )!.inputs.policy,
+      );
+      expect(
+        policy.Statement[0].Resource.includes(
+          "arn:aws:mock:ap-northeast-1:123456789012:ssh",
+        ),
+      ).toBe(name === "portal" || name === "worker");
+    }
+  });
   test("rejects auto-pause, duplicate AZs and plaintext credentials", () => {
     const overrides: Partial<PortalConfig>[] = [
       { auroraMinAcu: 0 },

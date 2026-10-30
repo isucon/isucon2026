@@ -57,6 +57,36 @@ def run_proxy(script, address, *args):
 
 
 class SharedTest(unittest.TestCase):
+    def test_public_ip_is_enabled_even_with_private_template(self):
+        service = copy.deepcopy(SERVICE)
+        service["networkConfiguration"]["awsvpcConfiguration"]["assignPublicIp"] = (
+            "DISABLED"
+        )
+        original = copy.deepcopy(service)
+        result = build(TASK, service, CONFIG)["serviceDefinition"]
+        network = result["networkConfiguration"]["awsvpcConfiguration"]
+        self.assertEqual(network["assignPublicIp"], "ENABLED")
+        self.assertEqual(network["subnets"], ["subnet"])
+        self.assertEqual(network["securityGroups"], ["sg"])
+        self.assertEqual(service, original)
+
+    def test_runtime_platform_is_arm64_even_with_x86_template(self):
+        for platform in (
+            None,
+            {"cpuArchitecture": "X86_64", "operatingSystemFamily": "LINUX"},
+        ):
+            with self.subTest(platform=platform):
+                task = copy.deepcopy(TASK)
+                if platform is not None:
+                    task["runtimePlatform"] = platform
+                original = copy.deepcopy(task)
+                result = build(task, SERVICE, CONFIG)["taskDefinition"]
+                self.assertEqual(
+                    result["runtimePlatform"],
+                    {"cpuArchitecture": "ARM64", "operatingSystemFamily": "LINUX"},
+                )
+                self.assertEqual(task, original)
+
     def test_registered_router_uses_job_target_without_static_route(self):
         script = build(TASK, SERVICE, CONFIG)["taskDefinition"]["containerDefinitions"][
             0
@@ -158,7 +188,7 @@ class SharedTest(unittest.TestCase):
             with self.assertRaises(ValueError, msg=f"{key}={value!r}"):
                 build(copy.deepcopy(TASK), SERVICE, {**CONFIG, key: value})
 
-    def test_checked_in_deployment_uses_current_command(self):
+    def test_checked_in_deployment_matches_generated_task(self):
         root = pathlib.Path(__file__).parent
         config = json.loads((root / "pool.json").read_text())
         self.assertNotIn("routes", config)
@@ -176,10 +206,11 @@ class SharedTest(unittest.TestCase):
                 **deployment["serviceDefinition"],
                 "clusterArn": deployment["ecspressoConfig"]["cluster"],
             }
-            expected = build(task, service, config)["taskDefinition"][
-                "containerDefinitions"
-            ][0]["command"]
-            self.assertEqual(task["containerDefinitions"][0]["command"], expected)
+            expected = build(task, service, config)
+            self.assertEqual(task, expected["taskDefinition"])
+            self.assertEqual(
+                deployment["serviceDefinition"], expected["serviceDefinition"]
+            )
 
     def test_export_writes_ecspresso_files(self):
         deployment = build(copy.deepcopy(TASK), SERVICE, CONFIG)

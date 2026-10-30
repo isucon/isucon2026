@@ -13,10 +13,7 @@ import (
 func validEnvironment() environment {
 	e := environment{InstanceID: "i-001", PublicIP: "203.0.113.1"}
 	for n := 1; n <= 5; n++ {
-		typ := "c7i.large"
-		if n >= 4 {
-			typ = "c6in.large"
-		}
+		typ := envcheckTypes[n-1]
 		e.Instances = append(e.Instances, instance{ID: fmt.Sprintf("i-%03d", n), Name: fmt.Sprintf("isucon2026-envcheck-%03d", n), Type: typ, AMI: "ami-test", AZ: "apne1-az1", State: "running", VolumeSize: 8, VolumeType: "gp3", VolumeCount: 1, InterfaceCount: 1})
 	}
 	return e

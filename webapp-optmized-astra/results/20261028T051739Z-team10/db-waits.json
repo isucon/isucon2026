@@ -1,0 +1,882 @@
+{
+  "samples": 301,
+  "interval_seconds": 0.5,
+  "queries": [
+    {
+      "wait": "IPC",
+      "query": "COMMIT",
+      "active_connection_samples": 1253,
+      "max_observed_age_seconds": 1.766514
+    },
+    {
+      "wait": "CPU",
+      "query": "SELECT u.id, u.username, u.display_name FROM users u LEFT JOIN astra_user_search s ON s.user_id=u.id WHERE u.status=? AND u.id<>$1 AND ($2=? OR (u.username,u.id)>($2,$3)) AND (s.user_id IS NULL OR s.source_username<>u.username OR s.source_display_name<>u.display_name OR s.normalized_username LIKE $4 ESCAPE ? OR s.normalized_display_name LIKE $4 ESCAPE ?) AND NOT EXISTS(SELECT 1 FROM block_relations b WHERE b.blocker_id=$1 AND b.blocked_id=u.id) AND NOT EXISTS(SELECT 1 FROM block_relations b WHERE b.blocked_id=$1 AND b.blocker_id=u.id) ORDER BY u.username,u.id",
+      "active_connection_samples": 238,
+      "max_observed_age_seconds": 0.219206
+    },
+    {
+      "wait": "CPU",
+      "query": "\n        \nWITH viewer AS (\n  SELECT id, region FROM users WHERE id = $1 AND status = ?\n), friends AS (\n  SELECT user_high_id AS id FROM friendships WHERE user_low_id = $1\n  UNION\n  SELECT user_low_id AS id FROM friendships WHERE user_high_id = $1\n), friends_of_friends AS (\n  SELECT f.user_high_id AS id FROM friends one JOIN friendships f ON f.user_low_id = one.id\n  UNION\n  SELECT f.user_low_id AS id FROM friends one JOIN friendships f ON f.user_high_id = one.id\n)\n\n        SELECT candidate.* FROM posting_windows w\n        CROSS JOIN LATERAL (\n          SELECT p.id, p.author_id, p.posting_window_id, p.image_id, p.caption, p.visibility,\n  p.location_kind, p.latitude, p.longitude, p.locality, p.posted_at,\n  w.on_time_deadline, w.ended_at AS window_ended_at, u.id AS \"author.id\", u.username AS \"author.username\", u.secret_key_hash AS \"author.secret_key_hash\", u.display_name AS \"author.display_name\", u.bio AS \"author.bio\", u.profile_image_id AS \"author.profile_image_id\", u.region AS \"author.region\", u.account",
+      "active_connection_samples": 218,
+      "max_observed_age_seconds": 0.085446
+    },
+    {
+      "wait": "IO",
+      "query": "\n   WITH cached AS MATERIALIZED (\n     SELECT * FROM unnest($2::text[],$3::text[],$4::timestamptz[]) AS c(id,version,created_at)\n   )\n   SELECT p.id, p.author_id, p.posting_window_id, p.image_id, p.caption, p.visibility,\n  p.location_kind, p.latitude, p.longitude, p.locality, p.posted_at,\n  w.on_time_deadline, w.ended_at AS window_ended_at,\n     CASE WHEN (i.created_at=c.created_at AND i.version=c.version)\n       OR (i.asset_key IS NOT NULL AND ?||i.asset_key=c.version)\n       THEN NULL ELSE i.data END AS image_data, i.asset_key\n   FROM posts p\n   JOIN posting_windows w ON w.id = p.posting_window_id\n   JOIN LATERAL (\n     WITH hinted AS MATERIALIZED (\n       SELECT id, data, asset_key, created_at, xmin::text AS version FROM image_objects\n       WHERE id = p.image_id AND created_at = p.posted_at\n     )\n     SELECT id, data, asset_key, created_at, version FROM hinted\n     UNION ALL\n     SELECT id, data, asset_key, created_at, xmin::text AS version FROM image_objects\n     WHERE id = p.image_id AND NOT EX",
+      "active_connection_samples": 160,
+      "max_observed_age_seconds": 2.991668
+    },
+    {
+      "wait": "IO",
+      "query": "\n   SELECT CASE WHEN (i.created_at = $3 AND i.xmin::text = $2) OR (i.asset_key IS NOT NULL AND ? || i.asset_key = $2) THEN NULL ELSE i.data END AS data,\n          u.id AS owner_id, i.media_type, u.secret_key_hash, i.xmin::text AS version, i.created_at, i.asset_key\n   FROM image_objects i\n   JOIN LATERAL (\n     SELECT id, secret_key_hash, profile_image_id FROM users\n     WHERE id = i.owner_user_id AND status = ? OFFSET 0\n   ) u ON true\n   WHERE i.id = $1 AND (\n     u.profile_image_id = i.id\n     OR EXISTS (\n       SELECT 1 FROM posts p\n       WHERE p.image_id = i.id AND p.author_id = u.id AND p.deleted_at IS NULL\n     )\n     OR EXISTS (\n       SELECT 1 FROM realmojis r\n       JOIN posts p ON p.id = r.post_id AND p.deleted_at IS NULL\n       JOIN users author ON author.id = p.author_id AND author.status = ?\n       WHERE r.image_id = i.id AND r.reactor_id = u.id AND r.replaced_at IS NULL AND r.deleted_at IS NULL\n     )\n   )\n  ",
+      "active_connection_samples": 95,
+      "max_observed_age_seconds": 0.038883
+    },
+    {
+      "wait": "LWLock",
+      "query": "COMMIT",
+      "active_connection_samples": 87,
+      "max_observed_age_seconds": 0.055181
+    },
+    {
+      "wait": "IO",
+      "query": "SELECT p.id, p.author_id, p.posting_window_id, p.image_id, p.caption, p.visibility,\n  p.location_kind, p.latitude, p.longitude, p.locality, p.posted_at,\n  w.on_time_deadline, w.ended_at AS window_ended_at, (r.author).id AS \"author.id\", (r.author).username AS \"author.username\", (r.author).secret_key_hash AS \"author.secret_key_hash\", (r.author).display_name AS \"author.display_name\", (r.author).bio AS \"author.bio\", (r.author).profile_image_id AS \"author.profile_image_id\", (r.author).region AS \"author.region\", (r.author).account_type AS \"author.account_type\", (r.author).status AS \"author.status\" FROM astra_create_post_asset($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) r CROSS JOIN LATERAL (SELECT (r.post_row).*) p CROSS JOIN LATERAL (SELECT (r.window_row).*) w",
+      "active_connection_samples": 69,
+      "max_observed_age_seconds": 0.058594
+    },
+    {
+      "wait": "CPU",
+      "query": "\nWITH viewer AS (\n  SELECT id, region FROM users WHERE id = $1 AND status = ?\n), target AS MATERIALIZED (\n  SELECT p.id, p.author_id, p.visibility, w.ended_at\n  FROM posts p\n  JOIN posting_windows w ON w.id = p.posting_window_id\n  JOIN users author ON author.id = p.author_id AND author.status = ?\n  WHERE p.id = $2 AND p.deleted_at IS NULL\n), friends AS (\n  SELECT user_high_id AS id FROM friendships WHERE user_low_id = $1\n  UNION\n  SELECT user_low_id AS id FROM friendships WHERE user_high_id = $1\n), facts AS (\n  SELECT p.*, p.author_id = v.id AS own,\n    EXISTS (\n      SELECT 1 FROM posts own_post\n      JOIN posting_windows posted ON posted.id = own_post.posting_window_id\n      JOIN posting_windows current ON current.region = v.region\n        AND current.ended_at IS NULL AND current.local_date = posted.local_date\n      WHERE own_post.author_id = v.id AND own_post.deleted_at IS NULL\n    ) AS has_posted,\n    EXISTS (\n      SELECT 1 FROM block_relations b\n      WHERE (b.blocker_id = v.id AND b.bloc",
+      "active_connection_samples": 53,
+      "max_observed_age_seconds": 0.069494
+    },
+    {
+      "wait": "LWLock",
+      "query": "SELECT p.id, p.author_id, p.posting_window_id, p.image_id, p.caption, p.visibility,\n  p.location_kind, p.latitude, p.longitude, p.locality, p.posted_at,\n  w.on_time_deadline, w.ended_at AS window_ended_at, (r.author).id AS \"author.id\", (r.author).username AS \"author.username\", (r.author).secret_key_hash AS \"author.secret_key_hash\", (r.author).display_name AS \"author.display_name\", (r.author).bio AS \"author.bio\", (r.author).profile_image_id AS \"author.profile_image_id\", (r.author).region AS \"author.region\", (r.author).account_type AS \"author.account_type\", (r.author).status AS \"author.status\" FROM astra_create_post_asset($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) r CROSS JOIN LATERAL (SELECT (r.post_row).*) p CROSS JOIN LATERAL (SELECT (r.window_row).*) w",
+      "active_connection_samples": 46,
+      "max_observed_age_seconds": 0.048576
+    },
+    {
+      "wait": "IO",
+      "query": "COMMIT",
+      "active_connection_samples": 38,
+      "max_observed_age_seconds": 0.027465
+    },
+    {
+      "wait": "Lock",
+      "query": "SELECT id FROM users WHERE id=$1 AND status=? FOR NO KEY UPDATE",
+      "active_connection_samples": 35,
+      "max_observed_age_seconds": 0.376514
+    },
+    {
+      "wait": "CPU",
+      "query": "\n                    WITH active_windows AS MATERIALIZED (\n                        SELECT id, region FROM posting_windows WHERE ended_at IS NULL\n                    )\n                    SELECT s.slot, u.secret_key_hash,\n                           n.id, n.posting_window_id, n.region, n.created_at\n                    FROM unnest($1::text[], $2::text[], $3::timestamptz[])\n                         WITH ORDINALITY AS s(user_id, region, connected_at, slot)\n                    LEFT JOIN users u ON u.id = s.user_id\n                         AND u.status = ? AND u.region = s.region\n                    LEFT JOIN LATERAL (\n                        SELECT n.id, n.posting_window_id, w.region, n.created_at\n                        FROM active_windows w\n                        CROSS JOIN LATERAL (\n                            SELECT n.id, n.posting_window_id, n.created_at\n                            FROM notifications n\n                            WHERE n.posting_window_id = w.id AND n.user_id = u.id\n                  ",
+      "active_connection_samples": 24,
+      "max_observed_age_seconds": 0.240211
+    },
+    {
+      "wait": "Lock",
+      "query": "WITH inserted AS (INSERT INTO users (id, username, secret_key_hash, display_name, region) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (username) DO NOTHING RETURNING id, username, secret_key_hash, display_name, bio, profile_image_id, region, account_type, status), indexed AS (INSERT INTO astra_user_search SELECT id,username,display_name,$6,$7 FROM inserted) SELECT * FROM inserted",
+      "active_connection_samples": 22,
+      "max_observed_age_seconds": 0.391288
+    },
+    {
+      "wait": "Lock",
+      "query": "SELECT p.id, p.author_id, p.posting_window_id, p.image_id, p.caption, p.visibility,\n  p.location_kind, p.latitude, p.longitude, p.locality, p.posted_at,\n  w.on_time_deadline, w.ended_at AS window_ended_at, (r.author).id AS \"author.id\", (r.author).username AS \"author.username\", (r.author).secret_key_hash AS \"author.secret_key_hash\", (r.author).display_name AS \"author.display_name\", (r.author).bio AS \"author.bio\", (r.author).profile_image_id AS \"author.profile_image_id\", (r.author).region AS \"author.region\", (r.author).account_type AS \"author.account_type\", (r.author).status AS \"author.status\" FROM astra_create_post_asset($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) r CROSS JOIN LATERAL (SELECT (r.post_row).*) p CROSS JOIN LATERAL (SELECT (r.window_row).*) w",
+      "active_connection_samples": 22,
+      "max_observed_age_seconds": 0.303026
+    },
+    {
+      "wait": "CPU",
+      "query": "\n   SELECT CASE WHEN (i.created_at = $3 AND i.xmin::text = $2) OR (i.asset_key IS NOT NULL AND ? || i.asset_key = $2) THEN NULL ELSE i.data END AS data,\n          u.id AS owner_id, i.media_type, u.secret_key_hash, i.xmin::text AS version, i.created_at, i.asset_key\n   FROM image_objects i\n   JOIN LATERAL (\n     SELECT id, secret_key_hash, profile_image_id FROM users\n     WHERE id = i.owner_user_id AND status = ? OFFSET 0\n   ) u ON true\n   WHERE i.id = $1 AND (\n     u.profile_image_id = i.id\n     OR EXISTS (\n       SELECT 1 FROM posts p\n       WHERE p.image_id = i.id AND p.author_id = u.id AND p.deleted_at IS NULL\n     )\n     OR EXISTS (\n       SELECT 1 FROM realmojis r\n       JOIN posts p ON p.id = r.post_id AND p.deleted_at IS NULL\n       JOIN users author ON author.id = p.author_id AND author.status = ?\n       WHERE r.image_id = i.id AND r.reactor_id = u.id AND r.replaced_at IS NULL AND r.deleted_at IS NULL\n     )\n   )\n  ",
+      "active_connection_samples": 17,
+      "max_observed_age_seconds": 0.02302
+    },
+    {
+      "wait": "Client",
+      "query": "COMMIT",
+      "active_connection_samples": 15,
+      "max_observed_age_seconds": 0.126181
+    },
+    {
+      "wait": "CPU",
+      "query": "\n   WITH cached AS MATERIALIZED (\n     SELECT * FROM unnest($2::text[],$3::text[],$4::timestamptz[]) AS c(id,version,created_at)\n   )\n   SELECT p.id, p.author_id, p.posting_window_id, p.image_id, p.caption, p.visibility,\n  p.location_kind, p.latitude, p.longitude, p.locality, p.posted_at,\n  w.on_time_deadline, w.ended_at AS window_ended_at,\n     CASE WHEN (i.created_at=c.created_at AND i.version=c.version)\n       OR (i.asset_key IS NOT NULL AND ?||i.asset_key=c.version)\n       THEN NULL ELSE i.data END AS image_data, i.asset_key\n   FROM posts p\n   JOIN posting_windows w ON w.id = p.posting_window_id\n   JOIN LATERAL (\n     WITH hinted AS MATERIALIZED (\n       SELECT id, data, asset_key, created_at, xmin::text AS version FROM image_objects\n       WHERE id = p.image_id AND created_at = p.posted_at\n     )\n     SELECT id, data, asset_key, created_at, version FROM hinted\n     UNION ALL\n     SELECT id, data, asset_key, created_at, xmin::text AS version FROM image_objects\n     WHERE id = p.image_id AND NOT EX",
+      "active_connection_samples": 13,
+      "max_observed_age_seconds": 0.648233
+    },
+    {
+      "wait": "LWLock",
+      "query": "\n        \nWITH viewer AS (\n  SELECT id, region FROM users WHERE id = $1 AND status = ?\n), friends AS (\n  SELECT user_high_id AS id FROM friendships WHERE user_low_id = $1\n  UNION\n  SELECT user_low_id AS id FROM friendships WHERE user_high_id = $1\n), friends_of_friends AS (\n  SELECT f.user_high_id AS id FROM friends one JOIN friendships f ON f.user_low_id = one.id\n  UNION\n  SELECT f.user_low_id AS id FROM friends one JOIN friendships f ON f.user_high_id = one.id\n)\n\n        SELECT candidate.* FROM posting_windows w\n        CROSS JOIN LATERAL (\n          SELECT p.id, p.author_id, p.posting_window_id, p.image_id, p.caption, p.visibility,\n  p.location_kind, p.latitude, p.longitude, p.locality, p.posted_at,\n  w.on_time_deadline, w.ended_at AS window_ended_at, u.id AS \"author.id\", u.username AS \"author.username\", u.secret_key_hash AS \"author.secret_key_hash\", u.display_name AS \"author.display_name\", u.bio AS \"author.bio\", u.profile_image_id AS \"author.profile_image_id\", u.region AS \"author.region\", u.account",
+      "active_connection_samples": 13,
+      "max_observed_age_seconds": 0.041902
+    },
+    {
+      "wait": "IO",
+      "query": "\n  SELECT p.id, p.author_id, p.posting_window_id, p.image_id, p.caption, p.visibility,\n  p.location_kind, p.latitude, p.longitude, p.locality, p.posted_at,\n  w.on_time_deadline, w.ended_at AS window_ended_at, u.id AS \"author.id\", u.username AS \"author.username\", u.secret_key_hash AS \"author.secret_key_hash\", u.display_name AS \"author.display_name\", u.bio AS \"author.bio\", u.profile_image_id AS \"author.profile_image_id\", u.region AS \"author.region\", u.account_type AS \"author.account_type\", u.status AS \"author.status\"\n  FROM posts p\n  JOIN posting_windows w ON w.id = p.posting_window_id\n  JOIN users u ON u.id = p.author_id AND u.status = ?\n  WHERE p.deleted_at IS NULL \n  AND p.author_id = $1 AND w.local_date >= $2 AND w.local_date < $3\n  AND ($4::timestamptz IS NULL OR (p.posted_at, p.id) < ($4, $5))\n  ORDER BY p.posted_at DESC, p.id DESC LIMIT 51\n ",
+      "active_connection_samples": 11,
+      "max_observed_age_seconds": 0.023355
+    },
+    {
+      "wait": "Lock",
+      "query": "SELECT id FROM users WHERE id=$1 FOR NO KEY UPDATE",
+      "active_connection_samples": 11,
+      "max_observed_age_seconds": 0.080537
+    },
+    {
+      "wait": "CPU",
+      "query": "SELECT p.id, p.author_id, p.posting_window_id, p.image_id, p.caption, p.visibility,\n  p.location_kind, p.latitude, p.longitude, p.locality, p.posted_at,\n  w.on_time_deadline, w.ended_at AS window_ended_at, (r.author).id AS \"author.id\", (r.author).username AS \"author.username\", (r.author).secret_key_hash AS \"author.secret_key_hash\", (r.author).display_name AS \"author.display_name\", (r.author).bio AS \"author.bio\", (r.author).profile_image_id AS \"author.profile_image_id\", (r.author).region AS \"author.region\", (r.author).account_type AS \"author.account_type\", (r.author).status AS \"author.status\" FROM astra_create_post_asset($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) r CROSS JOIN LATERAL (SELECT (r.post_row).*) p CROSS JOIN LATERAL (SELECT (r.window_row).*) w",
+      "active_connection_samples": 10,
+      "max_observed_age_seconds": 0.025362
+    },
+    {
+      "wait": "LWLock",
+      "query": "WITH inserted AS (INSERT INTO users (id, username, secret_key_hash, display_name, region) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (username) DO NOTHING RETURNING id, username, secret_key_hash, display_name, bio, profile_image_id, region, account_type, status), indexed AS (INSERT INTO astra_user_search SELECT id,username,display_name,$6,$7 FROM inserted) SELECT * FROM inserted",
+      "active_connection_samples": 8,
+      "max_observed_age_seconds": 0.023386
+    },
+    {
+      "wait": "IO",
+      "query": "\n   SELECT CASE WHEN (i.created_at = $3 AND i.xmin::text = $2) OR (i.asset_key IS NOT NULL AND ? || i.asset_key = $2) THEN NULL ELSE i.data END AS data,\n          u.id AS owner_id, i.media_type, u.secret_key_hash, i.xmin::text AS version, i.created_at, i.asset_key\n   FROM image_objects_202605 i\n   JOIN LATERAL (\n     SELECT id, secret_key_hash, profile_image_id FROM users\n     WHERE id = i.owner_user_id AND status = ? OFFSET 0\n   ) u ON true\n   WHERE i.id = $1 AND (\n     u.profile_image_id = i.id\n     OR EXISTS (\n       SELECT 1 FROM posts p\n       WHERE p.image_id = i.id AND p.author_id = u.id AND p.deleted_at IS NULL\n     )\n     OR EXISTS (\n       SELECT 1 FROM realmojis r\n       JOIN posts p ON p.id = r.post_id AND p.deleted_at IS NULL\n       JOIN users author ON author.id = p.author_id AND author.status = ?\n       WHERE r.image_id = i.id AND r.reactor_id = u.id AND r.replaced_at IS NULL AND r.deleted_at IS NULL\n     )\n   )\n   AND i.created_at = $3",
+      "active_connection_samples": 6,
+      "max_observed_age_seconds": 0.03654
+    },
+    {
+      "wait": "IO",
+      "query": "\n   SELECT CASE WHEN (i.created_at = $3 AND i.xmin::text = $2) OR (i.asset_key IS NOT NULL AND ? || i.asset_key = $2) THEN NULL ELSE i.data END AS data,\n          u.id AS owner_id, i.media_type, u.secret_key_hash, i.xmin::text AS version, i.created_at, i.asset_key\n   FROM image_objects_202604 i\n   JOIN LATERAL (\n     SELECT id, secret_key_hash, profile_image_id FROM users\n     WHERE id = i.owner_user_id AND status = ? OFFSET 0\n   ) u ON true\n   WHERE i.id = $1 AND (\n     u.profile_image_id = i.id\n     OR EXISTS (\n       SELECT 1 FROM posts p\n       WHERE p.image_id = i.id AND p.author_id = u.id AND p.deleted_at IS NULL\n     )\n     OR EXISTS (\n       SELECT 1 FROM realmojis r\n       JOIN posts p ON p.id = r.post_id AND p.deleted_at IS NULL\n       JOIN users author ON author.id = p.author_id AND author.status = ?\n       WHERE r.image_id = i.id AND r.reactor_id = u.id AND r.replaced_at IS NULL AND r.deleted_at IS NULL\n     )\n   )\n   AND i.created_at = $3",
+      "active_connection_samples": 6,
+      "max_observed_age_seconds": 0.015166
+    },
+    {
+      "wait": "IO",
+      "query": "\n   SELECT CASE WHEN (i.created_at = $3 AND i.xmin::text = $2) OR (i.asset_key IS NOT NULL AND ? || i.asset_key = $2) THEN NULL ELSE i.data END AS data,\n          u.id AS owner_id, i.media_type, u.secret_key_hash, i.xmin::text AS version, i.created_at, i.asset_key\n   FROM image_objects_202609 i\n   JOIN LATERAL (\n     SELECT id, secret_key_hash, profile_image_id FROM users\n     WHERE id = i.owner_user_id AND status = ? OFFSET 0\n   ) u ON true\n   WHERE i.id = $1 AND (\n     u.profile_image_id = i.id\n     OR EXISTS (\n       SELECT 1 FROM posts p\n       WHERE p.image_id = i.id AND p.author_id = u.id AND p.deleted_at IS NULL\n     )\n     OR EXISTS (\n       SELECT 1 FROM realmojis r\n       JOIN posts p ON p.id = r.post_id AND p.deleted_at IS NULL\n       JOIN users author ON author.id = p.author_id AND author.status = ?\n       WHERE r.image_id = i.id AND r.reactor_id = u.id AND r.replaced_at IS NULL AND r.deleted_at IS NULL\n     )\n   )\n   AND i.created_at = $3",
+      "active_connection_samples": 6,
+      "max_observed_age_seconds": 0.04195
+    },
+    {
+      "wait": "IO",
+      "query": "\n   SELECT CASE WHEN (i.created_at = $3 AND i.xmin::text = $2) OR (i.asset_key IS NOT NULL AND ? || i.asset_key = $2) THEN NULL ELSE i.data END AS data,\n          u.id AS owner_id, i.media_type, u.secret_key_hash, i.xmin::text AS version, i.created_at, i.asset_key\n   FROM image_objects_202512 i\n   JOIN LATERAL (\n     SELECT id, secret_key_hash, profile_image_id FROM users\n     WHERE id = i.owner_user_id AND status = ? OFFSET 0\n   ) u ON true\n   WHERE i.id = $1 AND (\n     u.profile_image_id = i.id\n     OR EXISTS (\n       SELECT 1 FROM posts p\n       WHERE p.image_id = i.id AND p.author_id = u.id AND p.deleted_at IS NULL\n     )\n     OR EXISTS (\n       SELECT 1 FROM realmojis r\n       JOIN posts p ON p.id = r.post_id AND p.deleted_at IS NULL\n       JOIN users author ON author.id = p.author_id AND author.status = ?\n       WHERE r.image_id = i.id AND r.reactor_id = u.id AND r.replaced_at IS NULL AND r.deleted_at IS NULL\n     )\n   )\n   AND i.created_at = $3",
+      "active_connection_samples": 6,
+      "max_observed_age_seconds": 0.020501
+    },
+    {
+      "wait": "IO",
+      "query": "\n   SELECT CASE WHEN (i.created_at = $3 AND i.xmin::text = $2) OR (i.asset_key IS NOT NULL AND ? || i.asset_key = $2) THEN NULL ELSE i.data END AS data,\n          u.id AS owner_id, i.media_type, u.secret_key_hash, i.xmin::text AS version, i.created_at, i.asset_key\n   FROM image_objects_202602 i\n   JOIN LATERAL (\n     SELECT id, secret_key_hash, profile_image_id FROM users\n     WHERE id = i.owner_user_id AND status = ? OFFSET 0\n   ) u ON true\n   WHERE i.id = $1 AND (\n     u.profile_image_id = i.id\n     OR EXISTS (\n       SELECT 1 FROM posts p\n       WHERE p.image_id = i.id AND p.author_id = u.id AND p.deleted_at IS NULL\n     )\n     OR EXISTS (\n       SELECT 1 FROM realmojis r\n       JOIN posts p ON p.id = r.post_id AND p.deleted_at IS NULL\n       JOIN users author ON author.id = p.author_id AND author.status = ?\n       WHERE r.image_id = i.id AND r.reactor_id = u.id AND r.replaced_at IS NULL AND r.deleted_at IS NULL\n     )\n   )\n   AND i.created_at = $3",
+      "active_connection_samples": 6,
+      "max_observed_age_seconds": 0.033395
+    },
+    {
+      "wait": "IO",
+      "query": "\n        \nWITH viewer AS (\n  SELECT id, region FROM users WHERE id = $1 AND status = ?\n), friends AS (\n  SELECT user_high_id AS id FROM friendships WHERE user_low_id = $1\n  UNION\n  SELECT user_low_id AS id FROM friendships WHERE user_high_id = $1\n), friends_of_friends AS (\n  SELECT f.user_high_id AS id FROM friends one JOIN friendships f ON f.user_low_id = one.id\n  UNION\n  SELECT f.user_low_id AS id FROM friends one JOIN friendships f ON f.user_high_id = one.id\n)\n\n        SELECT candidate.* FROM posting_windows w\n        CROSS JOIN LATERAL (\n          SELECT p.id, p.author_id, p.posting_window_id, p.image_id, p.caption, p.visibility,\n  p.location_kind, p.latitude, p.longitude, p.locality, p.posted_at,\n  w.on_time_deadline, w.ended_at AS window_ended_at, u.id AS \"author.id\", u.username AS \"author.username\", u.secret_key_hash AS \"author.secret_key_hash\", u.display_name AS \"author.display_name\", u.bio AS \"author.bio\", u.profile_image_id AS \"author.profile_image_id\", u.region AS \"author.region\", u.account",
+      "active_connection_samples": 5,
+      "max_observed_age_seconds": 1.253411
+    },
+    {
+      "wait": "IO",
+      "query": "INSERT INTO comments(id,post_id,author_id,body,created_at) VALUES($1,$2,$3,$4,clock_timestamp())",
+      "active_connection_samples": 5,
+      "max_observed_age_seconds": 0.039203
+    },
+    {
+      "wait": "IPC",
+      "query": "\n   SELECT CASE WHEN (i.created_at = $3 AND i.xmin::text = $2) OR (i.asset_key IS NOT NULL AND ? || i.asset_key = $2) THEN NULL ELSE i.data END AS data,\n          u.id AS owner_id, i.media_type, u.secret_key_hash, i.xmin::text AS version, i.created_at, i.asset_key\n   FROM image_objects i\n   JOIN LATERAL (\n     SELECT id, secret_key_hash, profile_image_id FROM users\n     WHERE id = i.owner_user_id AND status = ? OFFSET 0\n   ) u ON true\n   WHERE i.id = $1 AND (\n     u.profile_image_id = i.id\n     OR EXISTS (\n       SELECT 1 FROM posts p\n       WHERE p.image_id = i.id AND p.author_id = u.id AND p.deleted_at IS NULL\n     )\n     OR EXISTS (\n       SELECT 1 FROM realmojis r\n       JOIN posts p ON p.id = r.post_id AND p.deleted_at IS NULL\n       JOIN users author ON author.id = p.author_id AND author.status = ?\n       WHERE r.image_id = i.id AND r.reactor_id = u.id AND r.replaced_at IS NULL AND r.deleted_at IS NULL\n     )\n   )\n  ",
+      "active_connection_samples": 5,
+      "max_observed_age_seconds": 0.047373
+    },
+    {
+      "wait": "CPU",
+      "query": "\n   SELECT CASE WHEN (i.created_at = $3 AND i.xmin::text = $2) OR (i.asset_key IS NOT NULL AND ? || i.asset_key = $2) THEN NULL ELSE i.data END AS data,\n          u.id AS owner_id, i.media_type, u.secret_key_hash, i.xmin::text AS version, i.created_at, i.asset_key\n   FROM image_objects_202602 i\n   JOIN LATERAL (\n     SELECT id, secret_key_hash, profile_image_id FROM users\n     WHERE id = i.owner_user_id AND status = ? OFFSET 0\n   ) u ON true\n   WHERE i.id = $1 AND (\n     u.profile_image_id = i.id\n     OR EXISTS (\n       SELECT 1 FROM posts p\n       WHERE p.image_id = i.id AND p.author_id = u.id AND p.deleted_at IS NULL\n     )\n     OR EXISTS (\n       SELECT 1 FROM realmojis r\n       JOIN posts p ON p.id = r.post_id AND p.deleted_at IS NULL\n       JOIN users author ON author.id = p.author_id AND author.status = ?\n       WHERE r.image_id = i.id AND r.reactor_id = u.id AND r.replaced_at IS NULL AND r.deleted_at IS NULL\n     )\n   )\n   AND i.created_at = $3",
+      "active_connection_samples": 5,
+      "max_observed_age_seconds": 0.036048
+    },
+    {
+      "wait": "CPU",
+      "query": "\n   SELECT CASE WHEN (i.created_at = $3 AND i.xmin::text = $2) OR (i.asset_key IS NOT NULL AND ? || i.asset_key = $2) THEN NULL ELSE i.data END AS data,\n          u.id AS owner_id, i.media_type, u.secret_key_hash, i.xmin::text AS version, i.created_at, i.asset_key\n   FROM image_objects_202609 i\n   JOIN LATERAL (\n     SELECT id, secret_key_hash, profile_image_id FROM users\n     WHERE id = i.owner_user_id AND status = ? OFFSET 0\n   ) u ON true\n   WHERE i.id = $1 AND (\n     u.profile_image_id = i.id\n     OR EXISTS (\n       SELECT 1 FROM posts p\n       WHERE p.image_id = i.id AND p.author_id = u.id AND p.deleted_at IS NULL\n     )\n     OR EXISTS (\n       SELECT 1 FROM realmojis r\n       JOIN posts p ON p.id = r.post_id AND p.deleted_at IS NULL\n       JOIN users author ON author.id = p.author_id AND author.status = ?\n       WHERE r.image_id = i.id AND r.reactor_id = u.id AND r.replaced_at IS NULL AND r.deleted_at IS NULL\n     )\n   )\n   AND i.created_at = $3",
+      "active_connection_samples": 5,
+      "max_observed_age_seconds": 0.042891
+    },
+    {
+      "wait": "CPU",
+      "query": "\n   INSERT INTO notifications (id, user_id, posting_window_id, created_at)\n   SELECT n.id, n.user_id, $3, $4\n   FROM unnest($1::text[], $2::text[]) WITH ORDINALITY AS n(id, user_id, position)\n   ORDER BY n.position\n  ",
+      "active_connection_samples": 4,
+      "max_observed_age_seconds": 0.398948
+    },
+    {
+      "wait": "IO",
+      "query": "\n   SELECT CASE WHEN (i.created_at = $3 AND i.xmin::text = $2) OR (i.asset_key IS NOT NULL AND ? || i.asset_key = $2) THEN NULL ELSE i.data END AS data,\n          u.id AS owner_id, i.media_type, u.secret_key_hash, i.xmin::text AS version, i.created_at, i.asset_key\n   FROM image_objects_202603 i\n   JOIN LATERAL (\n     SELECT id, secret_key_hash, profile_image_id FROM users\n     WHERE id = i.owner_user_id AND status = ? OFFSET 0\n   ) u ON true\n   WHERE i.id = $1 AND (\n     u.profile_image_id = i.id\n     OR EXISTS (\n       SELECT 1 FROM posts p\n       WHERE p.image_id = i.id AND p.author_id = u.id AND p.deleted_at IS NULL\n     )\n     OR EXISTS (\n       SELECT 1 FROM realmojis r\n       JOIN posts p ON p.id = r.post_id AND p.deleted_at IS NULL\n       JOIN users author ON author.id = p.author_id AND author.status = ?\n       WHERE r.image_id = i.id AND r.reactor_id = u.id AND r.replaced_at IS NULL AND r.deleted_at IS NULL\n     )\n   )\n   AND i.created_at = $3",
+      "active_connection_samples": 4,
+      "max_observed_age_seconds": 0.034543
+    },
+    {
+      "wait": "CPU",
+      "query": "\n   SELECT CASE WHEN (i.created_at = $3 AND i.xmin::text = $2) OR (i.asset_key IS NOT NULL AND ? || i.asset_key = $2) THEN NULL ELSE i.data END AS data,\n          u.id AS owner_id, i.media_type, u.secret_key_hash, i.xmin::text AS version, i.created_at, i.asset_key\n   FROM image_objects_202608 i\n   JOIN LATERAL (\n     SELECT id, secret_key_hash, profile_image_id FROM users\n     WHERE id = i.owner_user_id AND status = ? OFFSET 0\n   ) u ON true\n   WHERE i.id = $1 AND (\n     u.profile_image_id = i.id\n     OR EXISTS (\n       SELECT 1 FROM posts p\n       WHERE p.image_id = i.id AND p.author_id = u.id AND p.deleted_at IS NULL\n     )\n     OR EXISTS (\n       SELECT 1 FROM realmojis r\n       JOIN posts p ON p.id = r.post_id AND p.deleted_at IS NULL\n       JOIN users author ON author.id = p.author_id AND author.status = ?\n       WHERE r.image_id = i.id AND r.reactor_id = u.id AND r.replaced_at IS NULL AND r.deleted_at IS NULL\n     )\n   )\n   AND i.created_at = $3",
+      "active_connection_samples": 4,
+      "max_observed_age_seconds": 0.0248
+    },
+    {
+      "wait": "IO",
+      "query": "\n  SELECT r.id, r.post_id, r.reactor_id, r.image_id, r.reaction_type, r.created_at, r.replaced_at, r.deleted_at,\n         u.id AS \"reactor.id\", u.username AS \"reactor.username\", u.secret_key_hash AS \"reactor.secret_key_hash\", u.display_name AS \"reactor.display_name\", u.bio AS \"reactor.bio\", u.profile_image_id AS \"reactor.profile_image_id\", u.region AS \"reactor.region\", u.account_type AS \"reactor.account_type\", u.status AS \"reactor.status\"\n  FROM realmojis r JOIN users u ON u.id = r.reactor_id AND u.status = ?\n  WHERE r.replaced_at IS NULL AND r.deleted_at IS NULL AND r.post_id IN ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) ORDER BY r.created_at DESC, r.id DESC",
+      "active_connection_samples": 4,
+      "max_observed_age_seconds": 0.041605
+    },
+    {
+      "wait": "IO",
+      "query": "\n  SELECT r.id, r.post_id, r.reactor_id, r.image_id, r.reaction_type, r.created_at, r.replaced_at, r.deleted_at,\n         u.id AS \"reactor.id\", u.username AS \"reactor.username\", u.secret_key_hash AS \"reactor.secret_key_hash\", u.display_name AS \"reactor.display_name\", u.bio AS \"reactor.bio\", u.profile_image_id AS \"reactor.profile_image_id\", u.region AS \"reactor.region\", u.account_type AS \"reactor.account_type\", u.status AS \"reactor.status\"\n  FROM realmojis r JOIN users u ON u.id = r.reactor_id AND u.status = ?\n  WHERE r.replaced_at IS NULL AND r.deleted_at IS NULL AND r.post_id IN ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) ORDER BY r.created_at DESC, r.id DESC",
+      "active_connection_samples": 4,
+      "max_observed_age_seconds": 0.028392
+    },
+    {
+      "wait": "IO",
+      "query": "\n   SELECT CASE WHEN (i.created_at = $3 AND i.xmin::text = $2) OR (i.asset_key IS NOT NULL AND ? || i.asset_key = $2) THEN NULL ELSE i.data END AS data,\n          u.id AS owner_id, i.media_type, u.secret_key_hash, i.xmin::text AS version, i.created_at, i.asset_key\n   FROM image_objects_202601 i\n   JOIN LATERAL (\n     SELECT id, secret_key_hash, profile_image_id FROM users\n     WHERE id = i.owner_user_id AND status = ? OFFSET 0\n   ) u ON true\n   WHERE i.id = $1 AND (\n     u.profile_image_id = i.id\n     OR EXISTS (\n       SELECT 1 FROM posts p\n       WHERE p.image_id = i.id AND p.author_id = u.id AND p.deleted_at IS NULL\n     )\n     OR EXISTS (\n       SELECT 1 FROM realmojis r\n       JOIN posts p ON p.id = r.post_id AND p.deleted_at IS NULL\n       JOIN users author ON author.id = p.author_id AND author.status = ?\n       WHERE r.image_id = i.id AND r.reactor_id = u.id AND r.replaced_at IS NULL AND r.deleted_at IS NULL\n     )\n   )\n   AND i.created_at = $3",
+      "active_connection_samples": 4,
+      "max_observed_age_seconds": 0.017224
+    },
+    {
+      "wait": "IO",
+      "query": "DELETE FROM notifications WHERE created_at > (SELECT created_at FROM initial_data_boundary);",
+      "active_connection_samples": 3,
+      "max_observed_age_seconds": 1.157281
+    },
+    {
+      "wait": "Client",
+      "query": "\n   SELECT CASE WHEN (i.created_at = $3 AND i.xmin::text = $2) OR (i.asset_key IS NOT NULL AND ? || i.asset_key = $2) THEN NULL ELSE i.data END AS data,\n          u.id AS owner_id, i.media_type, u.secret_key_hash, i.xmin::text AS version, i.created_at, i.asset_key\n   FROM image_objects_202610 i\n   JOIN LATERAL (\n     SELECT id, secret_key_hash, profile_image_id FROM users\n     WHERE id = i.owner_user_id AND status = ? OFFSET 0\n   ) u ON true\n   WHERE i.id = $1 AND (\n     u.profile_image_id = i.id\n     OR EXISTS (\n       SELECT 1 FROM posts p\n       WHERE p.image_id = i.id AND p.author_id = u.id AND p.deleted_at IS NULL\n     )\n     OR EXISTS (\n       SELECT 1 FROM realmojis r\n       JOIN posts p ON p.id = r.post_id AND p.deleted_at IS NULL\n       JOIN users author ON author.id = p.author_id AND author.status = ?\n       WHERE r.image_id = i.id AND r.reactor_id = u.id AND r.replaced_at IS NULL AND r.deleted_at IS NULL\n     )\n   )\n   AND i.created_at = $3",
+      "active_connection_samples": 3,
+      "max_observed_age_seconds": 0.002766
+    },
+    {
+      "wait": "CPU",
+      "query": "INSERT INTO friend_requests (id, requester_id, recipient_id, status, created_at, updated_at) VALUES ($1,$2,$3,?,clock_timestamp(),clock_timestamp())",
+      "active_connection_samples": 3,
+      "max_observed_age_seconds": 0.008615
+    },
+    {
+      "wait": "Client",
+      "query": "\n        \nWITH viewer AS (\n  SELECT id, region FROM users WHERE id = $1 AND status = ?\n), friends AS (\n  SELECT user_high_id AS id FROM friendships WHERE user_low_id = $1\n  UNION\n  SELECT user_low_id AS id FROM friendships WHERE user_high_id = $1\n), friends_of_friends AS (\n  SELECT f.user_high_id AS id FROM friends one JOIN friendships f ON f.user_low_id = one.id\n  UNION\n  SELECT f.user_low_id AS id FROM friends one JOIN friendships f ON f.user_high_id = one.id\n)\n\n        SELECT candidate.* FROM posting_windows w\n        CROSS JOIN LATERAL (\n          SELECT p.id, p.author_id, p.posting_window_id, p.image_id, p.caption, p.visibility,\n  p.location_kind, p.latitude, p.longitude, p.locality, p.posted_at,\n  w.on_time_deadline, w.ended_at AS window_ended_at, u.id AS \"author.id\", u.username AS \"author.username\", u.secret_key_hash AS \"author.secret_key_hash\", u.display_name AS \"author.display_name\", u.bio AS \"author.bio\", u.profile_image_id AS \"author.profile_image_id\", u.region AS \"author.region\", u.account",
+      "active_connection_samples": 3,
+      "max_observed_age_seconds": 0.023528
+    },
+    {
+      "wait": "CPU",
+      "query": "\n   SELECT CASE WHEN (i.created_at = $3 AND i.xmin::text = $2) OR (i.asset_key IS NOT NULL AND ? || i.asset_key = $2) THEN NULL ELSE i.data END AS data,\n          u.id AS owner_id, i.media_type, u.secret_key_hash, i.xmin::text AS version, i.created_at, i.asset_key\n   FROM image_objects_202510 i\n   JOIN LATERAL (\n     SELECT id, secret_key_hash, profile_image_id FROM users\n     WHERE id = i.owner_user_id AND status = ? OFFSET 0\n   ) u ON true\n   WHERE i.id = $1 AND (\n     u.profile_image_id = i.id\n     OR EXISTS (\n       SELECT 1 FROM posts p\n       WHERE p.image_id = i.id AND p.author_id = u.id AND p.deleted_at IS NULL\n     )\n     OR EXISTS (\n       SELECT 1 FROM realmojis r\n       JOIN posts p ON p.id = r.post_id AND p.deleted_at IS NULL\n       JOIN users author ON author.id = p.author_id AND author.status = ?\n       WHERE r.image_id = i.id AND r.reactor_id = u.id AND r.replaced_at IS NULL AND r.deleted_at IS NULL\n     )\n   )\n   AND i.created_at = $3",
+      "active_connection_samples": 3,
+      "max_observed_age_seconds": 0.01574
+    },
+    {
+      "wait": "IO",
+      "query": "\n   SELECT CASE WHEN (i.created_at = $3 AND i.xmin::text = $2) OR (i.asset_key IS NOT NULL AND ? || i.asset_key = $2) THEN NULL ELSE i.data END AS data,\n          u.id AS owner_id, i.media_type, u.secret_key_hash, i.xmin::text AS version, i.created_at, i.asset_key\n   FROM image_objects_202608 i\n   JOIN LATERAL (\n     SELECT id, secret_key_hash, profile_image_id FROM users\n     WHERE id = i.owner_user_id AND status = ? OFFSET 0\n   ) u ON true\n   WHERE i.id = $1 AND (\n     u.profile_image_id = i.id\n     OR EXISTS (\n       SELECT 1 FROM posts p\n       WHERE p.image_id = i.id AND p.author_id = u.id AND p.deleted_at IS NULL\n     )\n     OR EXISTS (\n       SELECT 1 FROM realmojis r\n       JOIN posts p ON p.id = r.post_id AND p.deleted_at IS NULL\n       JOIN users author ON author.id = p.author_id AND author.status = ?\n       WHERE r.image_id = i.id AND r.reactor_id = u.id AND r.replaced_at IS NULL AND r.deleted_at IS NULL\n     )\n   )\n   AND i.created_at = $3",
+      "active_connection_samples": 3,
+      "max_observed_age_seconds": 0.016322
+    },
+    {
+      "wait": "IO",
+      "query": "WITH inserted AS (INSERT INTO users (id, username, secret_key_hash, display_name, region) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (username) DO NOTHING RETURNING id, username, secret_key_hash, display_name, bio, profile_image_id, region, account_type, status), indexed AS (INSERT INTO astra_user_search SELECT id,username,display_name,$6,$7 FROM inserted) SELECT * FROM inserted",
+      "active_connection_samples": 3,
+      "max_observed_age_seconds": 0.030381
+    },
+    {
+      "wait": "IO",
+      "query": "\n  SELECT r.id, r.post_id, r.reactor_id, r.image_id, r.reaction_type, r.created_at, r.replaced_at, r.deleted_at,\n         u.id AS \"reactor.id\", u.username AS \"reactor.username\", u.secret_key_hash AS \"reactor.secret_key_hash\", u.display_name AS \"reactor.display_name\", u.bio AS \"reactor.bio\", u.profile_image_id AS \"reactor.profile_image_id\", u.region AS \"reactor.region\", u.account_type AS \"reactor.account_type\", u.status AS \"reactor.status\"\n  FROM realmojis r JOIN users u ON u.id = r.reactor_id AND u.status = ?\n  WHERE r.replaced_at IS NULL AND r.deleted_at IS NULL AND r.post_id IN ($1, $2, $3) ORDER BY r.created_at DESC, r.id DESC",
+      "active_connection_samples": 3,
+      "max_observed_age_seconds": 0.011374
+    },
+    {
+      "wait": "IO",
+      "query": "\n  SELECT r.id, r.post_id, r.reactor_id, r.image_id, r.reaction_type, r.created_at, r.replaced_at, r.deleted_at,\n         u.id AS \"reactor.id\", u.username AS \"reactor.username\", u.secret_key_hash AS \"reactor.secret_key_hash\", u.display_name AS \"reactor.display_name\", u.bio AS \"reactor.bio\", u.profile_image_id AS \"reactor.profile_image_id\", u.region AS \"reactor.region\", u.account_type AS \"reactor.account_type\", u.status AS \"reactor.status\"\n  FROM realmojis r JOIN users u ON u.id = r.reactor_id AND u.status = ?\n  WHERE r.replaced_at IS NULL AND r.deleted_at IS NULL AND r.post_id IN ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27) ORDER BY r.created_at DESC, r.id DESC",
+      "active_connection_samples": 3,
+      "max_observed_age_seconds": 0.074457
+    },
+    {
+      "wait": "IO",
+      "query": "\n  SELECT r.id, r.post_id, r.reactor_id, r.image_id, r.reaction_type, r.created_at, r.replaced_at, r.deleted_at,\n         u.id AS \"reactor.id\", u.username AS \"reactor.username\", u.secret_key_hash AS \"reactor.secret_key_hash\", u.display_name AS \"reactor.display_name\", u.bio AS \"reactor.bio\", u.profile_image_id AS \"reactor.profile_image_id\", u.region AS \"reactor.region\", u.account_type AS \"reactor.account_type\", u.status AS \"reactor.status\"\n  FROM realmojis r JOIN users u ON u.id = r.reactor_id AND u.status = ?\n  WHERE r.replaced_at IS NULL AND r.deleted_at IS NULL AND r.post_id IN ($1, $2) ORDER BY r.created_at DESC, r.id DESC",
+      "active_connection_samples": 3,
+      "max_observed_age_seconds": 0.005436
+    },
+    {
+      "wait": "IO",
+      "query": "\n  SELECT c.id, c.post_id, c.author_id, c.body, c.created_at, c.deleted_at, u.id AS \"author.id\", u.username AS \"author.username\", u.secret_key_hash AS \"author.secret_key_hash\", u.display_name AS \"author.display_name\", u.bio AS \"author.bio\", u.profile_image_id AS \"author.profile_image_id\", u.region AS \"author.region\", u.account_type AS \"author.account_type\", u.status AS \"author.status\"\n  FROM comments c JOIN users u ON u.id = c.author_id AND u.status = ?\n  WHERE c.deleted_at IS NULL AND c.post_id IN ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) ORDER BY c.created_at, c.id",
+      "active_connection_samples": 3,
+      "max_observed_age_seconds": 0.024655
+    },
+    {
+      "wait": "IO",
+      "query": "\n   SELECT CASE WHEN (i.created_at = $3 AND i.xmin::text = $2) OR (i.asset_key IS NOT NULL AND ? || i.asset_key = $2) THEN NULL ELSE i.data END AS data,\n          u.id AS owner_id, i.media_type, u.secret_key_hash, i.xmin::text AS version, i.created_at, i.asset_key\n   FROM image_objects_202607 i\n   JOIN LATERAL (\n     SELECT id, secret_key_hash, profile_image_id FROM users\n     WHERE id = i.owner_user_id AND status = ? OFFSET 0\n   ) u ON true\n   WHERE i.id = $1 AND (\n     u.profile_image_id = i.id\n     OR EXISTS (\n       SELECT 1 FROM posts p\n       WHERE p.image_id = i.id AND p.author_id = u.id AND p.deleted_at IS NULL\n     )\n     OR EXISTS (\n       SELECT 1 FROM realmojis r\n       JOIN posts p ON p.id = r.post_id AND p.deleted_at IS NULL\n       JOIN users author ON author.id = p.author_id AND author.status = ?\n       WHERE r.image_id = i.id AND r.reactor_id = u.id AND r.replaced_at IS NULL AND r.deleted_at IS NULL\n     )\n   )\n   AND i.created_at = $3",
+      "active_connection_samples": 3,
+      "max_observed_age_seconds": 0.018376
+    },
+    {
+      "wait": "Client",
+      "query": "\n\t\tSELECT s.user_id, s.token_hash, s.created_at, u.region\n\t\tFROM login_sessions s JOIN users u ON u.id = s.user_id\n\t\tWHERE s.token_hash = $1\n\t\t  AND s.active = true AND u.status = ?\n\t",
+      "active_connection_samples": 3,
+      "max_observed_age_seconds": 0.013595
+    },
+    {
+      "wait": "Lock",
+      "query": "UPDATE users SET bio = $2, updated_at = clock_timestamp() WHERE id = $1",
+      "active_connection_samples": 3,
+      "max_observed_age_seconds": 0.217528
+    },
+    {
+      "wait": "IO",
+      "query": "INSERT INTO realmojis(id,post_id,reactor_id,image_id,reaction_type,created_at) VALUES($1,$2,$3,$4,$5,clock_timestamp())",
+      "active_connection_samples": 3,
+      "max_observed_age_seconds": 0.030524
+    },
+    {
+      "wait": "LWLock",
+      "query": "\n   SELECT CASE WHEN (i.created_at = $3 AND i.xmin::text = $2) OR (i.asset_key IS NOT NULL AND ? || i.asset_key = $2) THEN NULL ELSE i.data END AS data,\n          u.id AS owner_id, i.media_type, u.secret_key_hash, i.xmin::text AS version, i.created_at, i.asset_key\n   FROM image_objects i\n   JOIN LATERAL (\n     SELECT id, secret_key_hash, profile_image_id FROM users\n     WHERE id = i.owner_user_id AND status = ? OFFSET 0\n   ) u ON true\n   WHERE i.id = $1 AND (\n     u.profile_image_id = i.id\n     OR EXISTS (\n       SELECT 1 FROM posts p\n       WHERE p.image_id = i.id AND p.author_id = u.id AND p.deleted_at IS NULL\n     )\n     OR EXISTS (\n       SELECT 1 FROM realmojis r\n       JOIN posts p ON p.id = r.post_id AND p.deleted_at IS NULL\n       JOIN users author ON author.id = p.author_id AND author.status = ?\n       WHERE r.image_id = i.id AND r.reactor_id = u.id AND r.replaced_at IS NULL AND r.deleted_at IS NULL\n     )\n   )\n  ",
+      "active_connection_samples": 3,
+      "max_observed_age_seconds": 0.024285
+    },
+    {
+      "wait": "Client",
+      "query": "\n  SELECT p.id, p.author_id, p.posting_window_id, p.image_id, p.caption, p.visibility,\n  p.location_kind, p.latitude, p.longitude, p.locality, p.posted_at,\n  w.on_time_deadline, w.ended_at AS window_ended_at, u.id AS \"author.id\", u.username AS \"author.username\", u.secret_key_hash AS \"author.secret_key_hash\", u.display_name AS \"author.display_name\", u.bio AS \"author.bio\", u.profile_image_id AS \"author.profile_image_id\", u.region AS \"author.region\", u.account_type AS \"author.account_type\", u.status AS \"author.status\"\n  FROM posts p\n  JOIN posting_windows w ON w.id = p.posting_window_id\n  JOIN users u ON u.id = p.author_id AND u.status = ?\n  WHERE p.deleted_at IS NULL \n  AND p.author_id = $1 AND w.local_date >= $2 AND w.local_date < $3\n  AND ($4::timestamptz IS NULL OR (p.posted_at, p.id) < ($4, $5))\n  ORDER BY p.posted_at DESC, p.id DESC LIMIT 51\n ",
+      "active_connection_samples": 3,
+      "max_observed_age_seconds": 0.023215
+    },
+    {
+      "wait": "Client",
+      "query": "SELECT p.id, p.author_id, p.posting_window_id, p.image_id, p.caption, p.visibility,\n  p.location_kind, p.latitude, p.longitude, p.locality, p.posted_at,\n  w.on_time_deadline, w.ended_at AS window_ended_at, (r.author).id AS \"author.id\", (r.author).username AS \"author.username\", (r.author).secret_key_hash AS \"author.secret_key_hash\", (r.author).display_name AS \"author.display_name\", (r.author).bio AS \"author.bio\", (r.author).profile_image_id AS \"author.profile_image_id\", (r.author).region AS \"author.region\", (r.author).account_type AS \"author.account_type\", (r.author).status AS \"author.status\" FROM astra_create_post_asset($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) r CROSS JOIN LATERAL (SELECT (r.post_row).*) p CROSS JOIN LATERAL (SELECT (r.window_row).*) w",
+      "active_connection_samples": 3,
+      "max_observed_age_seconds": 0.033514
+    },
+    {
+      "wait": "CPU",
+      "query": "\n  SELECT r.id, r.post_id, r.reactor_id, r.image_id, r.reaction_type, r.created_at, r.replaced_at, r.deleted_at,\n         u.id AS \"reactor.id\", u.username AS \"reactor.username\", u.secret_key_hash AS \"reactor.secret_key_hash\", u.display_name AS \"reactor.display_name\", u.bio AS \"reactor.bio\", u.profile_image_id AS \"reactor.profile_image_id\", u.region AS \"reactor.region\", u.account_type AS \"reactor.account_type\", u.status AS \"reactor.status\"\n  FROM realmojis r JOIN users u ON u.id = r.reactor_id AND u.status = ?\n  WHERE r.replaced_at IS NULL AND r.deleted_at IS NULL AND r.post_id IN ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) ORDER BY r.created_at DESC, r.id DESC",
+      "active_connection_samples": 3,
+      "max_observed_age_seconds": 0.116362
+    },
+    {
+      "wait": "CPU",
+      "query": "\n  SELECT r.id, r.post_id, r.reactor_id, r.image_id, r.reaction_type, r.created_at, r.replaced_at, r.deleted_at,\n         u.id AS \"reactor.id\", u.username AS \"reactor.username\", u.secret_key_hash AS \"reactor.secret_key_hash\", u.display_name AS \"reactor.display_name\", u.bio AS \"reactor.bio\", u.profile_image_id AS \"reactor.profile_image_id\", u.region AS \"reactor.region\", u.account_type AS \"reactor.account_type\", u.status AS \"reactor.status\"\n  FROM realmojis r JOIN users u ON u.id = r.reactor_id AND u.status = ?\n  WHERE r.replaced_at IS NULL AND r.deleted_at IS NULL AND r.post_id IN ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19) ORDER BY r.created_at DESC, r.id DESC",
+      "active_connection_samples": 3,
+      "max_observed_age_seconds": 0.072567
+    },
+    {
+      "wait": "CPU",
+      "query": "\n  SELECT r.id, r.post_id, r.reactor_id, r.image_id, r.reaction_type, r.created_at, r.replaced_at, r.deleted_at,\n         u.id AS \"reactor.id\", u.username AS \"reactor.username\", u.secret_key_hash AS \"reactor.secret_key_hash\", u.display_name AS \"reactor.display_name\", u.bio AS \"reactor.bio\", u.profile_image_id AS \"reactor.profile_image_id\", u.region AS \"reactor.region\", u.account_type AS \"reactor.account_type\", u.status AS \"reactor.status\"\n  FROM realmojis r JOIN users u ON u.id = r.reactor_id AND u.status = ?\n  WHERE r.replaced_at IS NULL AND r.deleted_at IS NULL AND r.post_id=$1 AND ($2::timestamptz IS NULL OR (r.created_at,r.id)<($2,$3)) ORDER BY r.created_at DESC,r.id DESC LIMIT 51",
+      "active_connection_samples": 2,
+      "max_observed_age_seconds": 0.004305
+    },
+    {
+      "wait": "IO",
+      "query": "\n  SELECT r.id, r.post_id, r.reactor_id, r.image_id, r.reaction_type, r.created_at, r.replaced_at, r.deleted_at,\n         u.id AS \"reactor.id\", u.username AS \"reactor.username\", u.secret_key_hash AS \"reactor.secret_key_hash\", u.display_name AS \"reactor.display_name\", u.bio AS \"reactor.bio\", u.profile_image_id AS \"reactor.profile_image_id\", u.region AS \"reactor.region\", u.account_type AS \"reactor.account_type\", u.status AS \"reactor.status\"\n  FROM realmojis r JOIN users u ON u.id = r.reactor_id AND u.status = ?\n  WHERE r.replaced_at IS NULL AND r.deleted_at IS NULL AND r.post_id IN ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22) ORDER BY r.created_at DESC, r.id DESC",
+      "active_connection_samples": 2,
+      "max_observed_age_seconds": 0.007353
+    },
+    {
+      "wait": "IO",
+      "query": "\n  SELECT r.id, r.post_id, r.reactor_id, r.image_id, r.reaction_type, r.created_at, r.replaced_at, r.deleted_at,\n         u.id AS \"reactor.id\", u.username AS \"reactor.username\", u.secret_key_hash AS \"reactor.secret_key_hash\", u.display_name AS \"reactor.display_name\", u.bio AS \"reactor.bio\", u.profile_image_id AS \"reactor.profile_image_id\", u.region AS \"reactor.region\", u.account_type AS \"reactor.account_type\", u.status AS \"reactor.status\"\n  FROM realmojis r JOIN users u ON u.id = r.reactor_id AND u.status = ?\n  WHERE r.replaced_at IS NULL AND r.deleted_at IS NULL AND r.post_id IN ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29) ORDER BY r.created_at DESC, r.id DESC",
+      "active_connection_samples": 2,
+      "max_observed_age_seconds": 0.021469
+    },
+    {
+      "wait": "IO",
+      "query": "\n   SELECT CASE WHEN (i.created_at = $3 AND i.xmin::text = $2) OR (i.asset_key IS NOT NULL AND ? || i.asset_key = $2) THEN NULL ELSE i.data END AS data,\n          u.id AS owner_id, i.media_type, u.secret_key_hash, i.xmin::text AS version, i.created_at, i.asset_key\n   FROM image_objects_202606 i\n   JOIN LATERAL (\n     SELECT id, secret_key_hash, profile_image_id FROM users\n     WHERE id = i.owner_user_id AND status = ? OFFSET 0\n   ) u ON true\n   WHERE i.id = $1 AND (\n     u.profile_image_id = i.id\n     OR EXISTS (\n       SELECT 1 FROM posts p\n       WHERE p.image_id = i.id AND p.author_id = u.id AND p.deleted_at IS NULL\n     )\n     OR EXISTS (\n       SELECT 1 FROM realmojis r\n       JOIN posts p ON p.id = r.post_id AND p.deleted_at IS NULL\n       JOIN users author ON author.id = p.author_id AND author.status = ?\n       WHERE r.image_id = i.id AND r.reactor_id = u.id AND r.replaced_at IS NULL AND r.deleted_at IS NULL\n     )\n   )\n   AND i.created_at = $3",
+      "active_connection_samples": 2,
+      "max_observed_age_seconds": 0.039882
+    },
+    {
+      "wait": "IO",
+      "query": "\n  SELECT c.id, c.post_id, c.author_id, c.body, c.created_at, c.deleted_at, u.id AS \"author.id\", u.username AS \"author.username\", u.secret_key_hash AS \"author.secret_key_hash\", u.display_name AS \"author.display_name\", u.bio AS \"author.bio\", u.profile_image_id AS \"author.profile_image_id\", u.region AS \"author.region\", u.account_type AS \"author.account_type\", u.status AS \"author.status\"\n  FROM comments c JOIN users u ON u.id = c.author_id AND u.status = ?\n  WHERE c.deleted_at IS NULL AND c.post_id IN ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19) ORDER BY c.created_at, c.id",
+      "active_connection_samples": 2,
+      "max_observed_age_seconds": 0.05425
+    },
+    {
+      "wait": "IO",
+      "query": "\n  SELECT r.id, r.post_id, r.reactor_id, r.image_id, r.reaction_type, r.created_at, r.replaced_at, r.deleted_at,\n         u.id AS \"reactor.id\", u.username AS \"reactor.username\", u.secret_key_hash AS \"reactor.secret_key_hash\", u.display_name AS \"reactor.display_name\", u.bio AS \"reactor.bio\", u.profile_image_id AS \"reactor.profile_image_id\", u.region AS \"reactor.region\", u.account_type AS \"reactor.account_type\", u.status AS \"reactor.status\"\n  FROM realmojis r JOIN users u ON u.id = r.reactor_id AND u.status = ?\n  WHERE r.replaced_at IS NULL AND r.deleted_at IS NULL AND r.post_id IN ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) ORDER BY r.created_at DESC, r.id DESC",
+      "active_connection_samples": 2,
+      "max_observed_age_seconds": 0.025042
+    },
+    {
+      "wait": "IO",
+      "query": "\n   SELECT CASE WHEN (i.created_at = $3 AND i.xmin::text = $2) OR (i.asset_key IS NOT NULL AND ? || i.asset_key = $2) THEN NULL ELSE i.data END AS data,\n          u.id AS owner_id, i.media_type, u.secret_key_hash, i.xmin::text AS version, i.created_at, i.asset_key\n   FROM image_objects_202511 i\n   JOIN LATERAL (\n     SELECT id, secret_key_hash, profile_image_id FROM users\n     WHERE id = i.owner_user_id AND status = ? OFFSET 0\n   ) u ON true\n   WHERE i.id = $1 AND (\n     u.profile_image_id = i.id\n     OR EXISTS (\n       SELECT 1 FROM posts p\n       WHERE p.image_id = i.id AND p.author_id = u.id AND p.deleted_at IS NULL\n     )\n     OR EXISTS (\n       SELECT 1 FROM realmojis r\n       JOIN posts p ON p.id = r.post_id AND p.deleted_at IS NULL\n       JOIN users author ON author.id = p.author_id AND author.status = ?\n       WHERE r.image_id = i.id AND r.reactor_id = u.id AND r.replaced_at IS NULL AND r.deleted_at IS NULL\n     )\n   )\n   AND i.created_at = $3",
+      "active_connection_samples": 2,
+      "max_observed_age_seconds": 0.009501
+    },
+    {
+      "wait": "IO",
+      "query": "\n  SELECT r.id, r.post_id, r.reactor_id, r.image_id, r.reaction_type, r.created_at, r.replaced_at, r.deleted_at,\n         u.id AS \"reactor.id\", u.username AS \"reactor.username\", u.secret_key_hash AS \"reactor.secret_key_hash\", u.display_name AS \"reactor.display_name\", u.bio AS \"reactor.bio\", u.profile_image_id AS \"reactor.profile_image_id\", u.region AS \"reactor.region\", u.account_type AS \"reactor.account_type\", u.status AS \"reactor.status\"\n  FROM realmojis r JOIN users u ON u.id = r.reactor_id AND u.status = ?\n  WHERE r.replaced_at IS NULL AND r.deleted_at IS NULL AND r.post_id IN ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28) ORDER BY r.created_at DESC, r.id DESC",
+      "active_connection_samples": 2,
+      "max_observed_age_seconds": 0.032956
+    },
+    {
+      "wait": "IO",
+      "query": "\n  SELECT c.id, c.post_id, c.author_id, c.body, c.created_at, c.deleted_at, u.id AS \"author.id\", u.username AS \"author.username\", u.secret_key_hash AS \"author.secret_key_hash\", u.display_name AS \"author.display_name\", u.bio AS \"author.bio\", u.profile_image_id AS \"author.profile_image_id\", u.region AS \"author.region\", u.account_type AS \"author.account_type\", u.status AS \"author.status\"\n  FROM comments c JOIN users u ON u.id = c.author_id AND u.status = ?\n  WHERE c.deleted_at IS NULL AND c.post_id IN ($1, $2, $3, $4, $5) ORDER BY c.created_at, c.id",
+      "active_connection_samples": 2,
+      "max_observed_age_seconds": 0.018692
+    },
+    {
+      "wait": "IO",
+      "query": "\n  SELECT c.id, c.post_id, c.author_id, c.body, c.created_at, c.deleted_at, u.id AS \"author.id\", u.username AS \"author.username\", u.secret_key_hash AS \"author.secret_key_hash\", u.display_name AS \"author.display_name\", u.bio AS \"author.bio\", u.profile_image_id AS \"author.profile_image_id\", u.region AS \"author.region\", u.account_type AS \"author.account_type\", u.status AS \"author.status\"\n  FROM comments c JOIN users u ON u.id = c.author_id AND u.status = ?\n  WHERE c.deleted_at IS NULL AND c.post_id IN ($1, $2) ORDER BY c.created_at, c.id",
+      "active_connection_samples": 2,
+      "max_observed_age_seconds": 0.010681
+    },
+    {
+      "wait": "CPU",
+      "query": "COMMIT",
+      "active_connection_samples": 2,
+      "max_observed_age_seconds": 0.023304
+    },
+    {
+      "wait": "CPU",
+      "query": "\n  SELECT r.id, r.post_id, r.reactor_id, r.image_id, r.reaction_type, r.created_at, r.replaced_at, r.deleted_at,\n         u.id AS \"reactor.id\", u.username AS \"reactor.username\", u.secret_key_hash AS \"reactor.secret_key_hash\", u.display_name AS \"reactor.display_name\", u.bio AS \"reactor.bio\", u.profile_image_id AS \"reactor.profile_image_id\", u.region AS \"reactor.region\", u.account_type AS \"reactor.account_type\", u.status AS \"reactor.status\"\n  FROM realmojis r JOIN users u ON u.id = r.reactor_id AND u.status = ?\n  WHERE r.replaced_at IS NULL AND r.deleted_at IS NULL AND r.post_id IN ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29) ORDER BY r.created_at DESC, r.id DESC",
+      "active_connection_samples": 2,
+      "max_observed_age_seconds": 0.06104
+    },
+    {
+      "wait": "CPU",
+      "query": "\n\t\tSELECT s.user_id, s.token_hash, s.created_at, u.region\n\t\tFROM login_sessions s JOIN users u ON u.id = s.user_id\n\t\tWHERE s.token_hash = $1\n\t\t  AND s.active = true AND u.status = ?\n\t",
+      "active_connection_samples": 2,
+      "max_observed_age_seconds": 0.021431
+    },
+    {
+      "wait": "LWLock",
+      "query": "\nWITH viewer AS (\n  SELECT id, region FROM users WHERE id = $1 AND status = ?\n), target AS MATERIALIZED (\n  SELECT p.id, p.author_id, p.visibility, w.ended_at\n  FROM posts p\n  JOIN posting_windows w ON w.id = p.posting_window_id\n  JOIN users author ON author.id = p.author_id AND author.status = ?\n  WHERE p.id = $2 AND p.deleted_at IS NULL\n), friends AS (\n  SELECT user_high_id AS id FROM friendships WHERE user_low_id = $1\n  UNION\n  SELECT user_low_id AS id FROM friendships WHERE user_high_id = $1\n), facts AS (\n  SELECT p.*, p.author_id = v.id AS own,\n    EXISTS (\n      SELECT 1 FROM posts own_post\n      JOIN posting_windows posted ON posted.id = own_post.posting_window_id\n      JOIN posting_windows current ON current.region = v.region\n        AND current.ended_at IS NULL AND current.local_date = posted.local_date\n      WHERE own_post.author_id = v.id AND own_post.deleted_at IS NULL\n    ) AS has_posted,\n    EXISTS (\n      SELECT 1 FROM block_relations b\n      WHERE (b.blocker_id = v.id AND b.bloc",
+      "active_connection_samples": 2,
+      "max_observed_age_seconds": 0.062817
+    },
+    {
+      "wait": "LWLock",
+      "query": "\n   WITH cached AS MATERIALIZED (\n     SELECT * FROM unnest($2::text[],$3::text[],$4::timestamptz[]) AS c(id,version,created_at)\n   )\n   SELECT p.id, p.author_id, p.posting_window_id, p.image_id, p.caption, p.visibility,\n  p.location_kind, p.latitude, p.longitude, p.locality, p.posted_at,\n  w.on_time_deadline, w.ended_at AS window_ended_at,\n     CASE WHEN (i.created_at=c.created_at AND i.version=c.version)\n       OR (i.asset_key IS NOT NULL AND ?||i.asset_key=c.version)\n       THEN NULL ELSE i.data END AS image_data, i.asset_key\n   FROM posts p\n   JOIN posting_windows w ON w.id = p.posting_window_id\n   JOIN LATERAL (\n     WITH hinted AS MATERIALIZED (\n       SELECT id, data, asset_key, created_at, xmin::text AS version FROM image_objects\n       WHERE id = p.image_id AND created_at = p.posted_at\n     )\n     SELECT id, data, asset_key, created_at, version FROM hinted\n     UNION ALL\n     SELECT id, data, asset_key, created_at, xmin::text AS version FROM image_objects\n     WHERE id = p.image_id AND NOT EX",
+      "active_connection_samples": 2,
+      "max_observed_age_seconds": 0.432456
+    },
+    {
+      "wait": "CPU",
+      "query": "\n   SELECT CASE WHEN (i.created_at = $3 AND i.xmin::text = $2) OR (i.asset_key IS NOT NULL AND ? || i.asset_key = $2) THEN NULL ELSE i.data END AS data,\n          u.id AS owner_id, i.media_type, u.secret_key_hash, i.xmin::text AS version, i.created_at, i.asset_key\n   FROM image_objects_202607 i\n   JOIN LATERAL (\n     SELECT id, secret_key_hash, profile_image_id FROM users\n     WHERE id = i.owner_user_id AND status = ? OFFSET 0\n   ) u ON true\n   WHERE i.id = $1 AND (\n     u.profile_image_id = i.id\n     OR EXISTS (\n       SELECT 1 FROM posts p\n       WHERE p.image_id = i.id AND p.author_id = u.id AND p.deleted_at IS NULL\n     )\n     OR EXISTS (\n       SELECT 1 FROM realmojis r\n       JOIN posts p ON p.id = r.post_id AND p.deleted_at IS NULL\n       JOIN users author ON author.id = p.author_id AND author.status = ?\n       WHERE r.image_id = i.id AND r.reactor_id = u.id AND r.replaced_at IS NULL AND r.deleted_at IS NULL\n     )\n   )\n   AND i.created_at = $3",
+      "active_connection_samples": 2,
+      "max_observed_age_seconds": 0.013384
+    },
+    {
+      "wait": "CPU",
+      "query": "\n   SELECT id FROM friend_requests WHERE status=? AND\n    ((requester_id=$1 AND recipient_id=$2) OR (requester_id=$2 AND recipient_id=$1))\n  ",
+      "active_connection_samples": 2,
+      "max_observed_age_seconds": 0.005362
+    },
+    {
+      "wait": "CPU",
+      "query": "\n  SELECT r.id, r.post_id, r.reactor_id, r.image_id, r.reaction_type, r.created_at, r.replaced_at, r.deleted_at,\n         u.id AS \"reactor.id\", u.username AS \"reactor.username\", u.secret_key_hash AS \"reactor.secret_key_hash\", u.display_name AS \"reactor.display_name\", u.bio AS \"reactor.bio\", u.profile_image_id AS \"reactor.profile_image_id\", u.region AS \"reactor.region\", u.account_type AS \"reactor.account_type\", u.status AS \"reactor.status\"\n  FROM realmojis r JOIN users u ON u.id = r.reactor_id AND u.status = ?\n  WHERE r.replaced_at IS NULL AND r.deleted_at IS NULL AND r.post_id IN ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28) ORDER BY r.created_at DESC, r.id DESC",
+      "active_connection_samples": 2,
+      "max_observed_age_seconds": 0.0843
+    },
+    {
+      "wait": "IO",
+      "query": "\n  SELECT r.id, r.post_id, r.reactor_id, r.image_id, r.reaction_type, r.created_at, r.replaced_at, r.deleted_at,\n         u.id AS \"reactor.id\", u.username AS \"reactor.username\", u.secret_key_hash AS \"reactor.secret_key_hash\", u.display_name AS \"reactor.display_name\", u.bio AS \"reactor.bio\", u.profile_image_id AS \"reactor.profile_image_id\", u.region AS \"reactor.region\", u.account_type AS \"reactor.account_type\", u.status AS \"reactor.status\"\n  FROM realmojis r JOIN users u ON u.id = r.reactor_id AND u.status = ?\n  WHERE r.replaced_at IS NULL AND r.deleted_at IS NULL AND r.post_id IN ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18) ORDER BY r.created_at DESC, r.id DESC",
+      "active_connection_samples": 2,
+      "max_observed_age_seconds": 0.01639
+    },
+    {
+      "wait": "Client",
+      "query": "\n   SELECT CASE WHEN (i.created_at = $3 AND i.xmin::text = $2) OR (i.asset_key IS NOT NULL AND ? || i.asset_key = $2) THEN NULL ELSE i.data END AS data,\n          u.id AS owner_id, i.media_type, u.secret_key_hash, i.xmin::text AS version, i.created_at, i.asset_key\n   FROM image_objects i\n   JOIN LATERAL (\n     SELECT id, secret_key_hash, profile_image_id FROM users\n     WHERE id = i.owner_user_id AND status = ? OFFSET 0\n   ) u ON true\n   WHERE i.id = $1 AND (\n     u.profile_image_id = i.id\n     OR EXISTS (\n       SELECT 1 FROM posts p\n       WHERE p.image_id = i.id AND p.author_id = u.id AND p.deleted_at IS NULL\n     )\n     OR EXISTS (\n       SELECT 1 FROM realmojis r\n       JOIN posts p ON p.id = r.post_id AND p.deleted_at IS NULL\n       JOIN users author ON author.id = p.author_id AND author.status = ?\n       WHERE r.image_id = i.id AND r.reactor_id = u.id AND r.replaced_at IS NULL AND r.deleted_at IS NULL\n     )\n   )\n  ",
+      "active_connection_samples": 2,
+      "max_observed_age_seconds": 0.033915
+    },
+    {
+      "wait": "IO",
+      "query": "\n  SELECT c.id, c.post_id, c.author_id, c.body, c.created_at, c.deleted_at, u.id AS \"author.id\", u.username AS \"author.username\", u.secret_key_hash AS \"author.secret_key_hash\", u.display_name AS \"author.display_name\", u.bio AS \"author.bio\", u.profile_image_id AS \"author.profile_image_id\", u.region AS \"author.region\", u.account_type AS \"author.account_type\", u.status AS \"author.status\"\n  FROM comments c JOIN users u ON u.id = c.author_id AND u.status = ?\n  WHERE c.deleted_at IS NULL AND c.post_id IN ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) ORDER BY c.created_at, c.id",
+      "active_connection_samples": 2,
+      "max_observed_age_seconds": 0.043451
+    },
+    {
+      "wait": "CPU",
+      "query": "\n  SELECT r.id, r.post_id, r.reactor_id, r.image_id, r.reaction_type, r.created_at, r.replaced_at, r.deleted_at,\n         u.id AS \"reactor.id\", u.username AS \"reactor.username\", u.secret_key_hash AS \"reactor.secret_key_hash\", u.display_name AS \"reactor.display_name\", u.bio AS \"reactor.bio\", u.profile_image_id AS \"reactor.profile_image_id\", u.region AS \"reactor.region\", u.account_type AS \"reactor.account_type\", u.status AS \"reactor.status\"\n  FROM realmojis r JOIN users u ON u.id = r.reactor_id AND u.status = ?\n  WHERE r.replaced_at IS NULL AND r.deleted_at IS NULL AND r.post_id IN ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18) ORDER BY r.created_at DESC, r.id DESC",
+      "active_connection_samples": 2,
+      "max_observed_age_seconds": 0.07323
+    },
+    {
+      "wait": "IO",
+      "query": "\n  SELECT c.id, c.post_id, c.author_id, c.body, c.created_at, c.deleted_at, u.id AS \"author.id\", u.username AS \"author.username\", u.secret_key_hash AS \"author.secret_key_hash\", u.display_name AS \"author.display_name\", u.bio AS \"author.bio\", u.profile_image_id AS \"author.profile_image_id\", u.region AS \"author.region\", u.account_type AS \"author.account_type\", u.status AS \"author.status\"\n  FROM comments c JOIN users u ON u.id = c.author_id AND u.status = ?\n  WHERE c.deleted_at IS NULL AND c.post_id IN ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) ORDER BY c.created_at, c.id",
+      "active_connection_samples": 2,
+      "max_observed_age_seconds": 0.030746
+    },
+    {
+      "wait": "CPU",
+      "query": "\n  SELECT r.id, r.post_id, r.reactor_id, r.image_id, r.reaction_type, r.created_at, r.replaced_at, r.deleted_at,\n         u.id AS \"reactor.id\", u.username AS \"reactor.username\", u.secret_key_hash AS \"reactor.secret_key_hash\", u.display_name AS \"reactor.display_name\", u.bio AS \"reactor.bio\", u.profile_image_id AS \"reactor.profile_image_id\", u.region AS \"reactor.region\", u.account_type AS \"reactor.account_type\", u.status AS \"reactor.status\"\n  FROM realmojis r JOIN users u ON u.id = r.reactor_id AND u.status = ?\n  WHERE r.replaced_at IS NULL AND r.deleted_at IS NULL AND r.post_id IN ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26) ORDER BY r.created_at DESC, r.id DESC",
+      "active_connection_samples": 2,
+      "max_observed_age_seconds": 0.079035
+    },
+    {
+      "wait": "Client",
+      "query": "\n  SELECT r.id, r.post_id, r.reactor_id, r.image_id, r.reaction_type, r.created_at, r.replaced_at, r.deleted_at,\n         u.id AS \"reactor.id\", u.username AS \"reactor.username\", u.secret_key_hash AS \"reactor.secret_key_hash\", u.display_name AS \"reactor.display_name\", u.bio AS \"reactor.bio\", u.profile_image_id AS \"reactor.profile_image_id\", u.region AS \"reactor.region\", u.account_type AS \"reactor.account_type\", u.status AS \"reactor.status\"\n  FROM realmojis r JOIN users u ON u.id = r.reactor_id AND u.status = ?\n  WHERE r.replaced_at IS NULL AND r.deleted_at IS NULL AND r.post_id IN ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) ORDER BY r.created_at DESC, r.id DESC",
+      "active_connection_samples": 2,
+      "max_observed_age_seconds": 0.076231
+    },
+    {
+      "wait": "Lock",
+      "query": "LOCK TABLE users IN SHARE ROW EXCLUSIVE MODE",
+      "active_connection_samples": 2,
+      "max_observed_age_seconds": 0.476059
+    },
+    {
+      "wait": "Lock",
+      "query": "UPDATE users SET profile_image_id=$2,updated_at=clock_timestamp() WHERE id=$1",
+      "active_connection_samples": 2,
+      "max_observed_age_seconds": 0.452932
+    },
+    {
+      "wait": "IO",
+      "query": "DELETE FROM comments WHERE created_at > (SELECT created_at FROM initial_data_boundary);",
+      "active_connection_samples": 1,
+      "max_observed_age_seconds": 0.084564
+    },
+    {
+      "wait": "CPU",
+      "query": "DELETE FROM comments WHERE created_at > (SELECT created_at FROM initial_data_boundary);",
+      "active_connection_samples": 1,
+      "max_observed_age_seconds": 0.584541
+    },
+    {
+      "wait": "IO",
+      "query": "DELETE FROM image_objects WHERE created_at > (SELECT created_at FROM initial_data_boundary);",
+      "active_connection_samples": 1,
+      "max_observed_age_seconds": 0.057686
+    },
+    {
+      "wait": "CPU",
+      "query": "SELECT ip, banned_until FROM ip_bans WHERE banned_until > clock_timestamp()",
+      "active_connection_samples": 1,
+      "max_observed_age_seconds": 0.000246
+    },
+    {
+      "wait": "IO",
+      "query": "\n  SELECT c.id, c.post_id, c.author_id, c.body, c.created_at, c.deleted_at, u.id AS \"author.id\", u.username AS \"author.username\", u.secret_key_hash AS \"author.secret_key_hash\", u.display_name AS \"author.display_name\", u.bio AS \"author.bio\", u.profile_image_id AS \"author.profile_image_id\", u.region AS \"author.region\", u.account_type AS \"author.account_type\", u.status AS \"author.status\"\n  FROM comments c JOIN users u ON u.id = c.author_id AND u.status = ?\n  WHERE c.deleted_at IS NULL AND c.post_id IN ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28) ORDER BY c.created_at, c.id",
+      "active_connection_samples": 1,
+      "max_observed_age_seconds": 0.013386
+    },
+    {
+      "wait": "Client",
+      "query": "INSERT INTO astra_visibility_barriers (id) VALUES ($1)",
+      "active_connection_samples": 1,
+      "max_observed_age_seconds": 0.001242
+    },
+    {
+      "wait": "CPU",
+      "query": "UPDATE realmojis SET replaced_at=clock_timestamp() WHERE post_id=$1 AND reactor_id=$2 AND replaced_at IS NULL AND deleted_at IS NULL",
+      "active_connection_samples": 1,
+      "max_observed_age_seconds": 0.000577
+    },
+    {
+      "wait": "Client",
+      "query": "\n   SELECT CASE WHEN (i.created_at = $3 AND i.xmin::text = $2) OR (i.asset_key IS NOT NULL AND ? || i.asset_key = $2) THEN NULL ELSE i.data END AS data,\n          u.id AS owner_id, i.media_type, u.secret_key_hash, i.xmin::text AS version, i.created_at, i.asset_key\n   FROM image_objects_202602 i\n   JOIN LATERAL (\n     SELECT id, secret_key_hash, profile_image_id FROM users\n     WHERE id = i.owner_user_id AND status = ? OFFSET 0\n   ) u ON true\n   WHERE i.id = $1 AND (\n     u.profile_image_id = i.id\n     OR EXISTS (\n       SELECT 1 FROM posts p\n       WHERE p.image_id = i.id AND p.author_id = u.id AND p.deleted_at IS NULL\n     )\n     OR EXISTS (\n       SELECT 1 FROM realmojis r\n       JOIN posts p ON p.id = r.post_id AND p.deleted_at IS NULL\n       JOIN users author ON author.id = p.author_id AND author.status = ?\n       WHERE r.image_id = i.id AND r.reactor_id = u.id AND r.replaced_at IS NULL AND r.deleted_at IS NULL\n     )\n   )\n   AND i.created_at = $3",
+      "active_connection_samples": 1,
+      "max_observed_age_seconds": 0.014759
+    },
+    {
+      "wait": "CPU",
+      "query": "SELECT id FROM users WHERE id=$1 AND status=? FOR NO KEY UPDATE",
+      "active_connection_samples": 1,
+      "max_observed_age_seconds": 0.035025
+    },
+    {
+      "wait": "CPU",
+      "query": "\n   SELECT p.id FROM posts p\n   JOIN posting_windows w ON w.id = p.posting_window_id\n   JOIN users u ON u.id = p.author_id\n   JOIN posting_windows current ON current.region = u.region AND current.ended_at IS NULL\n                              AND current.local_date = w.local_date\n   WHERE p.author_id = $1 AND p.deleted_at IS NULL\n  ",
+      "active_connection_samples": 1,
+      "max_observed_age_seconds": 0.001668
+    },
+    {
+      "wait": "IO",
+      "query": "\n  SELECT c.id, c.post_id, c.author_id, c.body, c.created_at, c.deleted_at, u.id AS \"author.id\", u.username AS \"author.username\", u.secret_key_hash AS \"author.secret_key_hash\", u.display_name AS \"author.display_name\", u.bio AS \"author.bio\", u.profile_image_id AS \"author.profile_image_id\", u.region AS \"author.region\", u.account_type AS \"author.account_type\", u.status AS \"author.status\"\n  FROM comments c JOIN users u ON u.id = c.author_id AND u.status = ?\n  WHERE c.deleted_at IS NULL AND c.post_id IN ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) ORDER BY c.created_at, c.id",
+      "active_connection_samples": 1,
+      "max_observed_age_seconds": 0.006494
+    },
+    {
+      "wait": "CPU",
+      "query": "\n  SELECT r.id, r.post_id, r.reactor_id, r.image_id, r.reaction_type, r.created_at, r.replaced_at, r.deleted_at,\n         u.id AS \"reactor.id\", u.username AS \"reactor.username\", u.secret_key_hash AS \"reactor.secret_key_hash\", u.display_name AS \"reactor.display_name\", u.bio AS \"reactor.bio\", u.profile_image_id AS \"reactor.profile_image_id\", u.region AS \"reactor.region\", u.account_type AS \"reactor.account_type\", u.status AS \"reactor.status\"\n  FROM realmojis r JOIN users u ON u.id = r.reactor_id AND u.status = ?\n  WHERE r.replaced_at IS NULL AND r.deleted_at IS NULL AND r.post_id IN ($1, $2) ORDER BY r.created_at DESC, r.id DESC",
+      "active_connection_samples": 1,
+      "max_observed_age_seconds": 0.004411
+    },
+    {
+      "wait": "Client",
+      "query": "\n  SELECT r.id, r.post_id, r.reactor_id, r.image_id, r.reaction_type, r.created_at, r.replaced_at, r.deleted_at,\n         u.id AS \"reactor.id\", u.username AS \"reactor.username\", u.secret_key_hash AS \"reactor.secret_key_hash\", u.display_name AS \"reactor.display_name\", u.bio AS \"reactor.bio\", u.profile_image_id AS \"reactor.profile_image_id\", u.region AS \"reactor.region\", u.account_type AS \"reactor.account_type\", u.status AS \"reactor.status\"\n  FROM realmojis r JOIN users u ON u.id = r.reactor_id AND u.status = ?\n  WHERE r.replaced_at IS NULL AND r.deleted_at IS NULL AND r.post_id IN ($1, $2, $3, $4, $5, $6, $7, $8, $9) ORDER BY r.created_at DESC, r.id DESC",
+      "active_connection_samples": 1,
+      "max_observed_age_seconds": 0.026672
+    },
+    {
+      "wait": "Client",
+      "query": "\nWITH viewer AS (\n  SELECT id, region FROM users WHERE id = $1 AND status = ?\n), target AS MATERIALIZED (\n  SELECT p.id, p.author_id, p.visibility, w.ended_at\n  FROM posts p\n  JOIN posting_windows w ON w.id = p.posting_window_id\n  JOIN users author ON author.id = p.author_id AND author.status = ?\n  WHERE p.id = $2 AND p.deleted_at IS NULL\n), friends AS (\n  SELECT user_high_id AS id FROM friendships WHERE user_low_id = $1\n  UNION\n  SELECT user_low_id AS id FROM friendships WHERE user_high_id = $1\n), facts AS (\n  SELECT p.*, p.author_id = v.id AS own,\n    EXISTS (\n      SELECT 1 FROM posts own_post\n      JOIN posting_windows posted ON posted.id = own_post.posting_window_id\n      JOIN posting_windows current ON current.region = v.region\n        AND current.ended_at IS NULL AND current.local_date = posted.local_date\n      WHERE own_post.author_id = v.id AND own_post.deleted_at IS NULL\n    ) AS has_posted,\n    EXISTS (\n      SELECT 1 FROM block_relations b\n      WHERE (b.blocker_id = v.id AND b.bloc",
+      "active_connection_samples": 1,
+      "max_observed_age_seconds": 0.024058
+    },
+    {
+      "wait": "IO",
+      "query": "\nWITH viewer AS (\n  SELECT id, region FROM users WHERE id = $1 AND status = ?\n), target AS MATERIALIZED (\n  SELECT p.id, p.author_id, p.visibility, w.ended_at\n  FROM posts p\n  JOIN posting_windows w ON w.id = p.posting_window_id\n  JOIN users author ON author.id = p.author_id AND author.status = ?\n  WHERE p.id = $2 AND p.deleted_at IS NULL\n), friends AS (\n  SELECT user_high_id AS id FROM friendships WHERE user_low_id = $1\n  UNION\n  SELECT user_low_id AS id FROM friendships WHERE user_high_id = $1\n), facts AS (\n  SELECT p.*, p.author_id = v.id AS own,\n    EXISTS (\n      SELECT 1 FROM posts own_post\n      JOIN posting_windows posted ON posted.id = own_post.posting_window_id\n      JOIN posting_windows current ON current.region = v.region\n        AND current.ended_at IS NULL AND current.local_date = posted.local_date\n      WHERE own_post.author_id = v.id AND own_post.deleted_at IS NULL\n    ) AS has_posted,\n    EXISTS (\n      SELECT 1 FROM block_relations b\n      WHERE (b.blocker_id = v.id AND b.bloc",
+      "active_connection_samples": 1,
+      "max_observed_age_seconds": 0.012866
+    },
+    {
+      "wait": "Client",
+      "query": "SELECT id FROM users WHERE id=$1 AND status=? FOR NO KEY UPDATE",
+      "active_connection_samples": 1,
+      "max_observed_age_seconds": 0.012109
+    },
+    {
+      "wait": "Client",
+      "query": "SET LOCAL statement_timeout = 0",
+      "active_connection_samples": 1,
+      "max_observed_age_seconds": 0.009956
+    },
+    {
+      "wait": "IPC",
+      "query": "\n   SELECT CASE WHEN (i.created_at = $3 AND i.xmin::text = $2) OR (i.asset_key IS NOT NULL AND ? || i.asset_key = $2) THEN NULL ELSE i.data END AS data,\n          u.id AS owner_id, i.media_type, u.secret_key_hash, i.xmin::text AS version, i.created_at, i.asset_key\n   FROM image_objects_202510 i\n   JOIN LATERAL (\n     SELECT id, secret_key_hash, profile_image_id FROM users\n     WHERE id = i.owner_user_id AND status = ? OFFSET 0\n   ) u ON true\n   WHERE i.id = $1 AND (\n     u.profile_image_id = i.id\n     OR EXISTS (\n       SELECT 1 FROM posts p\n       WHERE p.image_id = i.id AND p.author_id = u.id AND p.deleted_at IS NULL\n     )\n     OR EXISTS (\n       SELECT 1 FROM realmojis r\n       JOIN posts p ON p.id = r.post_id AND p.deleted_at IS NULL\n       JOIN users author ON author.id = p.author_id AND author.status = ?\n       WHERE r.image_id = i.id AND r.reactor_id = u.id AND r.replaced_at IS NULL AND r.deleted_at IS NULL\n     )\n   )\n   AND i.created_at = $3",
+      "active_connection_samples": 1,
+      "max_observed_age_seconds": 0.005211
+    },
+    {
+      "wait": "CPU",
+      "query": "WITH inserted AS (INSERT INTO users (id, username, secret_key_hash, display_name, region) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (username) DO NOTHING RETURNING id, username, secret_key_hash, display_name, bio, profile_image_id, region, account_type, status), indexed AS (INSERT INTO astra_user_search SELECT id,username,display_name,$6,$7 FROM inserted) SELECT * FROM inserted",
+      "active_connection_samples": 1,
+      "max_observed_age_seconds": 0.000683
+    },
+    {
+      "wait": "Client",
+      "query": "\n  UPDATE login_sessions\n  SET active = false, invalidated_at = clock_timestamp(), reason = ?\n  WHERE user_id = $1 AND active = true\n ",
+      "active_connection_samples": 1,
+      "max_observed_age_seconds": 0.000465
+    },
+    {
+      "wait": "IO",
+      "query": "\n  SELECT r.id, r.post_id, r.reactor_id, r.image_id, r.reaction_type, r.created_at, r.replaced_at, r.deleted_at,\n         u.id AS \"reactor.id\", u.username AS \"reactor.username\", u.secret_key_hash AS \"reactor.secret_key_hash\", u.display_name AS \"reactor.display_name\", u.bio AS \"reactor.bio\", u.profile_image_id AS \"reactor.profile_image_id\", u.region AS \"reactor.region\", u.account_type AS \"reactor.account_type\", u.status AS \"reactor.status\"\n  FROM realmojis r JOIN users u ON u.id = r.reactor_id AND u.status = ?\n  WHERE r.replaced_at IS NULL AND r.deleted_at IS NULL AND r.post_id IN ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) ORDER BY r.created_at DESC, r.id DESC",
+      "active_connection_samples": 1,
+      "max_observed_age_seconds": 0.03506
+    },
+    {
+      "wait": "IO",
+      "query": "\n  SELECT r.id, r.post_id, r.reactor_id, r.image_id, r.reaction_type, r.created_at, r.replaced_at, r.deleted_at,\n         u.id AS \"reactor.id\", u.username AS \"reactor.username\", u.secret_key_hash AS \"reactor.secret_key_hash\", u.display_name AS \"reactor.display_name\", u.bio AS \"reactor.bio\", u.profile_image_id AS \"reactor.profile_image_id\", u.region AS \"reactor.region\", u.account_type AS \"reactor.account_type\", u.status AS \"reactor.status\"\n  FROM realmojis r JOIN users u ON u.id = r.reactor_id AND u.status = ?\n  WHERE r.replaced_at IS NULL AND r.deleted_at IS NULL AND r.post_id IN ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) ORDER BY r.created_at DESC, r.id DESC",
+      "active_connection_samples": 1,
+      "max_observed_age_seconds": 0.036423
+    },
+    {
+      "wait": "IO",
+      "query": "\n  SELECT r.id, r.post_id, r.reactor_id, r.image_id, r.reaction_type, r.created_at, r.replaced_at, r.deleted_at,\n         u.id AS \"reactor.id\", u.username AS \"reactor.username\", u.secret_key_hash AS \"reactor.secret_key_hash\", u.display_name AS \"reactor.display_name\", u.bio AS \"reactor.bio\", u.profile_image_id AS \"reactor.profile_image_id\", u.region AS \"reactor.region\", u.account_type AS \"reactor.account_type\", u.status AS \"reactor.status\"\n  FROM realmojis r JOIN users u ON u.id = r.reactor_id AND u.status = ?\n  WHERE r.replaced_at IS NULL AND r.deleted_at IS NULL AND r.post_id IN ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26) ORDER BY r.created_at DESC, r.id DESC",
+      "active_connection_samples": 1,
+      "max_observed_age_seconds": 0.017526
+    },
+    {
+      "wait": "IO",
+      "query": "\n  SELECT r.id, r.post_id, r.reactor_id, r.image_id, r.reaction_type, r.created_at, r.replaced_at, r.deleted_at,\n         u.id AS \"reactor.id\", u.username AS \"reactor.username\", u.secret_key_hash AS \"reactor.secret_key_hash\", u.display_name AS \"reactor.display_name\", u.bio AS \"reactor.bio\", u.profile_image_id AS \"reactor.profile_image_id\", u.region AS \"reactor.region\", u.account_type AS \"reactor.account_type\", u.status AS \"reactor.status\"\n  FROM realmojis r JOIN users u ON u.id = r.reactor_id AND u.status = ?\n  WHERE r.replaced_at IS NULL AND r.deleted_at IS NULL AND r.post_id IN ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30) ORDER BY r.created_at DESC, r.id DESC",
+      "active_connection_samples": 1,
+      "max_observed_age_seconds": 0.026231
+    },
+    {
+      "wait": "Client",
+      "query": "SELECT id, username, secret_key_hash, display_name, bio, profile_image_id, region, account_type, status FROM users WHERE id=ANY($1) ORDER BY username,id",
+      "active_connection_samples": 1,
+      "max_observed_age_seconds": 0.004386
+    },
+    {
+      "wait": "IO",
+      "query": "\n   SELECT w.id, w.region, w.local_date, w.starts_at, w.on_time_deadline, w.ended_at,\n          count(p.id) FILTER (WHERE p.deleted_at IS NULL) AS active,\n          count(p.id) FILTER (WHERE p.deleted_at IS NOT NULL) AS deleted\n   FROM users u JOIN posting_windows w ON w.region = u.region AND w.ended_at IS NULL\n   LEFT JOIN posting_windows posted_window ON posted_window.local_date = w.local_date\n   LEFT JOIN posts p ON p.author_id = u.id AND p.posting_window_id = posted_window.id\n   WHERE u.id = $1\n   GROUP BY w.id\n  ",
+      "active_connection_samples": 1,
+      "max_observed_age_seconds": 0.004329
+    },
+    {
+      "wait": "IO",
+      "query": "\n  SELECT r.id, r.post_id, r.reactor_id, r.image_id, r.reaction_type, r.created_at, r.replaced_at, r.deleted_at,\n         u.id AS \"reactor.id\", u.username AS \"reactor.username\", u.secret_key_hash AS \"reactor.secret_key_hash\", u.display_name AS \"reactor.display_name\", u.bio AS \"reactor.bio\", u.profile_image_id AS \"reactor.profile_image_id\", u.region AS \"reactor.region\", u.account_type AS \"reactor.account_type\", u.status AS \"reactor.status\"\n  FROM realmojis r JOIN users u ON u.id = r.reactor_id AND u.status = ?\n  WHERE r.replaced_at IS NULL AND r.deleted_at IS NULL AND r.post_id IN ($1, $2, $3, $4) ORDER BY r.created_at DESC, r.id DESC",
+      "active_connection_samples": 1,
+      "max_observed_age_seconds": 0.000407
+    },
+    {
+      "wait": "IO",
+      "query": "SELECT user_low_id, user_high_id FROM friendships WHERE user_low_id = $1 OR user_high_id = $1",
+      "active_connection_samples": 1,
+      "max_observed_age_seconds": 0.003216
+    },
+    {
+      "wait": "Client",
+      "query": "INSERT INTO friend_requests (id, requester_id, recipient_id, status, created_at, updated_at) VALUES ($1,$2,$3,?,clock_timestamp(),clock_timestamp())",
+      "active_connection_samples": 1,
+      "max_observed_age_seconds": 0.000974
+    },
+    {
+      "wait": "LWLock",
+      "query": "\n   SELECT CASE WHEN (i.created_at = $3 AND i.xmin::text = $2) OR (i.asset_key IS NOT NULL AND ? || i.asset_key = $2) THEN NULL ELSE i.data END AS data,\n          u.id AS owner_id, i.media_type, u.secret_key_hash, i.xmin::text AS version, i.created_at, i.asset_key\n   FROM image_objects_202608 i\n   JOIN LATERAL (\n     SELECT id, secret_key_hash, profile_image_id FROM users\n     WHERE id = i.owner_user_id AND status = ? OFFSET 0\n   ) u ON true\n   WHERE i.id = $1 AND (\n     u.profile_image_id = i.id\n     OR EXISTS (\n       SELECT 1 FROM posts p\n       WHERE p.image_id = i.id AND p.author_id = u.id AND p.deleted_at IS NULL\n     )\n     OR EXISTS (\n       SELECT 1 FROM realmojis r\n       JOIN posts p ON p.id = r.post_id AND p.deleted_at IS NULL\n       JOIN users author ON author.id = p.author_id AND author.status = ?\n       WHERE r.image_id = i.id AND r.reactor_id = u.id AND r.replaced_at IS NULL AND r.deleted_at IS NULL\n     )\n   )\n   AND i.created_at = $3",
+      "active_connection_samples": 1,
+      "max_observed_age_seconds": 0.023345
+    },
+    {
+      "wait": "IO",
+      "query": "\n   INSERT INTO notifications (id, user_id, posting_window_id, created_at)\n   SELECT n.id, n.user_id, $3, $4\n   FROM unnest($1::text[], $2::text[]) WITH ORDINALITY AS n(id, user_id, position)\n   ORDER BY n.position\n  ",
+      "active_connection_samples": 1,
+      "max_observed_age_seconds": 0.314883
+    },
+    {
+      "wait": "CPU",
+      "query": "\n   SELECT CASE WHEN (i.created_at = $3 AND i.xmin::text = $2) OR (i.asset_key IS NOT NULL AND ? || i.asset_key = $2) THEN NULL ELSE i.data END AS data,\n          u.id AS owner_id, i.media_type, u.secret_key_hash, i.xmin::text AS version, i.created_at, i.asset_key\n   FROM image_objects_202512 i\n   JOIN LATERAL (\n     SELECT id, secret_key_hash, profile_image_id FROM users\n     WHERE id = i.owner_user_id AND status = ? OFFSET 0\n   ) u ON true\n   WHERE i.id = $1 AND (\n     u.profile_image_id = i.id\n     OR EXISTS (\n       SELECT 1 FROM posts p\n       WHERE p.image_id = i.id AND p.author_id = u.id AND p.deleted_at IS NULL\n     )\n     OR EXISTS (\n       SELECT 1 FROM realmojis r\n       JOIN posts p ON p.id = r.post_id AND p.deleted_at IS NULL\n       JOIN users author ON author.id = p.author_id AND author.status = ?\n       WHERE r.image_id = i.id AND r.reactor_id = u.id AND r.replaced_at IS NULL AND r.deleted_at IS NULL\n     )\n   )\n   AND i.created_at = $3",
+      "active_connection_samples": 1,
+      "max_observed_age_seconds": 0.027806
+    },
+    {
+      "wait": "CPU",
+      "query": "\n  SELECT r.id, r.post_id, r.reactor_id, r.image_id, r.reaction_type, r.created_at, r.replaced_at, r.deleted_at,\n         u.id AS \"reactor.id\", u.username AS \"reactor.username\", u.secret_key_hash AS \"reactor.secret_key_hash\", u.display_name AS \"reactor.display_name\", u.bio AS \"reactor.bio\", u.profile_image_id AS \"reactor.profile_image_id\", u.region AS \"reactor.region\", u.account_type AS \"reactor.account_type\", u.status AS \"reactor.status\"\n  FROM realmojis r JOIN users u ON u.id = r.reactor_id AND u.status = ?\n  WHERE r.replaced_at IS NULL AND r.deleted_at IS NULL AND r.post_id IN ($1, $2, $3, $4) ORDER BY r.created_at DESC, r.id DESC",
+      "active_connection_samples": 1,
+      "max_observed_age_seconds": 0.00296
+    },
+    {
+      "wait": "Client",
+      "query": "SELECT EXISTS(SELECT 1 FROM block_relations WHERE (blocker_id=$1 AND blocked_id=$2) OR (blocker_id=$2 AND blocked_id=$1))",
+      "active_connection_samples": 1,
+      "max_observed_age_seconds": 0.000927
+    },
+    {
+      "wait": "Client",
+      "query": "INSERT INTO realmojis(id,post_id,reactor_id,image_id,reaction_type,created_at) VALUES($1,$2,$3,$4,$5,clock_timestamp())",
+      "active_connection_samples": 1,
+      "max_observed_age_seconds": 0.041762
+    },
+    {
+      "wait": "Client",
+      "query": "SELECT id, requester_id, recipient_id, status, created_at, updated_at FROM friend_requests WHERE id=$1",
+      "active_connection_samples": 1,
+      "max_observed_age_seconds": 0.010299
+    },
+    {
+      "wait": "Client",
+      "query": "WITH inserted AS (INSERT INTO users (id, username, secret_key_hash, display_name, region) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (username) DO NOTHING RETURNING id, username, secret_key_hash, display_name, bio, profile_image_id, region, account_type, status), indexed AS (INSERT INTO astra_user_search SELECT id,username,display_name,$6,$7 FROM inserted) SELECT * FROM inserted",
+      "active_connection_samples": 1,
+      "max_observed_age_seconds": 0.01273
+    },
+    {
+      "wait": "IO",
+      "query": "\n  SELECT c.id, c.post_id, c.author_id, c.body, c.created_at, c.deleted_at, u.id AS \"author.id\", u.username AS \"author.username\", u.secret_key_hash AS \"author.secret_key_hash\", u.display_name AS \"author.display_name\", u.bio AS \"author.bio\", u.profile_image_id AS \"author.profile_image_id\", u.region AS \"author.region\", u.account_type AS \"author.account_type\", u.status AS \"author.status\"\n  FROM comments c JOIN users u ON u.id = c.author_id AND u.status = ?\n  WHERE c.deleted_at IS NULL AND c.post_id IN ($1, $2, $3) ORDER BY c.created_at, c.id",
+      "active_connection_samples": 1,
+      "max_observed_age_seconds": 0.011192
+    },
+    {
+      "wait": "IO",
+      "query": "\n  SELECT c.id, c.post_id, c.author_id, c.body, c.created_at, c.deleted_at, u.id AS \"author.id\", u.username AS \"author.username\", u.secret_key_hash AS \"author.secret_key_hash\", u.display_name AS \"author.display_name\", u.bio AS \"author.bio\", u.profile_image_id AS \"author.profile_image_id\", u.region AS \"author.region\", u.account_type AS \"author.account_type\", u.status AS \"author.status\"\n  FROM comments c JOIN users u ON u.id = c.author_id AND u.status = ?\n  WHERE c.deleted_at IS NULL AND c.post_id IN ($1, $2, $3, $4) ORDER BY c.created_at, c.id",
+      "active_connection_samples": 1,
+      "max_observed_age_seconds": 0.008622
+    },
+    {
+      "wait": "IO",
+      "query": "\n  SELECT r.id, r.post_id, r.reactor_id, r.image_id, r.reaction_type, r.created_at, r.replaced_at, r.deleted_at,\n         u.id AS \"reactor.id\", u.username AS \"reactor.username\", u.secret_key_hash AS \"reactor.secret_key_hash\", u.display_name AS \"reactor.display_name\", u.bio AS \"reactor.bio\", u.profile_image_id AS \"reactor.profile_image_id\", u.region AS \"reactor.region\", u.account_type AS \"reactor.account_type\", u.status AS \"reactor.status\"\n  FROM realmojis r JOIN users u ON u.id = r.reactor_id AND u.status = ?\n  WHERE r.replaced_at IS NULL AND r.deleted_at IS NULL AND r.post_id IN ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) ORDER BY r.created_at DESC, r.id DESC",
+      "active_connection_samples": 1,
+      "max_observed_age_seconds": 0.013767
+    },
+    {
+      "wait": "Client",
+      "query": "\n  SELECT r.id, r.post_id, r.reactor_id, r.image_id, r.reaction_type, r.created_at, r.replaced_at, r.deleted_at,\n         u.id AS \"reactor.id\", u.username AS \"reactor.username\", u.secret_key_hash AS \"reactor.secret_key_hash\", u.display_name AS \"reactor.display_name\", u.bio AS \"reactor.bio\", u.profile_image_id AS \"reactor.profile_image_id\", u.region AS \"reactor.region\", u.account_type AS \"reactor.account_type\", u.status AS \"reactor.status\"\n  FROM realmojis r JOIN users u ON u.id = r.reactor_id AND u.status = ?\n  WHERE r.replaced_at IS NULL AND r.deleted_at IS NULL AND r.post_id IN ($1, $2, $3, $4, $5) ORDER BY r.created_at DESC, r.id DESC",
+      "active_connection_samples": 1,
+      "max_observed_age_seconds": 0.04089
+    },
+    {
+      "wait": "Client",
+      "query": "SELECT id FROM users WHERE id=$1 FOR NO KEY UPDATE",
+      "active_connection_samples": 1,
+      "max_observed_age_seconds": 0.026827
+    },
+    {
+      "wait": "IO",
+      "query": "\n  SELECT c.id, c.post_id, c.author_id, c.body, c.created_at, c.deleted_at, u.id AS \"author.id\", u.username AS \"author.username\", u.secret_key_hash AS \"author.secret_key_hash\", u.display_name AS \"author.display_name\", u.bio AS \"author.bio\", u.profile_image_id AS \"author.profile_image_id\", u.region AS \"author.region\", u.account_type AS \"author.account_type\", u.status AS \"author.status\"\n  FROM comments c JOIN users u ON u.id = c.author_id AND u.status = ?\n  WHERE c.deleted_at IS NULL AND c.post_id IN ($1) ORDER BY c.created_at, c.id",
+      "active_connection_samples": 1,
+      "max_observed_age_seconds": 0.002522
+    },
+    {
+      "wait": "CPU",
+      "query": "\n  SELECT r.id, r.post_id, r.reactor_id, r.image_id, r.reaction_type, r.created_at, r.replaced_at, r.deleted_at,\n         u.id AS \"reactor.id\", u.username AS \"reactor.username\", u.secret_key_hash AS \"reactor.secret_key_hash\", u.display_name AS \"reactor.display_name\", u.bio AS \"reactor.bio\", u.profile_image_id AS \"reactor.profile_image_id\", u.region AS \"reactor.region\", u.account_type AS \"reactor.account_type\", u.status AS \"reactor.status\"\n  FROM realmojis r JOIN users u ON u.id = r.reactor_id AND u.status = ?\n  WHERE r.replaced_at IS NULL AND r.deleted_at IS NULL AND r.post_id IN ($1) ORDER BY r.created_at DESC, r.id DESC",
+      "active_connection_samples": 1,
+      "max_observed_age_seconds": 0.002037
+    },
+    {
+      "wait": "CPU",
+      "query": "\n   SELECT CASE WHEN (i.created_at = $3 AND i.xmin::text = $2) OR (i.asset_key IS NOT NULL AND ? || i.asset_key = $2) THEN NULL ELSE i.data END AS data,\n          u.id AS owner_id, i.media_type, u.secret_key_hash, i.xmin::text AS version, i.created_at, i.asset_key\n   FROM image_objects_202605 i\n   JOIN LATERAL (\n     SELECT id, secret_key_hash, profile_image_id FROM users\n     WHERE id = i.owner_user_id AND status = ? OFFSET 0\n   ) u ON true\n   WHERE i.id = $1 AND (\n     u.profile_image_id = i.id\n     OR EXISTS (\n       SELECT 1 FROM posts p\n       WHERE p.image_id = i.id AND p.author_id = u.id AND p.deleted_at IS NULL\n     )\n     OR EXISTS (\n       SELECT 1 FROM realmojis r\n       JOIN posts p ON p.id = r.post_id AND p.deleted_at IS NULL\n       JOIN users author ON author.id = p.author_id AND author.status = ?\n       WHERE r.image_id = i.id AND r.reactor_id = u.id AND r.replaced_at IS NULL AND r.deleted_at IS NULL\n     )\n   )\n   AND i.created_at = $3",
+      "active_connection_samples": 1,
+      "max_observed_age_seconds": 0.024473
+    },
+    {
+      "wait": "IO",
+      "query": "\n  SELECT c.id, c.post_id, c.author_id, c.body, c.created_at, c.deleted_at, u.id AS \"author.id\", u.username AS \"author.username\", u.secret_key_hash AS \"author.secret_key_hash\", u.display_name AS \"author.display_name\", u.bio AS \"author.bio\", u.profile_image_id AS \"author.profile_image_id\", u.region AS \"author.region\", u.account_type AS \"author.account_type\", u.status AS \"author.status\"\n  FROM comments c JOIN users u ON u.id = c.author_id AND u.status = ?\n  WHERE c.deleted_at IS NULL AND c.post_id IN ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) ORDER BY c.created_at, c.id",
+      "active_connection_samples": 1,
+      "max_observed_age_seconds": 0.020839
+    },
+    {
+      "wait": "IO",
+      "query": "UPDATE posts SET visibility = $2 WHERE id = $1",
+      "active_connection_samples": 1,
+      "max_observed_age_seconds": 0.0234
+    },
+    {
+      "wait": "CPU",
+      "query": "\n  SELECT r.id, r.post_id, r.reactor_id, r.image_id, r.reaction_type, r.created_at, r.replaced_at, r.deleted_at,\n         u.id AS \"reactor.id\", u.username AS \"reactor.username\", u.secret_key_hash AS \"reactor.secret_key_hash\", u.display_name AS \"reactor.display_name\", u.bio AS \"reactor.bio\", u.profile_image_id AS \"reactor.profile_image_id\", u.region AS \"reactor.region\", u.account_type AS \"reactor.account_type\", u.status AS \"reactor.status\"\n  FROM realmojis r JOIN users u ON u.id = r.reactor_id AND u.status = ?\n  WHERE r.replaced_at IS NULL AND r.deleted_at IS NULL AND r.post_id IN ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20) ORDER BY r.created_at DESC, r.id DESC",
+      "active_connection_samples": 1,
+      "max_observed_age_seconds": 0.06469
+    },
+    {
+      "wait": "CPU",
+      "query": "SELECT id, username, secret_key_hash, display_name, bio, profile_image_id, region, account_type, status FROM users WHERE id=ANY($1) ORDER BY username,id",
+      "active_connection_samples": 1,
+      "max_observed_age_seconds": 0.002094
+    },
+    {
+      "wait": "CPU",
+      "query": "\n   SELECT CASE WHEN (i.created_at = $3 AND i.xmin::text = $2) OR (i.asset_key IS NOT NULL AND ? || i.asset_key = $2) THEN NULL ELSE i.data END AS data,\n          u.id AS owner_id, i.media_type, u.secret_key_hash, i.xmin::text AS version, i.created_at, i.asset_key\n   FROM image_objects_202601 i\n   JOIN LATERAL (\n     SELECT id, secret_key_hash, profile_image_id FROM users\n     WHERE id = i.owner_user_id AND status = ? OFFSET 0\n   ) u ON true\n   WHERE i.id = $1 AND (\n     u.profile_image_id = i.id\n     OR EXISTS (\n       SELECT 1 FROM posts p\n       WHERE p.image_id = i.id AND p.author_id = u.id AND p.deleted_at IS NULL\n     )\n     OR EXISTS (\n       SELECT 1 FROM realmojis r\n       JOIN posts p ON p.id = r.post_id AND p.deleted_at IS NULL\n       JOIN users author ON author.id = p.author_id AND author.status = ?\n       WHERE r.image_id = i.id AND r.reactor_id = u.id AND r.replaced_at IS NULL AND r.deleted_at IS NULL\n     )\n   )\n   AND i.created_at = $3",
+      "active_connection_samples": 1,
+      "max_observed_age_seconds": 0.002445
+    },
+    {
+      "wait": "Client",
+      "query": "\n   SELECT id FROM friend_requests WHERE status=? AND\n    ((requester_id=$1 AND recipient_id=$2) OR (requester_id=$2 AND recipient_id=$1))\n  ",
+      "active_connection_samples": 1,
+      "max_observed_age_seconds": 0.003235
+    },
+    {
+      "wait": "IO",
+      "query": "\n  SELECT r.id, r.post_id, r.reactor_id, r.image_id, r.reaction_type, r.created_at, r.replaced_at, r.deleted_at,\n         u.id AS \"reactor.id\", u.username AS \"reactor.username\", u.secret_key_hash AS \"reactor.secret_key_hash\", u.display_name AS \"reactor.display_name\", u.bio AS \"reactor.bio\", u.profile_image_id AS \"reactor.profile_image_id\", u.region AS \"reactor.region\", u.account_type AS \"reactor.account_type\", u.status AS \"reactor.status\"\n  FROM realmojis r JOIN users u ON u.id = r.reactor_id AND u.status = ?\n  WHERE r.replaced_at IS NULL AND r.deleted_at IS NULL AND r.post_id IN ($1, $2, $3, $4, $5) ORDER BY r.created_at DESC, r.id DESC",
+      "active_connection_samples": 1,
+      "max_observed_age_seconds": 0.021061
+    },
+    {
+      "wait": "IO",
+      "query": "\n   SELECT CASE WHEN (i.created_at = $3 AND i.xmin::text = $2) OR (i.asset_key IS NOT NULL AND ? || i.asset_key = $2) THEN NULL ELSE i.data END AS data,\n          u.id AS owner_id, i.media_type, u.secret_key_hash, i.xmin::text AS version, i.created_at, i.asset_key\n   FROM image_objects_202510 i\n   JOIN LATERAL (\n     SELECT id, secret_key_hash, profile_image_id FROM users\n     WHERE id = i.owner_user_id AND status = ? OFFSET 0\n   ) u ON true\n   WHERE i.id = $1 AND (\n     u.profile_image_id = i.id\n     OR EXISTS (\n       SELECT 1 FROM posts p\n       WHERE p.image_id = i.id AND p.author_id = u.id AND p.deleted_at IS NULL\n     )\n     OR EXISTS (\n       SELECT 1 FROM realmojis r\n       JOIN posts p ON p.id = r.post_id AND p.deleted_at IS NULL\n       JOIN users author ON author.id = p.author_id AND author.status = ?\n       WHERE r.image_id = i.id AND r.reactor_id = u.id AND r.replaced_at IS NULL AND r.deleted_at IS NULL\n     )\n   )\n   AND i.created_at = $3",
+      "active_connection_samples": 1,
+      "max_observed_age_seconds": 0.01411
+    },
+    {
+      "wait": "CPU",
+      "query": "\n   SELECT CASE WHEN (i.created_at = $3 AND i.xmin::text = $2) OR (i.asset_key IS NOT NULL AND ? || i.asset_key = $2) THEN NULL ELSE i.data END AS data,\n          u.id AS owner_id, i.media_type, u.secret_key_hash, i.xmin::text AS version, i.created_at, i.asset_key\n   FROM image_objects_202603 i\n   JOIN LATERAL (\n     SELECT id, secret_key_hash, profile_image_id FROM users\n     WHERE id = i.owner_user_id AND status = ? OFFSET 0\n   ) u ON true\n   WHERE i.id = $1 AND (\n     u.profile_image_id = i.id\n     OR EXISTS (\n       SELECT 1 FROM posts p\n       WHERE p.image_id = i.id AND p.author_id = u.id AND p.deleted_at IS NULL\n     )\n     OR EXISTS (\n       SELECT 1 FROM realmojis r\n       JOIN posts p ON p.id = r.post_id AND p.deleted_at IS NULL\n       JOIN users author ON author.id = p.author_id AND author.status = ?\n       WHERE r.image_id = i.id AND r.reactor_id = u.id AND r.replaced_at IS NULL AND r.deleted_at IS NULL\n     )\n   )\n   AND i.created_at = $3",
+      "active_connection_samples": 1,
+      "max_observed_age_seconds": 0.017008
+    },
+    {
+      "wait": "CPU",
+      "query": "\n  SELECT r.id, r.post_id, r.reactor_id, r.image_id, r.reaction_type, r.created_at, r.replaced_at, r.deleted_at,\n         u.id AS \"reactor.id\", u.username AS \"reactor.username\", u.secret_key_hash AS \"reactor.secret_key_hash\", u.display_name AS \"reactor.display_name\", u.bio AS \"reactor.bio\", u.profile_image_id AS \"reactor.profile_image_id\", u.region AS \"reactor.region\", u.account_type AS \"reactor.account_type\", u.status AS \"reactor.status\"\n  FROM realmojis r JOIN users u ON u.id = r.reactor_id AND u.status = ?\n  WHERE r.replaced_at IS NULL AND r.deleted_at IS NULL AND r.post_id IN ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27) ORDER BY r.created_at DESC, r.id DESC",
+      "active_connection_samples": 1,
+      "max_observed_age_seconds": 0.076107
+    },
+    {
+      "wait": "CPU",
+      "query": "\n  SELECT r.id, r.post_id, r.reactor_id, r.image_id, r.reaction_type, r.created_at, r.replaced_at, r.deleted_at,\n         u.id AS \"reactor.id\", u.username AS \"reactor.username\", u.secret_key_hash AS \"reactor.secret_key_hash\", u.display_name AS \"reactor.display_name\", u.bio AS \"reactor.bio\", u.profile_image_id AS \"reactor.profile_image_id\", u.region AS \"reactor.region\", u.account_type AS \"reactor.account_type\", u.status AS \"reactor.status\"\n  FROM realmojis r JOIN users u ON u.id = r.reactor_id AND u.status = ?\n  WHERE r.replaced_at IS NULL AND r.deleted_at IS NULL AND r.post_id IN ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24) ORDER BY r.created_at DESC, r.id DESC",
+      "active_connection_samples": 1,
+      "max_observed_age_seconds": 0.052799
+    },
+    {
+      "wait": "IO",
+      "query": "\n  SELECT r.id, r.post_id, r.reactor_id, r.image_id, r.reaction_type, r.created_at, r.replaced_at, r.deleted_at,\n         u.id AS \"reactor.id\", u.username AS \"reactor.username\", u.secret_key_hash AS \"reactor.secret_key_hash\", u.display_name AS \"reactor.display_name\", u.bio AS \"reactor.bio\", u.profile_image_id AS \"reactor.profile_image_id\", u.region AS \"reactor.region\", u.account_type AS \"reactor.account_type\", u.status AS \"reactor.status\"\n  FROM realmojis r JOIN users u ON u.id = r.reactor_id AND u.status = ?\n  WHERE r.replaced_at IS NULL AND r.deleted_at IS NULL AND r.post_id IN ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19) ORDER BY r.created_at DESC, r.id DESC",
+      "active_connection_samples": 1,
+      "max_observed_age_seconds": 0.005641
+    },
+    {
+      "wait": "Client",
+      "query": "\n   SELECT w.id, w.region, w.local_date, w.starts_at, w.on_time_deadline, w.ended_at,\n          count(p.id) FILTER (WHERE p.deleted_at IS NULL) AS active,\n          count(p.id) FILTER (WHERE p.deleted_at IS NOT NULL) AS deleted\n   FROM users u JOIN posting_windows w ON w.region = u.region AND w.ended_at IS NULL\n   LEFT JOIN posting_windows posted_window ON posted_window.local_date = w.local_date\n   LEFT JOIN posts p ON p.author_id = u.id AND p.posting_window_id = posted_window.id\n   WHERE u.id = $1\n   GROUP BY w.id\n  ",
+      "active_connection_samples": 1,
+      "max_observed_age_seconds": 0.000662
+    },
+    {
+      "wait": "Client",
+      "query": "SELECT id, region, local_date, starts_at, on_time_deadline, ended_at FROM posting_windows WHERE id = $1",
+      "active_connection_samples": 1,
+      "max_observed_age_seconds": 0.00283
+    },
+    {
+      "wait": "Client",
+      "query": "\n  SELECT c.id, c.post_id, c.author_id, c.body, c.created_at, c.deleted_at, u.id AS \"author.id\", u.username AS \"author.username\", u.secret_key_hash AS \"author.secret_key_hash\", u.display_name AS \"author.display_name\", u.bio AS \"author.bio\", u.profile_image_id AS \"author.profile_image_id\", u.region AS \"author.region\", u.account_type AS \"author.account_type\", u.status AS \"author.status\"\n  FROM comments c JOIN users u ON u.id = c.author_id AND u.status = ?\n  WHERE c.deleted_at IS NULL AND c.post_id IN ($1, $2) ORDER BY c.created_at, c.id",
+      "active_connection_samples": 1,
+      "max_observed_age_seconds": 0.005
+    },
+    {
+      "wait": "CPU",
+      "query": "\n  SELECT p.id, p.author_id, p.posting_window_id, p.image_id, p.caption, p.visibility,\n  p.location_kind, p.latitude, p.longitude, p.locality, p.posted_at,\n  w.on_time_deadline, w.ended_at AS window_ended_at\n  FROM posts p JOIN posting_windows w ON w.id = p.posting_window_id\n  WHERE p.id = $1 AND p.deleted_at IS NULL\n ",
+      "active_connection_samples": 1,
+      "max_observed_age_seconds": 0.009337
+    }
+  ]
+}

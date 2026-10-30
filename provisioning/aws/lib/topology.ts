@@ -105,7 +105,9 @@ export function serverEgressRules(
 		toPort: 0,
 	});
 	return [
-		rule(100, "deny", `${routerPublicAddress}/32`),
+		...(routerPublicAddress
+			? [rule(100, "deny", `${routerPublicAddress}/32`)]
+			: []),
 		rule(110, "deny", t.routerPublicSubnetCidr),
 		rule(1000, "allow", "0.0.0.0/0"),
 	];

@@ -48,6 +48,11 @@ func decodeRecords(data []byte) ([]writeResult, error) {
 }
 
 func readInteractions(ctx context.Context, db sqlx.QueryerContext, actor, post string, comments bool, at *time.Time, id string) ([]writeResult, bool, error) {
+	// The hot state holds the comments and RealMojis of the posts of open
+	// windows and decides access to them.
+	if records, allowed, ok := hot.interactions(realActor(ctx, actor), post, comments, at, id); ok {
+		return records, allowed, nil
+	}
 	query := reactionsPageSQL
 	if comments {
 		query = commentsPageSQL

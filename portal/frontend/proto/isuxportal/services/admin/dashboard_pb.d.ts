@@ -42,6 +42,16 @@ export declare type DashboardResponse = Message<"isuxportal.proto.services.admin
    * @generated from field: int64 unanswered_clarification_count = 3;
    */
   unansweredClarificationCount: bigint;
+
+  /**
+   * @generated from field: int64 pending_benchmark_job_count = 4;
+   */
+  pendingBenchmarkJobCount: bigint;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp earliest_pending_benchmark_job_at = 5;
+   */
+  earliestPendingBenchmarkJobAt?: Timestamp;
 };
 
 /**

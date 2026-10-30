@@ -9,7 +9,10 @@ module Isureal
 
       data = request_body
       image = JPEG.decode(data)
-      raise APIError.new(400, 'invalid_profile_image') if image.nil?
+      if image.nil?
+        env['isureal.abuse'] = 'invalid_image'
+        raise APIError.new(400, 'invalid_profile_image')
+      end
       raise APIError.new(400, 'invalid_profile_image') if image.width > 512 || image.height > 512
 
       user_id = current_session.user_id

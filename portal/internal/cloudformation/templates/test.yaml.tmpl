@@ -154,6 +154,7 @@ Resources:
       UserData:
         Fn::Base64: |
           #cloud-config
+{{template "admin_ssh" $}}
           write_files:
           - path: /opt/isucon-env-checker/portal_credentials.json
             owner: root:root

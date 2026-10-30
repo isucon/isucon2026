@@ -14,11 +14,10 @@ has output    => sub { \*STDOUT };
 
 sub record ($self, $c) {
     my $status = $c->res->code // 0;
-    my $level  = $status >= 500 ? 'error' : $c->req->method eq 'GET' ? 'debug' : 'info';
-    return if $LEVEL_RANKS{$level} < ($LEVEL_RANKS{$self->min_level} // 0);
-
     my $endpoint = $c->match->endpoint;
     my $action   = $endpoint && $endpoint->has_custom_name ? $endpoint->name : undef;
+    my $level  = $status >= 500 ? 'error' : $c->req->method eq 'GET' && !($status == 403 && ($c->stash->{'isureal.abuse'} // '') eq 'invalid_signature') ? 'debug' : 'info';
+    return if $LEVEL_RANKS{$level} < ($LEVEL_RANKS{$self->min_level} // 0);
     my $session  = $c->current_session;
     my %entry    = (
         action  => $action,
@@ -31,6 +30,7 @@ sub record ($self, $c) {
         my $username = $c->stash->{'isureal.username'};
         $entry{username} = valid_username($username) ? $username : undef;
     }
+    $entry{abuse} = $c->stash->{'isureal.abuse'} if defined $c->stash->{'isureal.abuse'};
     print { $self->output } encode_json(\%entry), "\n";
 }
 
