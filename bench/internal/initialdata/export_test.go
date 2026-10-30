@@ -7,7 +7,9 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -35,8 +37,75 @@ func zipOf(t *testing.T, name string, data []byte) []byte {
 
 // exportAgent は testWorld の最初の検証対象として、base のアプリへ送る Agent。
 func exportAgent(c *Checker, base string) *agent.Agent {
-	owner := c.Targets()[0]
+	owner := c.Targets(testSeed)[0]
 	return &agent.Agent{ID: owner.ID, Username: owner.Username, SecretKey: owner.SecretKey, Token: owner.ID, Region: owner.Region, API: client.New(base)}
+}
+
+// TestCheckIsReproducible は、初期データの検証の対象、Memories の月、取得する画像が走行の種で
+// 決まり、同じ種なら同じ検証になることを確かめる。内訳（Report）に月と段階ごとの件数が入る。
+func TestCheckIsReproducible(t *testing.T) {
+	c := New(testWorld)
+	app := newFakeApp(c)
+	var mu sync.Mutex
+	var fetched []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if id, ok := strings.CutPrefix(r.URL.Path, "/api/images/"); ok {
+			mu.Lock()
+			fetched = append(fetched, id)
+			mu.Unlock()
+		}
+		app.ServeHTTP(w, r)
+	}))
+	defer server.Close()
+	run := func(seed uint64) (string, Report, []string) {
+		targets := c.Targets(seed)
+		var names []string
+		for _, u := range targets {
+			names = append(names, u.ID)
+		}
+		mu.Lock()
+		fetched = nil
+		mu.Unlock()
+		// 友達の最も多いユーザーのあとの、無作為に選んだユーザー。
+		report, err := c.Check(t.Context(), client.New(server.URL), targets[1], seed)
+		if err != nil {
+			t.Fatal(err)
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		images := slices.Clone(fetched)
+		slices.Sort(images)
+		return strings.Join(names, ","), report, images
+	}
+	targets1, report1, images1 := run(7)
+	targets2, report2, images2 := run(7)
+	if targets1 != targets2 || !slices.Equal(report1.Months, report2.Months) || !slices.Equal(images1, images2) {
+		t.Fatalf("the same seed checked differently: %s / %s, %v / %v, %v / %v", targets1, targets2, report1.Months, report2.Months, images1, images2)
+	}
+	if len(report1.Months) != c.MemoryMonths {
+		t.Fatalf("months=%v", report1.Months)
+	}
+	var steps []string
+	for _, s := range report1.Steps {
+		steps = append(steps, s.Name)
+		if s.Count <= 0 && s.Name != "friends" {
+			t.Errorf("step %s counted %d", s.Name, s.Count)
+		}
+	}
+	if !slices.Equal(steps, []string{"login", "memories", "friends", "export", "images"}) {
+		t.Fatalf("steps=%v", steps)
+	}
+	distinct := map[string]bool{}
+	for seed := range uint64(10) {
+		var names []string
+		for _, u := range c.Targets(seed) {
+			names = append(names, u.ID)
+		}
+		distinct[strings.Join(names, ",")] = true
+	}
+	if len(distinct) < 2 {
+		t.Fatal("the targets do not change with the seed")
+	}
 }
 
 // TestExportDecompressionLimit は、小さな ZIP から上限を超える posts.json を展開させるエクスポートを、
