@@ -5,3 +5,8 @@
 認証開始からJSON生成までの時間を計測する。HTTP本文送信やNginx待ちは含まない。authは接続待ちと認証SQLを含み、pool_waitは履歴SQL用の接続取得とリクエスト解析を含む。SQL区間は転送とSQLxのデコードも含む。空の履歴はコメント・リアクション処理を通らないため、その区間の標本数は総標本数より少ない。ID・トークン・リクエスト本文は記録しない。
 
 baseline-summary.jsonに平均と分位点、baseline-phases.jsonに匿名の生サンプルを保存した。Asiaでは認証と接続待ちが支配的で、署名を含む整形は小さい。baseline-db.jsonは別途0.5秒ごとに採取した主DBのアクティブ接続。SyncRepは専用プールのバリアであり、通常プールの待ちと混同しない。wait分類CPUは待機イベントがないことを示し、CPU使用率ではない。
+
+
+同じ接続でフィードのPREPARE/EXECUTEを9回繰り返す読み取り専用診断では、autoは5回のcustom plan後にgeneric planへ切り替わった。再利用後のPlanning Timeは約0.02〜0.05msだった。force_generic_planへの一律変更は採用していない。実行結果の集計はfeed-plan-reuse.json。
+
+次の候補はgraphQueryConcurrency=4。フィードと検索が共有するSemaphoreをDB接続取得前に待ち、SQL終了直後に解放する。SQL・認証・応答の内容は変更しない。既定0は制限無効。readTimingEnabledは比較のため維持する。接続上限を増やさず、短い処理が重いSQLの後ろで待つ状況を改善できるかを測る。実DBを使うフィードと検索の統合テスト、Clippy全ターゲットが成功した。
