@@ -13,7 +13,11 @@ import {
 	team,
 	vpcCidr,
 } from "./lib/topology";
-import { routerUserData, serviceUserData } from "./lib/user-data";
+import {
+	environmentCheckConfig,
+	routerUserData,
+	serviceUserData,
+} from "./lib/user-data";
 
 // Packer が作った AMI のうち、指定がなければ最新のものを使う
 function latestAmi(role: string): pulumi.Output<string> {
@@ -146,6 +150,25 @@ new aws.iam.RolePolicyAttachment("instance-ssm-core", {
 	role: instanceRole.name,
 	policyArn: aws.iam.ManagedPolicy.AmazonSSMManagedInstanceCore,
 });
+new aws.iam.RolePolicy("instance-envcheck", {
+	role: instanceRole.name,
+	policy: JSON.stringify({
+		Version: "2012-10-17",
+		Statement: [
+			{
+				Effect: "Allow",
+				Action: [
+					"ec2:DescribeInstances",
+					"ec2:DescribeVolumes",
+					"ec2:DescribeSecurityGroups",
+					"ec2:DescribeRouteTables",
+					"ec2:DescribeNetworkAcls",
+				],
+				Resource: "*",
+			},
+		],
+	}),
+});
 const instanceProfile = new aws.iam.InstanceProfile("instance-profile", {
 	role: instanceRole.name,
 	tags,
@@ -213,6 +236,27 @@ function createTeam(t: Team) {
 	const { certificate: tlsCertificate, privateKey: tlsPrivateKey } = teamTls;
 	const instancesEnabled = !config.disabledInstanceTeams.includes(t.number);
 	const teamTags = { ...tags, Team: String(t.number) };
+	const envcheck = pulumi
+		.all([
+			config.teamImages[t.number]?.serviceAmiId ?? serviceAmiId,
+			config.teamImages[t.number]?.routerAmiId ?? routerAmiId,
+		])
+		.apply(([service, router]) =>
+			config.portalTeamIds[t.number] === undefined
+				? ""
+				: environmentCheckConfig(service, router, [
+						...t.servers.map(
+							(network) =>
+								config.teamServerInstanceTypes[t.number]?.[network.id] ??
+								(network.region === undefined
+									? config.databaseInstanceType
+									: network.region === "asia"
+										? config.asiaInstanceType
+										: serviceInstanceType),
+						),
+						config.teamRouterInstanceTypes[t.number] ?? routerInstanceType,
+					]),
+		);
 
 	// Router: パブリック IP（bench の入口）とデータ用 ENI（サーバー間の折り返し）。
 	// EIP はアカウントの上限が厳しいので使わず、起動時に割り当てられるパブリック IPv4 を使う
@@ -265,11 +309,23 @@ function createTeam(t: Team) {
 					associatePublicIpAddress: true,
 					vpcSecurityGroupIds: [routerPublicSecurityGroup.id],
 					userDataBase64: pulumi
-						.all([tlsCertificate, tlsPrivateKey, routerDataEni.macAddress])
-						.apply(([certificate, privateKey, dataMac]) =>
+						.all([
+							tlsCertificate,
+							tlsPrivateKey,
+							routerDataEni.macAddress,
+							envcheck,
+						])
+						.apply(([certificate, privateKey, dataMac, expected]) =>
 							gzipSync(
 								Buffer.from(
-									routerUserData(t, dataMac, certificate, privateKey),
+									routerUserData(
+										t,
+										dataMac,
+										certificate,
+										privateKey,
+										expected,
+										config.teamAdminSshPublicKeys[t.number],
+									),
 								),
 							).toString("base64"),
 						),
@@ -417,12 +473,15 @@ function createTeam(t: Team) {
 				privateIp: network.serviceIp,
 				associatePublicIpAddress: true,
 				vpcSecurityGroupIds: [securityGroup.id],
-				userData: serviceUserData(
-					t,
-					network,
-					config.teamSshPublicKeys[t.number],
-					config.teamAdminSshPublicKeys[t.number],
-					config.guardTeams.includes(t.number),
+				userData: envcheck.apply((expected) =>
+					serviceUserData(
+						t,
+						network,
+						config.teamSshPublicKeys[t.number],
+						config.teamAdminSshPublicKeys[t.number],
+						config.guardTeams.includes(t.number),
+						expected,
+					),
 				),
 				// ルートボリュームの容量は AMI のスナップショットに合わせる
 				launchTemplate: {

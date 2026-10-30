@@ -29,6 +29,7 @@ async fn run(config: Config, command_exec: String, command_args: Vec<String>) {
     let all_addresses: Vec<String> = all_addresses_str.split(',').map(str::to_owned).collect();
 
     let process = Process {
+        validation_token: std::env::var("ISUXBENCH_VALIDATION_TOKEN").unwrap_or_default(),
         exec: command_exec,
         args: command_args,
         stdout_path: format!("/tmp/isuxbench-oneshot-{}.out.log", std::process::id()),

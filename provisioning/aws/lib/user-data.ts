@@ -14,6 +14,7 @@ export function serviceUserData(
 	sshPublicKeys: string[] = [],
 	adminSshPublicKeys: string[] = [],
 	guardEnabled = false,
+	envcheck = "",
 ): string {
 	const commands =
 		network.region === undefined
@@ -24,6 +25,12 @@ export function serviceUserData(
 				];
 	if (network.region !== undefined && guardEnabled)
 		commands.push("systemctl enable --now isureal-guard");
+	if (envcheck)
+		commands.push(
+			`install -d -m 755 /etc/isucon`,
+			`printf '%s' '${Buffer.from(envcheck).toString("base64")}' | base64 -d > /etc/isucon/envcheck.json`,
+			"chmod 600 /etc/isucon/envcheck.json",
+		);
 	commands.unshift(...authorizedKeyCommands("isucon", sshPublicKeys));
 	if (adminSshPublicKeys.length > 0) {
 		commands.unshift(
@@ -164,13 +171,24 @@ export function routerUserData(
 	dataMac: string,
 	tlsCertificate: string,
 	tlsPrivateKey: string,
+	envcheck = "",
+	adminSshPublicKeys: string[] = [],
 ): string {
 	const networkScript = readFileSync(
 		join(__dirname, "../../scripts/router_network.py"),
 		"utf8",
 	);
+	const adminCommands = adminSshPublicKeys.length
+		? [
+				"id -u isuadmin >/dev/null 2>&1 || useradd --create-home --shell /bin/bash isuadmin",
+				"printf '%s\\n' 'isuadmin ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/90-isuadmin",
+				"chmod 440 /etc/sudoers.d/90-isuadmin",
+				...authorizedKeyCommands("isuadmin", adminSshPublicKeys),
+			]
+		: [];
 	return `#cloud-config
-write_files:
+${envcheck ? "bootcmd:\n  - [dpkg, --purge, ec2-instance-connect]\n  - [systemctl, daemon-reload]\n  - [systemctl, try-restart, ssh.service]\n" : ""}write_files:
+${envcheck ? file("/etc/isucon/envcheck.json", envcheck, "0600") : ""}
 ${file("/etc/cloud/cloud.cfg.d/99-isucon-router-network.cfg", routerCloudInitConfig, "0644")}
 ${file(routerDataReconfigurePath, routerDataReconfigureScript, "0755")}
 ${file(routerNetworkScriptPath, networkScript, "0755")}
@@ -179,7 +197,21 @@ ${file("/etc/isucon/router.env", routerEnvironment(t), "0640", "root:isureal-rou
 ${file("/etc/isucon/portal.env", portalEnvironment(t), "0640", "root:isureal-router")}
 ${file(tlsCertificatePath, tlsPem(tlsCertificate, tlsPrivateKey), "0640", "root:isureal-router")}
 runcmd:
-  - until ${routerNetworkScriptPath}; do sleep 5; done
+${adminCommands.map((cmd) => `  - ${JSON.stringify(cmd)}`).join("\n")}${adminCommands.length ? "\n" : ""}  - until ${routerNetworkScriptPath}; do sleep 5; done
   - systemctl enable --now isureal-portal isureal-router isureal-haproxy
 `;
+}
+
+export function environmentCheckConfig(
+	serviceAMI: string,
+	routerAMI: string,
+	types: string[],
+): string {
+	if (!serviceAMI || !routerAMI || types.length !== 5)
+		throw new Error("incomplete envcheck configuration");
+	return JSON.stringify({
+		service_ami: serviceAMI,
+		router_ami: routerAMI,
+		types,
+	});
 }

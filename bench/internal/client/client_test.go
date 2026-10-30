@@ -739,3 +739,17 @@ func TestTruncatedBodyIsRequestError(t *testing.T) {
 		t.Fatalf("err=%v (%T), want RequestError", err, err)
 	}
 }
+
+func TestImageBytesDoesNotRequestRandomDigest(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-Benchmark-Request-Id") != "" {
+			t.Error("random digest requested for persistent evidence")
+		}
+		w.Write([]byte("image-body"))
+	}))
+	defer server.Close()
+	data, err := client.New(server.URL).ImageBytes(context.Background(), "/api/images/test?exp=1&sig=signature")
+	if err != nil || string(data) != "image-body" {
+		t.Fatalf("%q %v", data, err)
+	}
+}

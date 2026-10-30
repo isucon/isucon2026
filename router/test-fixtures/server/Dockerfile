@@ -1,6 +1,6 @@
-# syntax=docker/dockerfile:1.10
+# syntax=mirror.gcr.io/docker/dockerfile:1.10
 
-FROM golang:1.26.5-alpine AS build
+FROM mirror.gcr.io/library/golang:1.26.5-alpine AS build
 
 WORKDIR /src
 COPY gen/go/ ./gen/go/
@@ -12,7 +12,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/router-test-server ./test-fixtures/server
 
-FROM alpine:3.23
+FROM mirror.gcr.io/library/alpine:3.23
 RUN apk add --no-cache ca-certificates iproute2 tzdata
 COPY --from=build /out/router-test-server /usr/local/bin/router-test-server
 COPY router/test-fixtures/server/entrypoint.sh /usr/local/bin/router-test-entrypoint
