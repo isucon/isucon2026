@@ -440,9 +440,16 @@ func (m *Model) removePending(p *pendingPost) {
 	}
 }
 
-// Created は作成できた投稿を記録する。以後、この作成は ID のわかる投稿として扱う。
-func (m *Model) Created(creation *PostCreation, post Post, visibility string) {
+// Created は作成できた投稿を記録する。以後、この作成は ID のわかる投稿として扱う。ID が
+// 受け付けられたほかの投稿と同じなら、前の投稿の記録を上書きせずに作成を結果のわからない
+// ものとして残し、false を返す（同じ ID で投稿を置き換えるアプリの、前の投稿の喪失を見逃さない）。
+func (m *Model) Created(creation *PostCreation, post Post, visibility string) bool {
 	m.mu.Lock()
+	if m.posts[post.ID] != nil {
+		m.mu.Unlock()
+		creation.Unknown()
+		return false
+	}
 	window := m.windows[post.WindowID]
 	if window != nil {
 		post.LocalDate = window.LocalDate
@@ -457,6 +464,7 @@ func (m *Model) Created(creation *PostCreation, post Post, visibility string) {
 	creation.after = func(outcome) { m.removePending(creation.pending) }
 	m.mu.Unlock()
 	creation.Applied()
+	return true
 }
 
 func (m *Model) Post(id string) *Post {

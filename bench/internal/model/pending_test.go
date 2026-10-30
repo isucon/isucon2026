@@ -84,6 +84,28 @@ func TestUnknownCreationOpensSameDayGate(t *testing.T) {
 	}
 }
 
+// TestReusedPostIDKeepsFirstPost は、受け付けられたほかの投稿と同じ ID の投稿を記録せず、
+// 前の投稿の記録を残すことを確かめる。作成は結果のわからないものとして残す。
+func TestReusedPostIDKeepsFirstPost(t *testing.T) {
+	w := newWorld(t)
+	m := w.m
+	w.nextDay()
+	for _, tc := range []struct{ author, id string }{{"b", "p-b"}, {"c", "p-a2"}} {
+		creation := m.BeginCreatePost(tc.author)
+		w.c.tick()
+		before := *m.Post(tc.id)
+		if m.Created(creation, Post{ID: tc.id, AuthorID: tc.author, WindowID: "w2", ImageID: "img-new", Caption: "new", PostedAt: w.c.now()}, "public") {
+			t.Fatalf("%s: the reused ID %s was recorded", tc.author, tc.id)
+		}
+		if after := m.Post(tc.id); after.AuthorID != before.AuthorID || after.WindowID != before.WindowID || after.ImageID != before.ImageID {
+			t.Fatalf("%s: the first post was overwritten: %+v", tc.author, after)
+		}
+		if !m.mayHaveUnknownPost(tc.author, w.later()) {
+			t.Fatalf("%s: the creation must stay unknown", tc.author)
+		}
+	}
+}
+
 // TestUnknownPostPrivacy は、bench の知らない投稿（結果のわからない作成でできたかもしれない
 // 投稿）でも、投稿を知らなくても決まる閲覧の条件（ブロック、閲覧者のゲート、自分の投稿、
 // フィードの対象、作成が入りえた投稿期間）で見えてはいけないものを失格にすることを確かめる。
