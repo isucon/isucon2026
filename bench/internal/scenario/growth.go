@@ -334,7 +334,8 @@ func (r *Runner) openDay(ctx context.Context, region string, day int) (string, e
 	cancel()
 	if err != nil && !isRejection(err) && ctx.Err() == nil {
 		if recovered, ok := r.recoverWindow(ctx, region, day, date.Format(time.DateOnly)); ok {
-			r.record(fmt.Sprintf("%s %s: 投稿期間を開く要求に応答がなく、%.1f 秒後に開いていることを確かめました", region, dayLabel(r.tt, day), time.Since(sent).Seconds()))
+			// 回復できたことは運営向けにだけ残し、参加者向けの Story には出さない。
+			r.operatorLogger().Info(fmt.Sprintf("%s %s: 投稿期間を開く要求に応答がなく、%.1f 秒後に開いていることを確かめました", region, dayLabel(r.tt, day), time.Since(sent).Seconds()))
 			window, err = recovered, nil
 		}
 	}
@@ -510,7 +511,7 @@ func (r *Runner) certifyTop(ctx context.Context, region, windowID string) {
 		return
 	}
 	r.certify(best)
-	r.cfg.Logger.Info(fmt.Sprintf("%s で %s が話題になり、認定公開アカウントになりました", region, best.Username), "reactions", bestCount)
+	// 誰が認定されたかは DB のアカウント種別で分かるので、ログには出さない。
 }
 
 func (r *Runner) certify(u *user) {

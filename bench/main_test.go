@@ -191,18 +191,13 @@ func TestSupervisorIntegration(t *testing.T) {
 					}
 				}
 				var public map[string]any
-				lines := strings.Split(strings.TrimSpace(stdout.String()), "\n")
-				if len(lines) < 2 || !strings.Contains(lines[0], `msg="phase: initialize"`) {
-					t.Fatalf("missing public progress: %s", &stdout)
+				if strings.Contains(stdout.String(), `msg="phase: initialize"`) {
+					t.Fatalf("phase line leaked to public stdout: %s", &stdout)
 				}
-				if strings.Contains(stderr.String(), `msg="phase: initialize"`) {
-					t.Fatalf("progress sent to stderr: %s", &stderr)
+				if !strings.Contains(stderr.String(), `msg="phase: initialize"`) {
+					t.Fatalf("phase line missing from operator stderr: %s", &stderr)
 				}
-				resultStart := strings.Index(stdout.String(), "\n{")
-				if resultStart < 0 {
-					t.Fatalf("missing public result: %s", &stdout)
-				}
-				publicJSON := stdout.Bytes()[resultStart+1:]
+				publicJSON := stdout.Bytes()
 				if err := json.Unmarshal(publicJSON, &public); err != nil {
 					t.Fatal(err)
 				}
