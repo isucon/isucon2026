@@ -149,6 +149,7 @@ print(json.dumps(result))
     assert ('access_log /var/log/nginx/astra-auth-timing.log astra_auth buffer=32k flush=1s if=$astra_auth_action;' in site) == auth_ingress
     if 'nginxRequestBuffering' in runtime:
         nginx=remote(app['instanceId'],'cat /etc/nginx/nginx.conf')
+        assert 'proxy_buffering '+('on' if runtime.get('nginxResponseBuffering',True) else 'off')+'; # astra-managed' in nginx
         assert 'proxy_request_buffering '+('on' if runtime['nginxRequestBuffering'] else 'off')+'; # astra-managed' in nginx
         assert 'client_body_buffer_size '+str(runtime.get('nginxClientBodyBufferKiB',8))+'k; # astra-managed' in nginx
         for key in ['MALLOC_MMAP_THRESHOLD_','MALLOC_TRIM_THRESHOLD_']:

@@ -292,3 +292,7 @@ if (ownerArchive.imageReadsEnabled !== undefined && typeof ownerArchive.imageRea
 if (ownerArchive.imageReadsEnabled && !ownerArchive.enabled) {
     throw new Error("Owner image reads require the verified owner archive");
 }
+
+if (runtime.nginxResponseBuffering !== undefined && typeof runtime.nginxResponseBuffering !== "boolean") {
+    throw new Error("Invalid Nginx response buffering flag");
+}
