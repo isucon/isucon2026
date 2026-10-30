@@ -242,6 +242,7 @@ Resources:
 {{if .Region}}
             - sed -i -e 's/^ISUREAL_REGION=.*/ISUREAL_REGION={{.Region}}/' -e 's/^ISUREAL_DB_HOST=.*/ISUREAL_DB_HOST=192.168.4.10/' /home/isucon/env.sh
             - systemctl enable --now isureal-go nginx
+            - systemctl enable --now isureal-guard
 {{else}}
             - systemctl enable --now postgresql
 {{end}}
