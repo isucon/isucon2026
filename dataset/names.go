@@ -34,9 +34,11 @@ var captions = []string{
 	"weekend vibes", "がんばった", "long day", "ひさしぶり", "",
 }
 
+// commentBodies は負荷走行中のコメントの本文。初期データの、どの椅子にも付く一言から日本語と
+// 英語を交互に選んでいる。
 var commentBodies = []string{
-	"いいね！", "Nice!", "どこ？", "love this", "最高", "lol", "わかる", "wow",
-	"また行こう", "so cute", "おつかれ", "same here", "👀", "🔥🔥",
+	"いい椅子！", "Looks comfy", "どこの椅子？", "I want one", "座ってみたい", "Love the color", "わかる",
+	"Wow", "かわいい", "Classy", "落ち着く", "Save me a seat", "👀", "🔥🔥",
 }
 
 var localities = []string{"Shibuya", "Shinjuku", "Umeda", "Kreuzberg", "Montmartre", "Soho", "Brooklyn", "Mission District"}
