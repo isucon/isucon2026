@@ -258,3 +258,7 @@ const recommendationPoolConnections = runtime.recommendationPoolConnections ?? 3
 if (!Number.isInteger(recommendationPoolConnections) || recommendationPoolConnections < 4 || recommendationPoolConnections > 64) {
     throw new Error("Invalid recommendation pool capacity");
 }
+
+if (typeof runtime.initialPostImagesEnabled !== "boolean" || (runtime.initialPostImagesEnabled && (!runtime.imageStore?.enabled || !runtime.initialHistoryEnabled))) {
+    throw new Error("Initial post images require immutable image storage and initial history migrations");
+}

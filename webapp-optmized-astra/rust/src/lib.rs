@@ -18,6 +18,7 @@ pub mod image_cache_push;
 pub mod image_signature;
 pub mod image_store;
 pub mod initialize;
+pub mod initial_post_images;
 pub mod ip_ban;
 pub mod jpeg;
 pub mod logger;

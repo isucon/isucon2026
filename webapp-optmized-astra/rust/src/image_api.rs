@@ -288,13 +288,21 @@ impl ImageCache {
 }
 
 pub async fn get_image_handler(
+    initial: Option<axum::Extension<Arc<crate::initial_post_images::InitialPostImages>>>,
     State(h): State<Arc<HandlerContext>>,
     RawQuery(raw_query): RawQuery,
     input: Result<Bind<GetImageRequest>, Error>,
 ) -> Response {
-    let mut response = get_image(&h, raw_query.unwrap_or_default(), input)
-        .await
-        .into_response();
+    let mut response = get_image(
+        &h,
+        raw_query.unwrap_or_default(),
+        input,
+        initial
+            .as_ref()
+            .map(|axum::Extension(cache)| cache.as_ref()),
+    )
+    .await
+    .into_response();
     response
         .headers_mut()
         .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
@@ -305,6 +313,7 @@ async fn get_image(
     h: &HandlerContext,
     raw_query: String,
     input: Result<Bind<GetImageRequest>, Error>,
+    initial: Option<&crate::initial_post_images::InitialPostImages>,
 ) -> Result<Response, Error> {
     let Ok(Bind(input)) = input else {
         return Err(new_api_error(StatusCode::FORBIDDEN, "image_forbidden"));
@@ -325,9 +334,9 @@ async fn get_image(
     };
 
     let cached = IMAGE_CACHE.lock().unwrap().get(&input.image_id);
-    // Always check current visibility and owner credentials. Only image bytes
-    // are cached; xmin changes when a row is replaced or modified, including
-    // initialization, and prevents returning stale data under the same ID.
+    // Always check current visibility and owner credentials. Initial metadata
+    // requires a matching epoch and clean owner; other images use the full SQL.
+    // Byte reuse requires the same immutable asset or row timestamp/version.
     // The cached timestamp is a search hint, never an authorization result.
     // Check its partition first; a moved/replaced row falls back to all months.
     let timestamp = cached.as_ref().map(|image| image.created_at).or_else(|| {
@@ -338,8 +347,32 @@ async fn get_image(
             .get(&input.image_id)
             .copied()
     });
-    let mut object = if let Some(timestamp) = timestamp {
-        load_image_object(
+    let mut object = if let Some(initial) = initial {
+        initial
+            .resolve(&h.db, &input.image_id)
+            .await?
+            .map(|source| {
+                let version = format!("asset:{}", source.asset_key);
+                let hit = cached
+                    .as_ref()
+                    .is_some_and(|image| image.version == version);
+                ImageObject {
+                    owner_id: source.owner.to_owned(),
+                    data: if hit { None } else { Some(Vec::new()) },
+                    media_type: source.media_type.to_owned(),
+                    secret_key_hash: source.secret_key_hash,
+                    version,
+                    created_at: source.created_at,
+                    asset_key: Some(source.asset_key.to_owned()),
+                }
+            })
+    } else {
+        None
+    };
+    if object.is_none()
+        && let Some(timestamp) = timestamp
+    {
+        object = load_image_object(
             &h.db,
             &input.image_id,
             cached.as_ref(),
@@ -352,10 +385,8 @@ async fn get_image(
             // parent lookup below still enforces all current authorization.
             sqlx::Error::Database(db) if db.code().as_deref() == Some("42P01") => Ok(None),
             _ => Err(error),
-        })?
-    } else {
-        None
-    };
+        })?;
+    }
     if object.is_none() {
         object = load_image_object(
             &h.db,
