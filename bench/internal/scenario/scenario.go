@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/isucon/isucon2026/bench/internal/agent"
+	"github.com/isucon/isucon2026/bench/internal/benchrun"
 	"github.com/isucon/isucon2026/bench/internal/client"
 	"github.com/isucon/isucon2026/bench/internal/geo"
 	"github.com/isucon/isucon2026/bench/internal/imageurl"
@@ -433,10 +434,15 @@ func (r *Runner) initialize(ctx context.Context) string {
 	if result.Language == "" {
 		return "初期化の応答の language が空です"
 	}
+	// 申告はポータルへの報告にそのまま載せるので、報告の上限に収める。language は必須の項目
+	// なので長すぎれば fail にし、合否に使わない agent、harness、model は切り詰める。
+	if len(result.Language) > benchrun.MaxLanguageBytes {
+		return fmt.Sprintf("初期化の応答の language が %d バイトを超えています", benchrun.MaxLanguageBytes)
+	}
 	r.language = result.Language
-	r.surveyAgent = result.Agent
-	r.surveyHarness = result.Harness
-	r.surveyModel = result.Model
+	r.surveyAgent = r.surveyValue("agent", result.Agent)
+	r.surveyHarness = r.surveyValue("harness", result.Harness)
+	r.surveyModel = r.surveyValue("model", result.Model)
 	// localDate は投稿期間のラベルで、サーバーの時計は進めない。初期データの投稿期間と
 	// 日付が重ならないよう、履歴の最終日より後から始める。
 	now := time.Now().UTC()
@@ -445,6 +451,16 @@ func (r *Runner) initialize(ctx context.Context) string {
 		r.firstDate = next
 	}
 	return ""
+}
+
+// surveyValue は初期化の応答の申告 name の値 value を、報告の上限（benchrun.MaxSurveyBytes）に
+// 切り詰めて返す。切り詰めたら運営向けに残す。
+func (r *Runner) surveyValue(name, value string) string {
+	truncated := benchrun.Truncate(value, benchrun.MaxSurveyBytes)
+	if truncated != value {
+		r.operatorLogger().Info("survey value truncated", "field", name, "bytes", len(value), "limit", benchrun.MaxSurveyBytes)
+	}
+	return truncated
 }
 
 // award は u の操作 tag を得点に数える。day はその操作が属するリージョンの日で、日が

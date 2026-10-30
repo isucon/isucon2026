@@ -87,6 +87,39 @@ func TestFrameShortWrites(t *testing.T) {
 		t.Fatalf("%v", out.Bytes())
 	}
 }
+
+// TestTruncate は、Truncate が文字の境目で切り詰め、不正な UTF-8 を置き換えることを確かめる。
+// 切り詰めた値で作った報告は上限に収まる。
+func TestTruncate(t *testing.T) {
+	for _, tc := range []struct {
+		in   string
+		n    int
+		want string
+	}{
+		{"go", 140, "go"},
+		{"abcdef", 3, "abc"},
+		{"日本語", 7, "日本"},
+		{"日本語", 2, ""},
+		{"g\xffo", 140, "g�o"},
+	} {
+		if got := Truncate(tc.in, tc.n); got != tc.want {
+			t.Errorf("Truncate(%q, %d) = %q, want %q", tc.in, tc.n, got, tc.want)
+		}
+	}
+	long := strings.Repeat("語", 100000)
+	result := &pb.BenchmarkResult{
+		SurveyResponse: &pb.SurveyResponse{
+			Language: Truncate(long, MaxLanguageBytes), Agent: Truncate(long, MaxSurveyBytes),
+			Harness: Truncate(long, MaxSurveyBytes), Model: Truncate(long, MaxSurveyBytes),
+		},
+		Execution: &pb.BenchmarkResult_Execution{Reason: Truncate(long, MaxReasonBytes)},
+	}
+	var b bytes.Buffer
+	if err := NewReporter(&b).Report(result); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestInvalidInheritedFD(t *testing.T) {
 	for _, value := range []string{"", "not-a-number", "0", "1", "2", "-1", "999999"} {
 		t.Run(value, func(t *testing.T) {
