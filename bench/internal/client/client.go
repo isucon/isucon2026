@@ -1155,10 +1155,16 @@ type UserPage struct {
 	HasMore bool          `json:"hasMore"`
 }
 
-// SearchUsers はユーザー名か表示名に q を含むユーザーを探す。
-func (c *Client) SearchUsers(ctx context.Context, token, q string) (UserPage, error) {
+// SearchUsers はユーザー名か表示名に q を含むユーザーを探す。after を渡すと、その次のページ
+// （ユーザー名と ID の順で after より後）を読む。アプリの引数名は beforeUsername と beforeId。
+func (c *Client) SearchUsers(ctx context.Context, token, q string, after *UserSummary) (UserPage, error) {
+	query := url.Values{"q": {q}}
+	if after != nil {
+		query.Set("beforeUsername", after.Username)
+		query.Set("beforeId", after.ID)
+	}
 	var page UserPage
-	err := c.do(ctx, request{method: http.MethodGet, path: apiPrefix + "/users?" + url.Values{"q": {q}}.Encode(), route: "GET /api/users", token: token, want: http.StatusOK}, &page)
+	err := c.do(ctx, request{method: http.MethodGet, path: apiPrefix + "/users?" + query.Encode(), route: "GET /api/users", token: token, want: http.StatusOK}, &page)
 	return page, err
 }
 
