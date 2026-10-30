@@ -198,3 +198,10 @@ if (!Number.isInteger(exportConcurrency) || exportConcurrency < 1 || exportConcu
 if (runtime.readTimingEnabled !== undefined && typeof runtime.readTimingEnabled !== "boolean") {
     throw new Error("Invalid read timing flag");
 }
+
+if (runtime.sessionCacheEnabled !== undefined && typeof runtime.sessionCacheEnabled !== "boolean") {
+    throw new Error("Invalid session cache flag");
+}
+if (runtime.sessionCacheEnabled && (!runtime.writeFenceEnabled || runtime.writeFenceMode !== "native" || !runtime.replicasEnabled || !runtime.replicaReads)) {
+    throw new Error("Session caching requires native write visibility and regional replicas");
+}

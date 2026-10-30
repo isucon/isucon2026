@@ -289,6 +289,12 @@ pub async fn new_server(config: Config) -> Router {
     } else {
         read_context.clone()
     };
+    let session_cache = crate::session_cache::SessionCacheCoordinator::from_env(
+        handler_context.db.clone(), &general_reads.db, &handler_context.config.db_password,
+    ).await;
+    if session_cache.is_some() {
+        assert!(matches!(&write_fence, Some(WriteFence::Native(_))), "session caching requires the native replica barrier");
+    }
     let graph_fence = if selective {
         read_context.read_fence.clone()
     } else {
@@ -371,6 +377,10 @@ pub async fn new_server(config: Config) -> Router {
         )
         .with_state(handler_context.clone());
 
+    let server = if let Some(cache) = &session_cache {
+        server.layer(crate::session_cache::layer(cache.clone()))
+    } else { server };
+
     let server = if let Some(proxy) = crate::upload_proxy::UploadProxy::from_env(&general_reads) {
         server.layer(from_fn_with_state(
             proxy,
@@ -395,6 +405,9 @@ pub async fn new_server(config: Config) -> Router {
     } else {
         server
     };
+    let server = if ingress.is_none() {
+        if let Some(cache) = session_cache { server.merge(cache.receiver()) } else { server }
+    } else { server };
     match ingress {
         Some(policy) => server.layer(from_fn_with_state(policy, write_ingress_middleware)),
         None => server,
