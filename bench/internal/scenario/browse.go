@@ -444,11 +444,14 @@ func (r *Runner) answerRequest(ctx context.Context, u *user, request client.Rela
 	if action == "accept" {
 		w = r.model.BeginFriendship(request.User.ID, u.ID, true)
 	}
+	closing := r.model.BeginCloseFriendRequest(request.RelationID)
+	sent := time.Now()
 	// 申請した側が取り下げたり、相手を退会させたりしていれば 403 か 409 になる。
 	_, err := u.API.TransitionFriendRequest(client.MayFailWith(ctx, http.StatusForbidden, http.StatusConflict, http.StatusNotFound), u.Token, request.RelationID, action)
 	if w != nil {
-		settle(w, err)
+		settleRetried(w, err)
 	}
+	settleRetried(closing, err)
 	switch {
 	case r.bannedErr(u, err):
 	case err == nil && action == "accept":
@@ -457,6 +460,10 @@ func (r *Runner) answerRequest(ctx context.Context, u *user, request client.Rela
 	case err == nil:
 		r.award(u, r.dayNow(u.Region), score.TagFriendDecline)
 	case isStatus(err, http.StatusForbidden) || isStatus(err, http.StatusConflict) || isStatus(err, http.StatusNotFound):
+		// 送っている間ずっと確実に保留中だった（bench が送って記録した）申請の拒否だけをエラーにする。
+		if !retried(err) && r.model.FriendRequestPending(request.RelationID, r.model.ReadBetween(sent, time.Now())) == model.True {
+			r.invalid(ctx, u, "%s: 保留中の友達申請 %s を%sできません: %v", u.Username, request.RelationID, map[string]string{"accept": "承認", "reject": "拒否"}[action], err)
+		}
 	default:
 		r.requestError(ctx, u, "%s: 友達申請を%sできません: %v", u.Username, map[string]string{"accept": "承認", "reject": "拒否"}[action], err)
 	}

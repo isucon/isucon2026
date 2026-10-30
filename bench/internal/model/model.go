@@ -101,6 +101,10 @@ type Model struct {
 	// blocks はブロックする人とされる人の組（向きあり）。
 	blocks  map[[2]string]*timeline[bool]
 	follows map[[2]string]*timeline[bool]
+	// friendRequests は bench が送って保留中になった友達申請（ID ごと）、requestsByPair は
+	// その 2 人ごとの索引。
+	friendRequests map[string]*friendRequest
+	requestsByPair map[pair][]*friendRequest
 	// followCandidates はフォローしたことがあるかもしれない相手。following フィードの判定に使う。
 	followCandidates map[string]map[string]bool
 
@@ -135,6 +139,8 @@ func New() *Model {
 		friendCandidates: map[string]map[string]bool{},
 		blocks:           map[[2]string]*timeline[bool]{},
 		follows:          map[[2]string]*timeline[bool]{},
+		friendRequests:   map[string]*friendRequest{},
+		requestsByPair:   map[pair][]*friendRequest{},
 		followCandidates: map[string]map[string]bool{},
 		comments:         map[string][]*Comment{},
 		commentByID:      map[string]*Comment{},
@@ -335,12 +341,16 @@ func (m *Model) WaitForNotifiedWindow(ctx context.Context, region, id string, re
 	}
 }
 
-// BeginFriendship は a と b の友達関係を作る（true）か消す（false）書き込みを記録する。
+// BeginFriendship は a と b の友達関係を作る（true）か消す（false）書き込みを記録する。友達に
+// なれば、2 人の間の保留中の申請は閉じる。
 func (m *Model) BeginFriendship(a, b string, friends bool) *Write {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	w := m.newWrite()
 	begin(w, m.friendship(a, b), friends)
+	if friends {
+		m.closeRequestsBetween(w, a, b)
+	}
 	return w
 }
 
@@ -355,7 +365,7 @@ func (m *Model) BeginDeleteAccount(userID string) *Write {
 }
 
 // BeginBlock は blocker が blocked をブロックする書き込みを記録する。ブロックは 2 人の
-// 友達関係とフォローも消す。
+// 友達関係、フォロー、保留中の申請も消す。
 func (m *Model) BeginBlock(blocker, blocked string) *Write {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -364,6 +374,7 @@ func (m *Model) BeginBlock(blocker, blocked string) *Write {
 	begin(w, m.friendship(blocker, blocked), false)
 	begin(w, m.follow(blocker, blocked), false)
 	begin(w, m.follow(blocked, blocker), false)
+	m.closeRequestsBetween(w, blocker, blocked)
 	return w
 }
 

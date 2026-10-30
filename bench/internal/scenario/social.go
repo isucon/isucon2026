@@ -132,8 +132,15 @@ func (r *Runner) requestFriend(ctx context.Context, u *user, target *user, searc
 		r.searchUser(ctx, u, target)
 	}
 	w := r.model.BeginFriendship(u.ID, target.ID, true)
+	creation := r.model.BeginFriendRequest(u.ID, target.ID)
 	sent := time.Now()
 	request, err := u.API.CreateFriendRequest(client.MayFailWith(ctx, http.StatusConflict, http.StatusNotFound), u.Token, target.ID)
+	// 保留中になった申請だけを記録する（相手の申請で友達になれば、この申請は残らない）。
+	if err == nil && request.Status != "accepted" {
+		r.model.RequestedFriend(creation, request.RelationID)
+	} else {
+		creation.Rejected()
+	}
 	switch {
 	case isStatus(err, http.StatusNotFound):
 		// 送っている間に相手が退会すれば 404 が正しい。
@@ -210,7 +217,9 @@ func (r *Runner) cancelRequest(ctx context.Context, u *user) {
 		return
 	}
 	request := page.Items[len(page.Items)-1]
+	closing := r.model.BeginCloseFriendRequest(request.RelationID)
 	_, err = u.API.TransitionFriendRequest(client.MayFailWith(ctx, http.StatusForbidden, http.StatusNotFound), u.Token, request.RelationID, "cancel")
+	settleRetried(closing, err)
 	switch {
 	case err == nil:
 		r.award(u, r.dayNow(u.Region), score.TagFriendDecline)
