@@ -230,3 +230,15 @@ if (!Number.isInteger(shortReadPoolConnections) || shortReadPoolConnections < 0 
 if (runtime.initialGraphEnabled !== undefined && typeof runtime.initialGraphEnabled !== "boolean") {
     throw new Error("Invalid initial graph flag");
 }
+
+for (const key of ["primaryAsiaSessionsEnabled", "localAsiaSessionWritesEnabled"]) {
+    if (runtime[key] !== undefined && typeof runtime[key] !== "boolean") {
+        throw new Error("Invalid session authority flag: " + key);
+    }
+}
+if (runtime.localAsiaSessionWritesEnabled && (!runtime.primaryAsiaSessionsEnabled || !runtime.writeFenceEnabled || runtime.writeFenceMode !== "native")) {
+    throw new Error("Local session responses require primary authentication and native barriers for other writes");
+}
+if (runtime.primaryAsiaSessionsEnabled && runtime.sessionCacheEnabled) {
+    throw new Error("Primary session routing requires fresh SQL authentication");
+}

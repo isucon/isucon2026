@@ -56,6 +56,24 @@ def parallel(function, items):
         list(pool.map(function, items))
 
 
+# Authentication routing is a coordinated upgrade: no old reader may trust
+# asynchronous session changes. Read only these flags from live process env.
+primary_sessions = runtime.get("primaryAsiaSessionsEnabled", False)
+local_sessions = runtime.get("localAsiaSessionWritesEnabled", False)
+assert not local_sessions or primary_sessions
+assert not primary_sessions or not runtime.get("sessionCacheEnabled", False)
+authority_changed = False
+if mode in ("all", "application", "upgrade"):
+    for app in applications:
+        units = ["webapp-optmized-astra"] + (["webapp-optmized-astra-writer"] if app["region"] == "asia" else [])
+        for unit in units:
+            script = "import json,pathlib,subprocess; pid=int(subprocess.check_output(['systemctl','show'," + repr(unit) + ",'--property=MainPID','--value'])); data=pathlib.Path('/proc/'+str(pid)+'/environ').read_bytes().split(bytes([0])) if pid else []; print(json.dumps({'reads':b'ISUREAL_PRIMARY_ASIA_SESSIONS=1' in data,'writes':b'ISUREAL_LOCAL_ASIA_SESSION_WRITES=1' in data}))"
+            flags = json.loads(subprocess.check_output([ssh, app["instanceId"], "sudo python3 -c " + shlex.quote(script)], text=True))
+            authority_changed |= flags["reads"] != primary_sessions
+    if authority_changed and mode != "upgrade":
+        raise RuntimeError("Changing session authority requires apply.sh upgrade to stop all old readers and drain their WAL")
+
+
 def require_write_fences():
     # Check actual running writers before readers can lose their own barriers.
     # The two-stage deployment first enables write fences with read fences on.
@@ -210,6 +228,7 @@ if mode == "upgrade":
         remote(app["instanceId"], "sudo systemctl stop " + units)
     parallel(stop_for_upgrade, applications)
 
+
 # Restore local writes before stopping or replacing the private worker.
 if mode in ("all", "application", "upgrade") and not write_proxy:
     parallel(write_frontend, remote_apps)
@@ -226,6 +245,12 @@ if early_fenced_apps:
 
 if mode in ("all", "database", "upgrade"):
     remote(database, "sudo bash /home/isucon/astra-deploy/database.sh")
+    if authority_changed:
+        # PostgreSQL stays running while apps are stopped. This commit follows
+        # every old writer and waits for both replicas before readers restart.
+        drain = "BEGIN; SET LOCAL synchronous_commit=remote_apply; SET LOCAL statement_timeout=0; INSERT INTO astra_visibility_barriers(id) VALUES ('session-authority-upgrade'); DELETE FROM astra_visibility_barriers WHERE id='session-authority-upgrade'; COMMIT;"
+        remote(database, "sudo -u postgres psql -X -v ON_ERROR_STOP=1 -d isureal -c " + shlex.quote(drain))
+
 
 if mode in ("all", "replication") and runtime["replicasEnabled"]:
     if not asia_sync:

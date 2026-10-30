@@ -196,6 +196,10 @@ async fn independent_bytes_publish_atomically_and_preserve_visibility_export_and
         .execute(&db)
         .await
         .unwrap();
+    sqlx::raw_sql(include_str!("../../sql/023-session-authority.sql"))
+        .execute(&db)
+        .await
+        .unwrap();
     next_window(&db, 0).await;
     let store = ImageStore::new(assets.clone(), true, None);
     let routed = app(db.clone(), Some(store.clone()));
