@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand/v2"
+	"slices"
 	"time"
 
 	"github.com/isucon/isucon2026/bench/internal/agent"
@@ -67,6 +68,9 @@ func (r *Runner) finalCheck(ctx context.Context) string {
 }
 
 func (r *Runner) finalCheckUser(ctx context.Context, user *agent.Agent, months []time.Time) error {
+	if err := r.finalCheckProfile(ctx, user); err != nil {
+		return err
+	}
 	sent := time.Now()
 	var posts []string
 	for _, month := range months {
@@ -109,6 +113,28 @@ func (r *Runner) finalCheckUser(ctx context.Context, user *agent.Agent, months [
 	violations := append(r.model.CheckOwnPosts(user.ID, posts, read), r.model.CheckFriends(user.ID, friends, read)...)
 	if len(violations) > 0 {
 		return fmt.Errorf("%s: %s", user.Username, violations[0])
+	}
+	return nil
+}
+
+// finalCheckProfile は、bench が登録したユーザーの表示名と自己紹介が、受け付けられた変更の
+// とおりかを確かめる。結果のわからない変更の値でもよい。
+func (r *Runner) finalCheckProfile(ctx context.Context, user *agent.Agent) error {
+	r.mu.Lock()
+	u := r.byID[user.ID]
+	r.mu.Unlock()
+	if u == nil || u.displayNames == nil && u.bios == nil {
+		return nil
+	}
+	profile, err := user.API.Me(ctx, user.Token)
+	if err != nil {
+		return fmt.Errorf("%s: プロフィールを取得できません: %w", user.Username, err)
+	}
+	if u.displayNames != nil && !slices.Contains(u.displayNames, profile.DisplayName) {
+		return fmt.Errorf("%s: 表示名が %q です（受け付けられた変更の値は %q）", user.Username, profile.DisplayName, u.displayNames[0])
+	}
+	if u.bios != nil && !slices.Contains(u.bios, profile.Bio) {
+		return fmt.Errorf("%s: 自己紹介が %q です（受け付けられた変更の値は %q）", user.Username, profile.Bio, u.bios[0])
 	}
 	return nil
 }

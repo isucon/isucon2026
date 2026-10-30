@@ -464,6 +464,7 @@ func (r *Runner) runNewcomer(ctx context.Context, region string) {
 		r.requestError(ctx, u, "%s: 新しいユーザーを登録できません: %v", username, err)
 		return
 	}
+	u.displayNames, u.bios = []string{displayName}, []string{""}
 	r.model.AddUser(model.User{ID: u.ID, Username: u.Username, SecretKey: u.SecretKey, Region: region})
 	r.addUser(u)
 	r.arrived(region)

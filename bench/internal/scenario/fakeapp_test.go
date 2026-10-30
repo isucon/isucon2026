@@ -414,7 +414,7 @@ func (a *fakeApp) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			fail(http.StatusConflict, "username_taken")
 			return
 		}
-		a.users[id] = &fakeUser{id: id, username: input["username"], secret: "secret-" + id, region: input["region"]}
+		a.users[id] = &fakeUser{id: id, username: input["username"], secret: "secret-" + id, region: input["region"], displayName: input["displayName"]}
 		respond(http.StatusCreated, map[string]any{"secretKey": "secret-" + id, "user": map[string]string{"id": id, "username": input["username"]}})
 	case path[0] == "auth" && path[1] == "login":
 		var input map[string]string

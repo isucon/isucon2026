@@ -74,7 +74,9 @@ func (r *Runner) prepareUsers(ctx context.Context) string {
 		}
 		parallel(len(plans), func(i int) {
 			u := plans[i].u
-			failures[i] = u.Register(ctx, u.Username, dataset.DisplayName(u.rng))
+			name := dataset.DisplayName(u.rng)
+			failures[i] = u.Register(ctx, u.Username, name)
+			u.displayNames, u.bios = []string{name}, []string{""}
 		})
 	})
 	if err := errors.Join(failures...); err != nil {
