@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/isucon/isucon2026/bench/internal/agent"
@@ -135,11 +136,16 @@ func (r *Runner) prepareUsers(ctx context.Context) string {
 			w := r.model.BeginFollow(u.ID, target.ID, true)
 			err := u.API.Follow(ctx, u.Token, target.ID)
 			settle(w, err)
-			if err != nil {
+			switch {
+			case err == nil:
+				u.follows[target.ID] = true
+			case r.bannedErr(u, err):
+				// BAN されたユーザーは止める。準備の失敗にはしない。
+			case isStatus(err, http.StatusConflict) && !isRejection(err):
+				// 503 を受けて送り直した要求の 409 は、前の試行でフォローできたのかもしれない。
+			default:
 				follows[i] = fmt.Errorf("%s: %w", u.Username, err)
-				return
 			}
-			u.follows[target.ID] = true
 		})
 		if err := errors.Join(follows...); err != nil {
 			reasons[i] = fmt.Sprintf("認定公開アカウントをフォローできません: %v", err)
