@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"cmp"
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -21,6 +22,7 @@ import (
 	"github.com/isucon/isucon2026/bench/internal/client"
 	"github.com/isucon/isucon2026/bench/internal/imageurl"
 	"github.com/isucon/isucon2026/dataset"
+	"github.com/zeebo/xxh3"
 )
 
 var testWorld = func() *dataset.World {
@@ -56,6 +58,23 @@ type fakeApp struct {
 	signer func(img *dataset.Image) *dataset.User
 	mutate func(path string, body any) any
 	image  func(img *dataset.Image, data []byte) []byte
+	// raw なら、Router が本体をそのまま返したとき（Content-Encoding が付いている、isureal-digest
+	// が止まっている）と同じく、SHA-256 を求められても画像の本体を返す。
+	raw bool
+}
+
+// forgedDigest は、アプリが画像 data の代わりに返す、Router のダイジェストの形をしたバイト列。
+// xxh3 ならアプリが選んだ種で計算する。
+func forgedDigest(kind string, data []byte) []byte {
+	if kind == "xxh3" {
+		out := []byte("\x00isureal-xxh3:")
+		out = binary.BigEndian.AppendUint64(out, 7)
+		out = binary.BigEndian.AppendUint64(out, xxh3.HashSeed(data, 7))
+		return binary.BigEndian.AppendUint64(out, uint64(len(data)))
+	}
+	sum := sha256.Sum256(data)
+	out := append([]byte("\x00isureal-sha256:"), sum[:]...)
+	return binary.BigEndian.AppendUint64(out, uint64(len(data)))
 }
 
 func newFakeApp(c *Checker) *fakeApp {
@@ -219,7 +238,7 @@ func (f *fakeApp) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if f.image != nil {
 			data = f.image(img, data)
 		}
-		if r.Header.Get("X-Benchmark-Digest") == "sha256" {
+		if r.Header.Get("X-Benchmark-Digest") == "sha256" && !f.raw {
 			// Router（isureal-digest）と同じく、本体の代わりに SHA-256 を返す。
 			sum := sha256.Sum256(data)
 			w.Header().Set("X-Body-Sha256", hex.EncodeToString(sum[:]))
@@ -279,6 +298,24 @@ func TestChecker(t *testing.T) {
 			f.image = func(img *dataset.Image, data []byte) []byte {
 				if img.Kind == dataset.ImageRealMoji {
 					return append(slices.Clone(data), 0)
+				}
+				return data
+			}
+		}, wantErr: "中身が初期データと違います"},
+		"image replaced by a forged SHA-256": {setup: func(f *fakeApp) {
+			f.raw = true
+			f.image = func(img *dataset.Image, data []byte) []byte {
+				if img.Kind == dataset.ImageRealMoji {
+					return forgedDigest("sha256", data)
+				}
+				return data
+			}
+		}, wantErr: "中身が初期データと違います"},
+		"image replaced by a forged XXH3": {setup: func(f *fakeApp) {
+			f.raw = true
+			f.image = func(img *dataset.Image, data []byte) []byte {
+				if img.Kind == dataset.ImageRealMoji {
+					return forgedDigest("xxh3", data)
 				}
 				return data
 			}
@@ -406,6 +443,31 @@ func TestCheckExportImages(t *testing.T) {
 		for _, images := range []int{1, AllImages} {
 			if err := c.CheckExport(t.Context(), a, images, isNew); err == nil || !strings.Contains(err.Error(), "画像と違います") {
 				t.Fatalf("digests=%v images=%d: err=%v", digests != nil, images, err)
+			}
+		}
+	}
+}
+
+// TestCheckExportForgedDigests は、Router が書き換えなかったエクスポートの ZIP に、アプリが画像の
+// 代わりにダイジェストの形の項目を入れても通らないことを確かめる。
+func TestCheckExportForgedDigests(t *testing.T) {
+	c := New(testWorld)
+	app := newFakeApp(c)
+	server := httptest.NewServer(app)
+	defer server.Close()
+	user := c.Targets()[0]
+	a := agent.New(client.New(server.URL), user.Region, 0)
+	a.ID, a.Username, a.SecretKey = user.ID, user.Username, user.SecretKey
+	if err := a.Login(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	isNew := func(string) bool { return false }
+	for _, kind := range []string{"sha256", "xxh3"} {
+		app.image = func(_ *dataset.Image, data []byte) []byte { return forgedDigest(kind, data) }
+		for _, digests := range []*dataset.ImageDigests{nil, testDigests()} {
+			c.ImageDigests = digests
+			if err := c.CheckExport(t.Context(), a, AllImages, isNew); err == nil || !strings.Contains(err.Error(), "画像と違います") {
+				t.Fatalf("%s digests=%v: err=%v", kind, digests != nil, err)
 			}
 		}
 	}
