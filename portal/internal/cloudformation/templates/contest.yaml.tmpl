@@ -330,6 +330,10 @@ Resources:
         Fn::Base64: |
           #cloud-config
 {{template "admin_ssh" $}}
+          bootcmd:
+            - [dpkg, --purge, ec2-instance-connect]
+            - [systemctl, daemon-reload]
+            - [systemctl, try-restart, ssh.service]
           write_files:
           - path: /etc/isucon/registration.json
             permissions: '0600'
