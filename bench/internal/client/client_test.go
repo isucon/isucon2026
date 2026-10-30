@@ -3,6 +3,9 @@ package client_test
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -53,6 +56,138 @@ func TestImageDigest(t *testing.T) {
 		other[len(other)-1]++
 		if client.SameImage(got, other) || client.SameImage(got, image[1:]) {
 			t.Errorf("digest=%v: another image matches", digest)
+		}
+	}
+}
+
+// InitialImage は Router に SHA-256 を求める。SHA-256 を返す Router、XXH3 しか返さない古い
+// Router、ダイジェストを返さないとき（isureal-digest が止まっている）のどれでも SameImage で比べられ、
+// XXH3 のとき以外は ImageSHA256 で中身の SHA-256 がわかる。
+func TestInitialImageSHA256(t *testing.T) {
+	image := bytes.Repeat([]byte("jpeg"), 50_000)
+	want := sha256.Sum256(image)
+	mode := ""
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seed, err := strconv.ParseUint(r.Header.Get("X-Benchmark-Request-Id"), 10, 64)
+		if err != nil || r.Header.Get("X-Benchmark-Digest") != "sha256" {
+			t.Errorf("X-Benchmark-Request-Id %q, X-Benchmark-Digest %q", r.Header.Get("X-Benchmark-Request-Id"), r.Header.Get("X-Benchmark-Digest"))
+		}
+		switch mode {
+		case "sha256":
+			w.Header().Set("X-Body-Sha256", hex.EncodeToString(want[:]))
+		case "xxh3":
+			w.Header().Set("X-Body-Xxh3", fmt.Sprintf("%016x", xxh3.HashSeed(image, seed)))
+		default:
+			_, _ = w.Write(image)
+			return
+		}
+		w.Header().Set("X-Body-Length", strconv.Itoa(len(image)))
+	}))
+	defer server.Close()
+	api := client.New(server.URL)
+	for _, mode = range []string{"sha256", "xxh3", "bytes"} {
+		got, err := api.InitialImage(t.Context(), "/api/images/x?exp=1&sig=s")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if (len(got) == len(image)) != (mode == "bytes") {
+			t.Errorf("%s: got %d bytes", mode, len(got))
+		}
+		if !client.SameImage(got, image) {
+			t.Errorf("%s: the image does not match", mode)
+		}
+		other := bytes.Clone(image)
+		other[len(other)-1]++
+		if client.SameImage(got, other) || client.SameImage(got, image[1:]) {
+			t.Errorf("%s: another image matches", mode)
+		}
+		if sum, ok := client.ImageSHA256(got); ok != (mode != "xxh3") || (ok && sum != want) {
+			t.Errorf("%s: ImageSHA256 = %x, %v", mode, sum, ok)
+		}
+	}
+}
+
+// forgedDigests は、アプリが画像の代わりに返しうる、ダイジェストの形をしたバイト列（SHA-256 と、
+// アプリが選んだ種の XXH3）。
+func forgedDigests(image []byte) map[string][]byte {
+	sum := sha256.Sum256(image)
+	sha := append([]byte("\x00isureal-sha256:"), sum[:]...)
+	xxh := []byte("\x00isureal-xxh3:")
+	xxh = binary.BigEndian.AppendUint64(xxh, 7)
+	xxh = binary.BigEndian.AppendUint64(xxh, xxh3.HashSeed(image, 7))
+	return map[string][]byte{
+		"sha256": binary.BigEndian.AppendUint64(sha, uint64(len(image))),
+		"xxh3":   binary.BigEndian.AppendUint64(xxh, uint64(len(image))),
+	}
+}
+
+// Router が本体をそのまま返したとき（Content-Encoding が付いている、isureal-digest が止まっている）に、
+// アプリが本体に書いたダイジェストの形のバイト列は、Router のダイジェストとして通らない。
+func TestForgedDigestBody(t *testing.T) {
+	image := bytes.Repeat([]byte("jpeg"), 50_000)
+	want := sha256.Sum256(image)
+	var body []byte
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write(body)
+	}))
+	defer server.Close()
+	api := client.New(server.URL)
+	for name, forged := range forgedDigests(image) {
+		body = forged
+		for _, get := range []func(context.Context, string) ([]byte, error){api.Image, api.InitialImage} {
+			got, err := get(t.Context(), "/api/images/x?exp=1&sig=s")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if client.SameImage(got, image) {
+				t.Errorf("%s: SameImage accepted a forged digest", name)
+			}
+			if sum, ok := client.ImageSHA256(got); ok && sum == want {
+				t.Errorf("%s: ImageSHA256 accepted a forged digest", name)
+			}
+		}
+	}
+}
+
+// エクスポートの項目は、Router がその要求の種で書いたダイジェストか、画像のバイト列だけを
+// 受け付ける。503 の再試行でも種は変わらない。
+func TestExportTrusted(t *testing.T) {
+	image := bytes.Repeat([]byte("jpeg"), 50_000)
+	var seeds []uint64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seed, err := strconv.ParseUint(r.Header.Get("X-Benchmark-Request-Id"), 10, 64)
+		if err != nil {
+			t.Errorf("X-Benchmark-Request-Id %q: %v", r.Header.Get("X-Benchmark-Request-Id"), err)
+		}
+		seeds = append(seeds, seed)
+		if len(seeds) == 1 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		_, _ = w.Write([]byte("PK"))
+	}))
+	defer server.Close()
+	c := client.NewClient(client.Config{Base: server.URL, Retry: client.RetryPolicy{MaxRetries: 1, Base: time.Millisecond, MaxWait: time.Millisecond}})
+	export, err := c.Export(t.Context(), "token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(seeds) != 2 || seeds[0] != seeds[1] {
+		t.Fatalf("seeds %v, want the same seed twice", seeds)
+	}
+	router := []byte("\x00isureal-xxh3:")
+	router = binary.BigEndian.AppendUint64(router, seeds[0])
+	router = binary.BigEndian.AppendUint64(router, xxh3.HashSeed(image, seeds[0]))
+	router = binary.BigEndian.AppendUint64(router, uint64(len(image)))
+	if !export.Trusted(router) || !client.SameImage(router, image) {
+		t.Errorf("the Router's digest is not accepted")
+	}
+	if !export.Trusted(image) {
+		t.Errorf("the image bytes are not accepted")
+	}
+	for name, forged := range forgedDigests(image) {
+		if export.Trusted(forged) {
+			t.Errorf("%s: a forged digest is accepted", name)
 		}
 	}
 }
