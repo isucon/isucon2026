@@ -1,6 +1,7 @@
 package scenario
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -78,6 +80,166 @@ func newTestRunner(t *testing.T, usersPerRegion int, slo metrics.SLO) (*Runner, 
 		}
 	}
 	return runner, app
+}
+
+// TestLoadPhaseGoesToOperatorLogger は、phase: load（seed など実行条件を含む）が参加者向け
+// ロガーに出ず、運営向けロガーにだけ出ることを確かめる。
+func TestLoadPhaseGoesToOperatorLogger(t *testing.T) {
+	var participant, operator bytes.Buffer
+	runner, err := NewRunner(Config{
+		Target:         "http://127.0.0.1:1",
+		Users:          1,
+		Duration:       time.Second,
+		Dataset:        tinyDataset,
+		Logger:         slog.New(slog.NewTextHandler(&participant, nil)),
+		OperatorLogger: slog.New(slog.NewTextHandler(&operator, nil)),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	_ = runner.load(ctx)
+	if strings.Contains(participant.String(), "phase: load") {
+		t.Fatalf("phase: load went to the participant logger: %s", participant.String())
+	}
+	if !strings.Contains(operator.String(), "phase: load") || !strings.Contains(operator.String(), "seed=") {
+		t.Fatalf("phase: load missing from the operator logger: %s", operator.String())
+	}
+}
+
+// TestPhaseLinesGoToOperatorLogger は、すべての phase 行（initialize、pretest、
+// initial data、prepare users、final check、final check done）と、prepare users の内訳、
+// initial user checked が、参加者向けロガーに出ず運営向けロガーにだけ出ることを確かめる。
+func TestPhaseLinesGoToOperatorLogger(t *testing.T) {
+	runner, app := newTestRunner(t, 2, metrics.SLO{FailRate: 0.01, MinOps: 1})
+	// prepareUsers が cohort のユーザーでログインできるよう、偽のアプリにも登録しておく。
+	for _, region := range geo.Regions {
+		for _, du := range runner.initial.CohortUsers(region) {
+			app.addUser(du.ID, du.Username, du.SecretKey, du.Region)
+		}
+	}
+	var participant, operator bytes.Buffer
+	runner.cfg.Logger = slog.New(slog.NewTextHandler(&participant, nil))
+	runner.cfg.OperatorLogger = slog.New(slog.NewTextHandler(&operator, nil))
+	// 初期化は専用の応答で成功させ、事前検証は偽のアプリでは失敗するが、phase 行は出る。
+	initServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{"language":"go"}`)
+	}))
+	defer initServer.Close()
+	origAdmin := runner.admin
+	runner.admin = client.New(initServer.URL)
+	_ = runner.initialize(t.Context())
+	runner.admin = origAdmin
+	_ = runner.pretest(t.Context())
+	if reason := runner.prepareUsers(t.Context()); reason != "" {
+		t.Fatalf("prepare users: %s", reason)
+	}
+	// 偽のアプリは初期データを持たないので検証自体は失敗するが、checked のログは出る。
+	_ = runner.checkInitialData(t.Context())
+	_ = runner.finalCheck(t.Context())
+	for _, msg := range []string{`msg="phase: initialize"`, `msg="phase: pretest"`, `msg="phase: prepare users"`, `msg="phase: initial data"`, `msg="prepare users"`, `msg="initial user checked"`, `msg="phase: final check"`, `msg="final check done"`} {
+		if strings.Contains(participant.String(), msg) {
+			t.Fatalf("%s went to the participant logger: %s", msg, participant.String())
+		}
+		if !strings.Contains(operator.String(), msg) {
+			t.Fatalf("%s missing from the operator logger: %s", msg, operator.String())
+		}
+	}
+}
+
+// TestEvilEnvLoggerIsOperatorLogger は、不正な利用者の通信記録が参加者向けロガーに
+// 出ず、運営向けロガーにだけ出ることを確かめる。
+func TestEvilEnvLoggerIsOperatorLogger(t *testing.T) {
+	var participant, operator bytes.Buffer
+	runner, err := NewRunner(Config{
+		Target:         "http://127.0.0.1:1",
+		Users:          1,
+		Duration:       time.Second,
+		Dataset:        tinyDataset,
+		Logger:         slog.New(slog.NewTextHandler(&participant, nil)),
+		OperatorLogger: slog.New(slog.NewTextHandler(&operator, nil)),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runner.evilEnv(time.Now()).Logger.Info("不正な利用者の通信")
+	if strings.Contains(participant.String(), "不正な利用者の通信") {
+		t.Fatalf("evil log went to the participant logger: %s", participant.String())
+	}
+	if !strings.Contains(operator.String(), "不正な利用者の通信") {
+		t.Fatalf("evil log missing from the operator logger: %s", operator.String())
+	}
+}
+
+// TestTellIsSimplePopulation は、日ごとの Story が理由の説明を持たない人数だけの
+// 形（asia 1 日目: 19 人）になることを確かめる。
+func TestTellIsSimplePopulation(t *testing.T) {
+	var operator bytes.Buffer
+	runner := &Runner{
+		cfg: Config{Logger: slog.New(slog.NewTextHandler(io.Discard, nil)), OperatorLogger: slog.New(slog.NewTextHandler(&operator, nil))},
+		tt:  newTimetable(time.Minute),
+	}
+	runner.tell(geo.Asia, 1, &dayStats{population: 19}, 0)
+	// 投稿期間を開くのに時間がかかっても、Story には人数だけを出し、所要時間は運営向けにだけ残す。
+	runner.tell(geo.Asia, 2, &dayStats{population: 19, newcomers: 1}, 2*time.Second)
+	// 前日が不調でも、理由は Story に出さない（運営向けの DayReport に残る）。
+	runner.tell(geo.Asia, 3, &dayStats{population: 20, healthy: false, failRate: 0.5}, 0)
+	runner.tell(geo.Asia, 6, &dayStats{population: 25}, 0)
+	want := []string{
+		"asia 1 日目: 19 人",
+		"asia 2 日目: 20 人",
+		"asia 3 日目: 20 人",
+		"asia 最終日（グランプリ）: 25 人",
+	}
+	if got := runner.storyLines(); !slices.Equal(got, want) {
+		t.Fatalf("story = %q, want %q", got, want)
+	}
+	if !strings.Contains(operator.String(), "投稿期間を開くのに時間がかかりました") {
+		t.Fatalf("slow open missing from the operator logger: %s", operator.String())
+	}
+}
+
+// TestTellGrandPrixHasNoTotal は、グランプリの Story が合計を出さず、地域ごとの
+// 人数だけ（グランプリ: アジア 2 人, ヨーロッパ 1 人, アメリカ 4 人）になることを確かめる。
+func TestTellGrandPrixHasNoTotal(t *testing.T) {
+	runner := &Runner{
+		cfg: Config{Logger: slog.New(slog.NewTextHandler(io.Discard, nil))},
+		tt:  newTimetable(time.Minute),
+	}
+	book := newBook(runner.tt, time.Now())
+	runner.books.Store(book)
+	gp := runner.tt.days()
+	for _, id := range []string{"a1", "a2"} {
+		book.pass(geo.Asia, gp, id, 0)
+	}
+	book.pass(geo.Europe, gp, "e1", 0)
+	for _, id := range []string{"m1", "m2", "m3", "m4"} {
+		book.pass(geo.America, gp, id, 0)
+	}
+	runner.tellGrandPrix()
+	want := []string{"グランプリ: アジア 2 人, ヨーロッパ 1 人, アメリカ 4 人"}
+	if got := runner.storyLines(); !slices.Equal(got, want) {
+		t.Fatalf("story = %q, want %q", got, want)
+	}
+}
+
+// TestResultMessagesAreErrorsOnly は、結果 JSON の messages に Story（日ごとの人数）が
+// 入らず、エラー系（理由・Critical・Errors）だけが入ることを確かめる。
+func TestResultMessagesAreErrorsOnly(t *testing.T) {
+	runner := &Runner{
+		board: score.NewBoard(nil),
+		story: []string{"asia 1 日目: 19 人", "グランプリ: アジア 2 人, ヨーロッパ 1 人, アメリカ 4 人"},
+	}
+	runner.board.Criticalf("見えてはいけない投稿が返りました")
+	runner.board.Errorf("フィードを取得できません")
+	want := []string{"失格の理由", "見えてはいけない投稿が返りました", "フィードを取得できません"}
+	if got := runner.resultMessages("失格の理由"); !slices.Equal(got, want) {
+		t.Fatalf("messages = %q, want %q", got, want)
+	}
+	if got := runner.resultMessages(""); len(got) != 2 {
+		t.Fatalf("messages without reason = %q, want only critical and errors", got)
+	}
 }
 
 // setDuration は走行の長さと時間割を変える。
@@ -231,6 +393,10 @@ func TestBannedUserIsReputation(t *testing.T) {
 	}
 	if !victim.stopped.Load() || runner.reputations() != 1 {
 		t.Fatalf("stopped=%t reputation=%d", victim.stopped.Load(), runner.reputations())
+	}
+	// BAN の悪評は参加者向けの Story に出す。
+	if !strings.Contains(strings.Join(runner.storyLines(), "\n"), "悪評が立ちました") {
+		t.Fatalf("reputation missing from story: %v", runner.storyLines())
 	}
 	if runner.board.ErrorCount() != 0 {
 		t.Fatalf("errors=%v", runner.board.Errors())
@@ -471,6 +637,8 @@ func TestInvites(t *testing.T) {
 func TestOpenWindowRecovery(t *testing.T) {
 	t.Run("late response", func(t *testing.T) {
 		runner, app := newTestRunner(t, 1, metrics.SLO{FailRate: 1000, MinOps: 1})
+		var operator bytes.Buffer
+		runner.cfg.OperatorLogger = slog.New(slog.NewTextHandler(&operator, nil))
 		runner.setDuration(18 * time.Second) // 1 日 2.7 秒、開く要求は 2.4 秒で打ち切る
 		runner.books.Store(newBook(runner.tt, time.Now()))
 		app.mu.Lock()
@@ -480,8 +648,12 @@ func TestOpenWindowRecovery(t *testing.T) {
 		if err != nil || id == "" || !runner.model.HasWindow(id) || runner.board.ErrorCount() != 0 {
 			t.Fatalf("id=%q err=%v errors=%v", id, err, runner.board.Errors())
 		}
-		if !strings.Contains(strings.Join(runner.story, "\n"), "開いていることを確かめました") {
-			t.Fatalf("story=%v", runner.story)
+		// 回復できたことは参加者向けの Story に出さず、運営向けにだけ残す。
+		if strings.Contains(strings.Join(runner.story, "\n"), "開いていることを確かめました") {
+			t.Fatalf("recovery leaked to story: %v", runner.story)
+		}
+		if !strings.Contains(operator.String(), "開いていることを確かめました") {
+			t.Fatalf("recovery missing from the operator logger: %s", operator.String())
 		}
 	})
 	t.Run("hung app", func(t *testing.T) {

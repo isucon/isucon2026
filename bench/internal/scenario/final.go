@@ -29,11 +29,13 @@ const (
 // 投稿や友達関係が失われていたり、削除した投稿や友達でない人が残っていたりすれば fail とする。
 // 結果のわからない書き込みは、反映されていてもいなくてもよい。
 func (r *Runner) finalCheck(ctx context.Context) string {
-	r.cfg.Logger.Info("phase: final check")
+	r.operatorLogger().Info("phase: final check")
 	ctx, cancel := context.WithTimeout(ctx, finalCheckTimeout)
 	defer cancel()
 	start := time.Now()
-	defer func() { r.cfg.Logger.Info("final check done", "elapsed", time.Since(start).Round(time.Millisecond)) }()
+	defer func() {
+		r.operatorLogger().Info("final check done", "elapsed", time.Since(start).Round(time.Millisecond))
+	}()
 	var users []*agent.Agent
 	for _, u := range r.usersSnapshot() {
 		// 退会したユーザーと BAN されたユーザーは確かめられない。アプリを閉じたまま走行が

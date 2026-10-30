@@ -89,6 +89,12 @@ type Config struct {
 	// Evil は不正な利用者を動かす。nil なら動かさない。
 	Evil   EvilFunc
 	Logger *slog.Logger
+	// OperatorLogger は運営向けのログ。supervisor の下では Logger が参加者に見える標準出力に
+	// つながるのに対し、こちらは運営だけが見られる標準エラー出力につなぐ。参加者に不要な
+	// すべての phase 行（initialize、pretest、initial data、prepare users、load、final check、
+	// final check done。load は usersPerRegion、duration、seed、photos を含む）と、prepare users
+	// の内訳、initial user checked、不正な利用者の通信記録の出力先として使う。nil なら Logger を使う。
+	OperatorLogger *slog.Logger
 	// OnProgress は途中経過（暫定のスコアと内訳）を受け取る。フェーズの境目と、負荷走行の
 	// 観測窓が閉じるたびに呼ぶ。スーパーバイザーへの報告に使う。
 	OnProgress func(Result)
@@ -99,9 +105,11 @@ type Result struct {
 	Score    int64  `json:"score"`
 	Language string `json:"language"`
 	Reason   string `json:"reason,omitempty"`
-	// Messages は参加者に見せる。失格の理由、走行の様子、正しさの違反、エラーの順。
+	// Messages は結果 JSON に出す参加者向けのエラー系のみ。失格の理由、正しさの違反、
+	// エラーの順。
 	Messages []string `json:"messages"`
-	// Story は走行の様子（日ごとの人数、ゲートを通過した人数、新しく来た人数）。参加者に見せる。
+	// Story は走行の様子（日ごとの人数）。進行ログでは参加者にも出すが、結果 JSON の
+	// Messages には含めない。
 	Story []string `json:"story"`
 
 	// 以下は運営向け（D-005）。
@@ -220,6 +228,9 @@ func NewRunner(cfg Config) (*Runner, error) {
 	if cfg.Logger == nil {
 		cfg.Logger = slog.Default()
 	}
+	if cfg.OperatorLogger == nil {
+		cfg.OperatorLogger = cfg.Logger
+	}
 	if cfg.SLO == (metrics.SLO{}) {
 		cfg.SLO = metrics.DefaultSLO
 	}
@@ -334,7 +345,7 @@ func (r *Runner) Run(ctx context.Context) Result {
 		}
 		_, result.GrandPrix = b.passes()
 	}
-	result.Messages = messages(reason, result.Story, result.Critical, result.Errors)
+	result.Messages = r.resultMessages(reason)
 	if rec := r.recorder.Load(); rec != nil {
 		for _, window := range rec.Windows() {
 			result.Windows = append(result.Windows, rec.Regions(window)...)
@@ -360,6 +371,13 @@ func (r *Runner) closeConnections() {
 	for _, u := range r.usersSnapshot() {
 		u.API.CloseIdleConnections()
 	}
+}
+
+// resultMessages は結果 JSON の messages を組み立てる。エラー系（失格の理由、正しさの
+// 違反、エラー）だけを入れ、Story（日ごとの人数など）は含めない。Story は進行ログで
+// 参加者に出るので、結果 JSON で繰り返す必要はない。
+func (r *Runner) resultMessages(reason string) []string {
+	return messages(reason, r.board.Critical(), r.board.Errors())
 }
 
 func messages(reason string, groups ...[]string) []string {
@@ -401,7 +419,7 @@ func (r *Runner) populations() map[string]int {
 }
 
 func (r *Runner) initialize(ctx context.Context) string {
-	r.cfg.Logger.Info("phase: initialize")
+	r.operatorLogger().Info("phase: initialize")
 	ctx, cancel := context.WithTimeout(ctx, initializeTimeout)
 	defer cancel()
 	started := time.Now()
@@ -410,9 +428,9 @@ func (r *Runner) initialize(ctx context.Context) string {
 		return fmt.Sprintf("初期化に失敗しました: %v（上限 %s）", err, initializeTimeout)
 	}
 	// 初期化は前回の走行で増えたデータを消すので、強い実装ほど重くなる。上限に近づく前に
-	// 気づけるよう、時間がかかったら物語に残す。
+	// 気づけるよう、時間がかかったら運営向けに残す（参加者向けの Story には出さない）。
 	if took := time.Since(started); took >= slowInitialize {
-		r.record(fmt.Sprintf("初期化に %.1f 秒かかりました（上限 %s）", took.Seconds(), initializeTimeout))
+		r.operatorLogger().Info(fmt.Sprintf("初期化に %.1f 秒かかりました（上限 %s）", took.Seconds(), initializeTimeout))
 	}
 	if result.Language == "" {
 		return "初期化の応答の language が空です"
@@ -498,14 +516,16 @@ func (r *Runner) preload(ctx context.Context) string {
 // 内容を返すことを確かめる。
 func (r *Runner) checkInitialData(ctx context.Context) string {
 	r.step("初期データの検証")
-	r.cfg.Logger.Info("phase: initial data")
+	// phase 行も含め、初期データの検証の経過は運営向け（参加者には不要）。
+	r.operatorLogger().Info("phase: initial data")
 	targets := r.initial.Targets()
 	failures := make([]error, len(targets))
 	api := r.api.WithClientIP(r.ips.Next())
 	parallel(len(targets), func(i int) {
 		start := time.Now()
 		failures[i] = r.initial.Check(ctx, api, targets[i])
-		r.cfg.Logger.Info("initial user checked", "username", targets[i].Username, "region", targets[i].Region, "elapsed", time.Since(start).Round(time.Millisecond))
+		// 誰を検証したかと所要時間も運営向け。
+		r.operatorLogger().Info("initial user checked", "username", targets[i].Username, "region", targets[i].Region, "elapsed", time.Since(start).Round(time.Millisecond))
 		if failures[i] != nil {
 			r.step(fmt.Sprintf("初期データのユーザー %s の検証", targets[i].Username))
 		}
@@ -518,7 +538,7 @@ func (r *Runner) checkInitialData(ctx context.Context) string {
 
 func (r *Runner) pretest(ctx context.Context) string {
 	r.step("事前検証")
-	r.cfg.Logger.Info("phase: pretest")
+	r.operatorLogger().Info("phase: pretest")
 	token, err := r.admin.AdminLogin(ctx, "admin", "password1234")
 	if err != nil || token == "" {
 		return fmt.Sprintf("管理者としてログインできません: %v", err)
@@ -574,8 +594,23 @@ func (r *Runner) pretest(ctx context.Context) string {
 
 // load は負荷走行。負荷ユーザーが通知を購読し終えたら時計を進め始め、時間割どおりに
 // 投稿期間を開く。
+// operatorLogger は運営向けのログ。NewRunner を経ない Runner でも nil にならないよう
+// ここでもフォールバックする。
+func (r *Runner) operatorLogger() *slog.Logger {
+	if r.cfg.OperatorLogger != nil {
+		return r.cfg.OperatorLogger
+	}
+	if r.cfg.Logger != nil {
+		return r.cfg.Logger
+	}
+	return slog.Default()
+}
+
 func (r *Runner) load(ctx context.Context) string {
-	r.cfg.Logger.Info("phase: load", "usersPerRegion", r.cfg.Users, "duration", r.cfg.Duration, "seed", r.seed, "photos", r.photos.Count())
+	// phase: load は実行条件（seed を含む）を持つ運営向けの記録で、参加者には不要。
+	// supervisor の下では運営向けロガー（標準エラー出力）にだけ出す。単独実行ではどちらも
+	// 標準エラー出力につながるので、bench.log を読む report.py の負荷区間の特定は従来どおり。
+	r.operatorLogger().Info("phase: load", "usersPerRegion", r.cfg.Users, "duration", r.cfg.Duration, "seed", r.seed, "photos", r.photos.Count())
 	ctx, abort := context.WithCancelCause(ctx)
 	defer abort(nil)
 	var wg sync.WaitGroup
