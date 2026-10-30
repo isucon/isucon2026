@@ -717,6 +717,8 @@ func (h *Handler) AdminCommandRequestOutput(w http.ResponseWriter, r *http.Reque
 	return nil
 }
 
+const envCheckCommand = `sudo rm -f /var/lib/isucon-envcheck/result.json || exit $?; sudo systemctl restart envcheck; status=$?; sudo cat /var/lib/isucon-envcheck/result.json; exit "$status"`
+
 // AdminTriggerEnvCheck: POST /api/admin/last_validations/env_check（FR-S-7）
 func (h *Handler) AdminTriggerEnvCheck(w http.ResponseWriter, r *http.Request) error {
 	teamIDs, err := h.triggerTargetTeams(r)
@@ -724,7 +726,7 @@ func (h *Handler) AdminTriggerEnvCheck(w http.ResponseWriter, r *http.Request) e
 		return err
 	}
 	h.jobs.Enqueue(r.Context(), "execute_on_multiple_contestant_instances", job.ExecuteOnMultipleArgs{
-		TeamIDs: teamIDs, Command: `sudo systemctl restart envcheck; status=$?; sudo cat /var/lib/isucon-envcheck/result.json; exit "$status"`, IncludeRouter: true,
+		TeamIDs: teamIDs, Command: envCheckCommand, IncludeRouter: true,
 	})
 	renderPB(w, http.StatusOK, &pbadmin.TriggerEnvCheckResponse{})
 	return nil
