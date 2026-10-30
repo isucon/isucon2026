@@ -98,3 +98,40 @@ func TestRealMojiMissingBeforeLastItem(t *testing.T) {
 		t.Fatalf("missing=%d problems=%v", missing, problems)
 	}
 }
+
+// TestFriendRequestPending は、bench が送った申請が、閉じる書き込み、2 人の友達関係の成立、
+// ブロックで保留中でなくなり、拒否された書き込みは無視することを確かめる。
+func TestFriendRequestPending(t *testing.T) {
+	w := newWorld(t)
+	m, c := w.m, w.c
+	request := func(from, to, id string) {
+		m.RequestedFriend(m.BeginFriendRequest(from, to), id)
+	}
+	request("c", "e", "rq1")
+	request("a", "e", "rq2")
+	if got := m.FriendRequestPending("rq1", w.later()); got != True {
+		t.Fatalf("pending: %s", got)
+	}
+	if got := m.FriendRequestPending("unknown", w.later()); got != Unknown {
+		t.Fatalf("unknown request: %s", got)
+	}
+	sent := c.tick()
+	closing := m.BeginCloseFriendRequest("rq1")
+	if got := m.FriendRequestPending("rq1", m.ReadBetween(sent, c.tick())); got != Unknown {
+		t.Fatalf("while closing: %s", got)
+	}
+	closing.Rejected()
+	if got := m.FriendRequestPending("rq1", w.later()); got != True {
+		t.Fatalf("after a rejected close: %s", got)
+	}
+	// 相手からの申請で友達になると、2 人の間の申請は閉じる。
+	m.BeginFriendship("e", "c", true).Applied()
+	if got := m.FriendRequestPending("rq1", w.later()); got != False {
+		t.Fatalf("after friendship: %s", got)
+	}
+	m.BeginBlock("e", "a").Applied()
+	m.BeginUnblock("e", "a").Applied()
+	if got := m.FriendRequestPending("rq2", w.later()); got != False {
+		t.Fatalf("after block and unblock: %s", got)
+	}
+}

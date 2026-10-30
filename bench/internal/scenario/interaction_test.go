@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -284,5 +285,47 @@ func TestRejectedOwnInteractionDeletion(t *testing.T) {
 	f.r.listComments(t.Context(), f.guest, s, f.post.ID)
 	if attempts.Load() != 2 || f.r.board.ErrorCount() != 0 {
 		t.Fatalf("attempts=%d errors=%v", attempts.Load(), f.r.board.Errors())
+	}
+}
+
+// TestRejectedPendingFriendRequestAnswer は、bench が送って確実に保留中の友達申請への承認や
+// 拒否が 403、404、409 で拒否されたら失敗に数え、申請した側が先に取り下げていれば正しい
+// 拒否とすることを確かめる。
+func TestRejectedPendingFriendRequestAnswer(t *testing.T) {
+	for _, action := range []string{"accept", "reject"} {
+		for _, status := range []int{http.StatusOK, http.StatusForbidden, http.StatusNotFound, http.StatusConflict} {
+			for _, cancelled := range []bool{false, true} {
+				if status == http.StatusOK && cancelled {
+					continue
+				}
+				t.Run(fmt.Sprintf("%s/%d/cancelled=%v", action, status, cancelled), func(t *testing.T) {
+					f := newInteractionFixture(t)
+					from := f.r.users[geo.Europe][0]
+					f.r.requestFriend(t.Context(), from, f.owner, false)
+					page, err := f.owner.API.Relationships(t.Context(), f.owner.Token, "incoming-requests", nil)
+					if err != nil || len(page.Items) != 1 {
+						t.Fatalf("page=%+v err=%v", page, err)
+					}
+					if cancelled {
+						f.r.cancelRequest(t.Context(), from)
+					}
+					rec := f.route(t, f.owner, func(w http.ResponseWriter, req *http.Request) {
+						if req.Method == http.MethodPost && strings.HasPrefix(req.URL.Path, "/api/friend-requests/") && status != http.StatusOK {
+							writeJSON(t, w, status, map[string]string{"error": "relationship_conflict"})
+							return
+						}
+						f.app.ServeHTTP(w, req)
+					})
+					f.r.answerRequest(t.Context(), f.owner, page.Items[0], action)
+					want := int64(0)
+					if status != http.StatusOK && !cancelled {
+						want = 1
+					}
+					if got := rec.Total(0); got.Ops != 1 || got.Failures != want || f.r.board.ErrorCount() != want {
+						t.Fatalf("stats=%+v errors=%v", got, f.r.board.Errors())
+					}
+				})
+			}
+		}
 	}
 }
