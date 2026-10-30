@@ -403,7 +403,9 @@ func (c *Client) send(ctx context.Context, r request) ([]byte, error) {
 	if errors.As(err, &apiErr) {
 		record.Code = apiErr.Code
 	}
-	if allowed, ok := ctx.Value(allowedStatusKey{}).([]int); ok && err != nil && slices.Contains(allowed, record.Status) {
+	// 許すのは応答を読み終えて期待外のステータスだったとき（APIError）だけ。許したステータスの
+	// 応答でも、本体を読み切れなかったなら通信の失敗として数える。
+	if allowed, ok := ctx.Value(allowedStatusKey{}).([]int); ok && apiErr != nil && slices.Contains(allowed, apiErr.Status) {
 		record.Allowed = true
 	}
 	if err != nil && isTimeout(err) {
