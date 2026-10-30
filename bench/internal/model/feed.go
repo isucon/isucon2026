@@ -88,12 +88,7 @@ func (m *Model) checkFeedLocked(viewerID, feed string, before *client.FeedPost, 
 	if feed == "friends-of-friends" {
 		return m.checkRecommendedLocked(viewer, before, page, r, thorough)
 	}
-	// 1 ページは FeedPageSize 件。続きがあるのに足りないページを返すと、それより古い投稿の
-	// 欠落を確かめられなくなる（最新の 1 件だけ返して軽くすることもできてしまう）。
-	if (page.HasMore && len(page.Items) < m.PageSize) || len(page.Items) > m.PageSize {
-		result.error("フィード %s: 投稿が %d 件です（1 ページ %d 件、続きがあるか %t）", feed, len(page.Items), m.PageSize, page.HasMore)
-		return result, nil
-	}
+	m.checkPageSize(&result, feed, page)
 
 	v := m.newView(viewer, r)
 	seen := make(map[string]bool, len(page.Items))
@@ -133,7 +128,8 @@ func (m *Model) checkFeedLocked(viewerID, feed string, before *client.FeedPost, 
 		if seen[p.ID] || (before != nil && !p.PostedAt.Before(before.PostedAt)) {
 			return
 		}
-		if page.HasMore && !p.PostedAt.After(page.Items[len(page.Items)-1].PostedAt) {
+		// 続きがあるのに空のページは件数の誤りとし、欠落は確かめない。
+		if page.HasMore && (len(page.Items) == 0 || !p.PostedAt.After(page.Items[len(page.Items)-1].PostedAt)) {
 			return
 		}
 		if v.inFeedTri(p, feed) == True {
@@ -141,6 +137,16 @@ func (m *Model) checkFeedLocked(viewerID, feed string, before *client.FeedPost, 
 		}
 	})
 	return result, signatures
+}
+
+// checkPageSize はページの件数を確かめる。1 ページは PageSize 件。続きがあるのに足りない
+// ページを返すと、それより古い投稿の欠落を確かめられなくなる（最新の 1 件だけ返して軽くする
+// こともできてしまう）。件数が誤っていても、返った投稿の確認は続ける（見えてはいけない投稿を
+// 混ぜたページを、件数の誤りだけで済ませない）。
+func (m *Model) checkPageSize(result *FeedResult, feed string, page client.FeedPage) {
+	if (page.HasMore && len(page.Items) < m.PageSize) || len(page.Items) > m.PageSize {
+		result.error("フィード %s: 投稿が %d 件です（1 ページ %d 件、続きがあるか %t）", feed, len(page.Items), m.PageSize, page.HasMore)
+	}
 }
 
 // mayHaveUnknownPost は authorID に、結果がわからないまま ID の知らない投稿があるかもしれないか。
