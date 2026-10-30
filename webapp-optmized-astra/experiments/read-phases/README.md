@@ -41,3 +41,7 @@ baseline-summary.jsonに平均と分位点、baseline-phases.jsonに匿名の生
 稼働中のバイナリ・runtime・レプリケーション・永続画像構成をverify-runtime.pyで照合済み。readTimingEnabled=false、metadataPoolConnections=16、exportConcurrency=8。新規AWSリソースは作成していない。
 
 最終コードは実DB指定でライブラリ37件PASS・既存2件ignore、memory_connection/login/image_cache/image_signatureの統合7件PASS。Clippyは全ターゲットで警告なし。origin/mainの追加4コミットは取り込み済みで、Astraの配布コードに影響する差分はなかった。
+
+## 最新構成の履歴待ち時間診断
+
+20261030T134356Z-team12の通常走行は202,980点PASS。初期履歴・初期画像メタデータ・Asia認証先固定・US推薦・所有者別export配置の現在の構成で、readTimingEnabledを一時的に有効化し、8件に1件の履歴リクエストを段階別に記録する。追加のSQLサンプリングは行わず、識別子を含まない既存計測のみを使う。診断走行の得点は通常走行と区別する。終了後に無効化して配備・照合する。

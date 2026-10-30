@@ -481,3 +481,4 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261030T132244Z-team12 | Shared owner-contiguous layout for exports and initial image reads; recommendations-only remote scope; seed=1 | PASS | 189,772 |
 | 20261030T133033Z-team12 | Nginx response buffering disabled; owner layout export-only; recommendations-only US scope; seed=1 | PASS | 197,797 |
 | 20261030T133809Z-team12 | Initial export metadata cache with owner-contiguous image layout; response buffering restored; GC then restart; seed=1 | PASS | 194,207 |
+| 20261030T134356Z-team12 | Final repeat after restart: owner-contiguous export images; export SQL; response buffering on; seed=1 | PASS | 202,980 |
