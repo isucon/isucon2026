@@ -457,6 +457,8 @@ func (r *Runner) runNewcomer(ctx context.Context, region string) {
 	u.API = u.API.WithObserver(&accounting{r: r, slo: true, growth: true})
 	err := u.Register(ctx, username, displayName)
 	if err != nil {
+		// 登録できなかった人は r.users に入らず、走行の終わりに接続を閉じられないので、ここで閉じる。
+		u.API.CloseIdleConnections()
 		r.arrived(region)
 		r.requestError(ctx, u, "%s: 新しいユーザーを登録できません: %v", username, err)
 		return
