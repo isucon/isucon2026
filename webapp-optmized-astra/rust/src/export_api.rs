@@ -1,5 +1,5 @@
 use std::io::{self, Write};
-use std::sync::{Arc, LazyLock, Mutex};
+use std::sync::Arc;
 
 use axum::Extension;
 use axum::body::Body;
@@ -40,7 +40,14 @@ pub async fn export_posts_handler(
         .await
         .expect("export semaphore is never closed");
     let cached = crate::image_api::cached_export_images(user_id);
-    let mut rows = export_rows(&h.db, user_id, &cached).await?;
+    let query = export_query();
+    let mut rows = sqlx::query_as::<_, ExportPost>(&query)
+        .bind(user_id)
+        .bind(&cached.ids)
+        .bind(&cached.versions)
+        .bind(&cached.timestamps)
+        .fetch_all(&h.db)
+        .await?;
     let mut missing = Vec::new();
     let mut keys = Vec::new();
     for (index, row) in rows.iter_mut().enumerate() {
@@ -127,103 +134,11 @@ fn export_query() -> String {
 
 static EXPORTS: Semaphore = Semaphore::const_new(2);
 
-struct ExportMetadata {
-    post: Post,
-    asset_key: String,
-}
-static METADATA: LazyLock<Mutex<crate::history_cache::Cache<Vec<ExportMetadata>>>> =
-    LazyLock::new(|| Mutex::new(crate::history_cache::Cache::new(32 * 1024 * 1024)));
-
-pub(crate) async fn export_rows(
-    db: &sqlx::PgPool,
-    owner: &str,
-    cached: &crate::image_api::ExportCache,
-) -> Result<Vec<ExportPost>, Error> {
-    let present = METADATA.lock().unwrap().contains(owner);
-    let found = if present {
-        let version = crate::history_cache::revision(&mut *db.acquire().await?, owner).await?;
-        METADATA.lock().unwrap().get(owner, &version)
-    } else {
-        None
-    };
-    if let Some(metadata) = found {
-        let versions: std::collections::HashMap<_, _> =
-            cached.ids.iter().zip(&cached.versions).collect();
-        return Ok(metadata
-            .iter()
-            .map(|entry| {
-                let cache_hit = versions
-                    .get(&entry.post.image_id)
-                    .is_some_and(|v| **v == format!("asset:{}", entry.asset_key));
-                ExportPost {
-                    post: entry.post.clone(),
-                    image_data: Bytes::new(),
-                    asset_key: Some(entry.asset_key.clone()),
-                    cache_hit,
-                }
-            })
-            .collect());
-    }
-    let query = format!(
-        r#"
-        WITH version AS MATERIALIZED (
-          SELECT epoch,
-            (SELECT count(*) FROM astra_history_changes WHERE owner_id='') AS global_changes,
-            (SELECT count(*) FROM astra_history_changes WHERE owner_id=$1) AS owner_changes
-          FROM astra_history_epoch WHERE singleton
-        ), exported AS MATERIALIZED ({})
-        SELECT exported.*,version.* FROM exported CROSS JOIN version ORDER BY posted_at,id
-    "#,
-        export_query()
-    );
-    let raw = sqlx::query(&query)
-        .bind(owner)
-        .bind(&cached.ids)
-        .bind(&cached.versions)
-        .bind(&cached.timestamps)
-        .fetch_all(db)
-        .await?;
-    let Some(first) = raw.first() else {
-        return Ok(Vec::new());
-    };
-    let version = crate::history_cache::Revision::from_row(first)?;
-    let rows = raw
-        .iter()
-        .map(ExportPost::from_row)
-        .collect::<sqlx::Result<Vec<_>>>()?;
-    // Immutable external assets can be re-read by key. Inline image bodies
-    // retain the original SQL path; they are never stored in this cache.
-    if rows.iter().all(|r| r.asset_key.is_some()) {
-        let bytes = 1024
-            + rows
-                .iter()
-                .map(|r| {
-                    crate::history_cache::post_bytes(&r.post)
-                        + r.asset_key.as_ref().map_or(0, String::capacity)
-                        + 64
-                })
-                .sum::<usize>();
-        let metadata = Arc::new(
-            rows.iter()
-                .map(|r| ExportMetadata {
-                    post: r.post.clone(),
-                    asset_key: r.asset_key.clone().unwrap(),
-                })
-                .collect(),
-        );
-        METADATA
-            .lock()
-            .unwrap()
-            .insert(owner, version, metadata, bytes);
-    }
-    Ok(rows)
-}
-
 #[derive(Debug)]
-pub(crate) struct ExportPost {
-    pub(crate) post: Post,
+struct ExportPost {
+    post: Post,
     image_data: Bytes,
-    pub(crate) asset_key: Option<String>,
+    asset_key: Option<String>,
     cache_hit: bool,
 }
 impl FromRow<'_, PgRow> for ExportPost {

@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use axum::Extension;
@@ -90,8 +90,8 @@ pub async fn get_memories_handler(
             "invalid_memory_period",
         ));
     };
-    let response = cached_memories(
-        &h.db,
+    let response = crate::memory_batch::list_memories(
+        &mut *h.db.acquire().await?,
         &session.user_id,
         start,
         start + Months::new(1),
@@ -113,8 +113,8 @@ pub async fn get_memories_by_date_handler(
             "invalid_memory_period",
         ));
     };
-    let response: GetMemoriesByDateResponse = cached_memories(
-        &h.db,
+    let response: GetMemoriesByDateResponse = crate::memory_batch::list_memories(
+        &mut *h.db.acquire().await?,
         &session.user_id,
         start,
         start + Days::new(1),
@@ -162,95 +162,6 @@ pub async fn list_memories(
     load_memory_interactions(db, &mut items).await?;
     response.items = items;
     Ok(response)
-}
-
-pub async fn cached_memories(
-    db: &sqlx::PgPool,
-    user_id: &str,
-    start: NaiveDate,
-    end: NaiveDate,
-    before_at: Option<DateTime<Utc>>,
-    before_id: &str,
-) -> Result<GetMemoriesResponse, Error> {
-    if before_at.is_none() != before_id.is_empty() {
-        return Err(new_api_error(StatusCode::BAD_REQUEST, "invalid_pagination"));
-    }
-    let history = crate::history_cache::load(db, user_id, start).await?;
-    let mut posts: Vec<_> = history
-        .posts
-        .iter()
-        .filter(|p| {
-            p.date >= start
-                && p.date < end
-                && before_at.is_none_or(|before| {
-                    (p.post.posted_at, p.post.id.as_str()) < (before, before_id)
-                })
-        })
-        .take(51)
-        .collect();
-    let has_more = posts.len() > 50;
-    posts.truncate(50);
-    if posts.is_empty() {
-        return Ok(GetMemoriesResponse::default());
-    }
-    let mut ids = HashSet::from([user_id]);
-    for post in &posts {
-        if let Some(comments) = history.comments.get(&post.post.id) {
-            ids.extend(comments.iter().map(|c| c.author_id.as_str()));
-        }
-        if let Some(reactions) = history.reactions.get(&post.post.id) {
-            ids.extend(reactions.iter().map(|r| r.reactor_id.as_str()));
-        }
-    }
-    // Do not cache user liveness, names, profile images, or signing keys. A
-    // single indexed lookup reflects changes without broad invalidation.
-    let ids: Vec<_> = ids.into_iter().collect();
-    let users: Vec<crate::user::User> = sqlx::query_as(&format!(
-        "SELECT {} FROM users WHERE id=ANY($1) AND status='active'",
-        crate::user::USER_COLUMNS.join(",")
-    ))
-    .bind(&ids)
-    .fetch_all(db)
-    .await?;
-    let mut by_id = HashMap::new();
-    for mut user in users {
-        user.set_image_key()?;
-        by_id.insert(user.id.clone(), user);
-    }
-    let Some(author) = by_id.get(user_id) else {
-        return Ok(GetMemoriesResponse::default());
-    };
-    let items = posts
-        .into_iter()
-        .map(|post| {
-            let comments = history
-                .comments
-                .get(&post.post.id)
-                .into_iter()
-                .flatten()
-                .filter_map(|c| by_id.get(&c.author_id).map(|u| new_comment_response(c, u)))
-                .take(50)
-                .collect();
-            let realmojis = history
-                .reactions
-                .get(&post.post.id)
-                .into_iter()
-                .flatten()
-                .filter_map(|r| {
-                    by_id
-                        .get(&r.reactor_id)
-                        .map(|u| new_real_moji_response(r, u))
-                })
-                .take(50)
-                .collect();
-            MemoryPostResponse {
-                create_post_response: new_post_response(&post.post, author),
-                comments,
-                realmojis,
-            }
-        })
-        .collect();
-    Ok(GetMemoriesResponse { items, has_more })
 }
 
 async fn load_memory_interactions(

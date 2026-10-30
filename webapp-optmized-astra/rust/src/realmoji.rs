@@ -28,7 +28,7 @@ pub async fn get_real_moji<'c>(
     Ok(reaction)
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Deserialize)]
 pub struct RealMojiWithReactor {
     pub real_moji: RealMoji,
     pub reactor: User,

@@ -28,7 +28,7 @@ pub async fn get_comment<'c>(
     Ok(comment)
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Deserialize)]
 pub struct CommentWithAuthor {
     pub comment: Comment,
     pub author: User,
