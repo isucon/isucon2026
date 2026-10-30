@@ -1,3 +1,4 @@
+import { parseResourceId } from "../IdInput";
 import { AdminApiClient } from "./AdminApiClient";
 
 import React from "react";
@@ -228,11 +229,18 @@ const AdminClarificationListInternal: React.FC<Props> = (props: Props) => {
   const [list, setList] = React.useState<ClarificationType[] | null>(null);
 
   React.useEffect(() => {
+    const parsedId = teamId ? parseResourceId(teamId) : undefined;
+    if (parsedId === null) {
+      setError(new Error("無効な Team ID です。"));
+      setList(null);
+      return;
+    }
+    setError(null);
     props.client
-      .listClarifications(teamId ? BigInt(teamId) : undefined, unansweredOnly)
+      .listClarifications(parsedId, unansweredOnly)
       .then((resp) => setList(resp.clarifications))
       .catch((e) => setError(e));
-  }, [location.search]);
+  }, [props.client, teamId, unansweredOnly]);
   const onClarSubmit = (clar: ClarificationType) => {
     setList(list ? [clar, ...list] : [clar]);
   };

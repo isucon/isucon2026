@@ -7,6 +7,7 @@ namespace Isureal\Handler;
 use Isureal\Bytea;
 use Isureal\Database;
 use Isureal\Http\ApiError;
+use Isureal\Http\ActionLogEntry;
 use Isureal\Http\ErrorHandler;
 use Isureal\Http\Input;
 use Isureal\ImageSignature;
@@ -59,6 +60,7 @@ final readonly class ImageHandler
         ) ?? throw self::forbidden();
         $key = ImageSignature::signingKey($secretKeyHash);
         if (!hash_equals(ImageSignature::sign($key, $imageId, $expiresAt), $signature)) {
+            ActionLogEntry::of($request)->abuse = 'invalid_signature';
             throw self::forbidden();
         }
 

@@ -7,11 +7,16 @@ package testkit
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
+	"crypto/x509"
 	"database/sql"
+	"encoding/pem"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -92,20 +97,33 @@ func Reset(t *testing.T, conn *sql.DB) {
 // Config はテスト用の設定（テストモード有効・isucon14 由来のダミー secret）。
 func Config(t *testing.T) *config.Config {
 	t.Helper()
+	_, key, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	der, err := x509.MarshalPKCS8PrivateKey(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "admin.key")
+	if err := os.WriteFile(path, pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der}), 0600); err != nil {
+		t.Fatal(err)
+	}
 	return &config.Config{
-		PublicURLHost:     "portal.test.invalid",
-		Revision:          "test",
-		MaxTeams:          600,
-		BenchToken:        "token",
-		BypassTokenSecret: mustBase64(t, "5AQQyz/7oFnJYrxnq/HiLKYmh7QrdIrpCDpKlfvkYAg="), //gitleaks:allow isucon14 由来のダミー値
-		CheckerSecret:     mustBase64(t, "2RHAlLoifERG1EEc/5dwyzcZGitfUn1k9YkHTwk7HiRO"), //gitleaks:allow isucon14 由来のダミー値
-		SessionSecret:     "testkit-session-secret",
-		AvailabilityZones: []string{"apne1-az1", "apne1-az2", "apne1-az4"},
-		TestAMIID:         "ami-test",
-		ContestAMIID:      "ami-y",
-		AWSRegion:         "ap-northeast-1",
-		VAPIDSubject:      "isucon10@googlegroups.com",
-		TestMode:          true,
+		IsuconAdminSSHKeyPath: path,
+		PublicURLHost:         "portal.test.invalid",
+		Revision:              "test",
+		MaxTeams:              600,
+		BenchToken:            "token",
+		BypassTokenSecret:     mustBase64(t, "5AQQyz/7oFnJYrxnq/HiLKYmh7QrdIrpCDpKlfvkYAg="), //gitleaks:allow isucon14 由来のダミー値
+		CheckerSecret:         mustBase64(t, "2RHAlLoifERG1EEc/5dwyzcZGitfUn1k9YkHTwk7HiRO"), //gitleaks:allow isucon14 由来のダミー値
+		SessionSecret:         "testkit-session-secret",
+		AvailabilityZones:     []string{"apne1-az1", "apne1-az2", "apne1-az4"},
+		TestAMIID:             "ami-test",
+		ContestAMIID:          "ami-y",
+		AWSRegion:             "ap-northeast-1",
+		VAPIDSubject:          "isucon10@googlegroups.com",
+		TestMode:              true,
 	}
 }
 

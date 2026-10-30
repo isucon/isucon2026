@@ -1,6 +1,8 @@
 package cloudformation
 
 import (
+	"bytes"
+	"compress/gzip"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -14,24 +16,30 @@ type contestServer struct {
 }
 
 func (params) ContestServers() []contestServer {
-	return []contestServer{{1, "App1", "asia", "c7i.large"}, {2, "App2", "europe", "c7i.large"}, {3, "App3", "america", "c7i.large"}, {4, "Database", "", "c6in.large"}}
+	return []contestServer{{1, "App1", "asia", "c5.large"}, {2, "App2", "europe", "c7i.large"}, {3, "App3", "america", "c7i.large"}, {4, "Database", "", "c5.large"}}
 }
 func (p params) Registration(number int) string {
 	b, _ := json.Marshal(map[string]any{"host": p.PortalHost, "token": p.Token, "number": number})
 	return base64.StdEncoding.EncodeToString(b)
 }
-func (params) RegistrationScript() string {
-	b, err := templatesFS.ReadFile("files/register.py")
+func (params) RegistrationScript() string { return compressedFile("files/register.py") }
+func (params) RouterBootstrap() string    { return compressedFile("files/router-bootstrap.py") }
+
+// cloud-init write_files decodes gz+b64, keeping the downloadable template below
+// CloudFormation's 51,200-byte upload limit without modifying bootstrap scripts.
+func compressedFile(name string) string {
+	data, err := templatesFS.ReadFile(name)
 	if err != nil {
 		panic(err)
 	}
-	return base64.StdEncoding.EncodeToString(b)
-}
-func (params) RouterBootstrap() string {
-	b, err := templatesFS.ReadFile("files/router-bootstrap.py")
-	if err != nil {
+	var buf bytes.Buffer
+	writer := gzip.NewWriter(&buf)
+	if _, err := writer.Write(data); err != nil {
 		panic(err)
 	}
-	return base64.StdEncoding.EncodeToString(b)
+	if err := writer.Close(); err != nil {
+		panic(err)
+	}
+	return base64.StdEncoding.EncodeToString(buf.Bytes())
 }
 func (p params) AppHost() string { return fmt.Sprintf("app.team%d-aws.127.0.0.1.nip.io", p.TeamID) }

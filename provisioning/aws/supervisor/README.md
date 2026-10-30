@@ -6,7 +6,7 @@
 | 場所 | 管理対象 | Pulumi project | backend の末尾 |
 | --- | --- | --- | --- |
 | このディレクトリ | cluster、実行 role、ネットワーク、ECR、ログ、Router の接続設定、停止中の旧チーム別サービス | `isucon2026-trial-supervisor` | `/supervisor` |
-| [`pool/`](pool/README.md) | 共有プールの配備設定。ECS サービスとタスク定義の配備は ecspresso が担当 | `isucon2026-shared-supervisor` | `/shared-supervisor` |
+| [`pool/`](pool/README.md) | 共有プールの専用サブネット、ルートテーブル、配備設定。ECS サービスとタスク定義の配備は ecspresso が担当 | `isucon2026-shared-supervisor` | `/shared-supervisor` |
 
 両 project の既存 stack は `portal-dev`、backend のバケットは `isucon2026-pulumi-state-124502390568` です。
 各ディレクトリの `mise.toml` が backend を選びます。
@@ -110,6 +110,9 @@ make supervisor-photos                  # S3 の assets/merged.zip と assets/im
 make supervisor-image                   # linux/amd64 でビルドし、stack の ECR へ push して repository@digest を表示する
 make supervisor-image SUPERVISOR_STACK=portal-dev TAG=photos-20261027   # stack とタグを指定する例
 ```
+
+共有プール向けには `make supervisor-image SUPERVISOR_PLATFORM=linux/arm64` を使います。
+チーム別の旧タスクは X86_64 のため、既定の linux/amd64 を使います。
 
 `make supervisor-image`は`supervisor/Dockerfile`を`PHOTOS=archive`でビルドし、`var/photos/merged.zip`と`var/photos/image-digests-large.bin`を`/opt/isucon/photos/`に入れます。
 push先はstackの出力`repositoryUrl`（`REPOSITORY`で上書き可）、タグは省略するとイメージの内容から決め、同じタグがECRにあればpushを省きます。

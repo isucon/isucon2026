@@ -1148,6 +1148,64 @@ func (c *Client) PutProfileImage(ctx context.Context, token string, image []byte
 	return c.do(ctx, request{method: http.MethodPut, path: apiPrefix + "/me/profile-image", token: token, contentType: "image/jpeg", body: image, want: http.StatusNoContent}, nil)
 }
 
+// PutNonJPEGStream sends a 31 MiB non-JPEG file without buffering it in memory.
+// It advertises JPEG so the receiver must inspect the first bytes of the body.
+// The stream is intentionally slow enough that a receiver can reject it early.
+func (c *Client) PutNonJPEGStream(ctx context.Context, token string) error {
+	const path = apiPrefix + "/me/profile-image"
+	const streamSize = 31 << 20
+	reader, writer := io.Pipe()
+	defer reader.Close()
+	request, err := http.NewRequestWithContext(ctx, http.MethodPut, c.base+path, reader)
+	if err != nil {
+		return err
+	}
+	request.ContentLength = streamSize
+	if c.host != "" {
+		request.Host = c.host
+	}
+	if c.country != "" {
+		request.Header.Set("X-Country-Code", c.country)
+	}
+	if c.clientIP != "" {
+		request.Header.Set("X-Client-IP", c.clientIP)
+	}
+	request.Header.Set("Authorization", "Bearer "+token)
+	request.Header.Set("Content-Type", "image/jpeg")
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		defer writer.Close()
+		chunk := make([]byte, 64<<10)
+		copy(chunk, []byte{0, 0, 0, 24, 'f', 't', 'y', 'p', 'm', 'p', '4', '2'})
+		for sent := 0; sent < streamSize; sent += len(chunk) {
+			if _, err := writer.Write(chunk); err != nil {
+				return
+			}
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(time.Millisecond):
+			}
+		}
+	}()
+	response, err := c.http.Do(request)
+	_ = reader.Close()
+	<-done
+	if err != nil {
+		return &RequestError{Method: http.MethodPut, Path: path, Err: err}
+	}
+	defer response.Body.Close()
+	data, err := io.ReadAll(io.LimitReader(response.Body, maxErrorBodyBytes))
+	if err != nil {
+		return &RequestError{Method: http.MethodPut, Path: path, Err: err}
+	}
+	if response.StatusCode != http.StatusNoContent {
+		return &APIError{Method: http.MethodPut, Path: path, Status: response.StatusCode, Want: http.StatusNoContent, Code: problemCode(data), Attempts: 1}
+	}
+	return nil
+}
+
 func (c *Client) DeleteProfileImage(ctx context.Context, token string) error {
 	return c.do(ctx, request{method: http.MethodDelete, path: apiPrefix + "/me/profile-image", token: token, want: http.StatusNoContent}, nil)
 }

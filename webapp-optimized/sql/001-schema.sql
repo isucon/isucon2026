@@ -59,7 +59,8 @@ CREATE TABLE image_objects_202606 PARTITION OF image_objects FOR VALUES FROM ('2
 CREATE TABLE image_objects_202607 PARTITION OF image_objects FOR VALUES FROM ('2026-07-01 00:00:00+00') TO ('2026-08-01 00:00:00+00');
 CREATE TABLE image_objects_202608 PARTITION OF image_objects FOR VALUES FROM ('2026-08-01 00:00:00+00') TO ('2026-09-01 00:00:00+00');
 CREATE TABLE image_objects_202609 PARTITION OF image_objects FOR VALUES FROM ('2026-09-01 00:00:00+00') TO ('2026-10-01 00:00:00+00');
-CREATE TABLE image_objects_202610 PARTITION OF image_objects FOR VALUES FROM ('2026-10-01 00:00:00+00') TO ('2026-11-01 00:00:00+00');
+CREATE TABLE image_objects_202610 PARTITION OF image_objects FOR VALUES FROM ('2026-10-01 00:00:00+00') TO ('2026-10-28 06:00:00+00');
+CREATE TABLE image_objects_20261028 PARTITION OF image_objects FOR VALUES FROM ('2026-10-28 06:00:00+00') TO ('2026-11-01 00:00:00+00');
 CREATE TABLE image_objects_202611 PARTITION OF image_objects FOR VALUES FROM ('2026-11-01 00:00:00+00') TO ('2026-12-01 00:00:00+00');
 CREATE TABLE image_objects_202612 PARTITION OF image_objects FOR VALUES FROM ('2026-12-01 00:00:00+00') TO ('2027-01-01 00:00:00+00');
 CREATE TABLE image_objects_202701 PARTITION OF image_objects FOR VALUES FROM ('2027-01-01 00:00:00+00') TO ('2027-02-01 00:00:00+00');
@@ -228,12 +229,15 @@ CREATE TABLE comments (
 -- Versions of hot state changes pushed between the regional apps.
 CREATE SEQUENCE change_seq;
 
+-- The app writes the notifications of a window once, with IDs derived from
+-- the window and the user, so (user_id, posting_window_id) is unique by
+-- construction. The unique index of the original schema put every row of a
+-- window at a random leaf page (user IDs are random) of a cold 270 MB index.
 CREATE TABLE notifications (
   id varchar(36) PRIMARY KEY,
   user_id varchar(36) NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
   posting_window_id varchar(36) NOT NULL REFERENCES posting_windows(id) ON DELETE RESTRICT,
-  created_at timestamptz NOT NULL,
-  UNIQUE(user_id,posting_window_id)
+  created_at timestamptz NOT NULL
 );
 
 CREATE TABLE ip_bans (
@@ -271,7 +275,14 @@ CREATE INDEX posting_windows_date ON posting_windows(local_date, id);
 CREATE INDEX comments_post_page ON comments(post_id, created_at, id) WHERE deleted_at IS NULL;
 CREATE INDEX realmojis_post_page ON realmojis(post_id, created_at DESC, id DESC) WHERE replaced_at IS NULL AND deleted_at IS NULL;
 CREATE INDEX realmojis_image ON realmojis(image_id, reactor_id) INCLUDE (post_id, replaced_at, deleted_at);
-CREATE INDEX notifications_user_page ON notifications(user_id, created_at DESC, id DESC);
+-- The reset deletes the rows the load wrote by created_at; without these the
+-- deletes scan the history tables (about 5 s on the large data set).
+CREATE INDEX notifications_created ON notifications(created_at);
+-- The hot state reads the notified users of the open windows when it loads.
+CREATE INDEX notifications_window ON notifications(posting_window_id);
+CREATE INDEX comments_created ON comments(created_at);
+CREATE INDEX realmojis_created ON realmojis(created_at);
+CREATE INDEX posts_created ON posts(created_at);
 
 -- Database-side transactions for high-latency application connections.
 -- All routines are SECURITY INVOKER. Each call is one implicit transaction;
@@ -334,6 +345,15 @@ CREATE OR REPLACE FUNCTION opt_blocked(actor text,target text) RETURNS boolean
 LANGUAGE sql STABLE AS $$ SELECT EXISTS(SELECT 1 FROM block_relations
  WHERE (blocker_id=actor AND blocked_id=target) OR (blocker_id=target AND blocked_id=actor)) $$;
 
+-- Whether a row created at created belongs to the initial data. Without the
+-- snapshot (003-initial-snapshot.sql) there is no initial data.
+CREATE OR REPLACE FUNCTION opt_initial(created timestamptz) RETURNS boolean
+LANGUAGE plpgsql STABLE AS $$ DECLARE boundary timestamptz; BEGIN
+ IF to_regclass('initial_data_boundary') IS NULL THEN RETURN false; END IF;
+ EXECUTE 'SELECT created_at FROM initial_data_boundary' INTO boundary;
+ RETURN created<=boundary;
+END $$;
+
 CREATE OR REPLACE FUNCTION opt_access(actor text, target_post text, comment_mode boolean DEFAULT false) RETURNS boolean
 LANGUAGE plpgsql STABLE AS $$
 DECLARE p posts; w posting_windows; v users; author users; posted boolean; friend boolean; fof boolean;
@@ -349,9 +369,10 @@ BEGIN
  SELECT * INTO w FROM posting_windows WHERE id=p.posting_window_id;
  IF actor=p.author_id AND NOT comment_mode THEN RETURN true; END IF;
  IF w.ended_at IS NOT NULL THEN RETURN false; END IF;
- SELECT EXISTS(SELECT 1 FROM posts own JOIN posting_windows pw ON pw.id=own.posting_window_id
-  JOIN posting_windows current ON current.region=v.region AND current.ended_at IS NULL AND current.local_date=pw.local_date
-  WHERE own.author_id=actor AND own.deleted_at IS NULL) INTO posted;
+ SELECT EXISTS(SELECT 1 FROM posts own
+  WHERE own.author_id=actor AND own.deleted_at IS NULL AND own.posting_window_id IN (
+   SELECT pw.id FROM posting_windows pw JOIN posting_windows current ON current.local_date=pw.local_date
+   WHERE current.region=v.region AND current.ended_at IS NULL)) INTO posted;
  IF NOT posted THEN RETURN false; END IF;
  IF actor=p.author_id THEN RETURN true; END IF;
  IF opt_blocked(actor,p.author_id) THEN RETURN false; END IF;
@@ -414,7 +435,7 @@ BEGIN
   IF action='profile_image_delete' AND old_image IS NULL THEN PERFORM opt_fail(404,'account_not_found'); END IF;
   imageid:=NULL;
   IF action='profile_image_put' THEN
-   imageid:=gen_random_uuid()::text;
+   imageid:=coalesce(a->>'imageId',gen_random_uuid()::text);
    INSERT INTO image_objects(id,owner_user_id,data,media_type) VALUES(imageid,actor,image,'image/jpeg');
   END IF;
   UPDATE users SET profile_image_id=imageid,updated_at=clock_timestamp() WHERE id=actor;
@@ -434,12 +455,15 @@ BEGIN
     SELECT * INTO w FROM posting_windows WHERE region=u.region AND ended_at IS NULL FOR SHARE;
    END IF;
    IF NOT FOUND THEN PERFORM opt_fail(409,'post_slot_unavailable'); END IF;
+   -- Windows of the date first (3 at most), then the author's posts in them by
+   -- (author_id, posting_window_id): a join over all the author's posts costs
+   -- hundreds of probes for a user with a year of history.
    SELECT count(*) FILTER(WHERE pp.deleted_at IS NULL),count(*) FILTER(WHERE pp.deleted_at IS NOT NULL)
-    INTO active_count,deleted_count FROM posts pp JOIN posting_windows pw ON pw.id=pp.posting_window_id
-    WHERE pp.author_id=actor AND pw.local_date=w.local_date;
+    INTO active_count,deleted_count FROM posts pp
+    WHERE pp.author_id=actor AND pp.posting_window_id IN (SELECT id FROM posting_windows WHERE local_date=w.local_date);
    at_time:=clock_timestamp();
    IF active_count<>0 OR deleted_count>=2 OR at_time<w.starts_at THEN PERFORM opt_fail(409,'post_slot_unavailable'); END IF;
-   imageid:=gen_random_uuid()::text; newid:=gen_random_uuid()::text;
+   imageid:=coalesce(a->>'imageId',gen_random_uuid()::text); newid:=gen_random_uuid()::text;
    INSERT INTO image_objects(id,owner_user_id,data,media_type,created_at) VALUES(imageid,actor,image,'image/jpeg',at_time);
    INSERT INTO posts(id,author_id,posting_window_id,image_id,caption,visibility,location_kind,latitude,longitude,locality,posted_at)
     VALUES(newid,actor,w.id,imageid,a->>'caption',a->>'visibility',a->>'kind',
@@ -450,8 +474,9 @@ BEGIN
    IF p.author_id<>actor THEN PERFORM opt_fail(403,'post_not_editable'); END IF;
    SELECT * INTO w FROM posting_windows WHERE id=p.posting_window_id;
    IF action='post_delete' THEN
-    SELECT count(*) INTO deleted_count FROM posts pp JOIN posting_windows pw ON pw.id=pp.posting_window_id
-     WHERE pp.author_id=actor AND pw.local_date=w.local_date AND pp.deleted_at IS NOT NULL;
+    SELECT count(*) INTO deleted_count FROM posts pp
+     WHERE pp.author_id=actor AND pp.deleted_at IS NOT NULL
+      AND pp.posting_window_id IN (SELECT id FROM posting_windows WHERE local_date=w.local_date);
     IF deleted_count>=2 THEN PERFORM opt_fail(409,'post_slot_unavailable'); END IF;
     UPDATE posts SET deleted_at=clock_timestamp() WHERE id=p.id;
     RETURN '{}'::jsonb;
@@ -478,14 +503,14 @@ BEGIN
   newid:=gen_random_uuid()::text;
   IF action='comment_create' THEN
    INSERT INTO comments(id,post_id,author_id,body,created_at) VALUES(newid,p.id,actor,a->>'body',clock_timestamp()) RETURNING * INTO c;
-   RETURN jsonb_build_object('user',result,'comment',opt_comment(c));
+   RETURN jsonb_build_object('user',result,'comment',opt_comment(c),'initialPost',opt_initial(p.created_at));
   END IF;
   UPDATE realmojis SET replaced_at=clock_timestamp() WHERE post_id=p.id AND reactor_id=actor AND replaced_at IS NULL AND deleted_at IS NULL;
-  imageid:=gen_random_uuid()::text;
+  imageid:=coalesce(a->>'imageId',gen_random_uuid()::text);
   INSERT INTO image_objects(id,owner_user_id,data,media_type) VALUES(imageid,actor,image,'image/jpeg');
   INSERT INTO realmojis(id,post_id,reactor_id,image_id,reaction_type,created_at)
    VALUES(newid,p.id,actor,imageid,a->>'reactionType',clock_timestamp()) RETURNING * INTO r;
-  RETURN jsonb_build_object('user',result,'reaction',opt_reaction(r));
+  RETURN jsonb_build_object('user',result,'reaction',opt_reaction(r),'initialPost',opt_initial(p.created_at));
  ELSIF action IN ('comment_delete','reaction_delete') THEN
   PERFORM id FROM users WHERE id=actor FOR NO KEY UPDATE;
   IF action='comment_delete' THEN
@@ -500,8 +525,9 @@ BEGIN
    SELECT author_id INTO target FROM posts WHERE id=r.post_id;
    IF actor<>r.reactor_id AND actor<>target THEN PERFORM opt_fail(403,'interaction_forbidden'); END IF;
    UPDATE realmojis SET deleted_at=clock_timestamp() WHERE id=r.id;
+   RETURN jsonb_build_object('reaction',opt_reaction(r),'initialPost',(SELECT opt_initial(pp.created_at) FROM posts pp WHERE pp.id=r.post_id));
   END IF;
-  RETURN '{}'::jsonb;
+  RETURN jsonb_build_object('comment',opt_comment(c),'initialPost',(SELECT opt_initial(pp.created_at) FROM posts pp WHERE pp.id=c.post_id));
  ELSIF action='friend_transition' THEN
   SELECT * INTO req FROM friend_requests WHERE id=a->>'id';
   IF NOT FOUND THEN PERFORM opt_fail(404,'relationship_not_found'); END IF;

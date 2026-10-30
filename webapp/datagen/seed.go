@@ -106,7 +106,7 @@ func writeSeed(out io.Writer, world *dataset.World) (seedStats, error) {
 	}
 
 	c.copy("administrators", []string{"id", "username", "password_hash", "created_at"}, func(row func(...any)) {
-		row(dataset.AdministratorID, dataset.AdministratorUsername, dataset.HashCredential(dataset.AdministratorPassword), world.Config.EndDate)
+		row(dataset.AdministratorID, dataset.AdministratorUsername, dataset.HashCredential(dataset.AdministratorPassword), world.HistoryStart().AddDate(-1, 0, 0))
 	})
 	// users.profile_image_id と image_objects.owner_user_id は互いを参照するので、ユーザーを
 	// プロフィール画像なしで入れ、画像を入れたあとで紐づける。

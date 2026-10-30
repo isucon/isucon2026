@@ -22,7 +22,7 @@ type EvilEnv struct {
 	Dataset *dataset.World
 	// NextIP は正常なユーザーと同じ割り当てから、使っていない IP アドレスを返す。
 	NextIP func() string
-	// Seed は走行の乱数の種。同じ種なら同じ時刻・同じ検索語で動く。
+	// Seed は走行の乱数の種。同じ種なら同じ登場時刻・ログイン頻度で動く。
 	Seed uint64
 	// Start は負荷走行の時計が動き始めた時刻、Length は走行の長さ。
 	Start  time.Time

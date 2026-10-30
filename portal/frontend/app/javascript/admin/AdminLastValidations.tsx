@@ -1,3 +1,4 @@
+import { parseTeamIds } from "../IdInput";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import type { GetCurrentSessionResponse } from "../../../proto/isuxportal/services/common/me_pb";
 import type { AdminApiClient } from "./AdminApiClient";
@@ -33,13 +34,11 @@ export const AdminLastValidations: React.FC<Props> = (props: Props) => {
 
 const CommandTriggerForm = (props: { client: AdminApiClient }) => {
   const [rawTeamIds, setRawTeamIds] = useState("");
-  const teamIds = useMemo(
-    () => (rawTeamIds.trim() === "" ? [] : rawTeamIds.split(",").map((v) => BigInt(v.trim()))),
-    [rawTeamIds],
-  );
+  const teamIds = useMemo(() => parseTeamIds(rawTeamIds), [rawTeamIds]);
 
   const [triggerEnvCheckResult, setTriggerEnvCheckResult] = React.useState<true | Error | null>(null);
   const triggerEnvCheckClick = useCallback(async () => {
+    if (teamIds === null) return;
     if (teamIds.length === 0 && !confirm("全チームに実行しますか？")) {
       return;
     }
@@ -48,6 +47,7 @@ const CommandTriggerForm = (props: { client: AdminApiClient }) => {
 
   const [triggerInstanceRestartResult, setTriggerInstanceRestartResult] = React.useState<true | Error | null>(null);
   const triggerInstanceRestartClick = useCallback(async () => {
+    if (teamIds === null) return;
     if (teamIds.length === 0 && !confirm("全チームに実行しますか？")) {
       return;
     }
@@ -56,6 +56,7 @@ const CommandTriggerForm = (props: { client: AdminApiClient }) => {
 
   const [triggerBenchmarksResult, setTriggerBenchmarksResult] = React.useState<true | Error | null>(null);
   const triggerBenchmarksClick = useCallback(async () => {
+    if (teamIds === null) return;
     if (teamIds.length === 0 && !confirm("全チームに実行しますか？")) {
       return;
     }
@@ -66,6 +67,7 @@ const CommandTriggerForm = (props: { client: AdminApiClient }) => {
     true | Error | null
   >(null);
   const triggerPostValidationBenchmarksClick = useCallback(async () => {
+    if (teamIds === null) return;
     if (teamIds.length === 0 && !confirm("全チームに実行しますか？")) {
       return;
     }
@@ -78,7 +80,7 @@ const CommandTriggerForm = (props: { client: AdminApiClient }) => {
         <form>
           <div className="columns">
             <div className="column is-3 field">
-              <label className="label" htmlFor="AdminLastValidationsCommandTriggerForm-teamId">
+              <label className="label" htmlFor="AdminLastValidationsCommandTriggerForm-teamIds">
                 Team IDs
               </label>
               <div className="control">
@@ -87,12 +89,15 @@ const CommandTriggerForm = (props: { client: AdminApiClient }) => {
                   type="text"
                   id="AdminLastValidationsCommandTriggerForm-teamIds"
                   placeholder="空の場合は全チームが対象になります。例) 1,2,3"
+                  value={rawTeamIds}
+                  aria-invalid={teamIds === null}
                   onChange={(e) => setRawTeamIds(e.target.value)}
                 />
               </div>
             </div>
             <div className="column is-3 field">
               <TriggerButton
+                disabled={teamIds === null}
                 buttonLabel="Trigger Env Check"
                 func={triggerEnvCheckClick}
                 first
@@ -100,18 +105,21 @@ const CommandTriggerForm = (props: { client: AdminApiClient }) => {
                 setResult={setTriggerEnvCheckResult}
               />
               <TriggerButton
+                disabled={teamIds === null}
                 buttonLabel="Trigger Instance Restart"
                 func={triggerInstanceRestartClick}
                 result={triggerInstanceRestartResult}
                 setResult={setTriggerInstanceRestartResult}
               />
               <TriggerButton
+                disabled={teamIds === null}
                 buttonLabel="Trigger Benchmarks"
                 func={triggerBenchmarksClick}
                 result={triggerBenchmarksResult}
                 setResult={setTriggerBenchmarksResult}
               />
               <TriggerButton
+                disabled={teamIds === null}
                 buttonLabel="Trigger Post Validation Benchmarks"
                 func={triggerPostValidationBenchmarksClick}
                 result={triggerPostValidationBenchmarksResult}
@@ -119,6 +127,11 @@ const CommandTriggerForm = (props: { client: AdminApiClient }) => {
               />
             </div>
           </div>
+          {teamIds === null && (
+            <p className="help is-danger" role="alert">
+              Team IDs は正の整数（int64 の範囲）をカンマで区切って入力してください。
+            </p>
+          )}
           {triggerEnvCheckResult !== true && triggerEnvCheckResult ? (
             <ErrorMessage error={triggerEnvCheckResult} />
           ) : null}
@@ -141,19 +154,21 @@ const TriggerButton = ({
   buttonLabel,
   func,
   first = false,
+  disabled = false,
   result,
   setResult,
 }: {
   buttonLabel: string;
   func: () => Promise<void>;
   first?: boolean;
+  disabled?: boolean;
   result: true | Error | null;
   setResult: (e: true | Error | null) => void;
 }) => {
   const [requesting, setRequesting] = React.useState(false);
 
   const onClick = useCallback(async () => {
-    if (requesting) return;
+    if (requesting || disabled) return;
 
     setRequesting(true);
     try {
@@ -164,11 +179,11 @@ const TriggerButton = ({
     } finally {
       setRequesting(false);
     }
-  }, [requesting, func]);
+  }, [requesting, disabled, func]);
 
   return (
     <div className={`is-flex is-align-items-center ${first ? "" : "mt-1"}`}>
-      <button className="button is-light" type="button" disabled={requesting} onClick={onClick}>
+      <button className="button is-light" type="button" disabled={requesting || disabled} onClick={onClick}>
         {buttonLabel}
       </button>
       {result === true ? (

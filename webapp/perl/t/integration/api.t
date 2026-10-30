@@ -67,12 +67,14 @@ subtest 'profile' => sub {
     }
     $t->put_ok('/api/me/profile-image' => { bearer($bob->{token})->%*, 'Content-Type' => 'image/jpeg' } => jpeg_data(512))
         ->status_is(204);
-    my $jpeg = jpeg_data(100);
+    my $jpeg = jpeg_data(256);
     $t->put_ok('/api/me/profile-image' => { bearer($bob->{token})->%*, 'Content-Type' => 'image/jpeg' } => $jpeg)->status_is(204);
     $t->get_ok('/api/me' => bearer($bob->{token}))->status_is(200);
     my $url = $t->tx->res->json('/profileImageUrl');
     like $url, qr{\A/api/images/[0-9a-f-]{36}\?exp=\d+&sig=[A-Za-z0-9_-]{43}\z};
-    $t->get_ok($url)->status_is(200)->content_is($jpeg)->header_is('Cache-Control' => 'no-store');
+    my $tx = $t->ua->build_tx(GET => $url => { 'Accept-Encoding' => 'gzip' });
+    $tx->res->content->auto_decompress(0);
+    $t->request_ok($tx)->status_is(200)->content_is($jpeg)->header_is('Cache-Control' => 'no-store');
     $t->delete_ok('/api/me/profile-image' => bearer($bob->{token}))->status_is(204);
     $t->get_ok($url)->status_is(403);
 };

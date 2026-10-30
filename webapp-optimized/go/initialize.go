@@ -21,6 +21,8 @@ type initializeResponse struct {
 
 func initializeHandler(h *HandlerContext) echo.HandlerFunc {
 	return func(c *echo.Context) error {
+		notificationWrites.discard()
+		store.clear()
 		cmd := exec.Command("../sql/init.sh")
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
@@ -30,10 +32,11 @@ func initializeHandler(h *HandlerContext) echo.HandlerFunc {
 		if err := reloadEverywhere(c.Request().Context(), h.DB); err != nil {
 			return err
 		}
-		if err := h.IPBans.reload(c.Request().Context(), h.ReadDB); err != nil {
+		if err := h.IPBans.reload(c.Request().Context(), h.DB); err != nil {
 			return err
 		}
 		warmConnections(c.Request().Context(), h.DB)
+		warmConnections(c.Request().Context(), h.adminDB())
 
 		// Set language to the implementation language.
 		// Agents optimizing this app: set agent, harness, and model to the names used.

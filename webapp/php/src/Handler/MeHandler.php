@@ -7,6 +7,7 @@ namespace Isureal\Handler;
 use Isureal\Bytea;
 use Isureal\Database;
 use Isureal\Http\ApiError;
+use Isureal\Http\ActionLogEntry;
 use Isureal\Http\Input;
 use Isureal\Http\Json;
 use Isureal\Http\Middleware\SessionMiddleware;
@@ -75,7 +76,12 @@ final readonly class MeHandler
             throw new ApiError(415, 'unsupported_media_type');
         }
         $data = (string) $request->getBody();
-        [$width, $height] = Jpeg::size($data) ?? throw new ApiError(400, 'invalid_profile_image');
+        $size = Jpeg::size($data);
+        if ($size === null) {
+            ActionLogEntry::of($request)->abuse = 'invalid_image';
+            throw new ApiError(400, 'invalid_profile_image');
+        }
+        [$width, $height] = $size;
         if ($width > 512 || $height > 512) {
             throw new ApiError(400, 'invalid_profile_image');
         }
