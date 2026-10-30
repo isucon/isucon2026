@@ -216,3 +216,8 @@ if (runtime.initialHistoryExportEnabled !== undefined && typeof runtime.initialH
 if (runtime.initialHistoryExportEnabled && !runtime.initialHistoryEnabled) {
     throw new Error("Initial export requires the initial history snapshot");
 }
+
+const memoryPoolConnections = runtime.memoryPoolConnections ?? 0;
+if (!Number.isInteger(memoryPoolConnections) || memoryPoolConnections < 0 || memoryPoolConnections > 16) {
+    throw new Error("Invalid memory pool capacity");
+}

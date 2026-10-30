@@ -30,3 +30,31 @@ pub fn metadata_connections() -> u32 {
     );
     connections
 }
+
+/// Keep short memory reads out of the feed/search connection queue. Clone the
+/// same connection options, including the selected replica and search path.
+pub async fn memory_context(
+    context: &std::sync::Arc<crate::server::HandlerContext>,
+    connections: u32,
+) -> Result<std::sync::Arc<crate::server::HandlerContext>, sqlx::Error> {
+    assert!(connections <= 16, "memory pool must have 0–16 connections");
+    if connections == 0 {
+        return Ok(context.clone());
+    }
+    let db = options(connections)
+        .connect_with(
+            (*context.db.connect_options())
+                .clone()
+                .application_name("astra_memory"),
+        )
+        .await?;
+    Ok(std::sync::Arc::new(crate::server::HandlerContext {
+        db,
+        config: context.config.clone(),
+        ip_bans: Default::default(),
+        notifications: Default::default(),
+        notification_batch_writes: context.notification_batch_writes,
+        read_fence: context.read_fence.clone(),
+        image_store: context.image_store.clone(),
+    }))
+}
