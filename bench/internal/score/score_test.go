@@ -87,7 +87,7 @@ func TestBoardCells(t *testing.T) {
 	want := []score.Cell{
 		{Region: "asia", Day: 1, Tag: score.TagFeed, Count: 2, Points: 2},
 		{Region: "asia", Day: 2, Tag: score.TagRealMoji, Count: 1, Points: 5},
-		{Region: "europe", Day: 2, Tag: score.TagGatePass, Count: 1, Points: 10},
+		{Region: "europe", Day: 2, Tag: score.TagGatePass, Count: 1, Points: 15},
 	}
 	if len(cells) != len(want) {
 		t.Fatalf("cells=%+v", cells)
@@ -103,7 +103,31 @@ func TestBoardCells(t *testing.T) {
 	if got := board.DayPoints("america", 1); got != 0 {
 		t.Fatalf("DayPoints(america, 1)=%d", got)
 	}
-	if board.Total() != 17 {
+	if got := board.DayPoints("europe", 2); got != 15 {
+		t.Fatalf("DayPoints(europe, 2)=%d", got)
+	}
+	if board.Total() != 22 {
 		t.Fatalf("Total=%d", board.Total())
+	}
+}
+
+// 海外の得点は 1.5 倍にし、端数は合計で 1 回だけ切り捨てる。
+func TestBoardRegionMultiplier(t *testing.T) {
+	board := score.NewBoard(nil)
+	board.Add(score.TagFeed, "asia", 1)    // 1
+	board.Add(score.TagFeed, "europe", 1)  // 1.5
+	board.Add(score.TagFeed, "america", 1) // 1.5
+	if got := board.Total(); got != 4 {
+		t.Fatalf("Total=%d, want 4", got)
+	}
+	board.Add(score.TagFeed, "europe", 1) // europe 3
+	if got := board.Total(); got != 5 {
+		t.Fatalf("Total=%d, want 5", got)
+	}
+	if got := board.DayPoints("europe", 1); got != 3 {
+		t.Fatalf("DayPoints(europe, 1)=%d, want 3", got)
+	}
+	if got := board.DayPoints("america", 1); got != 1 {
+		t.Fatalf("DayPoints(america, 1)=%d, want 1", got)
 	}
 }
