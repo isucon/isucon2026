@@ -148,6 +148,10 @@ func (r *Runner) requestFriend(ctx context.Context, u *user, target *user, searc
 		if r.model.Visible(u.ID, target.ID, r.model.ReadBetween(sent, time.Now())) == model.True {
 			r.invalid(ctx, u, "%s: 有効なユーザー %s への友達申請が 404 になりました", u.Username, target.Username)
 		}
+	case err == nil && request.RelationID == "" || err == nil && request.Status != "pending" && request.Status != "accepted":
+		// 申請ができたのか、友達になったのかわからない。
+		w.Unknown()
+		r.invalid(ctx, u, "%s: %s への友達申請の応答が不正です（relationId %q、status %q）", u.Username, target.Username, request.RelationID, request.Status)
 	case err == nil && request.Status == "accepted":
 		w.Applied()
 		r.addFriendship(u.ID, target.ID)
@@ -218,9 +222,17 @@ func (r *Runner) cancelRequest(ctx context.Context, u *user) {
 	}
 	request := page.Items[len(page.Items)-1]
 	closing := r.model.BeginCloseFriendRequest(request.RelationID)
-	_, err = u.API.TransitionFriendRequest(client.MayFailWith(ctx, http.StatusForbidden, http.StatusNotFound), u.Token, request.RelationID, "cancel")
-	settleRetried(closing, err)
+	result, err := u.API.TransitionFriendRequest(client.MayFailWith(ctx, http.StatusForbidden, http.StatusNotFound), u.Token, request.RelationID, "cancel")
+	malformed := err == nil && (result.RelationID != request.RelationID || result.Status != "cancelled")
+	if malformed {
+		// 取り下げられたのかわからない。
+		closing.Unknown()
+	} else {
+		settleRetried(closing, err)
+	}
 	switch {
+	case malformed:
+		r.invalid(ctx, u, "%s: 友達申請 %s を取り下げた応答が不正です（relationId %q、status %q）", u.Username, request.RelationID, result.RelationID, result.Status)
 	case err == nil:
 		r.award(u, r.dayNow(u.Region), score.TagFriendDecline)
 	case isStatus(err, http.StatusForbidden) || isStatus(err, http.StatusNotFound):
