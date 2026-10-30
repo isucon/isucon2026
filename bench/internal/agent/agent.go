@@ -52,6 +52,9 @@ func (a *Agent) Register(ctx context.Context, username, displayName string) erro
 	if registered.ID == "" || registered.SecretKey == "" {
 		return invalidResponse("%s の登録の応答にユーザー ID かシークレットキーがありません", username)
 	}
+	if registered.Username != username {
+		return invalidResponse("%s の登録の応答のユーザー名が違います", username)
+	}
 	a.ID, a.Username, a.SecretKey = registered.ID, username, registered.SecretKey
 	return a.Login(ctx)
 }
