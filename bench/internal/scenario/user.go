@@ -522,7 +522,9 @@ func (r *Runner) checkCurrentWindow(ctx context.Context, u *user, windowID strin
 		r.invalid(ctx, u, "%s: 今の投稿期間 %s の内容が開いた投稿期間と違います（リージョン %s、日付 %s、開始 %s）", u.Username, w.ID, w.Region, w.LocalDate, w.StartsAt.Format(time.RFC3339Nano))
 		return false
 	}
-	if !status.CanPost || status.HasPosted {
+	// hasPosted の意味（削除した投稿を含むか）は参加者向けの文書にないので、canPost だけで
+	// 判断する。canPost が真なのにもう投稿していれば、投稿の 409 で確かめる。
+	if !status.CanPost {
 		if r.model.PostSlot(u.ID, windowID, read) == model.True {
 			r.invalid(ctx, u, "%s: 投稿していない投稿期間 %s で投稿できないと返りました（canPost %t、hasPosted %t）", u.Username, windowID, status.CanPost, status.HasPosted)
 		}
