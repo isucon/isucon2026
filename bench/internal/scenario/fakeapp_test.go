@@ -539,7 +539,8 @@ func (a *fakeApp) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		case a.users[path[1]] == nil || a.users[path[1]].deleted:
 			fail(http.StatusNotFound, "relationship_not_found")
 		case method == http.MethodDelete && !a.blocks[pair]:
-			fail(http.StatusConflict, "relationship_conflict")
+			// アプリと同じく、ブロックしていない相手の解除は 403。
+			fail(http.StatusForbidden, "relationship_action_forbidden")
 		case method == http.MethodDelete:
 			delete(a.blocks, pair)
 			respond(http.StatusNoContent, nil)

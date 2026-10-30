@@ -460,6 +460,16 @@ func (m *Model) Blocked(a, b string, r Read) Tri {
 	return m.blockedTri(a, b, r)
 }
 
+// Blocking は blocker が blocked をブロックしているか（向きあり）。
+func (m *Model) Blocking(blocker, blocked string, r Read) Tri {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	if tl := m.blocks[[2]string{blocker, blocked}]; tl != nil {
+		return boolTri(tl, r)
+	}
+	return False
+}
+
 // Following は follower が followee をフォローしているか。
 func (m *Model) Following(follower, followee string, r Read) Tri {
 	m.mu.RLock()
