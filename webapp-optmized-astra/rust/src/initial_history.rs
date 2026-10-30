@@ -38,6 +38,8 @@ struct HistoryPost {
     posted_at: DateTime<Utc>,
     deadline: DateTime<Utc>,
     date: NaiveDate,
+    asset_key: Option<Box<str>>,
+    asset_seen: bool,
     comments: Vec<HistoryComment>,
     reactions: Vec<HistoryReaction>,
 }
@@ -59,10 +61,21 @@ pub struct InitialHistory {
     authors: HashMap<String, Vec<HistoryPost>>,
     hits: AtomicU64,
     fallbacks: AtomicU64,
+    export_enabled: bool,
+    export_hits: AtomicU64,
+    export_fallbacks: AtomicU64,
 }
 
 impl InitialHistory {
     pub async fn load(db: &PgPool, region: &str) -> Result<Self, Error> {
+        Self::load_with_export(db, region, false).await
+    }
+
+    pub async fn load_with_export(
+        db: &PgPool,
+        region: &str,
+        export_enabled: bool,
+    ) -> Result<Self, Error> {
         let started = std::time::Instant::now();
         let mut tx = db.begin().await?;
         sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY")
@@ -103,6 +116,8 @@ impl InitialHistory {
                     posted_at: p.posted_at,
                     deadline: p.on_time_deadline,
                     date: row.try_get("local_date")?,
+                    asset_key: None,
+                    asset_seen: false,
                     comments: Vec::new(),
                     reactions: Vec::new(),
                 });
@@ -143,6 +158,32 @@ impl InitialHistory {
                 }
             }
         }
+        if export_enabled {
+            let mut by_image = HashMap::new();
+            for (owner, posts) in &authors {
+                for (index, post) in posts.iter().enumerate() {
+                    by_image
+                        .entry(post.image)
+                        .and_modify(|entry| *entry = None)
+                        .or_insert(Some((owner.clone(), index)));
+                }
+            }
+            let mut rows = sqlx::query("SELECT i.id,i.asset_key,i.created_at<=(SELECT created_at FROM initial_data_boundary) AS initial FROM image_objects i JOIN posts p ON p.image_id=i.id JOIN initial_users u ON u.id=p.author_id WHERE u.region=$1 AND p.deleted_at IS NULL AND p.created_at<=(SELECT created_at FROM initial_data_boundary)").bind(region).fetch(&mut *tx);
+            while let Some(row) = rows.try_next().await? {
+                let id =
+                    Uuid::parse_str(row.try_get::<&str, _>("id")?).map_err(anyhow::Error::from)?;
+                if let Some(Some((owner, index))) = by_image.get(&id) {
+                    let post = &mut authors.get_mut(owner).unwrap()[*index];
+                    post.asset_key = if post.asset_seen || !row.try_get::<bool, _>("initial")? {
+                        None
+                    } else {
+                        row.try_get::<Option<String>, _>("asset_key")?
+                            .map(Into::into)
+                    };
+                    post.asset_seen = true;
+                }
+            }
+        }
         tx.commit().await?;
         let posts: usize = authors.values().map(Vec::len).sum();
         let comments: usize = authors.values().flatten().map(|p| p.comments.len()).sum();
@@ -156,11 +197,14 @@ impl InitialHistory {
             authors,
             hits: AtomicU64::new(0),
             fallbacks: AtomicU64::new(0),
+            export_enabled,
+            export_hits: AtomicU64::new(0),
+            export_fallbacks: AtomicU64::new(0),
         })
     }
 
     pub fn metrics(&self) -> serde_json::Value {
-        serde_json::json!({"metric":"initial_history", "hits":self.hits.load(Ordering::Relaxed),"fallbacks":self.fallbacks.load(Ordering::Relaxed)})
+        serde_json::json!({"metric":"initial_history", "hits":self.hits.load(Ordering::Relaxed),"fallbacks":self.fallbacks.load(Ordering::Relaxed),"export_hits":self.export_hits.load(Ordering::Relaxed),"export_fallbacks":self.export_fallbacks.load(Ordering::Relaxed)})
     }
     pub fn observe(self: &Arc<Self>) {
         let weak = Arc::downgrade(self);
@@ -171,6 +215,61 @@ impl InitialHistory {
                 eprintln!("{}", cache.metrics());
             }
         });
+    }
+
+    /// Reject unsupported owners before acquiring a database connection.
+    pub fn can_export(&self, owner: &str) -> bool {
+        if !self.export_enabled {
+            return false;
+        }
+        let available = self
+            .authors
+            .get(owner)
+            .is_some_and(|posts| posts.iter().all(|p| p.asset_key.is_some()));
+        if !available {
+            self.export_fallbacks.fetch_add(1, Ordering::Relaxed);
+        }
+        available
+    }
+
+    /// Return the current author and unchanged initial post metadata. The
+    /// caller must still read post-boundary posts freshly and merge their rows.
+    pub async fn export(
+        &self,
+        db: &mut PgConnection,
+        owner: &str,
+    ) -> Result<Option<(User, Vec<(Post, String)>)>, Error> {
+        if !self.can_export(owner) {
+            return Ok(None);
+        }
+        let posts = &self.authors[owner];
+        let query = format!(
+            "SELECT {} FROM users u WHERE u.id=$1 AND u.status='active' AND EXISTS(SELECT 1 FROM astra_initial_history_epoch WHERE singleton AND epoch=$2) AND NOT EXISTS(SELECT 1 FROM astra_initial_export_dirty WHERE owner_id=$1)",
+            USER_COLUMNS
+                .iter()
+                .map(|c| format!("u.{c}"))
+                .collect::<Vec<_>>()
+                .join(",")
+        );
+        let Some(mut author) = sqlx::query_as::<_, User>(&query)
+            .bind(owner)
+            .bind(&self.epoch)
+            .fetch_optional(&mut *db)
+            .await?
+        else {
+            self.export_fallbacks.fetch_add(1, Ordering::Relaxed);
+            return Ok(None);
+        };
+        author.set_image_key()?;
+        self.export_hits.fetch_add(1, Ordering::Relaxed);
+        Ok(Some((
+            author,
+            posts
+                .iter()
+                .rev()
+                .map(|p| (p.post(owner), p.asset_key.as_ref().unwrap().to_string()))
+                .collect(),
+        )))
     }
 
     pub async fn memories(
@@ -257,23 +356,7 @@ impl InitialHistory {
             items: Vec::with_capacity(page.len().min(50)),
         };
         for p in page.into_iter().take(50) {
-            let post = Post {
-                id: p.id.to_string(),
-                author_id: owner.into(),
-                posting_window_id: p.window.to_string(),
-                image_id: p.image.to_string(),
-                caption: p.caption.to_string(),
-                visibility: p.visibility.to_string(),
-                post_location: PostLocation {
-                    kind: p.kind.to_string(),
-                    latitude: p.latitude,
-                    longitude: p.longitude,
-                    locality: p.locality.as_deref().map(str::to_owned),
-                },
-                posted_at: p.posted_at,
-                on_time_deadline: p.deadline,
-                window_ended_at: None,
-            };
+            let post = p.post(owner);
             let mut item = MemoryPostResponse {
                 create_post_response: new_post_response(&post, author),
                 comments: Vec::new(),
@@ -320,5 +403,27 @@ impl InitialHistory {
             response.items.push(item);
         }
         Ok(Some(response))
+    }
+}
+
+impl HistoryPost {
+    fn post(&self, owner: &str) -> Post {
+        Post {
+            id: self.id.to_string(),
+            author_id: owner.into(),
+            posting_window_id: self.window.to_string(),
+            image_id: self.image.to_string(),
+            caption: self.caption.to_string(),
+            visibility: self.visibility.to_string(),
+            post_location: PostLocation {
+                kind: self.kind.to_string(),
+                latitude: self.latitude,
+                longitude: self.longitude,
+                locality: self.locality.as_deref().map(str::to_owned),
+            },
+            posted_at: self.posted_at,
+            on_time_deadline: self.deadline,
+            window_ended_at: None,
+        }
     }
 }
