@@ -452,14 +452,22 @@ func (c *Client) attempts(ctx context.Context, r request, record *Record) ([]byt
 		if response.StatusCode == http.StatusServiceUnavailable {
 			record.Saw503 = true
 		}
-		data, err := io.ReadAll(io.LimitReader(response.Body, maxBody))
+		// 上限より 1 バイト多く読み、上限を超える本体を切り詰めたまま使わない。
+		data, err := io.ReadAll(io.LimitReader(response.Body, maxBody+1))
 		_ = response.Body.Close()
 		if err != nil {
 			// 本体の読み取りの時間切れや切断は、応答を受け取れなかったのと同じ扱いにする。
 			return nil, requestFailure(r, fmt.Errorf("応答の本体を読めません: %w", err))
 		}
+		oversized := int64(len(data)) > maxBody
+		if oversized {
+			data = data[:maxBody]
+		}
 		if response.StatusCode != r.want {
 			return nil, &APIError{Method: r.method, Path: r.path, Status: response.StatusCode, Want: r.want, Code: problemCode(data), Attempts: record.Attempts}
+		}
+		if oversized {
+			return nil, &BodyError{Method: r.method, Path: r.path, Err: fmt.Errorf("応答の本体が上限の %d バイトを超えています", maxBody)}
 		}
 		if sum := response.Header.Get("X-Body-Sha256"); r.sha256 && sum != "" {
 			digest, err1 := hex.DecodeString(sum)
@@ -520,6 +528,20 @@ func (e *RequestError) Unwrap() error { return e.Err }
 func requestFailure(r request, err error) error {
 	return &RequestError{Method: r.method, Path: r.path, Err: err}
 }
+
+// BodyError は、期待どおりのステータスで届いた応答の本体が不正だったこと（上限より大きい、
+// JSON として読めない）。通信の失敗と同じく、Observer が操作の失敗として数える。
+type BodyError struct {
+	Method string
+	Path   string
+	Err    error
+}
+
+func (e *BodyError) Error() string {
+	return fmt.Sprintf("%s %s: %v", e.Method, e.Path, e.Err)
+}
+
+func (e *BodyError) Unwrap() error { return e.Err }
 
 func sleep(ctx context.Context, wait time.Duration) error {
 	if wait <= 0 {
