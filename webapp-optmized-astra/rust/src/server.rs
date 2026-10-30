@@ -318,6 +318,11 @@ pub async fn new_server(config: Config) -> Router {
         history.observe();
         Some(history)
     } else { None };
+    let initial_post_images = if std::env::var("ISUREAL_INITIAL_POST_IMAGES").as_deref() == Ok("1") && WriteIngress::from_env().is_none() {
+        let cache = Arc::new(crate::initial_post_images::InitialPostImages::load(&general_reads.db, &handler_context.config.region).await.expect("load initial post images"));
+        cache.observe();
+        Some(cache)
+    } else { None };
     let graph = if std::env::var("ISUREAL_INITIAL_GRAPH").as_deref() == Ok("1") && WriteIngress::from_env().is_none() {
         Some(Arc::new(crate::initial_graph::InitialGraph::load(&read_context.db).await.expect("load initial graph")))
     } else { None };
@@ -416,6 +421,7 @@ pub async fn new_server(config: Config) -> Router {
     let server = if let Some(policy) = primary_sessions { server.layer(axum::Extension(policy)) } else { server };
     let server = if let Some(graph) = graph { server.layer(axum::Extension(graph)) } else { server };
     let server = if let Some(history) = history { server.layer(axum::Extension(history)) } else { server };
+    let server = if let Some(cache) = initial_post_images { server.layer(axum::Extension(cache)) } else { server };
 
     let server = if let Some(cache) = &session_cache {
         server.layer(crate::session_cache::layer(cache.clone()))

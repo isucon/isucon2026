@@ -27,6 +27,9 @@ print('ISUREAL_INITIAL_HISTORY='+str(int(history)))
 history_export=runtime.get('initialHistoryExportEnabled',False)
 assert type(history_export) is bool
 print('ISUREAL_INITIAL_HISTORY_EXPORT='+str(int(history_export)))
+initial_images=runtime.get('initialPostImagesEnabled',False)
+assert type(initial_images) is bool
+print('ISUREAL_INITIAL_POST_IMAGES='+str(int(initial_images)))
 memory_pool=runtime.get('memoryPoolConnections',0)
 assert type(memory_pool) is int and 0 <= memory_pool <= 16
 print('ISUREAL_MEMORY_POOL_CONNECTIONS='+str(memory_pool))
