@@ -29,6 +29,24 @@ def triggered(workflow, event, branch, path):
 
 
 class WorkflowRoutingTest(unittest.TestCase):
+    def test_portal_and_supervisor_pull_from_mirror(self):
+        for job in workflows()["portal-ci.yml"]["jobs"].values():
+            for service in job.get("services", {}).values():
+                self.assertTrue(service["image"].startswith("mirror.gcr.io/library/"))
+        root = WORKFLOWS.parents[1]
+        for path in [
+            "portal/deploy/Dockerfile",
+            "portal/rspec/Dockerfile",
+            "supervisor/Dockerfile",
+        ]:
+            for line in (root / path).read_text().splitlines():
+                if line.startswith("FROM "):
+                    image = line.split()[1]
+                    if ":" in image:
+                        self.assertTrue(
+                            image.startswith("mirror.gcr.io/library/"), image
+                        )
+
     def test_feature_push_does_not_duplicate_pr(self):
         for name, workflow in workflows().items():
             if "pull_request" in workflow["on"]:
