@@ -14,6 +14,7 @@ export function putProfileImageHandler(h: HandlerContext): Handler<Env> {
     const data = Buffer.from(await c.req.arrayBuffer());
     const img = decodeJPEG(data);
     if (!img) {
+      c.set("abuse", "invalid_image");
       throw new APIError(400, "invalid_profile_image");
     }
     if (img.width > 512 || img.height > 512) {

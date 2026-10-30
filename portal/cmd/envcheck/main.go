@@ -105,6 +105,10 @@ func (p portal) send(ctx context.Context, r result) error {
 	return nil
 }
 
+// envcheckTypes is the instance type of isucon2026-envcheck-001 … 005, matching
+// EnvCheckInstances in portal/internal/cloudformation.
+var envcheckTypes = [5]string{"c5.large", "c7i.large", "c7i.large", "c5.large", "c6in.large"}
+
 func validate(e environment, info checkInfo) []string {
 	var failures []string
 	if len(e.Instances) != 5 {
@@ -119,10 +123,7 @@ func validate(e environment, info checkInfo) []string {
 		expectedType := ""
 		for n := 1; n <= 5; n++ {
 			if i.Name == fmt.Sprintf("isucon2026-envcheck-%03d", n) {
-				expectedType = "c7i.large"
-				if n >= 4 {
-					expectedType = "c6in.large"
-				}
+				expectedType = envcheckTypes[n-1]
 			}
 		}
 		if expectedType == "" || seen[i.Name] {

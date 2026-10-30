@@ -22,6 +22,7 @@ func putProfileImageHandler(h *HandlerContext) echo.HandlerFunc {
 		}
 		img, err := jpeg.Decode(bytes.NewReader(data))
 		if err != nil {
+			c.Set("abuse", "invalid_image")
 			return NewAPIError(http.StatusBadRequest, "invalid_profile_image")
 		}
 		if img.Bounds().Dx() > 512 || img.Bounds().Dy() > 512 {

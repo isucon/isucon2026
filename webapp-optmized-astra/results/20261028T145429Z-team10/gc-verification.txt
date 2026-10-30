@@ -1,0 +1,153 @@
+Previewing update (dev):
+
+    pulumi:pulumi:Stack isucon2026-astra-dev
+Resources:
+    1 unchanged
+
+Updating (dev):
+
+    pulumi:pulumi:Stack isucon2026-astra-dev
+Outputs:
+    artifactSha256     : "002c42929dfdb33f2df04661d1c1db238aee2e30ecce575241a33c4887465370"
+    runtime            : {
+        applicationLogLevel           : "info"
+        applicationName               : "webapp-optmized-astra"
+        applications                  : [
+            [0]: {
+                host      : "192.168.145.10"
+                instanceId: "i-011601eac543fe5ee"
+                region    : "asia"
+            }
+            [1]: {
+                host       : "192.168.146.10"
+                instanceId : "i-072b8ec3440704170"
+                region     : "europe"
+                replicaName: "astra_europe"
+            }
+            [2]: {
+                host       : "192.168.147.10"
+                instanceId : "i-07c43b75dd34fbb7e"
+                region     : "america"
+                replicaName: "astra_america"
+            }
+        ]
+        archivePath                   : "var/astra/release.tar.gz"
+        asiaReplicaEnabled            : true
+        asiaReplicaReadScope          : "feed_search"
+        asiaReplicaReads              : true
+        asiaUpstreamKeepaliveEnabled  : true
+        database                      : {
+            host      : "192.168.148.10"
+            instanceId: "i-0ecc0569db071b251"
+        }
+        fileImageStore                : {
+            archiveReadsEnabled: true
+            enabled            : true
+            port               : 8082
+            root               : "/var/lib/astra-images"
+            writesEnabled      : true
+        }
+        guardJournalUnit              : "webapp-optmized-astra*.service"
+        imageCacheMiB                 : 512
+        imageCachePushEnabled         : false
+        imageStore                    : {
+            cacheEnabled : false
+            enabled      : true
+            host         : "192.168.145.10"
+            instanceId   : "i-011601eac543fe5ee"
+            port         : 5433
+            writesEnabled: true
+        }
+        issuedImageUrlCacheEnabled    : true
+        issuedImageUrlCacheEntries    : 262144
+        listenBacklog                 : 4096
+        localUploadCacheEnabled       : true
+        metadataPoolConnections       : 16
+        nginxAccessLogBufferBytes     : 65536
+        nginxAccessLogEnabled         : false
+        nginxAccessLogFlushSeconds    : 1
+        nginxJsonGzipEnabled          : true
+        nginxRequestBuffering         : true
+        nginxWorkerConnections        : 8192
+        nginxWorkerRlimitNofile       : 65536
+        notificationBatchWritesEnabled: true
+        readFenceEnabled              : false
+        regionalImageStoresEnabled    : true
+        regionalImageWritesEnabled    : true
+        regionalReactionCacheEnabled  : true
+        regionalUploadCacheEnabled    : true
+        regionalUploadEnvPath         : "var/astra/.regional-upload.env"
+        replicaReads                  : true
+        replicasEnabled               : true
+        replicasSynchronous           : false
+        replicationEnvPath            : "var/astra/.replication.env"
+        signatureCacheCoalescing      : false
+        signatureCacheMetrics         : true
+        signatureFileCacheEnabled     : true
+        signatureFileCachePath        : "var/astra/signatures.bin"
+        tokioWorkerThreads            : 2
+        writeFenceEnabled             : true
+        writeFenceMode                : "native"
+        writeProxyEnabled             : true
+    }
+    signatureFileSha256: "fb32469050d2e0756a4502ab8951be7991890136edeadf0f9a564e30aec510c0"
+
+Resources:
+    1 unchanged
+
+Duration: 1s
+
+{"retained": 26, "orphan_files": 26371, "orphan_bytes": 8308201867, "applied": false}
+{"retained": 25, "orphan_files": 8177, "orphan_bytes": 4269836806, "applied": false}
+{"retained": 25, "orphan_files": 6873, "orphan_bytes": 3690152294, "applied": false}
+asia: preserving 0 references; live bytes=0; free bytes=2303897600; compact=True
+europe: preserving 0 references; live bytes=0; free bytes=8549863424; compact=True
+BEGIN
+CREATE TABLE
+america: preserving 0 references; live bytes=0; free bytes=9377603584; compact=True
+COPY 0
+DO
+DELETE 0
+COMMIT
+VACUUM
+ retained_assets | database_bytes
+-----------------+----------------
+               0 |        7953431
+(1 row)
+
+BEGIN
+CREATE TABLE
+COPY 0
+DO
+DELETE 0
+COMMIT
+VACUUM
+ retained_assets | database_bytes
+-----------------+----------------
+               0 |        7986199
+(1 row)
+
+BEGIN
+CREATE TABLE
+COPY 0
+DO
+DELETE 0
+COMMIT
+VACUUM
+ retained_assets | database_bytes
+-----------------+----------------
+               0 |        7978007
+(1 row)
+
+{"retained": 25, "orphan_files": 8177, "orphan_bytes": 4269836806, "applied": true}
+europe: cleanup and vacuum complete
+{"retained": 25, "orphan_files": 6873, "orphan_bytes": 3690152294, "applied": true}
+america: cleanup and vacuum complete
+{"retained": 26, "orphan_files": 26371, "orphan_bytes": 8308201867, "applied": true}
+asia: cleanup and vacuum complete
+active
+active
+active
+active
+All regional asset cleanup complete; application processes restarted
+Applied image-gc configuration to existing Team 10 VMs

@@ -68,7 +68,7 @@ func ActionLogMiddleware(minLevel string, output io.Writer) echo.MiddlewareFunc 
 			switch {
 			case status >= http.StatusInternalServerError:
 				level = "error"
-			case c.Request().Method == http.MethodGet:
+			case c.Request().Method == http.MethodGet && !(status == http.StatusForbidden && c.Get("abuse") == "invalid_signature"):
 				level = "debug"
 			}
 			if logLevelRanks[level] < logLevelRanks[minLevel] {
@@ -95,6 +95,10 @@ func ActionLogMiddleware(minLevel string, output io.Writer) echo.MiddlewareFunc 
 				if username, _ := c.Get("username").(string); usernamePattern.MatchString(username) {
 					entry["username"] = username
 				}
+			}
+			abuse, _ := c.Get("abuse").(string)
+			if abuse != "" {
+				entry["abuse"] = abuse
 			}
 			line, marshalErr := json.Marshal(entry)
 			if marshalErr != nil {

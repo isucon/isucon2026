@@ -2,6 +2,8 @@ package main
 
 import (
 	"archive/zip"
+	"bytes"
+	"compress/gzip"
 	"context"
 	"crypto/sha256"
 	"encoding/json"
@@ -100,16 +102,17 @@ func newHandler(config serverConfig) http.Handler {
 	})
 	// The webapp's downloads that HAProxy sends to isureal-digest for the
 	// benchmark. X-Fixture-Saw names the headers meant for the Router that
-	// reached the app, which should be none.
+	// reached the app, which should be none. encoding=gzip compresses the image
+	// as an app that gzips its responses does.
 	mux.HandleFunc("GET /api/images/{id}", func(writer http.ResponseWriter, request *http.Request) {
 		size, err := strconv.Atoi(request.URL.Query().Get("bytes"))
 		if err != nil || size < 1 || size > config.MaxBlobBytes {
 			http.Error(writer, "invalid bytes", http.StatusBadRequest)
 			return
 		}
+		image := fixtureImage(request.PathValue("id"), size)
 		writer.Header().Set("Content-Type", "image/jpeg")
 		writer.Header().Set("X-Fixture-Saw", routerHeaders(request))
-		image := fixtureImage(request.PathValue("id"), size)
 		// With forge an app that has the image does not send it, only the
 		// digest headers the Router answers with.
 		if request.URL.Query().Get("forge") != "" {
@@ -120,7 +123,15 @@ func newHandler(config serverConfig) http.Handler {
 			writer.Header().Set("Content-Length", "0")
 			return
 		}
-		writer.Header().Set("Content-Length", strconv.Itoa(size))
+		if request.URL.Query().Get("encoding") == "gzip" {
+			var compressed bytes.Buffer
+			gz := gzip.NewWriter(&compressed)
+			_, _ = gz.Write(image)
+			_ = gz.Close()
+			image = compressed.Bytes()
+			writer.Header().Set("Content-Encoding", "gzip")
+		}
+		writer.Header().Set("Content-Length", strconv.Itoa(len(image)))
 		_, _ = writer.Write(image)
 	})
 	mux.HandleFunc("GET /api/me/export", func(writer http.ResponseWriter, request *http.Request) {

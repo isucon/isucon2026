@@ -3,6 +3,8 @@ package contract_test
 import (
 	"encoding/base64"
 	"encoding/json"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -14,12 +16,17 @@ import (
 
 func cfnConfig(t *testing.T) *config.Config {
 	t.Helper()
+	key := filepath.Join(t.TempDir(), "admin")
+	if out, err := exec.Command("ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", key).CombinedOutput(); err != nil {
+		t.Fatalf("keygen: %v %s", err, out)
+	}
 	return &config.Config{
-		PublicURLHost:     "portal.test.invalid",
-		TestAMIID:         "ami-test",
-		ContestAMIID:      "ami-contest",
-		CheckerSecret:     checkerSecret(t),
-		AvailabilityZones: []string{"apne1-az1", "apne1-az2", "apne1-az4"},
+		IsuconAdminSSHKeyPath: key,
+		PublicURLHost:         "portal.test.invalid",
+		TestAMIID:             "ami-test",
+		ContestAMIID:          "ami-contest",
+		CheckerSecret:         checkerSecret(t),
+		AvailabilityZones:     []string{"apne1-az1", "apne1-az2", "apne1-az4"},
 		Timing: config.Timing{
 			ContestStart: timePtr(time.Date(2026, 11, 25, 1, 0, 0, 0, time.UTC)),
 			ContestEnd:   timePtr(time.Date(2026, 11, 25, 9, 0, 0, 0, time.UTC)),
@@ -124,8 +131,9 @@ func TestEnvCheckTemplateUsesISUCON2026(t *testing.T) {
 	}
 	for text, count := range map[string]int{
 		"Type: AWS::EC2::Instance\n":                            5,
-		"InstanceType: c7i.large":                               3,
-		"InstanceType: c6in.large":                              2,
+		"InstanceType: c5.large":                                2,
+		"InstanceType: c7i.large":                               2,
+		"InstanceType: c6in.large":                              1,
 		"Type: AWS::EC2::EIP\n":                                 5,
 		"path: /opt/isucon-env-checker/portal_credentials.json": 5,
 	} {
@@ -187,8 +195,9 @@ func TestContestTemplateProvides2026Topology(t *testing.T) {
 	}
 	for text, count := range map[string]int{
 		"Type: AWS::EC2::Instance\n":                                5,
-		"InstanceType: c7i.large":                                   3,
-		"InstanceType: c6in.large":                                  2,
+		"InstanceType: c5.large":                                    2,
+		"InstanceType: c7i.large":                                   2,
+		"InstanceType: c6in.large":                                  1,
 		"Type: AWS::EC2::EIP\n":                                     5,
 		"Type: AWS::EC2::Subnet\n":                                  6,
 		"NetworkInterfaceId: !Ref RouterDataInterface":              13,

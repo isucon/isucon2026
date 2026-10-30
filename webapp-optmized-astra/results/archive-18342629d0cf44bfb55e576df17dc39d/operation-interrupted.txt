@@ -1,0 +1,54 @@
+asia {"webapp-optmized-astra": "active, enabled, release and runtime match", "webapp-optmized-astra-writer": "active, enabled, release and runtime match", "nginx": "active, enabled", "isureal-guard": "active, enabled", "images": "durable independent primary; bytes=7863319", "available_disk_gib": 21.6, "listen_backlog": 4096}
+europe {"webapp-optmized-astra": "active, enabled, release and runtime match", "nginx": "active, enabled", "isureal-guard": "active, enabled", "metadata": "standby", "images": "durable independent primary; bytes=7879703", "available_disk_gib": 10.9, "listen_backlog": 4096}
+america {"webapp-optmized-astra": "active, enabled, release and runtime match", "nginx": "active, enabled", "isureal-guard": "active, enabled", "metadata": "standby", "images": "durable independent primary; bytes=7879703", "available_disk_gib": 11.3, "listen_backlog": 4096}
+astra_america streaming; replay backlog bytes=0
+astra_europe streaming; replay backlog bytes=0
+Pulumi runtime, artifact, live processes and durable storage verified
+asia Captured 5 published images from image_objects_202603
+america Captured 5 published images from image_objects_202603
+europe Captured 5 published images from image_objects_202603
+asia available_bytes 23193047040
+europe available_bytes 11710922752
+america available_bytes 12098637824
+database available_bytes 37272481792
+asia build {"partition": "image_objects_202603", "archive": "18342629d0cf44bfb55e576df17dc39d", "rows": 155065, "bytes": 1193824326, "sha256": "0d36614101579e22f9e04ca311c79aee77a4ce5f00c9f7d17513bc809219a3e1", "manifest_sha256": "562ead995b61ee97515e91a6734dfb7ed0a3c3915149edb4d07407f74c6f9305"}
+europe build {"partition": "image_objects_202603", "archive": "18342629d0cf44bfb55e576df17dc39d", "rows": 155065, "bytes": 1193824326, "sha256": "0d36614101579e22f9e04ca311c79aee77a4ce5f00c9f7d17513bc809219a3e1", "manifest_sha256": "562ead995b61ee97515e91a6734dfb7ed0a3c3915149edb4d07407f74c6f9305"}
+america build {"partition": "image_objects_202603", "archive": "18342629d0cf44bfb55e576df17dc39d", "rows": 155065, "bytes": 1193824326, "sha256": "0d36614101579e22f9e04ca311c79aee77a4ce5f00c9f7d17513bc809219a3e1", "manifest_sha256": "562ead995b61ee97515e91a6734dfb7ed0a3c3915149edb4d07407f74c6f9305"}
+europe verify {"partition": "image_objects_202603", "archive": "18342629d0cf44bfb55e576df17dc39d", "rows": 155065, "bytes": 1193824326, "sha256": "0d36614101579e22f9e04ca311c79aee77a4ce5f00c9f7d17513bc809219a3e1", "manifest_sha256": "562ead995b61ee97515e91a6734dfb7ed0a3c3915149edb4d07407f74c6f9305"}
+america verify {"partition": "image_objects_202603", "archive": "18342629d0cf44bfb55e576df17dc39d", "rows": 155065, "bytes": 1193824326, "sha256": "0d36614101579e22f9e04ca311c79aee77a4ce5f00c9f7d17513bc809219a3e1", "manifest_sha256": "562ead995b61ee97515e91a6734dfb7ed0a3c3915149edb4d07407f74c6f9305"}
+Traceback (most recent call last):
+  File "/home/nomeaning/.codex/worktrees/7a9b/isucon2026/webapp-optmized-astra/deploy/migrate-image-archive.py", line 157, in <module>
+    reports = parallel(lambda app: invoke(app, 'verify'))
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/nomeaning/.codex/worktrees/7a9b/isucon2026/webapp-optmized-astra/deploy/migrate-image-archive.py", line 66, in parallel
+    return list(pool.map(function, apps))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/nomeaning/.local/share/mise/installs/python/3.12.13/lib/python3.12/concurrent/futures/_base.py", line 619, in result_iterator
+    yield _result_or_cancel(fs.pop())
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/nomeaning/.local/share/mise/installs/python/3.12.13/lib/python3.12/concurrent/futures/_base.py", line 317, in _result_or_cancel
+    return fut.result(timeout)
+           ^^^^^^^^^^^^^^^^^^^
+  File "/home/nomeaning/.local/share/mise/installs/python/3.12.13/lib/python3.12/concurrent/futures/_base.py", line 456, in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+  File "/home/nomeaning/.local/share/mise/installs/python/3.12.13/lib/python3.12/concurrent/futures/_base.py", line 401, in __get_result
+    raise self._exception
+  File "/home/nomeaning/.local/share/mise/installs/python/3.12.13/lib/python3.12/concurrent/futures/thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/nomeaning/.codex/worktrees/7a9b/isucon2026/webapp-optmized-astra/deploy/migrate-image-archive.py", line 157, in <lambda>
+    reports = parallel(lambda app: invoke(app, 'verify'))
+                                   ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/nomeaning/.codex/worktrees/7a9b/isucon2026/webapp-optmized-astra/deploy/migrate-image-archive.py", line 76, in invoke
+    result = json.loads(remote(app, 'sudo bash -c ' + shlex.quote(command)))
+                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/nomeaning/.codex/worktrees/7a9b/isucon2026/webapp-optmized-astra/deploy/migrate-image-archive.py", line 57, in remote
+    return subprocess.check_output([ssh, app['instanceId'], command], env=env, text=True)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/nomeaning/.local/share/mise/installs/python/3.12.13/lib/python3.12/subprocess.py", line 466, in check_output
+    return run(*popenargs, stdout=PIPE, timeout=timeout, check=True,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/nomeaning/.local/share/mise/installs/python/3.12.13/lib/python3.12/subprocess.py", line 571, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['/home/nomeaning/.codex/worktrees/7a9b/isucon2026/webapp-optmized-astra/deploy/ssh.sh', 'i-011601eac543fe5ee', "sudo bash -c 'set -a; . /home/isucon/env.sh; set +a; export ISUREAL_DB_HOST=192.168.148.10; /home/isucon/webapp-optmized-astra/rust/archive-images verify image_objects_202603 18342629d0cf44bfb55e576df17dc39d'"]' returned non-zero exit status 255.

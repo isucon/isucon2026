@@ -29,6 +29,14 @@ export const config = {
 	guardTeams: z
 		.array(z.number().int().min(1).max(maxTeams))
 		.parse(c.getObject<number[]>("guardTeams") ?? []),
+	// A stopped guard stays disabled across instance replacements through SSM.
+	guardStoppedTeams: z
+		.array(z.number().int().min(1).max(maxTeams))
+		.parse(c.getObject<number[]>("guardStoppedTeams") ?? []),
+	// Experimental early JPEG rejection on selected VM teams.
+	earlyJpegTeams: z
+		.array(z.number().int().min(1).max(maxTeams))
+		.parse(c.getObject<number[]>("earlyJpegTeams") ?? []),
 	// 使っていないチームのインスタンスを、ディスクごと残したまま止める
 	stoppedTeams: z
 		.array(z.number().int().min(1).max(maxTeams))
@@ -55,14 +63,27 @@ export const config = {
 	teamRouterInstanceTypes: z
 		.record(z.string(), z.string().min(1))
 		.parse(c.getObject("teamRouterInstanceTypes") ?? {}),
+	// チームのサーバーごとの種別（{"9": {"app2": "c6i.large"}}）。指定がなければ asiaInstanceType、
+	// serviceInstanceType か databaseInstanceType
+	teamServerInstanceTypes: z
+		.record(
+			z.string(),
+			z.partialRecord(
+				z.enum(["app1", "app2", "app3", "db1"]),
+				z.string().min(1),
+			),
+		)
+		.parse(c.getObject("teamServerInstanceTypes") ?? {}),
 	serviceAmiId: c.get("serviceAmiId"),
 	routerAmiId: c.get("routerAmiId"),
 	availabilityZone: c.get("availabilityZone") ?? "ap-northeast-1a",
+	// asia の app（app1）と db1 は c5.large、海外の app は c7i.large。c5.large には SHA-NI がない
 	serviceInstanceType: c.get("serviceInstanceType") ?? "c7i.large",
+	asiaInstanceType: c.get("asiaInstanceType") ?? "c5.large",
 	routerInstanceType: c.get("routerInstanceType") ?? "c6in.large",
-	// db1 はディスクの IOPS が効くので、EBS の上限が高い種別（c6in.large はベースライン 6,250 IOPS）と
-	// IOPS・帯域を上げた gp3 を使う。c7i.large はインスタンス側の上限が 3,600 IOPS で頭打ちになる
-	databaseInstanceType: c.get("databaseInstanceType") ?? "c6in.large",
+	// db1 の gp3 は IOPS・帯域を上げておく。c5.large のベースラインは 4,000 IOPS・81 MB/s で、
+	// それを超える分はインスタンスのバースト（1 日 30 分ほど）の間だけ使える
+	databaseInstanceType: c.get("databaseInstanceType") ?? "c5.large",
 	databaseVolumeIops: c.getNumber("databaseVolumeIops") ?? 6000,
 	databaseVolumeThroughput: c.getNumber("databaseVolumeThroughput") ?? 200,
 	clientCidrs: ClientCidrsSchema.parse(c.getObject("clientCidrs") ?? []),

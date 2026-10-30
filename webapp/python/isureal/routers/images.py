@@ -60,6 +60,7 @@ async def get_image(db: DB, image_id: str, request: Request) -> Response:
         raise image_forbidden()
     key = image_signing_key(owner["secret_key_hash"])
     if not hmac.compare_digest(sig, image_signature(key, image_id, exp)):
+        request.state.abuse = "invalid_signature"
         raise image_forbidden()
 
     # 削除状態を毎回確認する。即時反映も5秒以内の許容範囲に含まれる。

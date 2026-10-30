@@ -35,6 +35,8 @@ func TestRegionIntegration(t *testing.T) {
 	}
 	password, _ := u.User.Password()
 	config := &Config{Region: "asia", DBHost: u.Hostname(), DBPort: u.Port(), DBUser: u.User.Username(), DBPassword: password, DBName: strings.TrimPrefix(u.Path, "/")}
+	// Direct SQL edits below bypass the hot state; serve from the database.
+	t.Setenv("ISUREAL_HOT_STATE", "off")
 	e := NewServer(config)
 	request := func(method, path, token, body, media string, status int) *httptest.ResponseRecorder {
 		t.Helper()

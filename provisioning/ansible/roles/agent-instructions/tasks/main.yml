@@ -1,0 +1,18 @@
+---
+- name: Create instruction directories
+  ansible.builtin.file:
+    path: "{{ agent_instructions_home }}/{{ item }}"
+    state: directory
+    owner: "{{ agent_instructions_owner }}"
+    group: "{{ agent_instructions_group }}"
+    mode: "0755"
+  loop: "{{ agent_instructions_paths | map('dirname') | unique | list }}"
+
+- name: Install participant instructions for coding agents
+  ansible.builtin.copy:
+    src: instructions.md
+    dest: "{{ agent_instructions_home }}/{{ item }}"
+    owner: "{{ agent_instructions_owner }}"
+    group: "{{ agent_instructions_group }}"
+    mode: "0644"
+  loop: "{{ agent_instructions_paths }}"

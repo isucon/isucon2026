@@ -155,3 +155,21 @@ func TestProfileImageIntegration(t *testing.T) {
 	request("viewer", http.MethodGet, freshURL, "", nil, http.StatusForbidden)
 	request("owner", http.MethodDelete, path, "", nil, http.StatusNotFound)
 }
+
+func TestProfileImageRejectsCorruptJPEGBody(t *testing.T) {
+	valid := encodeJPEG(t, 4, 4)
+	truncated := valid[:len(valid)-2]
+	if _, err := jpeg.DecodeConfig(bytes.NewReader(truncated)); err != nil {
+		t.Fatalf("test JPEG header is invalid: %v", err)
+	}
+	e := echo.New()
+	e.HTTPErrorHandler = APIErrorHandler
+	e.PUT("/api/me/profile-image", putProfileImageHandler(&HandlerContext{}))
+	req := httptest.NewRequest(http.MethodPut, "/api/me/profile-image", bytes.NewReader(truncated))
+	req.Header.Set("Content-Type", "image/jpeg")
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", rec.Code)
+	}
+}

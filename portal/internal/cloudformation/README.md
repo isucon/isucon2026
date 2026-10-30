@@ -6,10 +6,10 @@ one VPC per team and the same service topology as `provisioning/aws`:
 
 | Instance | Type | Private address | Portal server list |
 | --- | --- | --- | --- |
-| App1 (Asia) | c7i.large | 192.168.1.10 | Yes, number 1 |
+| App1 (Asia) | c5.large | 192.168.1.10 | Yes, number 1 |
 | App2 (Europe) | c7i.large | 192.168.2.10 | Yes, number 2 |
 | App3 (America) | c7i.large | 192.168.3.10 | Yes, number 3 |
-| Database | c6in.large | 192.168.4.10 | Yes, number 4 |
+| Database | c5.large | 192.168.4.10 | Yes, number 4 |
 | Router | c6in.large | 192.168.11.10 / 192.168.10.10 | No |
 
 Each service has a separate subnet. Inter-service routes point at the Router's
@@ -32,7 +32,7 @@ and region. This change does not publish or rebuild AMIs.
 The template is returned by the existing contestant CloudFormation download and
 `GET /api/admin/teams/:team_id/cloud_formation?type=contest`. The returned template
 contains that team's signed checker token; do not commit or share it between
-teams. The envcheck template and its AMI are unchanged.
+teams. The envcheck AMI is unchanged.
 
 ## Registration and recreation
 
@@ -85,3 +85,28 @@ The Router attaches both its public and data ENIs in the EC2 `NetworkInterfaces`
 property at launch. Do not add a separate `NetworkInterfaceAttachment`: attaching
 another ENI during instance stabilization makes the requested and observed
 interface lists differ. Inter-server routes depend on the Router resource.
+
+## Administration SSH access
+
+Both templates create `isuadmin` on all five instances using cloud-init `users`,
+with a locked password, `/bin/bash`, and passwordless sudo. The default AMI user
+is preserved. Contestant keys remain under `isucon`; administration keys are not
+returned by the contestant SSH-key API.
+
+ECS injects the environment's existing admin SSH secret into portal and worker:
+`portal-develop/admin-ssh-key` for dev and `portal-production/admin-ssh-key` for
+production. The portal derives the public key from that private key when rendering
+a template. Missing or invalid keys reject template generation. Only the public
+key enters user data; instances need no Secrets Manager permission. The private
+key remains in the portal/worker's mode-0600 temporary file. Other services do not
+receive it. Apply the Pulumi execution-role policy before deploying portal with
+ecspresso. Replacing a secret requires redeploying both portal and worker.
+
+Existing instances do not receive this change automatically. Install the matching
+public key and sudo policy through an existing authorized SSH account, then verify
+`sudo -n true` as `isuadmin`. Reconcile the instance's managed template before a
+future recreation; changing CloudFormation UserData can stop/start instances and
+must not be used as a live repair shortcut. Do not reboot to test authentication.
+
+Embedded Python bootstrap files use cloud-init `gz+b64` decoding to keep the
+CloudFormation document below the 51,200-byte direct-upload limit.
