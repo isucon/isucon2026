@@ -197,7 +197,8 @@ SSH command is recorded as a failed command result, not silently skipped.
 A scheduled reboot's command success does not prove that the instance has booted
 again; wait for recovery before starting environment validation.
 
-The environment-check action waits for `envcheck.service` and exposes
+The environment-check action removes the previous result before each run,
+waits for `envcheck.service` and exposes
 `/var/lib/isucon-envcheck/result.json` in the command output. CloudFormation
 instances also POST a `post-contest` result to the portal. Existing instances do
 not acquire the checker, initial baseline, or revised Router registration merely

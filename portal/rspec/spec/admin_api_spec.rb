@@ -209,7 +209,7 @@ RSpec.describe 'admin API' do
       res = portal_get('/api/admin/instance_command_execute_requests', {}, staff_headers)
       body = Isuxportal::Proto::Services::Admin::ListInstanceCommandExecuteRequestsResponse.decode(res.body)
       expect(body.requests.size).to eq(1)
-      expect(body.requests[0].command).to eq('sudo systemctl restart envcheck; status=$?; sudo cat /var/lib/isucon-envcheck/result.json; exit "$status"')
+      expect(body.requests[0].command).to eq('sudo rm -f /var/lib/isucon-envcheck/result.json || exit $?; sudo systemctl restart envcheck; status=$?; sudo cat /var/lib/isucon-envcheck/result.json; exit "$status"')
       expect(body.requests[0].total_target_count).to eq(2)
     end
 
