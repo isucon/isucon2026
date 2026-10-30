@@ -447,13 +447,24 @@ func (r *Runner) answerRequest(ctx context.Context, u *user, request client.Rela
 	closing := r.model.BeginCloseFriendRequest(request.RelationID)
 	sent := time.Now()
 	// 申請した側が取り下げたり、相手を退会させたりしていれば 403 か 409 になる。
-	_, err := u.API.TransitionFriendRequest(client.MayFailWith(ctx, http.StatusForbidden, http.StatusConflict, http.StatusNotFound), u.Token, request.RelationID, action)
-	if w != nil {
-		settleRetried(w, err)
+	result, err := u.API.TransitionFriendRequest(client.MayFailWith(ctx, http.StatusForbidden, http.StatusConflict, http.StatusNotFound), u.Token, request.RelationID, action)
+	malformed := err == nil && (result.RelationID != request.RelationID || result.Status != map[string]string{"accept": "accepted", "reject": "rejected"}[action])
+	if malformed {
+		// 承認・拒否できたのかわからない。
+		if w != nil {
+			w.Unknown()
+		}
+		closing.Unknown()
+	} else {
+		if w != nil {
+			settleRetried(w, err)
+		}
+		settleRetried(closing, err)
 	}
-	settleRetried(closing, err)
 	switch {
 	case r.bannedErr(u, err):
+	case malformed:
+		r.invalid(ctx, u, "%s: 友達申請 %s を%sした応答が不正です（relationId %q、status %q）", u.Username, request.RelationID, map[string]string{"accept": "承認", "reject": "拒否"}[action], result.RelationID, result.Status)
 	case err == nil && action == "accept":
 		r.addFriendship(request.User.ID, u.ID)
 		r.award(u, r.dayNow(u.Region), score.TagFriendAccept)
