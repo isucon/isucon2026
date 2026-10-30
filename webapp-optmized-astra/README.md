@@ -457,3 +457,5 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261030T081221Z-team12 | per-user auth cache generations candidate=1df930d; seed=1 | PASS | 167,634 |
 | 20261030T082723Z-team12 | preloaded initial history with fresh users and dirty days candidate=c640118; seed=1 | PASS | 179,090 |
 | 20261030T083137Z-team12 | preloaded initial history repeat without restart candidate=c640118; seed=1 | PASS | 179,890 |
+| 20261030T084652Z-team12 | cached initial export metadata plus fresh delta posts candidate=1611eeb; seed=1 | PASS | 165,969 |
+| 20261030T085252Z-team12 | cached initial export metadata repeat without restart candidate=1611eeb; seed=1 | PASS | 155,910 |
