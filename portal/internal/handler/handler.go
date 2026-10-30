@@ -174,6 +174,8 @@ func (h *Handler) Router() http.Handler {
 
 	r.Route("/api/bench", func(r chi.Router) {
 		r.Post("/receive", h.api(h.BenchReceive))
+		r.Get("/validation/{id}", h.BenchValidation)
+		r.Put("/validation/{id}", h.BenchValidation)
 		r.Post("/cancel_owned", h.api(h.BenchCancelOwned))
 		r.Post("/benchmark_results", h.api(h.BenchReportResult))
 		r.Post("/benchmark_results/completion", h.api(h.BenchCompleteJob))

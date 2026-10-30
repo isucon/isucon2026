@@ -17,7 +17,7 @@ func TestMigrateConcurrentlyIsSafe(t *testing.T) {
 
 	// 空の状態から同時に流す方が競合しやすいので、一度全テーブルを消す
 	for _, table := range []string{
-		"schema_migrations", "registration_records", "registration_source_records",
+		"benchmark_validation_snapshots", "schema_migrations", "registration_records", "registration_source_records",
 		"benchmark_executions", "benchmark_jobs", "benchmark_results", "clarifications",
 		"contestant_instances", "contestants", "coupons", "env_checks", "extra_time_assignments",
 		"instance_command_execute_request_results", "instance_command_execute_requests",

@@ -157,7 +157,7 @@ func (e *Env) Perform(ctx context.Context, name string, rawArgs json.RawMessage)
 		if err := decode(&a); err != nil {
 			return err
 		}
-		return e.ExecuteOnMultipleContestantInstances(ctx, a.TeamIDs, a.Command)
+		return e.ExecuteOnMultipleContestantInstances(ctx, a.TeamIDs, a.Command, a.IncludeRouter)
 	case "long_running_check":
 		return e.LongRunningCheck(ctx)
 	case "clear_contest_data":
