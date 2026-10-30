@@ -46,7 +46,9 @@ for (const ip of ["203.0.113.5", "", undefined]) {
             ),
         );
         assert.equal(links[0].props.href, url);
-        assert.match(JSON.stringify(renderer.toJSON()), /ISURealを開く/);
+        assert.doesNotMatch(JSON.stringify(renderer.toJSON()), /ISURealを開く/);
+        assert.equal(links[0].props.className, undefined);
+        assert.equal(links[0].children.join(""), url);
         assert.equal(renderer.root.findByProps({ "aria-label": "表示確認用URL" }).children.join(""), url);
         const button = renderer.root.findByProps({ "aria-label": "URLをコピー" });
         let copied;
