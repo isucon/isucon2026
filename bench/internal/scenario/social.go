@@ -3,6 +3,7 @@ package scenario
 import (
 	"context"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"net/http"
 	"slices"
@@ -302,6 +303,18 @@ func relationProblem(kind string, items []client.Relationship) string {
 	return ""
 }
 
+// settleRelation は関係の書き込みの結果を settle と同じくモデルに記録する。ただし 503 を
+// 受けて送り直したあとの 4xx（もう友達でない、もうフォローしているなどの 409）は、前の
+// 試行で反映されたかもしれないので結果不明とする。
+func settleRelation(w *model.Write, err error) {
+	var apiErr *client.APIError
+	if errors.As(err, &apiErr) && apiErr.Attempts > 1 && isRejection(err) {
+		w.Unknown()
+		return
+	}
+	settle(w, err)
+}
+
 // unfriend は友達を 1 人解除する。
 func (r *Runner) unfriend(ctx context.Context, u *user) {
 	now := r.model.Now()
@@ -318,11 +331,15 @@ func (r *Runner) unfriend(ctx context.Context, u *user) {
 	w := r.model.BeginFriendship(u.ID, target.ID, false)
 	sent := time.Now()
 	err := u.API.Unfriend(client.MayFailWith(ctx, http.StatusConflict, http.StatusNotFound), u.Token, target.ID)
-	settle(w, err)
+	settleRelation(w, err)
 	switch {
 	case err == nil:
 		r.award(u, r.dayNow(u.Region), score.TagUnfriend)
 	case isStatus(err, http.StatusConflict):
+		// 送っている間に相手が解除するかブロックしていれば 409 が正しい。
+		if r.model.Friend(u.ID, target.ID, r.model.ReadBetween(sent, time.Now())) == model.True {
+			r.invalid(ctx, u, "%s: 友達の %s との友達の解除が 409 になりました", u.Username, target.Username)
+		}
 	case isStatus(err, http.StatusNotFound):
 		// 送っている間に相手が退会すれば 404 が正しい。
 		if r.model.Visible(u.ID, target.ID, r.model.ReadBetween(sent, time.Now())) == model.True {
@@ -447,13 +464,20 @@ func (r *Runner) toggleFollow(ctx context.Context, u *user) {
 		slices.Sort(followees)
 		id := followees[u.rng.IntN(len(followees))]
 		w := r.model.BeginFollow(u.ID, id, false)
+		sent := time.Now()
 		err := u.API.Unfollow(client.MayFailWith(ctx, http.StatusConflict), u.Token, id)
-		settle(w, err)
+		settleRelation(w, err)
 		switch {
 		case err == nil:
 			delete(u.follows, id)
 			r.award(u, r.dayNow(u.Region), score.TagUnfollow)
 		case isStatus(err, http.StatusConflict):
+			// 送っている間に相手がブロックしてフォローが消えていれば 409 が正しい。確実に
+			// フォローしているなら、あとでもう一度解除する。
+			if r.model.Following(u.ID, id, r.model.ReadBetween(sent, time.Now())) == model.True {
+				r.invalid(ctx, u, "%s: フォローしている %s のフォローの解除が 409 になりました", u.Username, id)
+				return
+			}
 			delete(u.follows, id)
 		default:
 			r.requestError(ctx, u, "%s: フォローを解除できません: %v", u.Username, err)
@@ -483,13 +507,22 @@ func (r *Runner) followCertified(ctx context.Context, u *user, n int) {
 		w := r.model.BeginFollow(u.ID, id, true)
 		sent := time.Now()
 		err := u.API.Follow(client.MayFailWith(ctx, http.StatusConflict, http.StatusNotFound), u.Token, id)
-		settle(w, err)
+		settleRelation(w, err)
 		switch {
 		case err == nil:
 			u.follows[id] = true
 			r.award(u, r.dayNow(u.Region), score.TagFollow)
 		case isStatus(err, http.StatusConflict):
-			u.follows[id] = true
+			// もうフォローしているか、送っている間にどちらかがブロックしていれば 409 が正しい。
+			// フォローしていないことが確かなら、解除の候補には入れない。
+			read := r.model.ReadBetween(sent, time.Now())
+			switch {
+			case r.model.Following(u.ID, id, read) != model.False:
+				u.follows[id] = true
+			case r.model.Blocked(u.ID, id, read) == model.False:
+				r.invalid(ctx, u, "%s: フォローしていない認定公開アカウント %s のフォローが 409 になりました", u.Username, id)
+				return
+			}
 		case isStatus(err, http.StatusNotFound):
 			// 送っている間に相手が退会すれば 404 が正しい。
 			if r.model.Visible(u.ID, id, r.model.ReadBetween(sent, time.Now())) == model.True {
@@ -534,13 +567,25 @@ func (r *Runner) toggleBlock(ctx context.Context, u *user) {
 	if len(u.blocking) > 0 {
 		id := u.blocking[len(u.blocking)-1]
 		w := r.model.BeginUnblock(u.ID, id)
-		err := u.API.Unblock(client.MayFailWith(ctx, http.StatusConflict, http.StatusNotFound), u.Token, id)
-		settle(w, err)
+		sent := time.Now()
+		// ブロックしていなければアプリは 403 を返す（409 を返す実装もありうる）。
+		err := u.API.Unblock(client.MayFailWith(ctx, http.StatusForbidden, http.StatusConflict, http.StatusNotFound), u.Token, id)
+		settleRelation(w, err)
 		switch {
 		case err == nil:
 			u.blocking = u.blocking[:len(u.blocking)-1]
 			r.award(u, r.dayNow(u.Region), score.TagUnblock)
-		case isStatus(err, http.StatusConflict) || isStatus(err, http.StatusNotFound):
+		case r.bannedErr(u, err):
+			// BAN による 403 は解除の拒否ではない。u はもう動かない。
+		case isStatus(err, http.StatusForbidden) || isStatus(err, http.StatusConflict):
+			// 確実にブロックしているなら、あとでもう一度解除する。
+			if r.model.Blocking(u.ID, id, r.model.ReadBetween(sent, time.Now())) == model.True {
+				r.invalid(ctx, u, "%s: ブロックしている %s のブロックの解除が拒否されました", u.Username, id)
+				return
+			}
+			u.blocking = u.blocking[:len(u.blocking)-1]
+		case isStatus(err, http.StatusNotFound):
+			// 相手が退会していれば 404 が正しい。
 			u.blocking = u.blocking[:len(u.blocking)-1]
 		default:
 			r.requestError(ctx, u, "%s: ブロックを解除できません: %v", u.Username, err)
