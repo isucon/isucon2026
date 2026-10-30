@@ -187,9 +187,9 @@ func (r *Runner) react(ctx context.Context, u *user, s *session, post client.Fee
 		w.Rejected()
 	case isStatus(err, http.StatusNotFound) && allowed != model.True:
 		// 送っている間に投稿者が退会していれば 404 が正しい。
-		w.Rejected()
+		settle(w.Write, err)
 	case isStatus(err, http.StatusNotFound):
-		w.Rejected()
+		settle(w.Write, err)
 		r.invalid(ctx, u, "%s: 見える投稿 %s への RealMoji が 404 になりました", u.Username, post.ID)
 	case err == nil && allowed == model.False:
 		w.Unknown()
@@ -211,9 +211,9 @@ func (r *Runner) react(ctx context.Context, u *user, s *session, post client.Fee
 		s.myReactions = append(s.myReactions, post.ID)
 		return true
 	case isStatus(err, http.StatusForbidden) && allowed != model.True:
-		w.Rejected()
+		settle(w.Write, err)
 	case isStatus(err, http.StatusForbidden):
-		w.Rejected()
+		settle(w.Write, err)
 		r.invalid(ctx, u, "%s: 見える投稿 %s への RealMoji が拒否されました", u.Username, post.ID)
 	default:
 		settle(w.Write, err)
@@ -320,9 +320,9 @@ func (r *Runner) comment(ctx context.Context, u *user, s *session, post client.F
 		creation.Rejected()
 	case isStatus(err, http.StatusNotFound) && allowed != model.True:
 		// 送っている間に投稿者が退会していれば 404 が正しい。
-		creation.Rejected()
+		settle(creation.Write, err)
 	case isStatus(err, http.StatusNotFound):
-		creation.Rejected()
+		settle(creation.Write, err)
 		r.invalid(ctx, u, "%s: コメントできる投稿 %s へのコメントが 404 になりました", u.Username, post.ID)
 	case err == nil && allowed == model.False:
 		creation.Unknown()
@@ -338,9 +338,9 @@ func (r *Runner) comment(ctx context.Context, u *user, s *session, post client.F
 		s.myComments = append(s.myComments, created.ID)
 		return true
 	case isStatus(err, http.StatusForbidden) && allowed != model.True:
-		creation.Rejected()
+		settle(creation.Write, err)
 	case isStatus(err, http.StatusForbidden):
-		creation.Rejected()
+		settle(creation.Write, err)
 		r.invalid(ctx, u, "%s: コメントできる投稿 %s へのコメントが拒否されました", u.Username, post.ID)
 	default:
 		settle(creation.Write, err)

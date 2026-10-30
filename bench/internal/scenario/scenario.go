@@ -868,14 +868,15 @@ func (r *Runner) sample() int64 {
 }
 
 // settle は書き込みの結果をモデルに記録する。4xx は拒否（反映されていない）、それ以外の
-// 失敗（5xx、タイムアウト、通信エラー）は結果不明として扱う。アプリが処理を終えてから返した
-// 5xx（answeredFailure）は、反映されたとしても応答より前なので、Failed で区別する。
+// 失敗（5xx、タイムアウト、通信エラー）は結果不明として扱う。クライアントが 503 を受けて
+// 送り直した要求の 4xx も、前の試行が反映されたかもしれないので結果不明とする（isRejection）。
+// アプリが処理を終えてから返した 5xx（answeredFailure）は、反映されたとしても応答より前なので、
+// Failed で区別する。
 func settle(w *model.Write, err error) {
-	var apiErr *client.APIError
 	switch {
 	case err == nil:
 		w.Applied()
-	case errors.As(err, &apiErr) && apiErr.Status >= 400 && apiErr.Status < 500:
+	case isRejection(err):
 		w.Rejected()
 	case answeredFailure(err):
 		w.Failed()
