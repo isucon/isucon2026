@@ -448,11 +448,11 @@ func (r *Runner) groom(ctx context.Context, u *user, s *session) {
 	}
 }
 
-// updateBio は自己紹介を変える。
-// rename は表示名を変える。
+// rename は表示名を変える。変えた値は走行後の整合性チェックで確かめる。
 func (r *Runner) rename(ctx context.Context, u *user) {
 	name := dataset.DisplayName(u.rng)
 	profile, err := u.API.UpdateMe(ctx, u.Token, &name, nil, nil)
+	u.displayNames = changedProfile(u.displayNames, name, err == nil && profile.ID == u.ID && profile.DisplayName == name, err)
 	switch {
 	case err != nil:
 		r.requestError(ctx, u, "%s: 表示名を変えられません: %v", u.Username, err)
@@ -463,9 +463,11 @@ func (r *Runner) rename(ctx context.Context, u *user) {
 	}
 }
 
+// updateBio は自己紹介を変える。変えた値は走行後の整合性チェックで確かめる。
 func (r *Runner) updateBio(ctx context.Context, u *user) {
 	bio := dataset.Bio(u.rng)
 	profile, err := u.API.UpdateMe(ctx, u.Token, nil, &bio, nil)
+	u.bios = changedProfile(u.bios, bio, err == nil && profile.ID == u.ID && profile.Bio == bio, err)
 	switch {
 	case err != nil:
 		r.requestError(ctx, u, "%s: プロフィールを変えられません: %v", u.Username, err)
@@ -473,6 +475,24 @@ func (r *Runner) updateBio(ctx context.Context, u *user) {
 		r.invalid(ctx, u, "%s: プロフィールを変えた応答が違います", u.Username)
 	default:
 		r.award(u, r.dayNow(u.Region), score.TagProfileUpdate)
+	}
+}
+
+// changedProfile は、表示名か自己紹介としてありうる値 values に、value への変更の結果を
+// 反映する。受け付けられたら value だけになり、拒否されたら変わらず、結果がわからなければ
+// （応答が違う、5xx やタイムアウト、503 を受けて送り直したあとの 4xx）value も加わる。
+// values が nil なら今の値を知らないので、受け付けられるまで nil のまま（確かめない）。
+func changedProfile(values []string, value string, accepted bool, err error) []string {
+	var apiErr *client.APIError
+	switch {
+	case accepted:
+		return []string{value}
+	case values == nil || slices.Contains(values, value):
+		return values
+	case isRejection(err) && !(errors.As(err, &apiErr) && apiErr.Attempts > 1):
+		return values
+	default:
+		return append(values, value)
 	}
 }
 

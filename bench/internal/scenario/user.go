@@ -94,6 +94,9 @@ type user struct {
 
 	// profileImage はプロフィール画像の SHA-256（なければ nil）。
 	profileImage *[32]byte
+	// displayNames と bios は、bench が登録したユーザーの表示名と自己紹介としてありうる値
+	// （結果のわからない変更の値を含む）。走行後の整合性チェックで比べる。
+	displayNames, bios []string
 	// blocking はこのユーザーが走行中にブロックした相手。
 	blocking []string
 	// follows はフォローしている認定公開アカウント。
