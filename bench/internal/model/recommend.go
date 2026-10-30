@@ -179,10 +179,7 @@ func (m *Model) checkRecommendedLocked(viewer *User, before *client.FeedPost, pa
 	const feed = "friends-of-friends"
 	var result FeedResult
 	var signatures []signature
-	if (page.HasMore && len(page.Items) < m.PageSize) || len(page.Items) > m.PageSize {
-		result.error("フィード %s: 投稿が %d 件です（1 ページ %d 件、続きがあるか %t）", feed, len(page.Items), m.PageSize, page.HasMore)
-		return result, nil
-	}
+	m.checkPageSize(&result, feed, page)
 	if before != nil && before.Score == nil {
 		before = nil
 	}
