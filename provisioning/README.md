@@ -154,3 +154,58 @@ Routerは参加者の操作対象に含めない。
 
 ベンチの開発中に手元の変更をFargateから流す手順は、[ベンチの単発実行](aws/bench-runner/README.md)を参照してください。
 `make aws-bench-run TEAM=N`で、ビルド、ECRへのpush、実行、結果の取得まで進みます。
+
+## Post-contest validation
+
+The `envcheck` Ansible role installs `/usr/local/bin/isucon-contest-envcheck` and
+`envcheck.service` in both the service and Router AMIs. Rebuild both AMIs after
+building the artifacts in `prepare.yml`. CloudFormation and Pulumi supply the
+expected AMIs and five instance types in `/etc/isucon/envcheck.json`, and grant
+read-only EC2 inspection permissions. Pulumi enables this configuration for
+teams with `portalTeamIds` mappings.
+
+On the first boot, `envcheck-baseline.service` waits for cloud-init and records
+`/var/lib/isucon-envcheck/baseline.json` once. It requires all four servers and the
+Router to be running, with the declared AMIs/types and the expected ENI/volume
+counts. It retries while the environment is still being created. The baseline
+must be recorded on a trusted, freshly provisioned environment before handing it
+to participants. It is not regenerated on reboot or during validation. Protect
+this file and the checker executable as competition-managed files; do not
+capture an already modified environment as a new baseline.
+
+Validation compares instance IDs, VPC, AZ, type, AMI, private addresses, ENIs,
+EBS volume IDs/types/sizes/IOPS/throughput, relevant route tables and network ACLs.
+Router security groups are included. Contestant server security-group edits
+remain permitted. There must be exactly five non-terminated instances bearing
+the team's `IsuconTeamID` tag, numbered 1 through 5.
+
+On the Router, validation also compares live `tc` qdiscs/classes/filters,
+`nftables`, OS routes/rules, live HAProxy backend destinations/weights, SSH
+configuration, protected Router configuration
+and executable hashes. Counters and transient nftables rule handles are ignored.
+It rejects an installed `ec2-instance-connect`, an enabled
+`AuthorizedKeysCommand`, or non-administration SSH keys under `/home`.
+It checks the current state, not historical logins or reverted changes.
+The Instance Connect removal preserves the restriction introduced by PR #355.
+
+The admin restart action schedules a reboot of the Router first, then the four
+servers. The operator's SSH key is used on both hops: an accessible contestant
+server is the jump host and the Router's data ENI is the destination. Public
+Router SSH ingress remains closed. Router registration and EC2 synchronization
+store the data ENI address for this purpose. A missing Router/jump host or failed
+SSH command is recorded as a failed command result, not silently skipped.
+A scheduled reboot's command success does not prove that the instance has booted
+again; wait for recovery before starting environment validation.
+
+The environment-check action waits for `envcheck.service` and exposes
+`/var/lib/isucon-envcheck/result.json` in the command output. CloudFormation
+instances also POST a `post-contest` result to the portal. Existing instances do
+not acquire the checker, initial baseline, or revised Router registration merely
+by deploying the portal. Roll out the AMIs/configuration and verify baseline
+collection before using these actions.
+
+Apply portal migrations `009_post_contest.sql` and `010_validation_evidence.sql`,
+and deploy the portal/worker and Supervisor/bench together. The Supervisor passes
+its job-specific evidence credential through `ISUXBENCH_VALIDATION_TOKEN`, never
+through command-line arguments. For infrastructure rollout, use Pulumi and
+redeploy the affected ECS services through ecspresso.

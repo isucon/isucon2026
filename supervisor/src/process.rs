@@ -2,6 +2,7 @@ use crate::error::Error;
 use tokio_stream::StreamExt;
 
 pub struct Process {
+    pub validation_token: String,
     pub exec: String,
     pub args: Vec<String>,
     pub stdout_path: String,
@@ -36,6 +37,7 @@ impl Process {
         let child = tokio::process::Command::new(self.exec.clone())
             .args(self.args.clone())
             .args(&["--target", &self.target_address])
+            .env("ISUXBENCH_VALIDATION_TOKEN", &self.validation_token)
             .env("ISUXBENCH_TARGET", &self.target_address)
             .env("ISUXBENCH_REPORT_FD", format!("{}", pipe_o))
             .env("ISUXBENCH_ALL_ADDRESSES", all_addresses_string)

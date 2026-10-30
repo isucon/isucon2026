@@ -99,6 +99,7 @@ func (h *Handler) BenchReceive(w http.ResponseWriter, r *http.Request) error {
 			}
 			extraArgs = append(extraArgs, "--host", host)
 		}
+		extraArgs = append(extraArgs, "--validation-url", fmt.Sprintf("https://%s/api/bench/validation/%d", h.cfg.PublicURLHost, jobRow.ID))
 		if jobRow.PostValidation {
 			extraArgs = append(extraArgs, "--only-post-validation")
 		}

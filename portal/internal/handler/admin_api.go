@@ -688,6 +688,9 @@ func (h *Handler) AdminCommandRequestsShow(w http.ResponseWriter, r *http.Reques
 		if instance != nil {
 			instancePB = instance.ToPB(nil)
 		}
+		if result.RouterTeamID.Valid {
+			instancePB = &pbresources.ContestantInstance{CloudId: "router", Number: 5, TeamId: result.RouterTeamID.Int64, Team: &pbresources.Team{Id: result.RouterTeamID.Int64}}
+		}
 		res.Results = append(res.Results, result.ToPB(instancePB))
 	}
 	renderPB(w, http.StatusOK, res)
@@ -721,7 +724,7 @@ func (h *Handler) AdminTriggerEnvCheck(w http.ResponseWriter, r *http.Request) e
 		return err
 	}
 	h.jobs.Enqueue(r.Context(), "execute_on_multiple_contestant_instances", job.ExecuteOnMultipleArgs{
-		TeamIDs: teamIDs, Command: "sudo systemctl restart envcheck --no-block",
+		TeamIDs: teamIDs, Command: `sudo systemctl restart envcheck; status=$?; sudo cat /var/lib/isucon-envcheck/result.json; exit "$status"`, IncludeRouter: true,
 	})
 	renderPB(w, http.StatusOK, &pbadmin.TriggerEnvCheckResponse{})
 	return nil
@@ -734,7 +737,7 @@ func (h *Handler) AdminTriggerInstanceRestart(w http.ResponseWriter, r *http.Req
 		return err
 	}
 	h.jobs.Enqueue(r.Context(), "execute_on_multiple_contestant_instances", job.ExecuteOnMultipleArgs{
-		TeamIDs: teamIDs, Command: "sudo reboot",
+		TeamIDs: teamIDs, Command: "sudo systemd-run --on-active=5s /usr/sbin/reboot", IncludeRouter: true,
 	})
 	renderPB(w, http.StatusOK, &pbadmin.TriggerInstanceRestartResponse{})
 	return nil
@@ -786,7 +789,7 @@ func (h *Handler) AdminTriggerBenchmarks(w http.ResponseWriter, r *http.Request)
 	}
 
 	for _, teamID := range teamIDs {
-		jobs, err := model.QueryJobs(ctx, h.db, `SELECT `+jobColumns+` FROM benchmark_jobs WHERE team_id = $1 ORDER BY id DESC LIMIT 1`, teamID)
+		jobs, err := model.QueryJobs(ctx, h.db, `SELECT `+jobColumns+` FROM benchmark_jobs WHERE team_id = $1 AND post_validation = false ORDER BY id DESC LIMIT 1`, teamID)
 		if err != nil {
 			return err
 		}
@@ -798,10 +801,25 @@ func (h *Handler) AdminTriggerBenchmarks(w http.ResponseWriter, r *http.Request)
 		if err != nil {
 			return err
 		}
-		_, err = model.CreateJob(ctx, tx, teamID, last.InstanceName.String, last.TargetID, sql.NullInt64{}, req.PostValidation)
+		created, err := model.CreateJob(ctx, tx, teamID, last.InstanceName.String, last.TargetID, sql.NullInt64{}, req.PostValidation)
 		if err != nil {
 			tx.Rollback()
 			return err
+		}
+		if req.PostValidation {
+			var available bool
+			if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM benchmark_validation_snapshots s JOIN benchmark_results r ON r.benchmark_job_id=s.job_id JOIN benchmark_jobs source ON source.id=s.job_id WHERE s.job_id=$1 AND r.passed=true AND r.finished=true AND source.status=4 AND source.post_validation=false)`, last.ID).Scan(&available); err != nil {
+				tx.Rollback()
+				return err
+			}
+			if !available {
+				tx.Rollback()
+				return errBadRequest("latest load run has no successful restart evidence")
+			}
+			if _, err := tx.ExecContext(ctx, `UPDATE benchmark_jobs SET validation_source_job_id=$1 WHERE id=$2`, last.ID, created.ID); err != nil {
+				tx.Rollback()
+				return err
+			}
 		}
 		if err := tx.Commit(); err != nil {
 			return err

@@ -326,7 +326,7 @@ ISUXPORTAL_SUPERVISOR_HARD_TIMEOUT=210 \
 |---|---|---|
 | `-target-port` | `80` | ポートを含まない IP を `http://<IP>:<port>` に変換する際のポート。URL または明示ポート付きの対象には適用しない |
 | `-timeout` | `190s` | 初期化から走行後の整合性チェックまでの全体上限。超えたら中断して失敗にする |
-| `-only-post-validation` | `false` | 最終検証は未実装のため、対象へ接続せず失敗を報告して終了コード 1 で終了する |
+| `-only-post-validation` | `false` | Verify saved restart evidence without initializing or running load. Requires `-validation-state` or the portal evidence endpoint. |
 
 `-target` の指定がなければ `ISUXBENCH_TARGET` を参照し、それもなければ開発環境の入口
 （`http://app.127.0.0.1.nip.io:18090`）を使う。`ISUXBENCH_ALL_ADDRESSES` は使わない（3 リージョンへの振り分けは
@@ -379,3 +379,37 @@ go -C bench build ./...
 ポータルは `survey_responses` にチームごとの最新値、`survey_response_history` にベンチ実行ごとの申告を保存します。
 初期化前や初期化失敗時は申告を送らず、保存済みの値を維持します。
 集計方法と履歴の扱いは [ポータルの利用言語とエージェントの調査](../portal/README.md#利用言語とエージェントの調査) を参照してください。
+
+
+### Restart evidence
+
+When the portal launches a load run, it supplies `--validation-url`. After the
+normal final checks, the benchmark records up to three load-created users per
+region. It verifies their accepted posts/friendships against the load model,
+then saves their profile, monthly Memories (including comments and RealMojis),
+friend relationships, and SHA-256 hashes of image bodies. Evidence includes
+private login credentials and is stored once per job in the portal database;
+it is never written to the participant application or participant-visible logs.
+The Supervisor supplies authentication through `ISUXBENCH_VALIDATION_TOKEN`.
+
+After rebooting the environment, the admin **Trigger Post Validation Benchmarks**
+action binds its job to the latest non-post-validation run. That run must have
+finished successfully and saved evidence. `--only-post-validation` retrieves the
+evidence, checks the target/Host against the original environment, logs in with
+new sessions and compares the saved data. It does not call `/api/initialize`,
+create replacement data, or run load. Expiring image URLs are compared through
+image contents, not their signatures. Missing evidence, changed targets, failed
+login, missing/changed data or unreadable images fail validation.
+Post-validation results are excluded from competition scores and leaderboards.
+
+For a standalone run, keep the evidence file on the operator machine:
+
+```sh
+./bench --target http://127.0.0.1:8080 --validation-state /private/operator/run.json
+# Reboot the environment, then:
+./bench --target http://127.0.0.1:8080 --only-post-validation --validation-state /private/operator/run.json
+```
+
+Use the same `--host` on both runs when the Router requires a Host override.
+The local evidence file is created with mode 0600. This is sampled persistence
+verification; the manual's browser inspection remains an operator procedure.

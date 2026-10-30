@@ -148,3 +148,13 @@
         GOARCH: amd64
       changed_when: true
       when: "'router' in prepare_components"
+
+    - name: Build post-contest checker
+      ansible.builtin.command:
+        argv: [go, build, -trimpath, -o, "{{ build_dir }}/isucon-contest-envcheck", ./cmd/contest-envcheck]
+        chdir: "{{ repo_root }}/portal"
+      environment:
+        CGO_ENABLED: "0"
+        GOOS: linux
+        GOARCH: amd64
+      changed_when: true
