@@ -852,6 +852,10 @@ func (a *fakeApp) serveInteraction(respond func(int, any), fail func(int, string
 				items = append(items, c.Comment)
 			}
 		}
+		// アプリと同じく作成時刻、ID の昇順に並べる。
+		slices.SortFunc(items, func(x, y client.Comment) int {
+			return cmp.Or(x.CreatedAt.Compare(y.CreatedAt), strings.Compare(x.ID, y.ID))
+		})
 		respond(http.StatusOK, map[string]any{"items": items, "hasMore": false})
 	case r.Method == http.MethodPost:
 		if !a.canView(viewer, p) || viewer.id == p.Author.ID {
@@ -876,11 +880,15 @@ func (a *fakeApp) serveInteraction(respond func(int, any), fail func(int, string
 			return
 		}
 		items := []client.RealMoji{}
-		for _, x := range slices.Backward(a.reactions) {
+		for _, x := range a.reactions {
 			if x.postID == p.ID && !x.replaced && !x.gone && a.active(x.reactorID) {
 				items = append(items, x.RealMoji)
 			}
 		}
+		// アプリと同じく作成時刻、ID の降順に並べる。
+		slices.SortFunc(items, func(x, y client.RealMoji) int {
+			return cmp.Or(y.CreatedAt.Compare(x.CreatedAt), strings.Compare(y.ID, x.ID))
+		})
 		respond(http.StatusOK, map[string]any{"items": items, "hasMore": false})
 	}
 }

@@ -158,6 +158,15 @@ func commentLess(a, b client.Comment) bool {
 	return a.ID < b.ID
 }
 
+// realMojiNewer は a が b より新しい（作成時刻、ID の降順で前にある）か。一覧のページ送りも
+// この順で区切る。
+func realMojiNewer(a, b client.RealMoji) bool {
+	if !a.CreatedAt.Equal(b.CreatedAt) {
+		return a.CreatedAt.After(b.CreatedAt)
+	}
+	return a.ID > b.ID
+}
+
 func (m *Model) reaction(postID, reactorID string) *timeline[string] {
 	key := [2]string{postID, reactorID}
 	if m.reactions[key] == nil {
@@ -218,7 +227,7 @@ func (m *Model) CheckRealMojis(viewerID, postID string, page client.RealMojiPage
 			continue
 		}
 		reactors[item.Reactor.ID] = true
-		if i > 0 && item.CreatedAt.After(page.Items[i-1].CreatedAt) {
+		if i > 0 && !realMojiNewer(page.Items[i-1], item) {
 			problems = append(problems, fmt.Sprintf("RealMoji %s が新しい順に並んでいません", item.ID))
 		}
 		tl := m.reactions[[2]string{postID, item.Reactor.ID}]
