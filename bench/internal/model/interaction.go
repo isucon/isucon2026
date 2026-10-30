@@ -100,6 +100,19 @@ func (m *Model) BeginDeleteComment(commentID string) *Write {
 	return w
 }
 
+// CommentDeletable は、書いた人がコメント commentID を読み取り r の間ずっと消せたはずか（コメントが
+// 確実に残っていて、投稿も残っていて、投稿者も書いた人も有効）。bench の知らないコメントは不明。
+func (m *Model) CommentDeletable(commentID string, r Read) Tri {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	c := m.commentByID[commentID]
+	if c == nil || m.posts[c.PostID] == nil {
+		return Unknown
+	}
+	p := m.posts[c.PostID]
+	return And(boolTri(c.exists, r), m.liveTri(p, r), m.activeTri(p.AuthorID, r), m.activeTri(c.AuthorID, r))
+}
+
 // CheckComments は viewer が投稿 postID のコメントの一覧で after より後を読んだ 1 ページを、
 // bench が書いたコメントと突き合わせる。削除されたコメントや bench の知らないコメント
 // （その作成者の結果のわからない作成がなければ）が返った、書いた人、本文、作成時刻が作成の
@@ -244,6 +257,19 @@ func (m *Model) BeginDeleteRealMoji(postID, reactorID string) *Write {
 	w := m.newWrite()
 	begin(w, m.reaction(postID, reactorID), "")
 	return w
+}
+
+// RealMojiDeletable は、reactorID が投稿 postID に付けた RealMoji id を、読み取り r の間ずっと
+// 消せたはずか（それが確実に今の RealMoji で、投稿が残っていて、投稿者も送った人も有効）。
+func (m *Model) RealMojiDeletable(postID, reactorID, id string, r Read) Tri {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	tl, p := m.reactions[[2]string{postID, reactorID}], m.posts[postID]
+	if tl == nil || p == nil {
+		return Unknown
+	}
+	current := forAll(tl, r, func(v string) Tri { return triOf(v == id) })
+	return And(current, m.liveTri(p, r), m.activeTri(p.AuthorID, r), m.activeTri(reactorID, r))
 }
 
 // CheckRealMojis は viewer が読んだ投稿 postID の RealMoji の一覧の最初のページを、bench が

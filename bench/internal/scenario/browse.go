@@ -2,6 +2,7 @@ package scenario
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -256,15 +257,20 @@ func (r *Runner) deleteRealMoji(ctx context.Context, u *user, s *session) {
 		return
 	}
 	w := r.model.BeginDeleteRealMoji(postID, u.ID)
+	sent := time.Now()
 	err := u.API.DeleteRealMoji(client.MayFailWith(ctx, http.StatusNotFound, http.StatusForbidden), u.Token, id)
-	settle(w, err)
+	settleRetried(w, err)
 	switch {
 	case r.bannedErr(u, err):
 		// BAN されたユーザーは止める。失敗には数えない。
 	case err == nil:
 		r.award(u, s.day, score.TagDeleteReaction)
 	case isStatus(err, http.StatusNotFound) || isStatus(err, http.StatusForbidden):
-		// 投稿が削除されたり、投稿者が先に消したりしていれば正しい拒否。
+		// 投稿が削除されたり、投稿者が先に消したりしていれば正しい拒否。確実に消せたはずの自分の
+		// RealMoji の取り消しを拒否したときだけエラーにする。
+		if !retried(err) && r.model.RealMojiDeletable(postID, u.ID, id, r.model.ReadBetween(sent, time.Now())) == model.True {
+			r.invalid(ctx, u, "%s: 自分の RealMoji %s の取り消しが拒否されました: %v", u.Username, id, err)
+		}
 	default:
 		r.requestError(ctx, u, "%s: RealMoji %s を取り消せません: %v", u.Username, id, err)
 	}
@@ -350,16 +356,38 @@ func (r *Runner) deleteComment(ctx context.Context, u *user, s *session) {
 	id := s.myComments[len(s.myComments)-1]
 	s.myComments = s.myComments[:len(s.myComments)-1]
 	w := r.model.BeginDeleteComment(id)
+	sent := time.Now()
 	err := u.API.DeleteComment(client.MayFailWith(ctx, http.StatusNotFound, http.StatusForbidden), u.Token, id)
-	settle(w, err)
+	settleRetried(w, err)
 	switch {
 	case r.bannedErr(u, err):
 	case err == nil:
 		r.award(u, s.day, score.TagDeleteReaction)
 	case isStatus(err, http.StatusNotFound) || isStatus(err, http.StatusForbidden):
+		// RealMoji の取り消しと同じく、確実に消せたはずのときだけエラーにする。
+		if !retried(err) && r.model.CommentDeletable(id, r.model.ReadBetween(sent, time.Now())) == model.True {
+			r.invalid(ctx, u, "%s: 自分のコメント %s の削除が拒否されました: %v", u.Username, id, err)
+		}
 	default:
 		r.requestError(ctx, u, "%s: コメント %s を消せません: %v", u.Username, id, err)
 	}
+}
+
+// retried は err が、503 を受けて送り直した要求の応答か。前の試行が反映されていれば
+// （削除済みなど）、送り直した要求の拒否は正しい。
+func retried(err error) bool {
+	var apiErr *client.APIError
+	return errors.As(err, &apiErr) && apiErr.Attempts > 1
+}
+
+// settleRetried は settle と同じく結果を記録するが、503 のあとに送り直して拒否された要求は、
+// 前の試行が反映されたかもしれないので結果不明とする。
+func settleRetried(w *model.Write, err error) {
+	if retried(err) {
+		w.Unknown()
+		return
+	}
+	settle(w, err)
 }
 
 // listComments は投稿のコメントの一覧を読み、bench が書いたコメントと突き合わせる。

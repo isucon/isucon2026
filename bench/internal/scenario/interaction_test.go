@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -213,5 +214,75 @@ func TestBlockedProfileIsInvalid(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+// TestRejectedOwnInteractionDeletion は、確実に残っている自分のコメントや RealMoji の削除を 403
+// か 404 で拒否されたら失敗に数え、投稿が削除されたあとの拒否は正しい拒否とすることを確かめる。
+func TestRejectedOwnInteractionDeletion(t *testing.T) {
+	for _, kind := range []string{"comment", "realmoji"} {
+		for _, status := range []int{http.StatusNoContent, http.StatusForbidden, http.StatusNotFound} {
+			for _, postDeleted := range []bool{false, true} {
+				if status == http.StatusNoContent && postDeleted {
+					continue
+				}
+				t.Run(fmt.Sprintf("%s/%d/postDeleted=%v", kind, status, postDeleted), func(t *testing.T) {
+					f := newInteractionFixture(t)
+					s := &session{day: 1}
+					if kind == "comment" && !f.r.comment(t.Context(), f.guest, s, f.post.FeedPost()) || kind == "realmoji" && !f.r.react(t.Context(), f.guest, s, f.post.FeedPost()) {
+						t.Fatal(f.r.board.Errors())
+					}
+					if postDeleted {
+						w := f.r.model.BeginDeletePost(f.post.ID)
+						if err := f.owner.API.DeletePost(t.Context(), f.owner.Token, f.post.ID); err != nil {
+							t.Fatal(err)
+						}
+						w.Applied()
+					}
+					rec := f.route(t, f.guest, func(w http.ResponseWriter, req *http.Request) {
+						if req.Method == http.MethodDelete && status != http.StatusNoContent {
+							writeJSON(t, w, status, map[string]string{"error": "interaction_forbidden"})
+							return
+						}
+						f.app.ServeHTTP(w, req)
+					})
+					if kind == "comment" {
+						f.r.deleteComment(t.Context(), f.guest, s)
+					} else {
+						f.r.deleteRealMoji(t.Context(), f.guest, s)
+					}
+					want := int64(0)
+					if status != http.StatusNoContent && !postDeleted {
+						want = 1
+					}
+					if got := rec.Total(0); got.Ops != 1 || got.Failures != want || f.r.board.ErrorCount() != want {
+						t.Fatalf("stats=%+v errors=%v", got, f.r.board.Errors())
+					}
+				})
+			}
+		}
+	}
+	// 503 のあとに送り直した削除の 404 は、前の試行で消えたかもしれないので正しい拒否とする。
+	f := newInteractionFixture(t)
+	s := &session{day: 1}
+	if !f.r.comment(t.Context(), f.guest, s, f.post.FeedPost()) {
+		t.Fatal(f.r.board.Errors())
+	}
+	var attempts atomic.Int64
+	f.route(t, f.guest, func(w http.ResponseWriter, req *http.Request) {
+		if req.Method == http.MethodDelete {
+			if attempts.Add(1) == 1 {
+				f.app.ServeHTTP(httptest.NewRecorder(), req)
+				writeJSON(t, w, http.StatusServiceUnavailable, map[string]string{"error": "busy"})
+				return
+			}
+		}
+		f.app.ServeHTTP(w, req)
+	})
+	f.r.deleteComment(t.Context(), f.guest, s)
+	// 消えたかもしれないコメントは、一覧になくてもよい。
+	f.r.listComments(t.Context(), f.guest, s, f.post.ID)
+	if attempts.Load() != 2 || f.r.board.ErrorCount() != 0 {
+		t.Fatalf("attempts=%d errors=%v", attempts.Load(), f.r.board.Errors())
 	}
 }
