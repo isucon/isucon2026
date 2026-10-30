@@ -189,3 +189,8 @@ if (runtime.authTimingEnabled !== undefined && typeof runtime.authTimingEnabled 
 if (runtime.postTimingEnabled !== undefined && typeof runtime.postTimingEnabled !== "boolean") {
     throw new Error("Invalid post timing flag");
 }
+
+const exportConcurrency = runtime.exportConcurrency ?? 2;
+if (!Number.isInteger(exportConcurrency) || exportConcurrency < 1 || exportConcurrency > 16) {
+    throw new Error("Invalid export concurrency");
+}
