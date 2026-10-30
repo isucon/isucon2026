@@ -103,7 +103,7 @@ func TestSupervisorIntegration(t *testing.T) {
 	}{
 		{name: "contestant failure"},
 		{name: "survey survives contestant failure", survey: true},
-		{name: "unsupported post validation", option: "--only-post-validation", wantExit: 1},
+		{name: "post validation requires evidence", option: "--only-post-validation", wantExit: 1},
 		{name: "invalid configuration", option: "--users=0", wantExit: 2},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

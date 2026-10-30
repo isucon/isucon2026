@@ -97,7 +97,8 @@ type Config struct {
 	OperatorLogger *slog.Logger
 	// OnProgress は途中経過（暫定のスコアと内訳）を受け取る。フェーズの境目と、負荷走行の
 	// 観測窓が閉じるたびに呼ぶ。スーパーバイザーへの報告に使う。
-	OnProgress func(Result)
+	OnProgress     func(Result)
+	SaveValidation func(context.Context, ValidationSnapshot) error
 }
 
 type Result struct {
@@ -312,6 +313,15 @@ func (r *Runner) Run(ctx context.Context) Result {
 	r.progress()
 	if reason == "" && r.board.CriticalCount() == 0 {
 		reason = r.finalCheck(ctx)
+	}
+	if reason == "" && r.cfg.SaveValidation != nil {
+		snapshot, err := r.validationSnapshot(ctx)
+		if err == nil {
+			err = r.cfg.SaveValidation(ctx, snapshot)
+		}
+		if err != nil {
+			reason = "post-validation evidence: " + err.Error()
+		}
 	}
 	if ctx.Err() != nil {
 		reason = "ベンチマークが中断されました: " + ctx.Err().Error()

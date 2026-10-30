@@ -2,6 +2,27 @@ AWSTemplateFormatVersion: 2010-09-09
 Description: >-
   AWS CloudFormation for ISUCON2026 Contest
 Resources:
+  EnvcheckRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: {Service: ec2.amazonaws.com}
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: EnvironmentInspection
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: [ec2:DescribeInstances, ec2:DescribeVolumes, ec2:DescribeSecurityGroups, ec2:DescribeRouteTables, ec2:DescribeNetworkAcls]
+                Resource: '*'
+  EnvcheckInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles: [!Ref EnvcheckRole]
   GetAvailabilityZoneFunctionExecutionRole:
     Type: AWS::IAM::Role
     Properties:
@@ -204,6 +225,7 @@ Resources:
     Type: AWS::EC2::Instance
     DependsOn: [{{.ID}}DefaultRoute, {{.ID}}RouteAssociation{{range $.ContestServers}}{{if ne .Number $server.Number}}, {{$server.ID}}To{{.ID}}{{end}}{{end}}]
     Properties:
+      IamInstanceProfile: !Ref EnvcheckInstanceProfile
       ImageId: {{$.AMIID}}
       InstanceType: {{.InstanceType}}
       SubnetId: !Ref {{.ID}}Subnet
@@ -226,6 +248,9 @@ Resources:
           #cloud-config
 {{template "admin_ssh" $}}
           write_files:
+          - path: /etc/isucon/envcheck.json
+            permissions: '0600'
+            content: '{"service_ami":"{{$.AMIID}}","router_ami":"{{$.RouterAMIID}}","types":["c5.large","c7i.large","c7i.large","c5.large","c6in.large"]}'
           - path: /opt/isucon-env-checker/portal_credentials.json
             permissions: '0600'
             encoding: b64
@@ -250,6 +275,7 @@ Resources:
 {{end}}
             - systemctl daemon-reload
             - systemctl enable --now --no-block isucon-register.service
+            - systemctl enable --now --no-block envcheck.service
   {{.ID}}IP:
     Type: AWS::EC2::EIP
     DependsOn: InternetGatewayAttachment
@@ -308,6 +334,7 @@ Resources:
     Type: AWS::EC2::Instance
     DependsOn: [PublicDefaultRoute, RouterPublicRoutes]
     Properties:
+      IamInstanceProfile: !Ref EnvcheckInstanceProfile
       ImageId: {{$.RouterAMIID}}
       InstanceType: c6in.large
       NetworkInterfaces:
@@ -338,6 +365,9 @@ Resources:
             - [systemctl, daemon-reload]
             - [systemctl, try-restart, ssh.service]
           write_files:
+          - path: /etc/isucon/envcheck.json
+            permissions: '0600'
+            content: '{"service_ami":"{{$.AMIID}}","router_ami":"{{$.RouterAMIID}}","types":["c5.large","c7i.large","c7i.large","c5.large","c6in.large"]}'
           - path: /etc/isucon/registration.json
             permissions: '0600'
             encoding: b64
@@ -415,6 +445,7 @@ Resources:
             - systemctl daemon-reload
             - systemctl enable --now --no-block isucon-router-bootstrap.service
             - systemctl enable --now --no-block isucon-register.service
+            - systemctl enable --now --no-block envcheck.service
   RouterIP:
     Type: AWS::EC2::EIP
     DependsOn: InternetGatewayAttachment

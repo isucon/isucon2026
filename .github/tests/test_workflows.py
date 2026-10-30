@@ -29,6 +29,44 @@ def triggered(workflow, event, branch, path):
 
 
 class WorkflowRoutingTest(unittest.TestCase):
+    def test_ci_builds_pull_from_mirror(self):
+        for job in workflows()["portal-ci.yml"]["jobs"].values():
+            for service in job.get("services", {}).values():
+                self.assertTrue(service["image"].startswith("mirror.gcr.io/library/"))
+        root = WORKFLOWS.parents[1]
+        for path in [
+            "portal/deploy/Dockerfile",
+            "portal/rspec/Dockerfile",
+            "supervisor/Dockerfile",
+            "router/Dockerfile",
+            "router/tests/e2e/Dockerfile",
+            "router/test-fixtures/server/Dockerfile",
+            "portal-mock/server/Dockerfile",
+            "portal-mock/web/Dockerfile",
+        ]:
+            for line in (root / path).read_text().splitlines():
+                if line.startswith("# syntax="):
+                    self.assertTrue(line.startswith("# syntax=mirror.gcr.io/"))
+                if line.startswith("FROM "):
+                    image = line.split()[1]
+                    if ":" in image:
+                        self.assertTrue(
+                            image.startswith("mirror.gcr.io/library/"), image
+                        )
+
+    def test_router_checks_use_mirror(self):
+        image = workflows()["router-ci.yml"]["jobs"]["digest"]["container"]["image"]
+        self.assertTrue(image.startswith("mirror.gcr.io/library/"))
+        makefile = (WORKFLOWS.parents[1] / "Makefile").read_text()
+        commands = [
+            line
+            for line in makefile.splitlines()
+            if "docker run" in line and "haproxy" in line
+        ]
+        self.assertEqual(len(commands), 2)
+        for command in commands:
+            self.assertIn("mirror.gcr.io/library/haproxy:", command)
+
     def test_feature_push_does_not_duplicate_pr(self):
         for name, workflow in workflows().items():
             if "pull_request" in workflow["on"]:

@@ -105,7 +105,7 @@ func (b *condBuilder) addVisibility(vis Visibility, t config.Timing, teamID int6
 	}
 }
 
-const successfullyFinished = "benchmark_results.finished = true AND benchmark_results.exit_status = 0 AND benchmark_results.exit_signal IS NULL"
+const successfullyFinished = "benchmark_results.finished = true AND benchmark_results.exit_status = 0 AND benchmark_results.exit_signal IS NULL AND NOT EXISTS (SELECT 1 FROM benchmark_jobs j WHERE j.id = benchmark_results.benchmark_job_id AND j.post_validation = true)"
 
 // BuildLeaderboard は Contest.leaderboard 相当。
 // SoloItem 指定時は LeaderboardItem を、それ以外は Leaderboard を返す。
