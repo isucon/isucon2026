@@ -64,12 +64,19 @@ func TestRegionalLanguage(t *testing.T) {
 			t.Fatalf("%s must contain ordinary and invented names", key)
 		}
 	}
-	crossLanguage := 0
+	crossLanguage, titles, themed := 0, 0, 0
 	for day := range 3 {
 		for _, p := range w.PostsOn(day) {
 			author := w.Users[w.userIndex[p.AuthorID]]
 			l := languageFor(author.Region, author.ID)
-			if !slices.Contains(l.captions, p.Caption) {
+			photo, _ := w.imagePhoto(p.Image)
+			if photo.theme != noveltyTheme && photo.region != author.Region {
+				t.Fatalf("post %s uses a photo from %s by a user in %s", p.ID, photo.region, author.Region)
+			}
+			switch {
+			case p.Caption == photo.titles[l.code]:
+				titles++
+			case !slices.Contains(l.captions, p.Caption):
 				t.Fatalf("%s: unexpected caption %q", l.code, p.Caption)
 			}
 			if p.Location.Locality != nil && !slices.Contains(l.localities, *p.Location.Locality) {
@@ -81,14 +88,20 @@ func TestRegionalLanguage(t *testing.T) {
 				if cl.code != l.code {
 					crossLanguage++
 				}
-				if !slices.Contains(cl.comments, c.Body) {
-					t.Fatalf("comment uses wrong author's language: %s %q", cl.code, c.Body)
+				switch {
+				case slices.Contains(themeComments[photo.theme][cl.code], c.Body):
+					themed++
+				case !slices.Contains(cl.comments, c.Body):
+					t.Fatalf("comment uses wrong author's language or theme: %s %s %q", cl.code, photo.theme, c.Body)
 				}
 			}
 		}
 	}
 	if crossLanguage == 0 {
 		t.Fatal("no cross-language comments exercised")
+	}
+	if titles == 0 || themed == 0 {
+		t.Fatalf("captions and comments do not follow the photos: %d titles, %d themed comments", titles, themed)
 	}
 }
 
@@ -135,6 +148,16 @@ func TestLanguageCatalog(t *testing.T) {
 			if !slices.Contains(l.captions, "") {
 				t.Fatalf("%s missing empty caption", l.code)
 			}
+		}
+	}
+}
+
+// TestCommentBodies は負荷走行中のコメントが初期データの、どの椅子にも付く一言から選ばれる
+// ことを確かめる。
+func TestCommentBodies(t *testing.T) {
+	for _, body := range commentBodies {
+		if body == "" || !slices.Contains(japanese.comments, body) && !slices.Contains(english.comments, body) {
+			t.Fatalf("comment %q is not a generic comment of the initial data", body)
 		}
 	}
 }
