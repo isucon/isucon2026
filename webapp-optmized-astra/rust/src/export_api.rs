@@ -1,5 +1,5 @@
 use std::io::{self, Write};
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 
 use axum::Extension;
 use axum::body::Body;
@@ -132,7 +132,14 @@ fn export_query() -> String {
     )
 }
 
-static EXPORTS: Semaphore = Semaphore::const_new(2);
+static EXPORTS: LazyLock<Semaphore> = LazyLock::new(|| {
+    let concurrency = std::env::var("ISUREAL_EXPORT_CONCURRENCY")
+        .unwrap_or_else(|_| "2".into())
+        .parse::<usize>()
+        .expect("export concurrency");
+    assert!((1..=16).contains(&concurrency), "invalid export concurrency");
+    Semaphore::new(concurrency)
+});
 
 #[derive(Debug)]
 struct ExportPost {
