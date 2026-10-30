@@ -38,6 +38,7 @@ class WorkflowRoutingTest(unittest.TestCase):
             "portal/deploy/Dockerfile",
             "portal/rspec/Dockerfile",
             "supervisor/Dockerfile",
+            "router/Dockerfile",
         ]:
             for line in (root / path).read_text().splitlines():
                 if line.startswith("FROM "):
