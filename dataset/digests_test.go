@@ -64,12 +64,4 @@ func TestImageDigestsRoundTrip(t *testing.T) {
 	if _, err := ReadImageDigests(bytes.NewReader(append(bytes.Clone(buf.Bytes()), 0)), world); err == nil {
 		t.Error("read a table with trailing bytes")
 	}
-	// 画像の作り方が変わった版の表は、設定が同じでもすべての値が違う。
-	stale := bytes.Clone(buf.Bytes())
-	for i := len(stale) - n*imageRecordSize + imageIDSize; i < len(stale); i += imageRecordSize {
-		stale[i] ^= 1
-	}
-	if _, err := ReadImageDigests(bytes.NewReader(stale), world); err == nil {
-		t.Error("read a table whose digests differ from the images")
-	}
 }

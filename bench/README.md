@@ -152,7 +152,7 @@ Memories の画像）では Router に SHA-256 を返させ（`X-Benchmark-Diges
 表は `cd bench && go run ./cmd/imagedigests -scale large -out ../var/image-digests/large.bin`
 （`make bench-image-digests`）で作る。Large で約 183 万枚、58 MB で、すべての画像を描くので CPU 時間で
 50 分ほどかかる。ファイルの先頭に初期データの設定の SHA-256 を入れており、`-scale` の違う表は読まない。
-読むときに画像をいくつか描いて表と比べるので、画像の作り方が変わる前の版の表も読まない。
+画像の作り方が変わったときも作り直す（違う版の表では正しいアプリの画像も誤りになるので、参考実装で走らせて確かめる）。
 
 - SHA-256 を返さない古い Router は XXH3 を返すので、そのときは描き直して比べる。isureal-digest が落ちていて
   画像そのものが返ったときは、その SHA-256 を表と比べる。
