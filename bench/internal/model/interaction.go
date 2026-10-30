@@ -84,7 +84,10 @@ func (m *Model) BeginDeleteComment(commentID string) *Write {
 // bench が書いたコメントと突き合わせる。削除されたコメントや bench の知らないコメント
 // （結果のわからない作成がなければ）が返った、確実に残っているコメントがない、古い順に
 // 並んでいない場合を返す。
-func (m *Model) CheckComments(postID string, after *client.Comment, page client.CommentPage, r Read) []string {
+//
+// viewer とブロックの関係にある（かもしれない）人のコメントは、仕様では見えないが、参照実装は
+// 返すので、あってもなくてもよい。
+func (m *Model) CheckComments(viewerID, postID string, after *client.Comment, page client.CommentPage, r Read) []string {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	var problems []string
@@ -119,7 +122,7 @@ func (m *Model) CheckComments(postID string, after *client.Comment, page client.
 		last = &page.Items[len(page.Items)-1]
 	}
 	for _, c := range m.comments[postID] {
-		if seen[c.ID] || boolTri(c.exists, r) != True || m.activeTri(c.AuthorID, r) != True {
+		if seen[c.ID] || boolTri(c.exists, r) != True || m.activeTri(c.AuthorID, r) != True || m.blockedTri(viewerID, c.AuthorID, r) != False {
 			continue
 		}
 		key := client.Comment{ID: c.ID, CreatedAt: c.CreatedAt}
@@ -181,10 +184,11 @@ func (m *Model) BeginDeleteRealMoji(postID, reactorID string) *Write {
 	return w
 }
 
-// CheckRealMojis は投稿 postID の RealMoji の一覧の最初のページを、bench が送った RealMoji と
-// 突き合わせる。置き換えや削除をした RealMoji が返った、同じ人の RealMoji が 2 件ある、
-// 確実に残っている RealMoji がない（続きがないとき）、新しい順に並んでいない場合を返す。
-func (m *Model) CheckRealMojis(postID string, page client.RealMojiPage, r Read) []string {
+// CheckRealMojis は viewer が読んだ投稿 postID の RealMoji の一覧の最初のページを、bench が
+// 送った RealMoji と突き合わせる。置き換えや削除をした RealMoji が返った、同じ人の RealMoji が
+// 2 件ある、確実に残っている RealMoji がない（続きがないとき）、新しい順に並んでいない場合を
+// 返す。viewer とブロックの関係にある人の RealMoji は、CheckComments と同じくあってもなくてもよい。
+func (m *Model) CheckRealMojis(viewerID, postID string, page client.RealMojiPage, r Read) []string {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	var problems []string
@@ -212,7 +216,7 @@ func (m *Model) CheckRealMojis(postID string, page client.RealMojiPage, r Read) 
 		return problems
 	}
 	for _, reactor := range m.reactionsFor[postID] {
-		if reactors[reactor] || m.activeTri(reactor, r) != True {
+		if reactors[reactor] || m.activeTri(reactor, r) != True || m.blockedTri(viewerID, reactor, r) != False {
 			continue
 		}
 		values := m.reactions[[2]string{postID, reactor}].possible(r)

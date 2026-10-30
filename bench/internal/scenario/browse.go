@@ -251,7 +251,7 @@ func (r *Runner) listRealMojis(ctx context.Context, u *user, s *session, postID 
 		r.requestError(ctx, u, "%s: 投稿 %s の RealMoji の一覧を取得できません: %v", u.Username, postID, err)
 		return
 	}
-	problems := r.model.CheckRealMojis(postID, page, read)
+	problems := r.model.CheckRealMojis(u.ID, postID, page, read)
 	for _, problem := range problems {
 		r.invalid(ctx, u, "%s: 投稿 %s の RealMoji の一覧: %s", u.Username, postID, problem)
 	}
@@ -341,7 +341,7 @@ func (r *Runner) listComments(ctx context.Context, u *user, s *session, postID s
 		r.requestError(ctx, u, "%s: 投稿 %s のコメントの一覧を取得できません: %v", u.Username, postID, err)
 		return
 	}
-	problems := r.model.CheckComments(postID, nil, page, read)
+	problems := r.model.CheckComments(u.ID, postID, nil, page, read)
 	for _, problem := range problems {
 		r.invalid(ctx, u, "%s: 投稿 %s のコメントの一覧: %s", u.Username, postID, problem)
 	}
