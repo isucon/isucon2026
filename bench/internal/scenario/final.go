@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"slices"
+	"sync"
 	"time"
 
 	"github.com/isucon/isucon2026/bench/internal/agent"
@@ -52,6 +53,21 @@ func (r *Runner) finalCheck(ctx context.Context) string {
 	rand.Shuffle(len(users), func(i, j int) { users[i], users[j] = users[j], users[i] })
 	users = users[:min(len(users), finalCheckUsers)]
 	months := r.model.LoadMonths()
+	// 負荷走行の終わりまでにもう一度取得できなかった削除した投稿の画像は、削除から
+	// deletedImageGrace を過ぎるのを待って確かめる（返れば正しさの違反として記録する）。
+	r.mu.Lock()
+	late := r.lateRechecks
+	r.lateRechecks = nil
+	r.mu.Unlock()
+	var rechecks sync.WaitGroup
+	for _, d := range late {
+		rechecks.Go(func() {
+			if sleepUntil(ctx, d.due) == nil {
+				r.recheckImage(ctx, d)
+			}
+		})
+	}
+	defer rechecks.Wait()
 	failures := make([]error, len(users))
 	slots := make(chan struct{}, finalCheckConcurrency)
 	parallel(len(users), func(i int) {

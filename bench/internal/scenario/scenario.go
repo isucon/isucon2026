@@ -207,7 +207,10 @@ type Runner struct {
 	// discoveries はリージョンごとの、フィードで見た人に送った友達申請の数。
 	discoveries map[string]int
 	// openedAt は投稿期間ごとに、開く要求を送った時刻。
-	openedAt        map[string]time.Time
+	openedAt map[string]time.Time
+	// lateRechecks は、負荷走行の終わりまでにもう一度取得できなかった、削除した投稿の画像。
+	// 走行後の整合性チェックで確かめる。
+	lateRechecks    []deletedImage
 	story           []string
 	reputationCount int
 }

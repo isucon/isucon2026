@@ -698,27 +698,44 @@ func (r *Runner) bannedErr(u *user, err error) bool {
 
 func itoa(n int) string { return strconv.Itoa(n) }
 
+// deletedImage は、削除から deletedImageGrace を過ぎたあと（due）にもう一度取得する、削除した
+// 投稿の画像。
+type deletedImage struct {
+	api      *client.Client
+	username string
+	post     client.Post
+	due      time.Time
+}
+
 // recheckDeletedImage は、削除した投稿の画像を、削除から deletedImageGrace を過ぎたあとで
 // もう一度取得する。まだ返れば違反。得点にも失敗にも数えない確認なので、集計しない
-// クライアントで送る。
+// クライアントで送る。確かめる前に負荷走行が終われば、走行後の整合性チェックで確かめる。
 func (r *Runner) recheckDeletedImage(ctx context.Context, u *user, post client.Post) {
 	if r.wg == nil {
 		return
 	}
 	// ユーザーはリージョンを移ると API を差し替えるので、送る前に取っておく。
-	api := u.API.WithObserver(nil)
+	d := deletedImage{api: u.API.WithObserver(nil), username: u.Username, post: post, due: time.Now().Add(deletedImageGrace + time.Second)}
 	r.wg.Go(func() {
-		if sleepUntil(ctx, time.Now().Add(deletedImageGrace+time.Second)) != nil {
-			return
-		}
-		sent := time.Now()
-		_, err := api.Image(client.MayFailWith(ctx, http.StatusForbidden, http.StatusNotFound), post.ImageURL)
-		if err != nil {
-			return
-		}
-		grace := model.Read{Sent: sent, Received: time.Now(), Staleness: deletedImageGrace}
-		if r.model.PostLive(post.ID, grace) == model.False {
-			r.board.Criticalf("%s: 削除から %s 以上経った投稿 %s の画像が取得できました", u.Username, deletedImageGrace, post.ID)
+		if sleepUntil(ctx, d.due) != nil || !r.recheckImage(ctx, d) {
+			r.mu.Lock()
+			r.lateRechecks = append(r.lateRechecks, d)
+			r.mu.Unlock()
 		}
 	})
+}
+
+// recheckImage は削除した投稿の画像を取得し、返れば違反とする。ctx が終わって確かめられ
+// なければ false を返す。
+func (r *Runner) recheckImage(ctx context.Context, d deletedImage) bool {
+	sent := time.Now()
+	_, err := d.api.Image(client.MayFailWith(ctx, http.StatusForbidden, http.StatusNotFound), d.post.ImageURL)
+	if err != nil {
+		return ctx.Err() == nil
+	}
+	grace := model.Read{Sent: sent, Received: time.Now(), Staleness: deletedImageGrace}
+	if r.model.PostLive(d.post.ID, grace) == model.False {
+		r.board.Criticalf("%s: 削除から %s 以上経った投稿 %s の画像が取得できました", d.username, deletedImageGrace, d.post.ID)
+	}
+	return true
 }
