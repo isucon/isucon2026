@@ -177,6 +177,7 @@ func (r *Runner) loginCohort(ctx context.Context) string {
 	}
 	for _, u := range cohort {
 		r.addUser(u)
+		r.countFriends(u)
 	}
 	return ""
 }
