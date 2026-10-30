@@ -21,7 +21,7 @@ runtime = json.loads(Path('webapp-optmized-astra/deploy/runtime.json').read_text
 program = r'''
 import json, subprocess
 rows = subprocess.check_output(['journalctl', '-u', 'webapp-optmized-astra', '-u', 'webapp-optmized-astra-writer', '--since', SINCE, '--until', UNTIL, '-o', 'json'], text=True)
-stages = {'auth','pool_wait','posts_sql','posts_render','reactions_sql','reactions_render','comments_sql','comments_render','json'}
+stages = {'auth_acquire','auth','pool_wait','cache_lookup','posts_sql','posts_render','reactions_sql','reactions_render','comments_sql','comments_render','json'}
 result = []
 for line in rows.splitlines():
     try:

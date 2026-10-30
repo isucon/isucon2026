@@ -114,6 +114,7 @@ pub async fn get_memories_handler(
     } else {
         None
     };
+    ReadProbe::mark(&mut probe, "cache_lookup");
     let response = if let Some(response) = cached {
         response
     } else {
@@ -170,6 +171,7 @@ pub async fn get_memories_by_date_handler(
     } else {
         None
     };
+    ReadProbe::mark(&mut probe, "cache_lookup");
     let response: GetMemoriesByDateResponse = if let Some(response) = cached {
         response
     } else {
