@@ -247,3 +247,14 @@ const sessionPoolConnections = runtime.sessionPoolConnections ?? 0;
 if (!Number.isInteger(sessionPoolConnections) || sessionPoolConnections < 0 || sessionPoolConnections > 16) {
     throw new Error("Invalid session pool capacity");
 }
+
+if (!["", "europe", "america"].includes(runtime.recommendationReadRegion ?? "")) {
+    throw new Error("Invalid recommendation read region");
+}
+if (runtime.recommendationReadRegion && (!runtime.replicasEnabled || !runtime.writeFenceEnabled || runtime.writeFenceMode !== "native")) {
+    throw new Error("Remote recommendations require existing replicas and native write barriers");
+}
+const recommendationPoolConnections = runtime.recommendationPoolConnections ?? 32;
+if (!Number.isInteger(recommendationPoolConnections) || recommendationPoolConnections < 4 || recommendationPoolConnections > 64) {
+    throw new Error("Invalid recommendation pool capacity");
+}

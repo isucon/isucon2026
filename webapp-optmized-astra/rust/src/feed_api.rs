@@ -74,6 +74,7 @@ pub async fn get_feed_handler(
     State(h): State<Arc<HandlerContext>>,
     Extension(session): Extension<Session>,
     graph: Option<Extension<Arc<crate::initial_graph::InitialGraph>>>,
+    recommendation_reads: Option<Extension<crate::recommendation_reads::RecommendationReads>>,
     Bind(input): Bind<GetFeedRequest>,
 ) -> Result<Response, Error> {
     match input.feed.as_str() {
@@ -87,9 +88,14 @@ pub async fn get_feed_handler(
     if ranked && input.before_score.is_none() != input.before_id.is_empty() {
         return Err(new_api_error(StatusCode::BAD_REQUEST, "invalid_pagination"));
     }
+    let ranked_db = recommendation_reads
+        .as_ref()
+        .map_or(&h.db, |Extension(reads)| &reads.0);
     if ranked
         && let Some(Extension(graph)) = graph
-        && let Some(mut posts) = graph.recommended(&h.db, &session.user_id, &input).await?
+        && let Some(mut posts) = graph
+            .recommended(ranked_db, &session.user_id, &input)
+            .await?
     {
         let has_more = posts.len() > 50;
         let mut items = Vec::with_capacity(posts.len().min(50));
@@ -197,7 +203,9 @@ pub async fn get_feed_handler(
                  CROSS JOIN LATERAL ({candidates}) candidate WHERE w.ended_at IS NULL"
             ),
         );
-        let mut posts: Vec<RankedPost> = sqlx::query_as_with(&query, args).fetch_all(&h.db).await?;
+        let mut posts: Vec<RankedPost> = sqlx::query_as_with(&query, args)
+            .fetch_all(ranked_db)
+            .await?;
         let has_more = posts.len() > 50;
         let mut items = Vec::with_capacity(posts.len().min(50));
         for ranked in posts.iter_mut().take(50) {

@@ -274,6 +274,14 @@ pub async fn new_server(config: Config) -> Router {
     };
     let session_connections: u32 = std::env::var("ISUREAL_SESSION_POOL_CONNECTIONS").unwrap_or_else(|_| "0".into()).parse().expect("session pool capacity");
     let session_writes = crate::db_pool::session_context(&handler_context, session_connections).await.expect("connect session pool");
+    let recommendation_host = std::env::var("ISUREAL_RECOMMENDATION_DB_HOST").unwrap_or_default();
+    let recommendation_reads = if !recommendation_host.is_empty() && handler_context.config.region == "asia" && WriteIngress::from_env().is_none() {
+        assert!(matches!(&write_fence, Some(WriteFence::Native(_))), "remote recommendation reads require native write visibility");
+        let target = std::env::var("ISUREAL_RECOMMENDATION_READ_REGION").expect("recommendation replica region");
+        assert!(matches!(target.as_str(), "europe" | "america"));
+        let connections = std::env::var("ISUREAL_RECOMMENDATION_POOL_CONNECTIONS").unwrap_or_else(|_| "32".into()).parse().expect("recommendation pool capacity");
+        Some(crate::recommendation_reads::RecommendationReads::connect(&handler_context.config, &recommendation_host, &format!("astra_{target}"), connections).await.expect("connect recommendation replica"))
+    } else { None };
     let primary_sessions_enabled = std::env::var("ISUREAL_PRIMARY_ASIA_SESSIONS").as_deref() == Ok("1");
     let local_session_writes = std::env::var("ISUREAL_LOCAL_ASIA_SESSION_WRITES").as_deref() == Ok("1");
     assert!(!local_session_writes || primary_sessions_enabled, "local session responses require primary authentication");
@@ -403,6 +411,7 @@ pub async fn new_server(config: Config) -> Router {
         )
         .with_state(handler_context.clone());
 
+    let server = if let Some(reads) = recommendation_reads { server.layer(axum::Extension(reads)) } else { server };
     let server = if let Some(policy) = primary_sessions { server.layer(axum::Extension(policy)) } else { server };
     let server = if let Some(graph) = graph { server.layer(axum::Extension(graph)) } else { server };
     let server = if let Some(history) = history { server.layer(axum::Extension(history)) } else { server };
