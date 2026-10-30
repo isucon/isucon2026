@@ -29,11 +29,16 @@ type User struct {
 	region *timeline[string]
 }
 
-// Window は投稿期間。LocalDate が同じ日の投稿で、他人の投稿のゲートが開く。
+// Window は投稿期間。LocalDate が同じ日の投稿で、他人の投稿のゲートが開く。StartsAt は
+// 開いたときの応答の開始時刻（応答になければゼロ）。
 type Window struct {
 	ID        string
 	Region    string
 	LocalDate time.Time
+	StartsAt  time.Time
+
+	// opened は bench が開いたことを記録した時刻。
+	opened time.Time
 }
 
 type Post struct {
@@ -74,6 +79,10 @@ func pairOf(a, b string) pair {
 type Model struct {
 	// Staleness は書き込みが読み取りに反映されるまでに許す遅れ。
 	Staleness time.Duration
+	// StartSkew は、投稿期間が開いてから投稿できるようになるまでに許す遅れ（既定 1 秒）。
+	// アプリは開始時刻（DB の時計）より前の投稿を受け付けない（canPost が false、作成は 409）
+	// ので、開いた直後は、アプリのサーバーと DB の時計のずれだけ投稿できないことがある。
+	StartSkew time.Duration
 	// PageSize はフィードの 1 ページの件数（既定 FeedPageSize）。テストで小さくする。
 	PageSize int
 
@@ -128,6 +137,7 @@ type Model struct {
 func New() *Model {
 	return &Model{
 		PageSize:         FeedPageSize,
+		StartSkew:        time.Second,
 		now:              time.Now,
 		users:            map[string]*User{},
 		windows:          map[string]*Window{},
@@ -272,6 +282,7 @@ func (m *Model) BeginOpenWindow(region string) *Write {
 // OpenedWindow は開いた投稿期間を記録し、送信中の "?" を実際の ID に置き換える。
 func (m *Model) OpenedWindow(w *Write, window Window) {
 	m.mu.Lock()
+	window.opened = m.now()
 	m.windows[window.ID] = &window
 	for _, c := range m.currentWindow(window.Region).changes {
 		if c.value == "?" && c.outcome == inFlight {
@@ -289,6 +300,92 @@ func (m *Model) HasWindow(id string) bool {
 	return m.windows[id] != nil
 }
 
+// Window は bench が開いた投稿期間 id（知らなければ nil）。書き換えてはいけない。
+func (m *Model) Window(id string) *Window {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.windows[id]
+}
+
+// MayBeCurrentWindow は、読み取り r の間に、userID の所属リージョンで開いている投稿期間が
+// windowID（開いている投稿期間がなければ ""）でありえたか。開いた結果のわからない投稿期間が
+// あれば、bench の知らない ID もありうる。
+func (m *Model) MayBeCurrentWindow(userID, windowID string, r Read) bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	u := m.users[userID]
+	if u == nil {
+		return true
+	}
+	known := windowID == "" || m.windows[windowID] != nil
+	found := false
+	u.region.each(r, func(region string) {
+		current := m.currentWindowOf(region)
+		found = found || current.mayBe(r, windowID) || !known && current.mayBe(r, "?")
+	})
+	return found
+}
+
+// PostSlot は、読み取り r の間に userID が投稿期間 windowID に投稿できたか（その日付に削除されて
+// いない投稿がなく、削除した投稿が 2 件未満）。投稿期間を開いた直後（StartSkew 以内）と、結果の
+// わからない投稿の作成があるときは不明。
+func (m *Model) PostSlot(userID, windowID string, r Read) Tri {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.postSlotTri(userID, windowID, r)
+}
+
+func (m *Model) postSlotTri(userID, windowID string, r Read) Tri {
+	window := m.windows[windowID]
+	if window == nil {
+		return Unknown
+	}
+	result := True
+	if r.Sent.Before(window.opened.Add(m.StartSkew)) || m.mayHaveUnknownPost(userID, r) {
+		result = Unknown
+	}
+	deleted, mayBeDeleted := 0, 0
+	for _, p := range m.byAuthor[userID] {
+		if !p.LocalDate.Equal(window.LocalDate) {
+			continue
+		}
+		result = min(result, Not(m.liveTri(p, r)))
+		switch min(boolTri(m.postExists[p.ID], r), boolTri(p.deleted, r)) {
+		case True:
+			deleted++
+			mayBeDeleted++
+		case Unknown:
+			mayBeDeleted++
+		}
+	}
+	switch {
+	case deleted >= 2:
+		return False
+	case mayBeDeleted >= 2:
+		result = min(result, Unknown)
+	}
+	return result
+}
+
+// CanCreatePost は、読み取り r の間に userID が所属リージョンの開いている投稿期間に投稿
+// できたか。投稿期間が切り替わっている最中なら、どちらの投稿期間にも投稿できたときだけ真。
+func (m *Model) CanCreatePost(userID string, r Read) Tri {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	u := m.users[userID]
+	if u == nil {
+		return Unknown
+	}
+	return forAll(u.region, r, func(region string) Tri {
+		return forAll(m.currentWindowOf(region), r, func(id string) Tri {
+			if id == "" {
+				return False
+			}
+			return m.postSlotTri(userID, id, r)
+		})
+	})
+}
+
 // ErrUnknownWindow は、bench が開いていない投稿期間であることを表す。
 var ErrUnknownWindow = errors.New("unknown posting window")
 
@@ -298,7 +395,8 @@ var ErrMaybeWindow = errors.New("posting window whose opening timed out")
 
 // WaitForWindow は region の投稿期間 id が記録されるまで待つ。通知は、投稿期間を開いた
 // 管理者への応答より先に届くことがあるので、その投稿期間に投稿する前に呼ぶ。id を知らず、
-// region で開いている最中の投稿期間もなければ ErrUnknownWindow を返す。region で最後に
+// region で開いている最中の投稿期間もなければ ErrUnknownWindow を返す。id がほかのリージョンの
+// 投稿期間でも ErrUnknownWindow を返す。region で最後に
 // 開こうとした投稿期間か、待ち始めたときに開いている最中だった投稿期間の結果がわからなければ
 // ErrMaybeWindow を返す。
 func (m *Model) WaitForWindow(ctx context.Context, region, id string) (*Window, error) {
@@ -331,6 +429,9 @@ func (m *Model) WaitForNotifiedWindow(ctx context.Context, region, id string, re
 			slices.ContainsFunc(waitedFor, func(c *change[string]) bool { return c.outcome == unknown }) ||
 			!received.IsZero() && slices.ContainsFunc(changes, func(c *change[string]) bool { return c.outcome == unknown && !c.sent.After(received) })
 		m.mu.RUnlock()
+		if window != nil && window.Region != region {
+			return nil, ErrUnknownWindow
+		}
 		if window != nil {
 			return window, nil
 		}

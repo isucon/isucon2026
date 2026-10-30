@@ -168,7 +168,8 @@ func (r *Runner) runUser(ctx context.Context, u *user, join bool, subscribed cha
 		switch {
 		case err != nil:
 			r.requestError(ctx, u, "%s: 現在の投稿期間を取得できません: %v", u.Username, err)
-		case status.Window != nil && status.CanPost:
+		case status.Window != nil:
+			// 投稿できるか（canPost）は post で読み直して確かめる。
 			s, previous = r.enterWindow(ctx, u, status.Window.ID, previous, time.Time{}, notifications)
 		}
 	}
@@ -187,7 +188,7 @@ func (r *Runner) runUser(ctx context.Context, u *user, join bool, subscribed cha
 				if u.stopped.Load() {
 					continue
 				}
-				if status, err := u.API.CurrentWindow(ctx, u.Token); err == nil && status.Window != nil && status.CanPost && r.model.HasWindow(status.Window.ID) {
+				if status, err := u.API.CurrentWindow(ctx, u.Token); err == nil && status.Window != nil && r.model.HasWindow(status.Window.ID) {
 					// 移った先でまだ投稿していない日付の投稿期間が開いていれば、通知を待たずに投稿する。
 					s, previous = r.enterWindow(ctx, u, status.Window.ID, previous, time.Time{}, notifications)
 				} else if err != nil {
@@ -202,7 +203,7 @@ func (r *Runner) runUser(ctx context.Context, u *user, join bool, subscribed cha
 					<-ctx.Done()
 					continue
 				}
-				if status, err := u.API.CurrentWindow(ctx, u.Token); err == nil && status.Window != nil && status.CanPost && r.model.HasWindow(status.Window.ID) {
+				if status, err := u.API.CurrentWindow(ctx, u.Token); err == nil && status.Window != nil && r.model.HasWindow(status.Window.ID) {
 					s, previous = r.enterWindow(ctx, u, status.Window.ID, previous, time.Time{}, notifications)
 				} else if err != nil {
 					r.requestError(ctx, u, "%s: 現在の投稿期間を取得できません: %v", u.Username, err)
@@ -402,13 +403,13 @@ func (r *Runner) visibilityOf(u *user) string {
 
 // post は windowID の投稿期間に写真を投稿する。投稿できたら投稿と公開範囲を返す。
 func (r *Runner) post(ctx context.Context, u *user, windowID string) (client.Post, string, bool) {
+	sent := time.Now()
 	status, err := u.API.CurrentWindow(ctx, u.Token)
 	if err != nil {
 		r.requestError(ctx, u, "%s: 現在の投稿期間を取得できません: %v", u.Username, err)
 		return client.Post{}, "", false
 	}
-	if status.Window == nil || status.Window.ID != windowID || !status.CanPost || status.HasPosted {
-		// 通知を受けてから次の投稿期間が開くこともあるので、エラーにはしない。
+	if !r.checkCurrentWindow(ctx, u, windowID, status, r.model.ReadBetween(sent, time.Now())) {
 		return client.Post{}, "", false
 	}
 	visibility := r.visibilityOf(u)
@@ -416,13 +417,16 @@ func (r *Runner) post(ctx context.Context, u *user, windowID string) (client.Pos
 	image, caption := r.photos.Post(region, key)
 	location := r.locationOf(u, r.dayOfWindow(windowID))
 	creation := r.model.BeginCreatePost(u.ID)
+	sent = time.Now()
 	post, err := u.API.CreatePost(client.MayFailWith(ctx, http.StatusConflict), u.Token, image, caption, visibility, location)
+	read := r.model.ReadBetween(sent, time.Now())
 	if isStatus(err, http.StatusConflict) {
 		settle(creation.Write, err)
 		// 確かめてから送るまでに次の投稿期間が開き、その日付にはもう投稿していた（リージョンを
-		// 移った人に起きる）なら、投稿できないのが正しい。503 で送り直した要求なら、前の試行で
+		// 移った人に起きる）なら、投稿できないのが正しい。送っている間の開いている投稿期間の
+		// どれにも投稿できたはずのときだけエラーにする。503 で送り直した要求なら、前の試行で
 		// 投稿できていたかもしれない。
-		if isRejection(err) && r.currentWindowID(u.Region) == windowID {
+		if isRejection(err) && r.model.CanCreatePost(u.ID, read) == model.True {
 			r.invalid(ctx, u, "%s: 投稿できるはずの投稿期間で投稿が拒否されました: %v", u.Username, err)
 		}
 		return client.Post{}, "", false
@@ -446,6 +450,13 @@ func (r *Runner) post(ctx context.Context, u *user, windowID string) (client.Pos
 		}
 		return client.Post{}, "", false
 	}
+	// 投稿が入るのは、要求を処理する間に所属リージョンで開いていた投稿期間だけ。前の日の閉じた
+	// 投稿期間には入らない。
+	if !r.model.MayBeCurrentWindow(u.ID, post.PostingWindowID, read) {
+		creation.Unknown()
+		r.invalid(ctx, u, "%s: 投稿が、送っている間に開いていなかった投稿期間 %s に入りました", u.Username, post.PostingWindowID)
+		return client.Post{}, "", false
+	}
 	if !r.model.Created(creation, model.Post{
 		ID: post.ID, AuthorID: u.ID, WindowID: post.PostingWindowID, ImageID: imageurl.ImageID(post.ImageURL),
 		Caption: post.Caption, PostedAt: post.PostedAt, Location: location, OnTime: post.OnTime, LateSeconds: post.LateSeconds,
@@ -455,6 +466,42 @@ func (r *Runner) post(ctx context.Context, u *user, windowID string) (client.Pos
 		return client.Post{}, "", false
 	}
 	return post, visibility, true
+}
+
+// startsAtTolerance は、今の投稿期間の開始時刻が、開いたときの応答の開始時刻とずれてよい幅。
+// 時刻の精度（マイクロ秒、ミリ秒）は実装によって違う。
+const startsAtTolerance = time.Second
+
+// checkCurrentWindow は、投稿の前に読み取り read で読んだ今の投稿期間 status が、bench の開いた
+// 投稿期間と食い違わないことを確かめ、windowID に投稿してよければ true を返す。通知を受けて
+// から次の投稿期間が開くこともあるので、送っている間に開いていたかもしれないほかの投稿期間なら
+// エラーにせずに投稿をやめる。投稿できないという答え（canPost、hasPosted）は、その日付に
+// 確実に投稿していないのに返ればエラーにする。
+func (r *Runner) checkCurrentWindow(ctx context.Context, u *user, windowID string, status client.WindowStatus, read model.Read) bool {
+	current := ""
+	if status.Window != nil {
+		current = status.Window.ID
+	}
+	if !r.model.MayBeCurrentWindow(u.ID, current, read) {
+		r.invalid(ctx, u, "%s: 今の投稿期間 %q が、開いている投稿期間と違います", u.Username, current)
+		return false
+	}
+	if current != windowID {
+		return false
+	}
+	w, opened := status.Window, r.model.Window(windowID)
+	if opened != nil && (w.Region != opened.Region || w.LocalDate != opened.LocalDate.Format(time.DateOnly) ||
+		!opened.StartsAt.IsZero() && (w.StartsAt.Sub(opened.StartsAt).Abs() > startsAtTolerance || w.StartsAt.IsZero())) {
+		r.invalid(ctx, u, "%s: 今の投稿期間 %s の内容が開いた投稿期間と違います（リージョン %s、日付 %s、開始 %s）", u.Username, w.ID, w.Region, w.LocalDate, w.StartsAt.Format(time.RFC3339Nano))
+		return false
+	}
+	if !status.CanPost || status.HasPosted {
+		if r.model.PostSlot(u.ID, windowID, read) == model.True {
+			r.invalid(ctx, u, "%s: 投稿していない投稿期間 %s で投稿できないと返りました（canPost %t、hasPosted %t）", u.Username, windowID, status.CanPost, status.HasPosted)
+		}
+		return false
+	}
+	return true
 }
 
 // afterPost は投稿したあと、今日の投稿と画像を確かめる。一部のユーザーは公開範囲を変え、
@@ -650,13 +697,6 @@ func (r *Runner) checkMemory(ctx context.Context, u *user, previous *client.Post
 		last := page.Items[len(page.Items)-1].Post
 		before = &last
 	}
-}
-
-// currentWindowID は bench が region で最後に開いた投稿期間。
-func (r *Runner) currentWindowID(region string) string {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	return r.lastWindow[region]
 }
 
 // dayOfWindow は投稿期間がどの日のものか（bench が開いた期間でなければ 0）。
