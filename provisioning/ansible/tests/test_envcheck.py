@@ -26,6 +26,8 @@ class EnvcheckCommandTest(unittest.TestCase):
         ]
         self.assertIn(link["src"], binaries)
         self.assertEqual(link["owner"], "root")
+        manual = (root.parents[1] / "docs/manual.md").read_text()
+        self.assertIn("sudo " + link["path"], manual)
 
 
 if __name__ == "__main__":
