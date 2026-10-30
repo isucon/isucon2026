@@ -94,6 +94,9 @@ func (r *Runner) finalCheckUser(ctx context.Context, user *agent.Agent, months [
 		if err != nil {
 			return fmt.Errorf("%s: 友達の一覧を取得できません: %w", user.Username, err)
 		}
+		if problem := relationProblem("friends", page.Items); problem != "" {
+			return fmt.Errorf("%s: 友達の一覧: %s", user.Username, problem)
+		}
 		for _, item := range page.Items {
 			friends = append(friends, item.User.ID)
 		}

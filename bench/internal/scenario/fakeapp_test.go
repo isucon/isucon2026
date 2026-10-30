@@ -50,6 +50,9 @@ type fakeReaction struct {
 
 type fakeWindow struct{ id, date string }
 
+// fakeRelationTime は関係の一覧の項目の更新日時（偽のアプリは関係の時刻を持たない）。
+var fakeRelationTime = time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
+
 type fakeRequest struct {
 	from, to string
 	status   string
@@ -789,7 +792,7 @@ func (a *fakeApp) serveRelationships(respond func(int, any), viewer *fakeUser, k
 	items := []client.Relationship{}
 	add := func(id, other, status string) {
 		if a.active(other) {
-			items = append(items, client.Relationship{RelationID: id, User: a.summary(a.users[other]), Status: status})
+			items = append(items, client.Relationship{RelationID: id, User: a.summary(a.users[other]), Status: status, UpdatedAt: fakeRelationTime})
 		}
 	}
 	switch kind {
