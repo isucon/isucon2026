@@ -356,6 +356,60 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn export_batch_uses_verified_owner_layout_and_retains_single_image_reads() {
+        use sha2::{Digest, Sha256};
+        let root = root();
+        let mapped = root.join("owner");
+        let mut store =
+            FileStore::new(root.clone(), "asia".into(), HashMap::new(), false).with_archives(true);
+        store.prepare().await.unwrap();
+        fs::create_dir(&mapped).unwrap();
+        let source = uuid::Uuid::new_v4();
+        let target = uuid::Uuid::new_v4();
+        let image = include_bytes!("../tests/fixtures/small.jpg");
+        let original = root.join("packs").join(source.simple().to_string());
+        let mut original_bytes = image.to_vec();
+        original_bytes.extend(b"tail");
+        fs::write(&original, original_bytes).unwrap();
+        fs::write(mapped.join(target.simple().to_string()), image).unwrap();
+        let mut index = b"ASTRAOA1".to_vec();
+        index.extend(1_u64.to_le_bytes());
+        index.extend(source.as_bytes());
+        index.extend(0_u64.to_le_bytes());
+        index.extend((image.len() as u32).to_le_bytes());
+        index.extend(target.as_bytes());
+        index.extend(0_u64.to_le_bytes());
+        let digest = hex::encode(Sha256::digest(&index));
+        fs::write(mapped.join("index.bin"), index).unwrap();
+        store.owner_archive = Some(Arc::new(
+            crate::owner_archive::OwnerArchive::load(mapped, &digest).unwrap(),
+        ));
+        let key = format!("pack:{}:0:{}", source.simple(), image.len());
+        let tail = format!("pack:{}:{}:4", source.simple(), image.len());
+        let images = store
+            .archived_images(&[tail.clone(), key.clone(), key.clone()])
+            .await
+            .unwrap();
+        assert_eq!(images[&key].as_ref(), image);
+        assert_eq!(images[&tail].as_ref(), b"tail");
+        assert_eq!(store.get(&key).await.unwrap(), image);
+        fs::remove_file(original).unwrap();
+        assert_eq!(
+            store
+                .archived_images(std::slice::from_ref(&key))
+                .await
+                .unwrap()[&key]
+                .as_ref(),
+            image
+        );
+        assert!(
+            store.get(&key).await.is_err(),
+            "single reads still use the original layout"
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[tokio::test]
     async fn immutable_files_survive_new_instances_and_failed_publication() {
         let root = root();
         let store = FileStore::new(root.clone(), "asia".into(), HashMap::new(), true);
