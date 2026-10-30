@@ -574,17 +574,20 @@ func (r *Runner) checkImage(ctx context.Context, u *user, post client.FeedPost) 
 	return true
 }
 
-// readFeed はフィードの before より古い投稿のページ（before が nil なら最初のページ）を読み、
-// モデルで検証する。検証に通れば true。weight が正なら欠落と署名も確かめ（thorough）、それで
-// 見つけた失敗 1 件をエラー率に weight 件として数える。
-func (r *Runner) readFeed(ctx context.Context, u *user, feed string, before *client.FeedPost, weight int64) (client.FeedPage, bool) {
+// readFeed はフィードを scroll の続きから 1 ページ読み（scroll が nil かゼロ値なら最初の
+// ページ）、モデルで検証して scroll を進める。検証に通れば true。weight が正なら欠落と署名も
+// 確かめ（thorough）、それで見つけた失敗 1 件をエラー率に weight 件として数える。
+func (r *Runner) readFeed(ctx context.Context, u *user, feed string, scroll *model.Scroll, weight int64) (client.FeedPage, bool) {
 	sent := time.Now()
-	page, err := u.API.Feed(ctx, u.Token, feed, before)
+	page, err := u.API.Feed(ctx, u.Token, feed, scroll.Before())
 	if err != nil {
 		r.requestError(ctx, u, "%s: フィード %s を取得できません: %v", u.Username, feed, err)
 		return page, false
 	}
-	result := r.model.CheckFeed(u.ID, feed, before, page, r.model.ReadBetween(sent, time.Now()), weight > 0)
+	result := r.model.CheckScroll(u.ID, feed, scroll, page, r.model.ReadBetween(sent, time.Now()), weight > 0)
+	if scroll != nil {
+		scroll.Advance(page, sent)
+	}
 	for _, violation := range result.Violations {
 		r.board.Criticalf("%s: %s", u.Username, violation)
 	}

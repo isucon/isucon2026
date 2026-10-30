@@ -41,18 +41,57 @@ func (r *FeedResult) thorough(format string, args ...any) {
 	r.Thorough = append(r.Thorough, fmt.Sprintf(format, args...))
 }
 
-// CheckFeed は viewer が before より古い投稿を feed で読んだ 1 ページを検証する。
+// Scroll は同じフィードを続けて読むページの記録。最初のページの前はゼロ値のまま渡し、
+// ページを読むたびに Advance で進める。
+type Scroll struct {
+	// before は前のページの最後の投稿（ページ送りの位置）。
+	before *client.FeedPost
+	// since は最初のページを送った時刻、seen はそれまでのページで返った投稿。
+	since time.Time
+	seen  map[string]bool
+}
+
+// Before は次のページの送りの位置（最初のページなら nil）。
+func (s *Scroll) Before() *client.FeedPost {
+	if s == nil {
+		return nil
+	}
+	return s.before
+}
+
+// Advance は sent に送って読んだページ page を記録し、次のページの位置へ進める。
+func (s *Scroll) Advance(page client.FeedPage, sent time.Time) {
+	if s.seen == nil {
+		s.since, s.seen = sent, map[string]bool{}
+	}
+	for _, item := range page.Items {
+		s.seen[item.ID] = true
+	}
+	if len(page.Items) > 0 {
+		last := page.Items[len(page.Items)-1]
+		s.before = &last
+	}
+}
+
+// CheckFeed は viewer が before より古い投稿を feed で読んだ 1 ページを検証する（前のページの
+// 投稿を知らないときの CheckScroll）。
+func (m *Model) CheckFeed(viewerID, feed string, before *client.FeedPost, page client.FeedPage, r Read, thorough bool) FeedResult {
+	return m.CheckScroll(viewerID, feed, &Scroll{before: before}, page, r, thorough)
+}
+
+// CheckScroll は viewer が feed を s の続きから読んだ 1 ページを検証する。
 //
 //   - 返った投稿は、見えてはいけない（判定が偽）ものであってはならない。bench の知らない
 //     投稿は、結果のわからない投稿作成のものである場合だけ許す。
-//   - ページの範囲（before より古く、次のページがあるなら最後の投稿以降）にある、見える
-//     べき（判定が真）投稿は、すべて返っていなければならない。
-//   - 投稿時刻の新しい順に並ぶ。同じ時刻の投稿の順は問わない。
+//   - ページの範囲（ページ送りの位置より古く、次のページがあるなら最後の投稿以降）にある、
+//     見えるべき（判定が真）投稿は、すべて返っていなければならない。
+//   - 投稿時刻の新しい順に並ぶ。同じ時刻の投稿の順は問わない。前のページの投稿（ページ送りの
+//     位置の投稿を含む）がまた返るのは重複とする。
 //
 // 欠落の確認（開いている投稿期間の投稿をユーザー数に比例して調べる）と画像 URL の署名の
 // 検証は重いので、thorough のときだけ行う。返った投稿の確認は常に行う。
-func (m *Model) CheckFeed(viewerID, feed string, before *client.FeedPost, page client.FeedPage, r Read, thorough bool) FeedResult {
-	result, signatures := m.checkFeedLocked(viewerID, feed, before, page, r, thorough)
+func (m *Model) CheckScroll(viewerID, feed string, s *Scroll, page client.FeedPage, r Read, thorough bool) FeedResult {
+	result, signatures := m.checkFeedLocked(viewerID, feed, s, page, r, thorough)
 	if !thorough {
 		return result
 	}
@@ -75,11 +114,15 @@ type signature struct {
 	postID, url, imageID, secretKey string
 }
 
-func (m *Model) checkFeedLocked(viewerID, feed string, before *client.FeedPost, page client.FeedPage, r Read, thorough bool) (FeedResult, []signature) {
+func (m *Model) checkFeedLocked(viewerID, feed string, s *Scroll, page client.FeedPage, r Read, thorough bool) (FeedResult, []signature) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	var result FeedResult
 	var signatures []signature
+	if s == nil {
+		s = &Scroll{}
+	}
+	before := s.before
 	viewer := m.users[viewerID]
 	if viewer == nil {
 		result.error("フィード %s: 閲覧者 %s を bench が知りません", feed, viewerID)
@@ -98,7 +141,11 @@ func (m *Model) checkFeedLocked(viewerID, feed string, before *client.FeedPost, 
 			continue
 		}
 		seen[item.ID] = true
-		if before != nil && item.PostedAt.After(before.PostedAt) {
+		switch {
+		case before != nil && (item.ID == before.ID || s.seen[item.ID]):
+			// 投稿時刻と ID は変わらないので、正しいアプリでは前のページの投稿はまた返らない。
+			result.error("フィード %s: 前のページの投稿 %s がまた返りました", feed, item.ID)
+		case before != nil && item.PostedAt.After(before.PostedAt):
 			result.error("フィード %s: 投稿 %s がページ送りの位置より新しいです", feed, item.ID)
 		}
 		if i > 0 && item.PostedAt.After(page.Items[i-1].PostedAt) {
@@ -122,15 +169,31 @@ func (m *Model) checkFeedLocked(viewerID, feed string, before *client.FeedPost, 
 	if !thorough {
 		return result, nil
 	}
+	// whole は最初のページを送ってからこのページを受けるまでの読み取り。
+	var whole *view
 	m.feedCandidates(viewer.ID, feed, r, func(p *Post) {
-		if seen[p.ID] || (before != nil && !p.PostedAt.Before(before.PostedAt)) {
+		if seen[p.ID] || s.seen[p.ID] || (before != nil && p.PostedAt.After(before.PostedAt)) {
 			return
 		}
 		// 続きがあるのに空のページは件数の誤りとし、欠落は確かめない。
 		if page.HasMore && (len(page.Items) == 0 || !p.PostedAt.After(page.Items[len(page.Items)-1].PostedAt)) {
 			return
 		}
-		if v.inFeedTri(p, feed) == True {
+		check := &v
+		if before != nil && p.PostedAt.Equal(before.PostedAt) {
+			// ページ送りの位置と同じ時刻の投稿は、同じ時刻の並べ方しだいで前のページにも、この
+			// ページにも入る。前のページから続けて読んでいて、どちらにも無く、最初のページを
+			// 読んだときからずっと見えるべきだった投稿だけを欠落とする。
+			if s.seen == nil {
+				return
+			}
+			if whole == nil {
+				w := m.newView(viewer, Read{Sent: s.since, Received: r.Received, Staleness: r.Staleness})
+				whole = &w
+			}
+			check = whole
+		}
+		if check.inFeedTri(p, feed) == True {
 			result.thorough("フィード %s: %s に見えるべき投稿 %s がありません", feed, viewer.Username, p.ID)
 		}
 	})
