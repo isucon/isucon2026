@@ -77,3 +77,5 @@ pub mod initial_history;
 pub mod initial_graph;
 
 pub mod primary_session;
+
+pub mod recommendation_reads;

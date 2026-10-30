@@ -166,6 +166,17 @@ async fn compare_ranked(h: &Arc<HandlerContext>, stage: &str) -> usize {
             .unwrap(),
     );
     let all = ranked_reference(&h.db).await;
+    let remote = isureal::recommendation_reads::RecommendationReads(
+        PgPoolOptions::new()
+            .max_connections(1)
+            .connect_with((*h.db.connect_options()).clone())
+            .await
+            .unwrap(),
+    );
+    let mut occupied = Vec::new();
+    for _ in 0..3 {
+        occupied.push(h.db.acquire().await.unwrap());
+    }
     let mut cursor: Option<(i64, DateTime<Utc>, String)> = None;
     let mut pages = 0;
     loop {
@@ -180,48 +191,51 @@ async fn compare_ranked(h: &Arc<HandlerContext>, stage: &str) -> usize {
                     })
             })
             .collect();
-        let input = GetFeedRequest {
-            feed: "friends-of-friends".into(),
-            before_score: cursor.as_ref().map(|cursor| cursor.0),
-            before_posted_at: cursor.as_ref().map(|cursor| cursor.1),
-            before_id: cursor
-                .as_ref()
-                .map(|cursor| cursor.2.clone())
-                .unwrap_or_default(),
-        };
-        let response = get_feed_handler(
-            State(h.clone()),
-            Extension(session()),
-            Some(Extension(graph.clone())),
-            Bind(input),
-        )
-        .await
-        .unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
-        let bytes = response.into_body().collect().await.unwrap().to_bytes();
-        let body: Value = serde_json::from_slice(&bytes).unwrap();
-        let items: Vec<(&str, i64)> = body["items"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|item| {
-                (
-                    item["id"].as_str().unwrap(),
-                    item["score"].as_i64().unwrap(),
-                )
-            })
-            .collect();
-        let expected_items: Vec<(&str, i64)> = expected
-            .iter()
-            .take(50)
-            .map(|(post, score)| (post.post.id.as_str(), *score))
-            .collect();
-        assert_eq!(items, expected_items, "ranked stage={stage}, page={pages}");
-        assert_eq!(
-            body["hasMore"],
-            expected.len() > 50,
-            "ranked stage={stage}, page={pages}"
-        );
+        for cached_graph in [None, Some(Extension(graph.clone()))] {
+            let input = GetFeedRequest {
+                feed: "friends-of-friends".into(),
+                before_score: cursor.as_ref().map(|cursor| cursor.0),
+                before_posted_at: cursor.as_ref().map(|cursor| cursor.1),
+                before_id: cursor
+                    .as_ref()
+                    .map(|cursor| cursor.2.clone())
+                    .unwrap_or_default(),
+            };
+            let response = get_feed_handler(
+                State(h.clone()),
+                Extension(session()),
+                cached_graph,
+                Some(Extension(remote.clone())),
+                Bind(input),
+            )
+            .await
+            .unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+            let bytes = response.into_body().collect().await.unwrap().to_bytes();
+            let body: Value = serde_json::from_slice(&bytes).unwrap();
+            let items: Vec<(&str, i64)> = body["items"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|item| {
+                    (
+                        item["id"].as_str().unwrap(),
+                        item["score"].as_i64().unwrap(),
+                    )
+                })
+                .collect();
+            let expected_items: Vec<(&str, i64)> = expected
+                .iter()
+                .take(50)
+                .map(|(post, score)| (post.post.id.as_str(), *score))
+                .collect();
+            assert_eq!(items, expected_items, "ranked stage={stage}, page={pages}");
+            assert_eq!(
+                body["hasMore"],
+                expected.len() > 50,
+                "ranked stage={stage}, page={pages}"
+            );
+        }
         pages += 1;
         if expected.len() <= 50 {
             return pages;
@@ -255,10 +269,15 @@ async fn compare(h: &Arc<HandlerContext>, stage: &str) -> usize {
                 before_posted_at: before,
                 before_id: before_id.clone(),
             };
-            let response =
-                get_feed_handler(State(h.clone()), Extension(session()), None, Bind(input))
-                    .await
-                    .unwrap();
+            let response = get_feed_handler(
+                State(h.clone()),
+                Extension(session()),
+                None,
+                None,
+                Bind(input),
+            )
+            .await
+            .unwrap();
             assert_eq!(response.status(), StatusCode::OK);
             let bytes = response.into_body().collect().await.unwrap().to_bytes();
             let body: Value = serde_json::from_slice(&bytes).unwrap();
@@ -679,9 +698,15 @@ async fn feed_sql_matches_original_graph_and_filters_before_pagination() {
             ..Default::default()
         },
     ] {
-        let error = get_feed_handler(State(h.clone()), Extension(session()), None, Bind(input))
-            .await
-            .unwrap_err();
+        let error = get_feed_handler(
+            State(h.clone()),
+            Extension(session()),
+            None,
+            None,
+            Bind(input),
+        )
+        .await
+        .unwrap_err();
         assert_eq!(error.into_response().status(), StatusCode::BAD_REQUEST);
     }
     db.close().await;
