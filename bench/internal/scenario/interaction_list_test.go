@@ -5,6 +5,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/isucon/isucon2026/bench/internal/client"
 	"github.com/isucon/isucon2026/bench/internal/score"
@@ -92,5 +93,75 @@ func TestShortInteractionPageWithMoreIsInvalid(t *testing.T) {
 	short.Store(true)
 	if n := f.listBoth(t, f.owner, f.post.ID); n != 2 || rec.Total(0).Failures != 2 || f.r.board.Count(score.TagReactionList) != 2 {
 		t.Fatalf("short pages with more: stats=%+v lists=%d errors=%v", rec.Total(0), f.r.board.Count(score.TagReactionList), f.r.board.Errors())
+	}
+}
+
+// TestRealMojiResponseMustMatchRequest は、RealMoji を送った応答が空のオブジェクトや、送った人、
+// 種類、画像 URL の違うものなら、送れたとして加点せず失敗に数え、その RealMoji を「ない」とも
+// 決めないことを確かめる。
+func TestRealMojiResponseMustMatchRequest(t *testing.T) {
+	for name, edit := range map[string]func(f *interactionFixture, x *client.RealMoji){
+		"correct": func(*interactionFixture, *client.RealMoji) {},
+		"empty":   func(_ *interactionFixture, x *client.RealMoji) { *x = client.RealMoji{} },
+		"reactor": func(f *interactionFixture, x *client.RealMoji) { x.Reactor.ID = f.owner.ID },
+		"type":    func(_ *interactionFixture, x *client.RealMoji) { x.ReactionType = "not-a-reaction" },
+		"image":   func(_ *interactionFixture, x *client.RealMoji) { x.ImageURL = "invalid:" + x.ImageURL },
+		"time":    func(_ *interactionFixture, x *client.RealMoji) { x.CreatedAt = time.Time{} },
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newInteractionFixture(t)
+			rec := f.route(t, f.guest, rewrite(t, f.app, is(http.MethodPost, "/api/posts/"+f.post.ID+"/realmojis"), func(x *client.RealMoji) { edit(f, x) }))
+			sent := f.r.react(t.Context(), f.guest, &session{day: 1}, f.post.FeedPost())
+			stats, points := rec.Total(0), f.r.board.Count(score.TagRealMoji)
+			if name == "correct" {
+				if !sent || stats.Failures != 0 || points != 1 {
+					t.Fatalf("sent=%v stats=%+v points=%d errors=%v", sent, stats, points, f.r.board.Errors())
+				}
+				return
+			}
+			if sent || stats.Failures != 1 || points != 0 || f.r.board.ErrorCount() != 1 {
+				t.Fatalf("sent=%v stats=%+v points=%d errors=%v", sent, stats, points, f.r.board.Errors())
+			}
+			// 応答の誤った RealMoji は、一覧にあってもなくてもよい。
+			before := f.r.board.ErrorCount()
+			f.r.listRealMojis(t.Context(), f.owner, &session{day: 1}, f.post.ID)
+			if f.r.board.ErrorCount() != before {
+				t.Fatalf("list after a broken response: %v", f.r.board.Errors())
+			}
+		})
+	}
+}
+
+// TestRealMojiListMustMatchSent は、送った RealMoji の種類、画像、作成時刻を一覧で書き換えると、
+// 一覧の閲覧に加点せず失敗に数えることを確かめる。
+func TestRealMojiListMustMatchSent(t *testing.T) {
+	for name, edit := range map[string]func(f *interactionFixture, x *client.RealMoji){
+		"correct": func(*interactionFixture, *client.RealMoji) {},
+		"type":    func(_ *interactionFixture, x *client.RealMoji) { x.ReactionType = "not-a-reaction" },
+		"image":   func(f *interactionFixture, x *client.RealMoji) { x.ImageURL = f.post.ImageURL },
+		"time":    func(_ *interactionFixture, x *client.RealMoji) { x.CreatedAt = x.CreatedAt.Add(24 * time.Hour) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newInteractionFixture(t)
+			if !f.r.react(t.Context(), f.guest, &session{day: 1}, f.post.FeedPost()) {
+				t.Fatal(f.r.board.Errors())
+			}
+			rec := f.route(t, f.owner, rewrite(t, f.app, is(http.MethodGet, "/api/posts/"+f.post.ID+"/realmojis"), func(page *client.RealMojiPage) {
+				for i := range page.Items {
+					edit(f, &page.Items[i])
+				}
+			}))
+			f.r.listRealMojis(t.Context(), f.owner, &session{day: 1}, f.post.ID)
+			stats, lists := rec.Total(0), f.r.board.Count(score.TagReactionList)
+			if name == "correct" {
+				if stats.Failures != 0 || lists != 1 {
+					t.Fatalf("stats=%+v lists=%d errors=%v", stats, lists, f.r.board.Errors())
+				}
+				return
+			}
+			if stats.Failures != 1 || lists != 0 || f.r.board.ErrorCount() != 1 {
+				t.Fatalf("stats=%+v lists=%d errors=%v", stats, lists, f.r.board.Errors())
+			}
+		})
 	}
 }

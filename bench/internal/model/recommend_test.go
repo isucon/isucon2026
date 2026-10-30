@@ -130,7 +130,7 @@ func TestCheckRecommendedFeed(t *testing.T) {
 	if len(result.Errors) != 1 || !strings.Contains(result.Errors[0], "点数") {
 		t.Fatalf("impossible score during the reaction: %+v", result)
 	}
-	m.ReplacedRealMoji(reaction, "rm-1")
+	m.ReplacedRealMoji(reaction, client.RealMoji{ID: "rm-1"})
 	r = w.later()
 	if result := check(client.FeedPage{Items: []client.FeedPost{item("a2", 14), item("a1", 7), item("x", 6)}}, nil, r); !clean(result) {
 		t.Fatalf("after the reaction: %+v", result)

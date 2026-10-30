@@ -176,10 +176,26 @@ func (m *Model) reaction(postID, reactorID string) *timeline[string] {
 	return m.reactions[key]
 }
 
+// RealMoji は bench が送って受け付けられた RealMoji。種類、画像 ID、作成時刻は作成の応答の
+// 値で、一覧でも同じでなければならない。
+type RealMoji struct {
+	ID, PostID, ReactorID string
+	ReactionType, ImageID string
+	CreatedAt             time.Time
+}
+
+// matches は一覧の項目 item が、postID への r と同じ RealMoji か。画像 URL は署名の期限が
+// 応答ごとに変わるので、画像 ID だけを比べる。
+func (r *RealMoji) matches(postID string, item client.RealMoji) bool {
+	return r.PostID == postID && r.ReactorID == item.Reactor.ID && r.ReactionType == item.ReactionType &&
+		r.CreatedAt.Equal(item.CreatedAt) && imageurl.CheckForm(item.ImageURL) == nil && imageurl.ImageID(item.ImageURL) == r.ImageID
+}
+
 // ReactionWrite は RealMoji の置き換え。新しい ID は応答でわかる。
 type ReactionWrite struct {
 	*Write
-	change *change[string]
+	postID, reactorID string
+	change            *change[string]
 }
 
 // BeginReplaceRealMoji は postID への reactorID の RealMoji の置き換えを記録する。
@@ -189,15 +205,26 @@ func (m *Model) BeginReplaceRealMoji(postID, reactorID string) *ReactionWrite {
 	w := m.newWrite()
 	tl := m.reaction(postID, reactorID)
 	begin(w, tl, "?")
-	return &ReactionWrite{Write: w, change: tl.changes[len(tl.changes)-1]}
+	return &ReactionWrite{Write: w, postID: postID, reactorID: reactorID, change: tl.changes[len(tl.changes)-1]}
 }
 
-// ReplacedRealMoji は置き換えた RealMoji の ID を記録する。
-func (m *Model) ReplacedRealMoji(w *ReactionWrite, id string) {
+// ReplacedRealMoji は置き換えた RealMoji を作成の応答の値で記録する。置き換えは新しい ID を
+// 発行するので、ID が空か、すでにほかの RealMoji に使われていれば記録せずに false を返す
+// （呼び出し側は結果を不明として記録する）。
+func (m *Model) ReplacedRealMoji(w *ReactionWrite, reaction client.RealMoji) bool {
 	m.mu.Lock()
-	w.change.value = id
+	if reaction.ID == "" || reaction.ID == "?" || m.realMojiByID[reaction.ID] != nil {
+		m.mu.Unlock()
+		return false
+	}
+	w.change.value = reaction.ID
+	m.realMojiByID[reaction.ID] = &RealMoji{
+		ID: reaction.ID, PostID: w.postID, ReactorID: w.reactorID,
+		ReactionType: reaction.ReactionType, ImageID: imageurl.ImageID(reaction.ImageURL), CreatedAt: reaction.CreatedAt,
+	}
 	m.mu.Unlock()
 	w.Applied()
+	return true
 }
 
 // BeginDeleteRealMoji は postID への reactorID の RealMoji の削除を記録する。
@@ -210,9 +237,10 @@ func (m *Model) BeginDeleteRealMoji(postID, reactorID string) *Write {
 }
 
 // CheckRealMojis は viewer が読んだ投稿 postID の RealMoji の一覧の最初のページを、bench が
-// 送った RealMoji と突き合わせる。置き換えや削除をした RealMoji が返った、同じ人の RealMoji が
-// 2 件ある、確実に残っている RealMoji がない（続きがないとき）、新しい順に並んでいない場合を
-// 返す。viewer とブロックの関係にある人の RealMoji は、CheckComments と同じくあってもなくてもよい。
+// 送った RealMoji と突き合わせる。置き換えや削除をした RealMoji が返った、同じ人の RealMoji や
+// 同じ ID が 2 件ある、送った RealMoji と種類・画像・作成時刻が違う、確実に残っている RealMoji
+// がない（続きがあるなら最後の項目より新しいもの）、新しい順に並んでいない場合を返す。viewer と
+// ブロックの関係にある人の RealMoji は、CheckComments と同じくあってもなくてもよい。
 func (m *Model) CheckRealMojis(viewerID, postID string, page client.RealMojiPage, r Read) []string {
 	if problem := pageSizeProblem("RealMoji ", len(page.Items), page.HasMore); problem != "" {
 		return []string{problem}
@@ -220,13 +248,18 @@ func (m *Model) CheckRealMojis(viewerID, postID string, page client.RealMojiPage
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	var problems []string
-	reactors := map[string]bool{}
+	reactors, ids := map[string]bool{}, map[string]bool{}
 	for i, item := range page.Items {
 		if reactors[item.Reactor.ID] {
 			problems = append(problems, fmt.Sprintf("%s の RealMoji が 2 件あります", item.Reactor.ID))
 			continue
 		}
 		reactors[item.Reactor.ID] = true
+		if ids[item.ID] {
+			problems = append(problems, fmt.Sprintf("RealMoji %s が重複しています", item.ID))
+			continue
+		}
+		ids[item.ID] = true
 		if i > 0 && !realMojiNewer(page.Items[i-1], item) {
 			problems = append(problems, fmt.Sprintf("RealMoji %s が新しい順に並んでいません", item.ID))
 		}
@@ -238,19 +271,30 @@ func (m *Model) CheckRealMojis(viewerID, postID string, page client.RealMojiPage
 			problems = append(problems, fmt.Sprintf("退会したユーザーの RealMoji %s が返りました", item.ID))
 		case !tl.mayBe(r, item.ID) && !tl.mayBe(r, "?"):
 			problems = append(problems, fmt.Sprintf("置き換えたか削除した RealMoji %s が返りました", item.ID))
+		default:
+			// ID のわかっている RealMoji は、送ったときの応答と同じでなければならない（ID の
+			// わからない置き換えのものかもしれない項目は、知っている ID でなければ比べられない）。
+			if known := m.realMojiByID[item.ID]; known != nil && !known.matches(postID, item) {
+				problems = append(problems, fmt.Sprintf("RealMoji %s の内容が送ったものと違います", item.ID))
+			}
 		}
-	}
-	if page.HasMore {
-		return problems
 	}
 	for _, reactor := range m.reactionsFor[postID] {
 		if reactors[reactor] || m.activeTri(reactor, r) != True || m.blockedTri(viewerID, reactor, r) != False {
 			continue
 		}
 		values := m.reactions[[2]string{postID, reactor}].possible(r)
-		if !slices.Contains(values, "") && !slices.Contains(values, "?") {
-			problems = append(problems, fmt.Sprintf("%s の RealMoji がありません", reactor))
+		if slices.Contains(values, "") || slices.Contains(values, "?") {
+			continue
 		}
+		// 続きがあれば、最後の項目より古いかもしれない RealMoji は次のページにあってよい。
+		if page.HasMore && slices.ContainsFunc(values, func(id string) bool {
+			known := m.realMojiByID[id]
+			return known == nil || !realMojiNewer(client.RealMoji{ID: id, CreatedAt: known.CreatedAt}, page.Items[len(page.Items)-1])
+		}) {
+			continue
+		}
+		problems = append(problems, fmt.Sprintf("%s の RealMoji がありません", reactor))
 	}
 	return problems
 }

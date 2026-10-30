@@ -2,10 +2,12 @@ package scenario
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"time"
 
 	"github.com/isucon/isucon2026/bench/internal/client"
+	"github.com/isucon/isucon2026/bench/internal/imageurl"
 	"github.com/isucon/isucon2026/bench/internal/model"
 	"github.com/isucon/isucon2026/bench/internal/score"
 )
@@ -174,8 +176,9 @@ func (r *Runner) react(ctx context.Context, u *user, s *session, post client.Fee
 	if post.Author.ID == u.ID || r.model.CanView(u.ID, post.ID, r.model.ReadBetween(sent, sent)) != model.True {
 		return false
 	}
+	kind := u.reactionType()
 	w := r.model.BeginReplaceRealMoji(post.ID, u.ID)
-	reaction, err := u.API.ReplaceRealMoji(client.MayFailWith(ctx, http.StatusForbidden, http.StatusNotFound), u.Token, post.ID, u.reactionType(), r.photos.RealMoji(hashOf(r.seed, "realmoji", u.Username, itoa(s.day), itoa(s.realMojis))))
+	reaction, err := u.API.ReplaceRealMoji(client.MayFailWith(ctx, http.StatusForbidden, http.StatusNotFound), u.Token, post.ID, kind, r.photos.RealMoji(hashOf(r.seed, "realmoji", u.Username, itoa(s.day), itoa(s.realMojis))))
 	allowed := r.model.CanView(u.ID, post.ID, r.model.ReadBetween(sent, time.Now()))
 	switch {
 	case r.bannedErr(u, err):
@@ -191,7 +194,18 @@ func (r *Runner) react(ctx context.Context, u *user, s *session, post client.Fee
 		w.Unknown()
 		r.board.Criticalf("%s: 見えない投稿 %s に RealMoji を送れてしまいました", u.Username, post.ID)
 	case err == nil:
-		r.model.ReplacedRealMoji(w, reaction.ID)
+		// 応答の誤った RealMoji は、反映されたかどうかもわからないものとして扱う（空の ID を
+		// 「RealMoji がない」と記録しない）。
+		if problem, weight := r.checkReaction(u, kind, reaction); problem != "" {
+			w.Unknown()
+			r.invalidN(ctx, u, weight, "%s: 投稿 %s への RealMoji の応答が不正です: %s", u.Username, post.ID, problem)
+			return false
+		}
+		if !r.model.ReplacedRealMoji(w, reaction) {
+			w.Unknown()
+			r.invalid(ctx, u, "%s: 投稿 %s への RealMoji の応答の ID %s が、ほかの RealMoji と同じです", u.Username, post.ID, reaction.ID)
+			return false
+		}
 		r.award(u, s.day, score.TagRealMoji)
 		r.reacted(post.Author.ID, post.PostingWindowID)
 		s.myReactions = append(s.myReactions, post.ID)
@@ -206,6 +220,31 @@ func (r *Runner) react(ctx context.Context, u *user, s *session, post client.Fee
 		r.requestError(ctx, u, "%s: 投稿 %s に RealMoji を送れません: %v", u.Username, post.ID, err)
 	}
 	return false
+}
+
+// checkReaction は RealMoji を送った応答が、送った人と種類の、署名された画像の付いた RealMoji で
+// あることを確かめ、違えばその内容と、エラー率に数える件数を返す。署名の検証は重いので、sample
+// で選んだときだけ行う（見つけた誤りは選んだ割合の逆数の件数に数える）。
+func (r *Runner) checkReaction(u *user, kind string, reaction client.RealMoji) (string, int64) {
+	switch {
+	case reaction.ID == "":
+		return "ID がありません", 1
+	case reaction.Reactor.ID != u.ID:
+		return "送った人が違います", 1
+	case reaction.ReactionType != kind:
+		return fmt.Sprintf("種類が %q ではありません（%q）", kind, reaction.ReactionType), 1
+	case reaction.CreatedAt.IsZero():
+		return "作成時刻がありません", 1
+	}
+	if err := imageurl.CheckForm(reaction.ImageURL); err != nil {
+		return err.Error(), 1
+	}
+	if weight := r.sample(); weight > 0 {
+		if err := imageurl.Verify(reaction.ImageURL, imageurl.ImageID(reaction.ImageURL), u.SecretKey, time.Now()); err != nil {
+			return err.Error(), weight
+		}
+	}
+	return "", 0
 }
 
 // deleteRealMoji は今日送った RealMoji を 1 つ取り消す。
