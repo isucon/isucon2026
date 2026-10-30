@@ -1,7 +1,7 @@
 [Unit]
 Description=Record ISUCON2026 provisioning baseline once
-Wants=network-online.target
-After=network-online.target cloud-final.service isucon-router-bootstrap.service
+Wants=network-online.target ssh.service
+After=network-online.target ssh.service cloud-final.service isucon-router-bootstrap.service
 ConditionPathExists=/etc/isucon/envcheck.json
 ConditionPathExists=!/var/lib/isucon-envcheck/baseline.json
 StartLimitIntervalSec=0

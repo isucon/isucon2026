@@ -1,8 +1,8 @@
 [Unit]
 Description=ISUCON2026 post-contest environment validation
-Wants=network-online.target
+Wants=network-online.target ssh.service
 Requires=envcheck-baseline.service
-After=network-online.target cloud-final.service envcheck-baseline.service isucon-register.service
+After=network-online.target ssh.service cloud-final.service envcheck-baseline.service isucon-register.service
 
 [Service]
 Type=oneshot
