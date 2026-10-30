@@ -720,6 +720,11 @@ wait:
 	if reason := rec.Violation(r.cfg.SLO, rec.WindowAt(time.Now())+1); reason != "" {
 		return "負荷走行を打ち切りました: " + reason
 	}
+	// 投稿期間を開く要求の失敗は打ち切りの判定に数えないので、1 つも開けなければ、投稿も
+	// ゲートの通過もない走行が通ってしまう。
+	if len(r.openedCounts()) == 0 {
+		return "負荷走行で投稿期間を 1 つも開けませんでした"
+	}
 	return ""
 }
 

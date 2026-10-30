@@ -343,6 +343,12 @@ func (r *Runner) openDay(ctx context.Context, region string, day int) (string, e
 	if err != nil {
 		// 開けたかどうかわからない（タイムアウトなど）ので、モデルでは不明のままにする。
 		settle(open, err)
+		// bench は開ける日付だけを送るので、正しいアプリは開く要求を拒否しない。拒否されたら
+		// 負荷走行を打ち切る。ただし BAN は失格にしないので、エラーとして記録して続ける。
+		var apiErr *client.APIError
+		if isRejection(err) && errors.As(err, &apiErr) && apiErr.Code != "ip_banned" {
+			return "", fmt.Errorf("%s の投稿期間を開く要求が拒否されました: %v", region, err)
+		}
 		r.adminError(ctx, "%s の投稿期間を開けません: %v", region, err)
 		return "", nil
 	}
