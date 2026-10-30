@@ -137,9 +137,7 @@ func (r *Runner) revisit(ctx context.Context, u *user, free *client.Client) {
 			images = r.historyImages
 		}
 		err := r.initial.CheckExport(ctx, &exporter, images, func(string) bool { return false })
-		var apiErr *client.APIError
-		var requestErr *client.RequestError
-		if errors.As(err, &apiErr) || errors.As(err, &requestErr) {
+		if failedRequest(err) {
 			// エクスポートの失敗は加点しないだけにする（重い処理をあとに回す判断は自由）。
 			return
 		}
@@ -186,16 +184,24 @@ func (r *Runner) readHistory(ctx context.Context, u *user) {
 // recordHistory は履歴の読み取りの結果を記録する。履歴は変わらないので、中身が違えば
 // 正しさの違反とする。
 func (r *Runner) recordHistory(ctx context.Context, u *user, err error, tag score.Tag) {
-	var apiErr *client.APIError
-	var requestErr *client.RequestError
 	switch {
 	case err == nil:
 		r.award(u, r.dayNow(u.Region), tag)
 	case ctx.Err() != nil:
 	case r.bannedErr(u, err):
-	case errors.As(err, &apiErr) || errors.As(err, &requestErr):
+	case failedRequest(err):
 		r.requestError(ctx, u, "%s: 履歴を読めません: %v", u.Username, err)
 	default:
 		r.board.Criticalf("%s: 履歴が初期データと違います: %v", u.Username, err)
 	}
+}
+
+// failedRequest は err が、Observer が操作の失敗として数えたリクエストの失敗（期待外の
+// ステータス、通信の失敗、上限より大きいか JSON として読めない本体）か。履歴の中身の
+// 食い違いとは分けて、失格にしない。
+func failedRequest(err error) bool {
+	var apiErr *client.APIError
+	var requestErr *client.RequestError
+	var bodyErr *client.BodyError
+	return errors.As(err, &apiErr) || errors.As(err, &requestErr) || errors.As(err, &bodyErr)
 }
