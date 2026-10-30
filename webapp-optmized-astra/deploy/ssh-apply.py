@@ -183,6 +183,9 @@ def application(app):
         if not existing or existing[0] != digest:
             remote(instance, 'umask 077; : > /home/isucon/.astra-signatures.next')
             copy(instance, source, '/home/isucon/.astra-signatures.next')
+            transferred = subprocess.check_output([ssh, instance,
+                'sha256sum /home/isucon/.astra-signatures.next'], text=True).split()
+            assert transferred and transferred[0] == digest, 'Transferred signature cache hash mismatch'
             remote(instance, 'chmod 600 /home/isucon/.astra-signatures.next && mv /home/isucon/.astra-signatures.next /home/isucon/.astra-signatures.bin')
         remote(instance, 'chmod 600 /home/isucon/.astra-signatures.bin')
     read_host, fenced = read_settings(runtime, app)

@@ -1,6 +1,8 @@
-import hashlib,hmac,json,struct,uuid
+import argparse,hashlib,hmac,json,struct,uuid
 from pathlib import Path
-p=Path("var/astra/signatures.bin")
+parser=argparse.ArgumentParser()
+parser.add_argument("path", nargs="?", type=Path, default=Path("var/astra/signatures.bin"))
+p=parser.parse_args().path
 assert p.stat().st_mode & 0o077 == 0
 with p.open("rb") as f:
  header=f.read(16)
