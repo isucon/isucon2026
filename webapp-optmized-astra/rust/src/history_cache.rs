@@ -107,38 +107,54 @@ pub(crate) struct History {
 
 static HISTORIES: LazyLock<Mutex<Cache<History>>> =
     LazyLock::new(|| Mutex::new(Cache::new(96 * 1024 * 1024)));
-static LOADS: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(4);
-
 pub(crate) async fn load(db: &PgPool, owner: &str) -> Result<Arc<History>, Error> {
-    let version = revision(&mut *db.acquire().await?, owner).await?;
-    if let Some(history) = HISTORIES.lock().unwrap().get(owner, &version) {
-        return Ok(history);
+    let present = HISTORIES.lock().unwrap().entries.contains_key(owner);
+    if present {
+        let version = revision(&mut *db.acquire().await?, owner).await?;
+        if let Some(history) = HISTORIES.lock().unwrap().get(owner, &version) {
+            return Ok(history);
+        }
     }
-    let _permit = LOADS.acquire().await.expect("history load semaphore");
-    // Capture revision and all records in one snapshot. A concurrent writer's
-    // records must never be inserted under an older or newer revision.
-    let mut tx = db
-        .begin_with("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY")
-        .await?;
-    let version = revision(&mut tx, owner).await?;
-    let existing = HISTORIES.lock().unwrap().get(owner, &version);
-    if let Some(history) = existing {
-        tx.commit().await?;
-        return Ok(history);
+    // One statement gives records and revision the same MVCC snapshot without
+    // BEGIN/COMMIT or a separate admission queue. The SQL pool bounds loaders.
+    // LEFT JOIN retains the revision row even for owners without any posts.
+    let rows = sqlx::query(&format!(r#"
+        WITH version AS MATERIALIZED (
+          SELECT epoch,
+            (SELECT count(*) FROM astra_history_changes WHERE owner_id='') AS global_changes,
+            (SELECT count(*) FROM astra_history_changes WHERE owner_id=$1) AS owner_changes
+          FROM astra_history_epoch WHERE singleton
+        ), owned AS MATERIALIZED (
+          SELECT {POST_COLUMNS}, w.local_date FROM posts p JOIN posting_windows w ON w.id=p.posting_window_id
+          WHERE p.author_id=$1 AND p.deleted_at IS NULL
+        )
+        SELECT version.*, owned.*,
+          coalesce((SELECT json_agg(c ORDER BY c.created_at,c.id)::text FROM (
+            SELECT id,post_id,author_id,body,created_at,deleted_at FROM comments
+            WHERE post_id=owned.id AND deleted_at IS NULL
+          ) c),'[]') AS comments_json,
+          coalesce((SELECT json_agg(r ORDER BY r.created_at DESC,r.id DESC)::text FROM (
+            SELECT id,post_id,reactor_id,image_id,reaction_type,created_at,replaced_at,deleted_at FROM realmojis
+            WHERE post_id=owned.id AND replaced_at IS NULL AND deleted_at IS NULL
+          ) r),'[]') AS reactions_json
+        FROM version LEFT JOIN owned ON true ORDER BY owned.posted_at DESC,owned.id DESC
+    "#)).bind(owner).fetch_all(db).await?;
+    let version = Revision::from_row(rows.first().ok_or(sqlx::Error::RowNotFound)?)?;
+    let mut posts = Vec::new();
+    let mut comments = Vec::<Comment>::new();
+    let mut reactions = Vec::<RealMoji>::new();
+    for row in rows {
+        if row.try_get::<Option<String>, _>("id")?.is_none() {
+            continue;
+        }
+        posts.push(HistoryPost::from_row(&row)?);
+        comments.extend(serde_json::from_str::<Vec<Comment>>(
+            row.try_get("comments_json")?,
+        )?);
+        reactions.extend(serde_json::from_str::<Vec<RealMoji>>(
+            row.try_get("reactions_json")?,
+        )?);
     }
-    let posts: Vec<HistoryPost> = sqlx::query_as(&format!(
-        "SELECT {POST_COLUMNS}, w.local_date FROM posts p JOIN posting_windows w ON w.id=p.posting_window_id \
-         WHERE p.author_id=$1 AND p.deleted_at IS NULL ORDER BY p.posted_at DESC,p.id DESC"))
-        .bind(owner).fetch_all(&mut *tx).await?;
-    let comments: Vec<Comment> = sqlx::query_as("SELECT c.id,c.post_id,c.author_id,c.body,c.created_at,c.deleted_at \
-        FROM posts p JOIN comments c ON c.post_id=p.id WHERE p.author_id=$1 AND p.deleted_at IS NULL \
-        AND c.deleted_at IS NULL ORDER BY c.created_at,c.id")
-        .bind(owner).fetch_all(&mut *tx).await?;
-    let reactions: Vec<RealMoji> = sqlx::query_as("SELECT r.id,r.post_id,r.reactor_id,r.image_id,r.reaction_type,r.created_at,r.replaced_at,r.deleted_at \
-        FROM posts p JOIN realmojis r ON r.post_id=p.id WHERE p.author_id=$1 AND p.deleted_at IS NULL \
-        AND r.replaced_at IS NULL AND r.deleted_at IS NULL ORDER BY r.created_at DESC,r.id DESC")
-        .bind(owner).fetch_all(&mut *tx).await?;
-    tx.commit().await?;
     // Include capacities/keys/containers conservatively, and reject oversized
     // entries. In-flight readers may temporarily retain evicted Arc values.
     let bytes = 1024

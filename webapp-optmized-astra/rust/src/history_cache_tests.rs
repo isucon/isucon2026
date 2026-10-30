@@ -99,6 +99,18 @@ async fn cached_records_follow_commits_user_changes_pagination_and_reset() {
     .await;
     assert_eq!(next["items"].as_array().unwrap().len(), 5);
     assert_eq!(next["hasMore"], false);
+    // The single-statement loader must retain a revision even for no rows,
+    // and an empty cached history must not hide the first subsequent post.
+    assert_eq!(
+        assert_matches(&db, "absent", None, "").await["items"],
+        serde_json::json!([])
+    );
+    sqlx::raw_sql("INSERT INTO users(id,username,secret_key_hash) VALUES('absent','absent',repeat('ab',32)); INSERT INTO posts(id,author_id,posting_window_id,image_id,posted_at) VALUES('new-owner-post','absent','w','new-owner-image','2026-01-01T00:01Z'); INSERT INTO image_objects VALUES('new-owner-image','absent',''::bytea,'pack:new-owner-image','2026-01-01T00:01Z')")
+        .execute(&db).await.unwrap();
+    assert_eq!(
+        assert_matches(&db, "absent", None, "").await["items"][0]["id"],
+        "new-owner-post"
+    );
     // Fresh user fields and keys are rendered even with the same cached records.
     sqlx::query(
         "UPDATE users SET display_name='changed',secret_key_hash=repeat('ef',32) WHERE id='friend'",

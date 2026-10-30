@@ -5,7 +5,7 @@ use sqlx::{Executor, FromRow, Postgres};
 use crate::api_error::Error;
 use crate::user::{User, user_columns_as};
 
-#[derive(Debug, Clone, sqlx::FromRow)]
+#[derive(Debug, Clone, sqlx::FromRow, serde::Deserialize)]
 pub struct RealMoji {
     pub id: String,
     pub post_id: String,
