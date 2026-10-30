@@ -170,21 +170,49 @@ func (r *Runner) requestFriend(ctx context.Context, u *user, target *user, searc
 	}
 }
 
-// searchUser はユーザー名で target を検索し、見つかることを確かめる。
+// searchPages は、検索で target が見つからないときに読むページ数の上限。ユーザー名は
+// 初期データと同じ形でほぼ重ならないので、ふつうは 1 ページ目で見つかる。
+const searchPages = 5
+
+// searchUser はユーザー名で target を検索し、見つかることを確かめる。見つかるまで続きの
+// ページを読む。読んだ結果に、ブロックの関係にある人や退会した人がいてはならない。
 func (r *Runner) searchUser(ctx context.Context, u *user, target *user) {
 	sent := time.Now()
-	page, err := u.API.SearchUsers(ctx, u.Token, target.Username)
-	read := r.model.ReadBetween(sent, time.Now())
-	if err != nil {
-		r.requestError(ctx, u, "%s: ユーザーを検索できません: %v", u.Username, err)
-		return
+	var items []client.UserSummary
+	var after *client.UserSummary
+	found := false
+	for pages := 1; ; pages++ {
+		page, err := u.API.SearchUsers(ctx, u.Token, target.Username, after)
+		if err != nil {
+			r.requestError(ctx, u, "%s: ユーザーを検索できません: %v", u.Username, err)
+			return
+		}
+		items = append(items, page.Items...)
+		found = slices.ContainsFunc(page.Items, func(item client.UserSummary) bool { return item.ID == target.ID })
+		if found || !page.HasMore {
+			break
+		}
+		if len(page.Items) == 0 {
+			r.invalid(ctx, u, "%s: ユーザー名 %s の検索結果が、続きがあるのに空です", u.Username, target.Username)
+			return
+		}
+		if pages == searchPages {
+			// 見つかるかどうか確かめきれないので加点しない。
+			return
+		}
+		after = &page.Items[len(page.Items)-1]
 	}
-	found := slices.ContainsFunc(page.Items, func(item client.UserSummary) bool { return item.ID == target.ID })
-	if !found && !page.HasMore && r.model.Visible(u.ID, target.ID, read) == model.True {
+	read := r.model.ReadBetween(sent, time.Now())
+	if !found && r.model.Visible(u.ID, target.ID, read) == model.True {
 		r.invalid(ctx, u, "%s: ユーザー名 %s で検索しても見つかりません", u.Username, target.Username)
 		return
 	}
-	for _, item := range page.Items {
+	for _, item := range items {
+		// bench の知らない人（不正な利用者や、登録の結果がわからなかった人）は確かめられない。
+		if r.model.User(item.ID) != nil && r.model.Visible(u.ID, item.ID, read) == model.False {
+			r.invalid(ctx, u, "%s: ブロックの関係にあるか退会したユーザー %s が検索結果にあります", u.Username, item.Username)
+			return
+		}
 		if !strings.Contains(strings.ToLower(item.Username), strings.ToLower(target.Username)) && !strings.Contains(strings.ToLower(item.DisplayName), strings.ToLower(target.Username)) {
 			r.invalid(ctx, u, "%s: 検索語 %s を含まないユーザー %s が検索結果にあります", u.Username, target.Username, item.Username)
 			return
