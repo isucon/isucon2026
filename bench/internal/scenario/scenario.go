@@ -156,6 +156,9 @@ type Runner struct {
 	seed   uint64
 	ips    *ipPool
 
+	// subscriptions は負荷走行で通知の購読が始まった（200 の応答が返った）回数。
+	subscriptions atomic.Int64
+
 	adminToken    string
 	language      string
 	surveyAgent   string
@@ -675,15 +678,6 @@ wait:
 	deadline.Stop()
 	if waiting > 0 && ctx.Err() == nil {
 		r.operatorLogger().Info(fmt.Sprintf("%d 人の通知の購読が %s 以内に始まりませんでした", waiting, subscribeTimeout))
-		if waiting == len(users) {
-			// 誰も購読できなければ通知が届かず、誰も投稿しない。応答の遅い購読は数えないので、
-			// そのまま走ると失敗のない走行になる。
-			reason := fmt.Sprintf("負荷ユーザーの通知の購読に %s 以内に応答がありません（%d 人）", subscribeTimeout, waiting)
-			abort(errors.New(reason))
-			wg.Wait()
-			logout()
-			return reason
-		}
 	}
 
 	start := time.Now()
@@ -745,6 +739,11 @@ wait:
 	// ゲートの通過もない走行が通ってしまう。
 	if len(r.openedCounts()) == 0 {
 		return "負荷走行で投稿期間を 1 つも開けませんでした"
+	}
+	// 応答のない購読は失敗に数えないので、誰の購読にも最後まで応答がなければ、通知が届かず
+	// 誰も投稿しないまま失敗のない走行になる。応答が遅いだけなら、走行の途中で始まればよい。
+	if r.subscriptions.Load() == 0 {
+		return "負荷走行の間、通知の購読に一度も応答がありませんでした"
 	}
 	return ""
 }
