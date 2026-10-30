@@ -149,6 +149,19 @@ async fn primary_sessions_remain_fresh_while_replay_is_paused_and_other_writes_s
         .await
         .unwrap();
     let policy = PrimarySessionPolicy::new(session_h.db.clone(), true, true);
+    let cache = Arc::new(isureal::session_cache::SessionCacheCoordinator::new_local_primary(db.clone(), db.clone(), "test".into(), vec![]));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap().to_string();
+    let receiver_cache = cache.clone();
+    let receiver = Router::new().route("/internal/astra/session-cache", post(move |axum::Json(message): axum::Json<isureal::session_cache::Invalidation>| {
+        let cache = receiver_cache.clone(); async move { cache.apply(message).await.unwrap(); StatusCode::NO_CONTENT }
+    }));
+    let cache_server = tokio::spawn(async move { axum::serve(listener, receiver).await.unwrap(); });
+    let publisher = Arc::new(isureal::session_cache::SessionCacheCoordinator::new_local_primary(db.clone(), db.clone(), "test".into(), vec![address]));
+    let cached_reader = Router::new().route("/probe", get(|Extension(session): Extension<Session>| async move { axum::Json(json!({"id":session.user_id,"region":session.region})) }))
+        .route_layer(from_fn_with_state((primary_h.clone(), true), memory_session_middleware)).layer(Extension(cache.clone()));
+    assert_eq!(request(&cached_reader,"GET","/probe",&old.token,Value::Null).await.0,StatusCode::OK);
+
     let writer = Router::new()
         .route("/api/auth/login", post(login_handler))
         .route(
@@ -177,6 +190,7 @@ async fn primary_sessions_remain_fresh_while_replay_is_paused_and_other_writes_s
             write_fence_middleware,
         ))
         .layer(Extension(policy.clone()))
+        .layer(Extension(publisher.clone()))
         .with_state(session_h.clone());
     let reader = Router::new()
         .route(
@@ -228,7 +242,9 @@ async fn primary_sessions_remain_fresh_while_replay_is_paused_and_other_writes_s
     .unwrap();
     assert_eq!(initial_login.0, StatusCode::OK);
     drop(ordinary_held);
+    assert_eq!(request(&cached_reader,"GET","/probe",&old.token,Value::Null).await.0,StatusCode::UNAUTHORIZED);
     let old_token = initial_login.1["token"].as_str().unwrap();
+    assert_eq!(request(&cached_reader,"GET","/probe",old_token,Value::Null).await.0,StatusCode::OK);
     let old = Session {
         token: old_token.to_owned(),
         token_hash: hex::encode(Sha256::digest(old_token.as_bytes())),
@@ -247,25 +263,33 @@ async fn primary_sessions_remain_fresh_while_replay_is_paused_and_other_writes_s
         assert_eq!(result.0,StatusCode::NO_CONTENT);
         assert!(sqlx::query_scalar::<_,bool>("SELECT active FROM login_sessions WHERE token_hash=$1").bind(&old.token_hash).fetch_one(&replica).await.unwrap(),"replica still holds the logged-out session");
         assert_eq!(request(&reader,"GET","/probe",&old.token,Value::Null).await.0,StatusCode::UNAUTHORIZED);
+        assert_eq!(request(&cached_reader,"GET","/probe",&old.token,Value::Null).await.0,StatusCode::UNAUTHORIZED);
         let login=json!({"username":"userasia","secretKey":"secret"});
         let response=tokio::time::timeout(Duration::from_millis(500),request(&writer,"POST","/api/auth/login","",login.clone())).await.unwrap();
         assert_eq!(response.0,StatusCode::OK);
         let token=response.1["token"].as_str().unwrap();
         assert_eq!(sqlx::query_scalar::<_,i64>("SELECT count(*) FROM login_sessions WHERE token_hash=$1").bind(hex::encode(Sha256::digest(token.as_bytes()))).fetch_one(&replica).await.unwrap(),0,"new session has not replayed");
         assert_eq!(request(&reader,"GET","/probe",token,Value::Null).await.0,StatusCode::OK);
+        assert_eq!(request(&cached_reader,"GET","/probe",token,Value::Null).await.0,StatusCode::OK);
         let (a,b)=tokio::join!(request(&writer,"POST","/api/auth/login","",login.clone()),request(&writer,"POST","/api/auth/login","",login));
         assert_eq!(a.0,StatusCode::OK);assert_eq!(b.0,StatusCode::OK);
         let mut active=0;
         for token in [token,a.1["token"].as_str().unwrap(),b.1["token"].as_str().unwrap()] {
-            active+=usize::from(request(&reader,"GET","/probe",token,Value::Null).await.0==StatusCode::OK);
+            let expected=request(&reader,"GET","/probe",token,Value::Null).await.0;
+            assert_eq!(request(&cached_reader,"GET","/probe",token,Value::Null).await.0,expected);
+            active+=usize::from(expected==StatusCode::OK);
         }
         assert_eq!(active,1,"only the final concurrent login is valid");
         let current_hash:String=sqlx::query_scalar("SELECT token_hash FROM login_sessions WHERE user_id='userasia' AND active").fetch_one(&db).await.unwrap();
         let current=[&a.1,&b.1].into_iter().find_map(|v|{let t=v["token"].as_str().unwrap();(hex::encode(Sha256::digest(t.as_bytes()))==current_hash).then_some(t)}).unwrap();
         sqlx::query("UPDATE users SET region='europe',auth_home_region='europe' WHERE id='userasia'").execute(&db).await.unwrap();
+        publisher.publish(Some("userasia".into())).await.unwrap();
+        assert_eq!(request(&cached_reader,"GET","/probe",current,Value::Null).await.1["region"],"europe");
         assert!(policy.is_primary_authority("userasia").await);
         assert_eq!(request(&reader,"GET","/probe",current,Value::Null).await.1["region"],"europe");
         sqlx::query("UPDATE users SET status='deleted' WHERE id='userasia'").execute(&db).await.unwrap();
+        publisher.publish(Some("userasia".into())).await.unwrap();
+        assert_eq!(request(&cached_reader,"GET","/probe",current,Value::Null).await.0,StatusCode::UNAUTHORIZED);
         assert_eq!(request(&reader,"GET","/probe",current,Value::Null).await.0,StatusCode::UNAUTHORIZED);
         sqlx::query("UPDATE users SET region='asia' WHERE id='usereurope'").execute(&db).await.unwrap();
         assert!(!policy.is_primary_authority("usereurope").await,"moving to Asia does not change authority");
@@ -327,6 +351,11 @@ async fn primary_sessions_remain_fresh_while_replay_is_paused_and_other_writes_s
             .local_mutation_user(&axum::http::Method::POST, "/api/auth/login", &response)
             .is_none()
     );
+    cache_server.abort();
+    let _ = cache_server.await;
+    drop(cached_reader);
+    drop(publisher);
+    drop(cache);
     drop(reader);
     drop(writer);
     replica.close().await;

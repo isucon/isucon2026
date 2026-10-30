@@ -136,11 +136,16 @@ pub struct SessionCacheCoordinator {
     token: String,
     peers: Vec<String>,
     client: Client<HttpConnector>,
+    local_primary: bool,
 }
 
 impl SessionCacheCoordinator {
     pub async fn from_env(primary: PgPool, reader: &PgPool, password: &str) -> Option<Arc<Self>> {
-        if std::env::var("ISUREAL_SESSION_CACHE").as_deref() != Ok("1") {
+        let local_primary = std::env::var("ISUREAL_ASIA_SESSION_CACHE").as_deref() == Ok("1");
+        if local_primary && std::env::var("ISUREAL_REGION").as_deref() != Ok("asia") {
+            return None;
+        }
+        if !local_primary && std::env::var("ISUREAL_SESSION_CACHE").as_deref() != Ok("1") {
             return None;
         }
         let peers: Vec<String> = serde_json::from_str(
@@ -155,26 +160,40 @@ impl SessionCacheCoordinator {
                 "192.168.179.10:8080"
             ]
         );
-        let primary = crate::db_pool::options(2)
-            .connect_with(
-                (*primary.connect_options())
-                    .clone()
-                    .application_name("astra_cache_source"),
-            )
-            .await
-            .expect("cache source pool");
-        let reader = crate::db_pool::options(2)
-            .connect_with(
-                (*reader.connect_options())
-                    .clone()
-                    .application_name("astra_cache_invalidation"),
-            )
-            .await
-            .expect("cache replay pool");
+        let (primary, reader) = if local_primary {
+            let primary_read: bool = sqlx::query_scalar("SELECT NOT pg_is_in_recovery()")
+                .fetch_one(reader)
+                .await
+                .expect("check authoritative cache reader");
+            assert!(primary_read, "Asia session cache requires primary reads");
+            (primary, reader.clone())
+        } else {
+            let primary = crate::db_pool::options(2)
+                .connect_with(
+                    (*primary.connect_options())
+                        .clone()
+                        .application_name("astra_cache_source"),
+                )
+                .await
+                .expect("cache source pool");
+            let reader = crate::db_pool::options(2)
+                .connect_with(
+                    (*reader.connect_options())
+                        .clone()
+                        .application_name("astra_cache_invalidation"),
+                )
+                .await
+                .expect("cache replay pool");
+            (primary, reader)
+        };
         let token = hex::encode(Sha256::digest(
             format!("astra-session-cache-v1:{password}").as_bytes(),
         ));
-        let coordinator = Arc::new(Self::new(primary, reader, token, peers));
+        let coordinator = Arc::new(if local_primary {
+            Self::new_local_primary(primary, reader, token, vec![peers[0].clone()])
+        } else {
+            Self::new(primary, reader, token, peers)
+        });
         let weak = Arc::downgrade(&coordinator);
         tokio::spawn(async move {
             loop {
@@ -192,6 +211,7 @@ impl SessionCacheCoordinator {
         let mut connector = HttpConnector::new();
         connector.set_nodelay(true);
         Self {
+            local_primary: false,
             cache: SessionCache::default(),
             primary,
             reader,
@@ -204,6 +224,19 @@ impl SessionCacheCoordinator {
         }
     }
 
+    /// All publishers and this reader use the same primary. Commit precedes
+    /// invalidation, so no replica replay or LSN query is necessary.
+    pub fn new_local_primary(
+        primary: PgPool,
+        reader: PgPool,
+        token: String,
+        peers: Vec<String>,
+    ) -> Self {
+        let mut coordinator = Self::new(primary, reader, token, peers);
+        coordinator.local_primary = true;
+        coordinator
+    }
+
     pub fn receiver(self: &Arc<Self>) -> Router {
         Router::new()
             .route(PATH, post(receive))
@@ -213,10 +246,14 @@ impl SessionCacheCoordinator {
 
     pub async fn publish(&self, user: Option<String>) -> Result<(), String> {
         tokio::time::timeout(Duration::from_secs(5), async {
-            let lsn: String = sqlx::query_scalar("SELECT pg_current_wal_insert_lsn()::text")
-                .fetch_one(&self.primary)
-                .await
-                .map_err(|e| e.to_string())?;
+            let lsn: String = if self.local_primary {
+                "0/0".to_owned()
+            } else {
+                sqlx::query_scalar("SELECT pg_current_wal_insert_lsn()::text")
+                    .fetch_one(&self.primary)
+                    .await
+                    .map_err(|e| e.to_string())?
+            };
             let body =
                 serde_json::to_vec(&Invalidation { user, lsn }).map_err(|e| e.to_string())?;
             let outcomes = futures_util::future::join_all(self.peers.iter().map(|peer| {
@@ -252,6 +289,10 @@ impl SessionCacheCoordinator {
     }
 
     pub async fn apply(&self, message: Invalidation) -> Result<(), String> {
+        if self.local_primary {
+            self.cache.invalidate(message.user.as_deref());
+            return Ok(());
+        }
         tokio::time::timeout(Duration::from_secs(5), async {
             loop {
                 let ready: bool = sqlx::query_scalar("SELECT NOT pg_is_in_recovery() OR coalesce(pg_last_wal_replay_lsn() >= $1::pg_lsn, false)")

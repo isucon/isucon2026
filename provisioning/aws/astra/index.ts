@@ -231,7 +231,7 @@ if (runtime.initialGraphEnabled !== undefined && typeof runtime.initialGraphEnab
     throw new Error("Invalid initial graph flag");
 }
 
-for (const key of ["primaryAsiaSessionsEnabled", "localAsiaSessionWritesEnabled"]) {
+for (const key of ["primaryAsiaSessionsEnabled", "localAsiaSessionWritesEnabled", "asiaSessionCacheEnabled"]) {
     if (runtime[key] !== undefined && typeof runtime[key] !== "boolean") {
         throw new Error("Invalid session authority flag: " + key);
     }
@@ -241,6 +241,10 @@ if (runtime.localAsiaSessionWritesEnabled && (!runtime.primaryAsiaSessionsEnable
 }
 if (runtime.primaryAsiaSessionsEnabled && runtime.sessionCacheEnabled) {
     throw new Error("Primary session routing requires fresh SQL authentication");
+}
+
+if (runtime.asiaSessionCacheEnabled && (!runtime.primaryAsiaSessionsEnabled || !runtime.localAsiaSessionWritesEnabled || !runtime.writeProxyEnabled || runtime.asiaReplicaReads || runtime.sessionCacheEnabled)) {
+    throw new Error("Asia session caching requires primary reads, centralized writes, and primary session authority");
 }
 
 const sessionPoolConnections = runtime.sessionPoolConnections ?? 0;
