@@ -14,6 +14,10 @@ use crate::api_error::{Error, new_api_error};
 use crate::logger;
 use crate::server::HandlerContext;
 
+#[path = "session_batch.rs"]
+mod batch;
+pub use batch::SessionLookups;
+
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct Session {
     #[sqlx(default)]
@@ -31,7 +35,7 @@ pub fn get_session(req: &Request) -> Option<&Session> {
 
 async fn get_session_from_header(
     headers: &HeaderMap,
-    db: &PgPool,
+    h: &HandlerContext,
 ) -> Result<Option<Session>, Error> {
     let auth_header = headers
         .get(header::AUTHORIZATION)
@@ -46,19 +50,7 @@ async fn get_session_from_header(
     };
 
     let token_hash = hex::encode(Sha256::digest(token.as_bytes()));
-    let session: Option<Session> = sqlx::query_as(
-        r#"
-		SELECT s.user_id, s.token_hash, s.created_at, u.region
-		FROM login_sessions s JOIN users u ON u.id = s.user_id
-		WHERE s.token_hash = $1
-		  AND s.active = true AND u.status = 'active'
-	"#,
-    )
-    .bind(&token_hash)
-    .fetch_optional(db)
-    .await
-    .context("failed to get session")?;
-    Ok(session)
+    h.session_lookups.lookup(&h.db, token_hash).await
 }
 
 pub async fn session_middleware(
@@ -66,7 +58,7 @@ pub async fn session_middleware(
     mut req: Request,
     next: Next,
 ) -> Result<Response, Error> {
-    let session = get_session_from_header(req.headers(), &handler_context.db).await?;
+    let session = get_session_from_header(req.headers(), &handler_context).await?;
     if session.is_none() && auth_required {
         return Err(new_api_error(StatusCode::UNAUTHORIZED, "invalid_session"));
     }

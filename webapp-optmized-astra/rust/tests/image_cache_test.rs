@@ -96,6 +96,7 @@ async fn cached_image_checks_current_content_visibility_and_credentials() {
         .await
         .unwrap();
     let context = Arc::new(HandlerContext {
+        session_lookups: Default::default(),
         db: db.clone(),
         config: config_from_env(),
         ip_bans: Default::default(),

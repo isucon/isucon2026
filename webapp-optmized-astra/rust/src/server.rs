@@ -63,6 +63,7 @@ const TWO_STANDBYS: &str = "FIRST 2 (astra_europe, astra_america)";
 const THREE_STANDBYS: &str = "FIRST 3 (astra_europe, astra_america, astra_asia)";
 
 pub struct HandlerContext {
+    pub session_lookups: crate::session::SessionLookups,
     pub db: PgPool,
     pub config: Config,
     pub ip_bans: IpBanList,
@@ -110,6 +111,7 @@ pub async fn new_server(config: Config) -> Router {
     }
     let action_log = ActionLog::new(&config.log_level, io::stdout());
     let handler_context = Arc::new(HandlerContext {
+        session_lookups: Default::default(),
         db,
         config,
         ip_bans: IpBanList::default(),
@@ -261,6 +263,7 @@ pub async fn new_server(config: Config) -> Router {
                 )
             });
             Arc::new(HandlerContext {
+                session_lookups: Default::default(),
                 image_store: handler_context.image_store.clone(),
                 read_fence,
                 db: read_db,
