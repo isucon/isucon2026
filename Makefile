@@ -212,7 +212,7 @@ supervisor-image: $(SUPERVISOR_PHOTOS) $(SUPERVISOR_DIGESTS)
 	$(AWS_SDK_ENV) SUPERVISOR_STACK="$(or $(SUPERVISOR_STACK),portal-dev)" provisioning/aws/supervisor/image.sh
 
 # 初期データ（Large）の画像のダイジェストの表（bench -image-digests）を作る。すべての画像を描くので CPU 時間で
-# 30 分ほどかかる。できた表は bench-runner の結果バケットの assets/image-digests-large.bin に置く
+# 50 分ほどかかる。できた表は bench-runner の結果バケットの assets/image-digests-large.bin に置く
 # （bench-runner の run.sh と make supervisor-photos がそこから取る）
 .PHONY: bench-image-digests
 bench-image-digests:
