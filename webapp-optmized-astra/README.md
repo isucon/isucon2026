@@ -446,3 +446,4 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261030T050123Z-team12 | streaming export concurrency 2 to 8; fresh auth batching retained; candidate=3b89c4e6; seed=1 | PASS | 184,044 |
 | 20261030T050517Z-team12 | repeat eight concurrent streaming exports without restart; candidate=3b89c4e6; seed=1 | PASS | 147,419 |
 | 20261030T052724Z-team12 | post-GC control: f9aeafc9 read paths plus eight streaming exports; candidate=eeb69dc; deployment=dbc4068; seed=1 | PASS | 173,329 |
+| 20261030T053242Z-team12 | repeat post-GC baseline reads plus eight streaming exports without restart; candidate=eeb69dc; seed=1 | PASS | 146,194 |
