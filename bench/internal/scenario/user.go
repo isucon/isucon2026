@@ -340,7 +340,12 @@ func (r *Runner) enterWindow(ctx context.Context, u *user, windowID string, prev
 		case <-timer.C:
 		case n := <-notifications:
 			timer.Stop()
-			notifications <- n
+			// 次の通知は runUser に戻して処理させる。戻す前に listen がさらに新しい通知を入れて
+			// いれば、そちらを残す（入れられるまで待つと、listen が止まったあとは戻れない）。
+			select {
+			case notifications <- n:
+			default:
+			}
 			return nil, previous
 		case <-ctx.Done():
 			timer.Stop()
