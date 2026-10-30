@@ -255,6 +255,11 @@ HTTP の帯域は HAProxy の route に任せて default class の上限を外�
   ヘッダーがあれば isureal-digest は捨ててから自分の値を付け、isureal-digest が落ちてアプリが直接答えるときは
   HAProxy が消す。ベンチは最初の値を読むので、アプリのヘッダーが残ると、アプリは本体を送らずに期待する画像の
   SHA-256 を返せる（SHA-256 は種を使わないので、アプリが前もって計算できる）。
+- ベンチは、ダイジェストをヘッダーから受け取ると `\x00isureal-sha256:` や `\x00isureal-xxh3:` で始まる値にして
+  比べる。Router が本体をそのまま返したとき（`Content-Encoding` が付いている、isureal-digest が落ちている、
+  ZIP を書き換えられなかった）は、アプリがこの形のバイト列を本体やエクスポートの項目に書けるので、ベンチは
+  Router の値として扱わない。本体がこの形で始まれば、どの画像とも違うものとする。エクスポートの項目は、その要求の
+  種で計算した XXH3 の形だけを受け付ける。種はアプリに届かないので、アプリは合わせられない。
 - ルーターの設定は `ROUTER_DIGEST_ADDRESS`（既定 `127.0.0.1:18010`、空で無効）。AWS では
   `isureal-digest.service` が `isureal-haproxy.service` と一緒に起動する。
 

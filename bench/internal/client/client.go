@@ -276,6 +276,8 @@ type request struct {
 	// sha256 は digest に加えて X-Benchmark-Digest: sha256 を付け、XXH3 の代わりに SHA-256 を
 	// 返させる（初期データの画像。bench は SHA-256 の表を持つ）。
 	sha256 bool
+	// seed は digest の種。0 なら試行ごとに乱数を使う。
+	seed uint64
 }
 
 func (c *Client) newRequest(ctx context.Context, r request) (*http.Request, error) {
@@ -299,13 +301,20 @@ func (c *Client) newRequest(ctx context.Context, r request) (*http.Request, erro
 		httpRequest.Header.Set("Authorization", "Bearer "+r.token)
 	}
 	if r.digest {
-		httpRequest.Header.Set("X-Benchmark-Request-Id", strconv.FormatUint(rand.Uint64(), 10))
+		seed := r.seed
+		if seed == 0 {
+			seed = rand.Uint64()
+		}
+		httpRequest.Header.Set("X-Benchmark-Request-Id", strconv.FormatUint(seed, 10))
 	}
 	if r.sha256 {
 		httpRequest.Header.Set("X-Benchmark-Digest", "sha256")
 	}
 	return httpRequest, nil
 }
+
+// markerPrefix は digestMarker と sha256Marker に共通の先頭。画像はこの形では始まらない。
+var markerPrefix = []byte("\x00isureal-")
 
 // digestMarker は、Router が本体の代わりにダイジェストを返したときに Image が返す値（エクスポートの
 // 画像の項目も同じ）の先頭。続けて種、XXH3-64、長さをビッグエンディアンの uint64 で置く。
@@ -329,7 +338,9 @@ func sha256Value(sum [sha256.Size]byte, length uint64) []byte {
 
 // SameImage は got（画像のバイト列か Router が返したダイジェスト）が want と同じかを返す。
 // XXH3 のダイジェストは要求ごとの種で計算するので、アプリが画像を持たずに合わせることはできない。
-// SHA-256 は種を使わないが、同じ値になる別のバイト列を作れない。
+// SHA-256 は種を使わないが、同じ値になる別のバイト列を作れない。アプリがダイジェストの形をした
+// 本体を返しても、Image はそれをダイジェストとして返さない。エクスポートの項目は先に
+// Export.Trusted で確かめる。
 func SameImage(got, want []byte) bool {
 	if rest, ok := bytes.CutPrefix(got, sha256Marker); ok && len(rest) == sha256.Size+8 {
 		return binary.BigEndian.Uint64(rest[sha256.Size:]) == uint64(len(want)) && sha256.Sum256(want) == [sha256.Size]byte(rest)
@@ -445,6 +456,12 @@ func (c *Client) attempts(ctx context.Context, r request, record *Record) ([]byt
 				return nil, requestFailure(r, fmt.Errorf("X-Body-Xxh3 %q を解釈できません: %w", sum, err))
 			}
 			return digestValue(seed, hash, length), nil
+		}
+		// Router が本体をそのまま返したとき（Content-Encoding が付いている、isureal-digest が
+		// 止まっている）に、アプリが作ったダイジェストの形の本体を Router の値として扱わない。
+		// 空の本体として返すので、どの画像とも違うことになる。
+		if r.digest && bytes.HasPrefix(data, markerPrefix) {
+			return nil, nil
 		}
 		return data, nil
 	}
@@ -1016,9 +1033,33 @@ func (c *Client) Relationships(ctx context.Context, token, kind string, before *
 	return page, err
 }
 
-// Export は自分の全投稿の ZIP を取る。Router は JSON 以外の項目をダイジェストに置き換えることがある。
-func (c *Client) Export(ctx context.Context, token string) ([]byte, error) {
-	return c.send(ctx, request{method: http.MethodGet, path: apiPrefix + "/me/export", token: token, want: http.StatusOK, maxBody: maxExportBytes, digest: true})
+// Export は自分の全投稿の ZIP を取る。Router は JSON 以外の項目を、要求の種で計算したダイジェストに
+// 置き換えることがある。
+func (c *Client) Export(ctx context.Context, token string) (*Export, error) {
+	// 項目のダイジェストがこの要求のものかを確かめるので、再試行でも同じ種を使う（0 は使わない）。
+	seed := rand.Uint64() | 1
+	data, err := c.send(ctx, request{method: http.MethodGet, path: apiPrefix + "/me/export", token: token, want: http.StatusOK, maxBody: maxExportBytes, digest: true, seed: seed})
+	if err != nil {
+		return nil, err
+	}
+	return &Export{Data: data, seed: seed}, nil
+}
+
+// Export は Client.Export が取った ZIP。
+type Export struct {
+	Data []byte
+	seed uint64
+}
+
+// Trusted は ZIP の画像の項目の中身 got を SameImage などで比べてよいかを返す。Router が書き換えた
+// 項目は、この要求の種で計算した XXH3 のダイジェストになる。Router が ZIP を書き換えなかったとき
+// （読めない形の ZIP、Content-Encoding が付いている、isureal-digest が止まっている）は、アプリが
+// 作ったダイジェストの形の項目がそのまま届くが、アプリは種を知らないので通らない。
+func (e *Export) Trusted(got []byte) bool {
+	if rest, ok := bytes.CutPrefix(got, digestMarker); ok {
+		return len(rest) == 24 && binary.BigEndian.Uint64(rest) == e.seed
+	}
+	return !bytes.HasPrefix(got, markerPrefix)
 }
 
 // --- 関係と投稿の変更 ---

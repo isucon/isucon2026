@@ -622,11 +622,11 @@ func (u *userCheck) checkExport(ctx context.Context) error {
 // 返す投稿は除いてから比べる。
 func (u *userCheck) exportPosts(ctx context.Context, images int, isNew func(id string) bool) error {
 	c, a := u.Checker, u.a
-	data, err := a.API.Export(ctx, a.Token)
+	export, err := a.API.Export(ctx, a.Token)
 	if err != nil {
 		return err
 	}
-	archive, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	archive, err := zip.NewReader(bytes.NewReader(export.Data), int64(len(export.Data)))
 	if err != nil {
 		return fmt.Errorf("エクスポートの ZIP を開けません: %w", err)
 	}
@@ -675,7 +675,7 @@ func (u *userCheck) exportPosts(ctx context.Context, images int, isNew func(id s
 		if err != nil {
 			return fmt.Errorf("エクスポートの %s を読めません: %w", p.ImagePath, err)
 		}
-		if !c.sameImage(image, want[i].Image) {
+		if !export.Trusted(image) || !c.sameImage(image, want[i].Image) {
 			return fmt.Errorf("エクスポートの %s が投稿 %s の画像と違います", p.ImagePath, want[i].ID)
 		}
 	}
