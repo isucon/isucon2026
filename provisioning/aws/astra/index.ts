@@ -226,3 +226,7 @@ const shortReadPoolConnections = runtime.shortReadPoolConnections ?? 0;
 if (!Number.isInteger(shortReadPoolConnections) || shortReadPoolConnections < 0 || shortReadPoolConnections > 16) {
     throw new Error("Invalid short read pool capacity");
 }
+
+if (runtime.initialGraphEnabled !== undefined && typeof runtime.initialGraphEnabled !== "boolean") {
+    throw new Error("Invalid initial graph flag");
+}

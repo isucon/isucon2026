@@ -1,4 +1,6 @@
 DROP TABLE IF EXISTS
+  astra_graph_changes,
+  astra_graph_epoch,
   astra_history_changes,
   astra_history_epoch,
   astra_search_dirty,
@@ -267,3 +269,9 @@ DO $$ BEGIN
         GRANT SELECT, INSERT, TRUNCATE ON astra_notification_batches TO isureal;
     END IF;
 END $$;
+
+-- Empty change ledger is also required by reset before optional graph preload.
+CREATE TABLE IF NOT EXISTS astra_graph_changes (
+    user_low_id text NOT NULL, user_high_id text NOT NULL,
+    PRIMARY KEY (user_low_id, user_high_id)
+);

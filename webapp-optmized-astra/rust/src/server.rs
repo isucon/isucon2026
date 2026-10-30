@@ -297,6 +297,9 @@ pub async fn new_server(config: Config) -> Router {
         history.observe();
         Some(history)
     } else { None };
+    let graph = if std::env::var("ISUREAL_INITIAL_GRAPH").as_deref() == Ok("1") && WriteIngress::from_env().is_none() {
+        Some(Arc::new(crate::initial_graph::InitialGraph::load(&read_context.db).await.expect("load initial graph")))
+    } else { None };
     let session_cache = crate::session_cache::SessionCacheCoordinator::from_env(
         handler_context.db.clone(), &general_reads.db, &handler_context.config.db_password,
     ).await;
@@ -388,6 +391,7 @@ pub async fn new_server(config: Config) -> Router {
         )
         .with_state(handler_context.clone());
 
+    let server = if let Some(graph) = graph { server.layer(axum::Extension(graph)) } else { server };
     let server = if let Some(history) = history { server.layer(axum::Extension(history)) } else { server };
 
     let server = if let Some(cache) = &session_cache {
