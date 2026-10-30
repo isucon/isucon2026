@@ -111,13 +111,9 @@ export function routerEnvironment(t: Team): string {
 		"ROUTER_HTTPS_LISTEN_ADDRESS=0.0.0.0:443",
 		`ROUTER_TLS_CERTIFICATE=${tlsCertificatePath}`,
 		`ROUTER_UPSTREAM_PORT=${appHttpPort}`,
-		`ROUTER_APP_HOST=app.${t.domain}`,
 	];
 	for (const server of t.servers) {
 		const prefix = `ROUTER_${server.id.toUpperCase()}`;
-		if (server.region !== undefined) {
-			lines.push(`${prefix}_HOST=${server.id}.${t.domain}`);
-		}
 		lines.push(
 			`${prefix}_SUBNET=${server.subnetCidr}`,
 			`${prefix}_REGION_LOCAL_IP=${t.routerDataIp}`,
