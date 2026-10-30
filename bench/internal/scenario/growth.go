@@ -486,12 +486,13 @@ func (r *Runner) runNewcomer(ctx context.Context, region string) {
 	r.runUser(ctx, u, true, nil)
 }
 
-// certifyTop は前日の投稿期間 windowID で最も反応（RealMoji とコメント）を集めた、まだ
-// 認定されていないユーザーを管理者が認定する。認定されたユーザーは翌日から public で
-// 投稿し、新しいユーザーにフォローされる。
+// certifyTop は前日の投稿期間 windowID で RealMoji を 2 件以上受けた、まだ認定されていない
+// ユーザーのうち、最も多い人を管理者が認定する。RealMoji は今も有効なものを数える（コメント、
+// 取り消した RealMoji、置き換えた前の RealMoji は数えない）。認定されたユーザーは翌日から
+// public で投稿し、新しいユーザーにフォローされる。
 func (r *Runner) certifyTop(ctx context.Context, region, windowID string) {
+	counts := r.model.RealMojiCounts(windowID, r.model.Now())
 	r.mu.Lock()
-	counts := r.reactionsByWindow[windowID]
 	var best *user
 	bestCount := 0
 	for id, n := range counts {

@@ -425,6 +425,24 @@ func (m *Model) ReactionID(postID, reactorID string) string {
 	return values[0]
 }
 
+// RealMojiCounts は投稿期間 windowID の投稿が受けた、r の間ずっと有効だった RealMoji の数を
+// 投稿者ごとに返す。同じ人が置き換えた RealMoji は 1 件と数え、取り消したものと退会した人の
+// ものは数えない。
+func (m *Model) RealMojiCounts(windowID string, r Read) map[string]int {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	counts := map[string]int{}
+	for _, p := range m.byWindow[windowID] {
+		for _, reactor := range m.reactionsFor[p.ID] {
+			live := forAll(m.reactions[[2]string{p.ID, reactor}], r, func(id string) Tri { return triOf(id != "") })
+			if min(live, m.activeTri(reactor, r)) == True {
+				counts[p.AuthorID]++
+			}
+		}
+	}
+	return counts
+}
+
 // Visible は viewer から target のプロフィールが見えるか（target が有効で、どちら向きにも
 // ブロックしていない）。
 func (m *Model) Visible(viewerID, targetID string, r Read) Tri {
