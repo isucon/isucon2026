@@ -429,3 +429,4 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261029T130802Z-team12 | verify using cached issued URL signatures repeat without restart; seed=1 | PASS | 149,195 |
 | 20261029T131830Z-team12 | cached signature verification without waiting for issuer locks; seed=1 | PASS | 179,991 |
 | 20261029T150301Z-team12 | unchanged cached-signature build; read-only SQL activity profiling for Go comparison; seed=1 | PASS | 160,707 |
+| 20261030T025003Z-team12 | pre-history-cache baseline; deployed app=f9aeafc9; recovered after AWS login; seed=1 | PASS | 171,879 |
