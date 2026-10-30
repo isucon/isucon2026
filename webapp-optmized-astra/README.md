@@ -453,3 +453,4 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261030T061210Z-team12 | Reuse memory authentication connection; graph admission removed; timing enabled; seed=1 | PASS | 175,865 |
 | 20261030T061823Z-team12 | Memory authentication connection reuse; timing disabled; seed=1 | PASS | 176,708 |
 | 20261030T062138Z-team12 | Memory authentication connection reuse; no restart repeat; timing disabled; seed=1 | PASS | 169,952 |
+| 20261030T075453Z-team12 | Acknowledged regional session cache; five second bounded leases; candidate=35854c6; seed=1 | PASS | 160,884 |
