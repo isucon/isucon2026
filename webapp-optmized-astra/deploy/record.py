@@ -31,6 +31,9 @@ experiment = {
     "score": result["score"],
     "note": "The result commit includes source and Pulumi configuration used for this run.",
 }
+space = Path("var/astra/space-before-benchmark.json")
+if space.exists():
+    experiment["storage_before_benchmark"] = json.loads(space.read_text())
 # Record the actual published archive references, not merely the migration
 # history: restoring a partition can leave older reports in the repository.
 root = Path(__file__).resolve().parents[2]
