@@ -27,6 +27,11 @@ assert isinstance(buffering, bool)
 content = re.sub(r"(?m)^    proxy_request_buffering (?:on|off); # astra-managed\n", "", content)
 content, count = re.subn(r"(?m)^http[ \t]*\{[ \t]*$", "http {\n    proxy_request_buffering " + ('on' if buffering else 'off') + "; # astra-managed", content)
 assert count == 1, "Expected one global nginx http block"
+response_buffering = runtime.get('nginxResponseBuffering', True)
+assert isinstance(response_buffering, bool)
+content = re.sub(r"(?m)^    proxy_buffering (?:on|off); # astra-managed\n", "", content)
+content, count = re.subn(r"(?m)^http[ \t]*\{[ \t]*$", "http {\n    proxy_buffering " + ('on' if response_buffering else 'off') + "; # astra-managed", content)
+assert count == 1, "Expected one global nginx http block"
 body_buffer = runtime.get('nginxClientBodyBufferKiB', 8)
 assert type(body_buffer) is int and 8 <= body_buffer <= 1024
 content = re.sub(r"(?m)^    client_body_buffer_size \d+k; # astra-managed\n", "", content)
