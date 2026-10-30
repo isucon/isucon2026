@@ -382,6 +382,7 @@ func (r *Runner) recoverWindow(ctx context.Context, region string, day int, date
 	defer cancel()
 	// ユーザーはリージョンを移ると u.API を差し替えるので、ロックの中で取っておく。
 	type reader struct {
+		u     *user
 		api   *client.Client
 		token string
 	}
@@ -389,7 +390,7 @@ func (r *Runner) recoverWindow(ctx context.Context, region string, day int, date
 	r.mu.Lock()
 	for _, u := range r.users[region] {
 		if u.Token != "" && !u.stopped.Load() && !u.returning {
-			candidates = append(candidates, reader{api: u.API.WithObserver(nil), token: u.Token})
+			candidates = append(candidates, reader{u: u, api: u.API.WithObserver(nil), token: u.Token})
 		}
 	}
 	r.mu.Unlock()
@@ -397,8 +398,9 @@ func (r *Runner) recoverWindow(ctx context.Context, region string, day int, date
 		c := candidates[i]
 		status, err := c.api.CurrentWindow(ctx, c.token)
 		switch {
-		case isStatus(err, http.StatusUnauthorized):
-			// セッションが切れていれば次のユーザーで読む。ほかの失敗は同じユーザーで待って読み直す。
+		case isStatus(err, http.StatusUnauthorized) || r.bannedErr(c.u, err):
+			// セッションが切れたか、BAN された（止めて悪評に記録する）ら次のユーザーで読む。
+			// ほかの失敗は同じユーザーで待って読み直す。
 			i++
 			continue
 		case err == nil:
