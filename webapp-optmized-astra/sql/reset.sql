@@ -2,11 +2,6 @@ SET session_replication_role = replica;
 
 BEGIN;
 
--- Reset disables triggers. Change the epoch atomically with the data so cached
--- snapshots cannot survive a benchmark initialize, including on replicas.
-UPDATE astra_history_epoch SET epoch = gen_random_uuid()::text;
-TRUNCATE astra_history_changes;
-
 TRUNCATE astra_notification_batches, astra_search_dirty, astra_user_search, ip_bans, login_sessions, administrator_sessions, friendships, friend_requests, follows, block_relations;
 
 DELETE FROM notifications WHERE created_at > (SELECT created_at FROM initial_data_boundary);

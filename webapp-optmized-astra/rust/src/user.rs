@@ -7,7 +7,7 @@ use sqlx::{Executor, Postgres, Row};
 use crate::api_error::Error;
 use crate::image_signature::image_signing_key;
 
-#[derive(Debug, Clone, Default, sqlx::FromRow)]
+#[derive(Debug, Clone, Default, sqlx::FromRow, serde::Deserialize)]
 pub struct User {
     pub id: String,
     pub username: String,
@@ -19,6 +19,7 @@ pub struct User {
     pub account_type: String,
     pub status: String,
     #[sqlx(skip)]
+    #[serde(skip)]
     pub image_key: Vec<u8>,
 }
 
