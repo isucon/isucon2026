@@ -2,6 +2,7 @@ package scenario
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -10,6 +11,7 @@ import (
 	"github.com/isucon/isucon2026/bench/internal/client"
 	"github.com/isucon/isucon2026/bench/internal/geo"
 	"github.com/isucon/isucon2026/bench/internal/metrics"
+	"github.com/isucon/isucon2026/bench/internal/score"
 )
 
 // interactionFixture は asia の友達 2 人（owner と guest）が、開いた投稿期間にそれぞれ
@@ -178,4 +180,38 @@ func (f *interactionFixture) pendingRequest(t *testing.T, from, to *user) client
 		t.Fatalf("request=%+v err=%v", request, err)
 	}
 	return client.Relationship{RelationID: request.RelationID, User: client.UserSummary{ID: from.ID, Username: from.Username}, Status: "pending"}
+}
+
+// TestBlockedProfileIsInvalid は、確実にブロックの関係にある相手のプロフィールが 200 で
+// 返ったら失敗に数えて加点せず、404 なら正しい応答とすることを確かめる。ブロックした側と
+// された側のどちらから見ても同じ。
+func TestBlockedProfileIsInvalid(t *testing.T) {
+	for _, leak := range []bool{false, true} {
+		for _, blocker := range []bool{false, true} {
+			t.Run(fmt.Sprintf("leak=%v/blocker=%v", leak, blocker), func(t *testing.T) {
+				f := newInteractionFixture(t)
+				w := f.r.model.BeginBlock(f.owner.ID, f.guest.ID)
+				if err := f.owner.API.Block(t.Context(), f.owner.Token, f.guest.ID); err != nil {
+					t.Fatal(err)
+				}
+				w.Applied()
+				f.app.mu.Lock()
+				f.app.ignoreBlocks = leak
+				f.app.mu.Unlock()
+				viewer, target := f.guest, f.owner
+				if blocker {
+					viewer, target = f.owner, f.guest
+				}
+				rec := f.route(t, viewer, nil)
+				f.r.viewProfile(t.Context(), viewer, &session{day: 1}, target.ID)
+				stats, profiles := rec.Total(0), f.r.board.Count(score.TagProfileView)
+				if leak && (stats.Failures != 1 || f.r.board.ErrorCount() != 1 || profiles != 0) {
+					t.Fatalf("leaked profile: stats=%+v profiles=%d errors=%v", stats, profiles, f.r.board.Errors())
+				}
+				if !leak && (stats.Failures != 0 || f.r.board.ErrorCount() != 0 || profiles != 0) {
+					t.Fatalf("hidden profile: stats=%+v profiles=%d errors=%v", stats, profiles, f.r.board.Errors())
+				}
+			})
+		}
+	}
 }

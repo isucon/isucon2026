@@ -155,6 +155,9 @@ func (r *Runner) viewProfile(ctx context.Context, u *user, s *session, userID st
 		r.requestError(ctx, u, "%s: ユーザー %s のプロフィールを取得できません: %v", u.Username, userID, err)
 	case known != nil && (profile.ID != userID || profile.Username != known.Username):
 		r.invalid(ctx, u, "%s: ユーザー %s のプロフィールが違います", u.Username, userID)
+	case known != nil && r.model.Visible(u.ID, userID, read) == model.False:
+		// ブロックの関係にある人や退会した人のプロフィールは見えてはいけない。
+		r.invalid(ctx, u, "%s: 見えないはずのユーザー %s のプロフィールが返りました", u.Username, userID)
 	default:
 		if s.profiles < scoredProfilesPerDy {
 			s.profiles++
