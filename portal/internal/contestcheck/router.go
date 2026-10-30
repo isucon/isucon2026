@@ -34,7 +34,7 @@ func CollectRouter(ctx context.Context, run Command) (map[string]string, error) 
 	values := map[string]string{}
 	commands := map[string][]string{
 		"qdisc":  {"tc", "-j", "qdisc", "show", "dev", "data0"},
-		"class":  {"tc", "-j", "class", "show", "dev", "data0"},
+		"class":  {"tc", "class", "show", "dev", "data0"},
 		"filter": {"tc", "-j", "filter", "show", "dev", "data0", "parent", "1:"},
 		"nft":    {"nft", "-j", "list", "ruleset"},
 		"routes": {"ip", "-j", "route", "show", "table", "all"},
@@ -45,9 +45,13 @@ func CollectRouter(ctx context.Context, run Command) (map[string]string, error) 
 		if err != nil {
 			return nil, err
 		}
-		value, err := NormalizeRuntime(out)
+		normalize := NormalizeRuntime
+		if key == "class" {
+			normalize = NormalizeTCClasses
+		}
+		value, err := normalize(out)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("router %s: %w", key, err)
 		}
 		values[key] = value
 	}
@@ -206,4 +210,24 @@ func haproxyCommand(ctx context.Context, command string) (string, error) {
 	}
 	output, err := io.ReadAll(io.LimitReader(conn, 1<<20))
 	return string(output), err
+}
+
+// NormalizeTCClasses accepts tc's configuration-only text output. Ubuntu's tc
+// does not emit JSON for HTB classes even when -j is specified.
+func NormalizeTCClasses(output []byte) (string, error) {
+	var records []string
+	for _, line := range strings.Split(string(output), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 0 {
+			continue
+		}
+		if len(fields) < 3 || fields[0] != "class" {
+			return "", fmt.Errorf("invalid tc class configuration")
+		}
+		records = append(records, strings.Join(fields, " "))
+	}
+	if len(records) == 0 {
+		return "", fmt.Errorf("router has no traffic-control classes")
+	}
+	return canonicalSet(records), nil
 }
