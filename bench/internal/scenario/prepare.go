@@ -117,6 +117,7 @@ func (r *Runner) prepareUsers(ctx context.Context) string {
 				followers = append(followers, p.u)
 			}
 		}
+		follows := make([]error, len(followers))
 		parallel(len(followers), func(i int) {
 			u := followers[i]
 			var mine []*user
@@ -133,11 +134,14 @@ func (r *Runner) prepareUsers(ctx context.Context) string {
 			err := u.API.Follow(ctx, u.Token, target.ID)
 			settle(w, err)
 			if err != nil {
-				r.board.Errorf("%s: 認定公開アカウントをフォローできません: %v", u.Username, err)
+				follows[i] = fmt.Errorf("%s: %w", u.Username, err)
 				return
 			}
 			u.follows[target.ID] = true
 		})
+		if err := errors.Join(follows...); err != nil {
+			reasons[i] = fmt.Sprintf("認定公開アカウントをフォローできません: %v", err)
+		}
 	})
 	for _, reason := range reasons {
 		if reason != "" {
