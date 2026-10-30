@@ -739,3 +739,29 @@ func TestTruncatedBodyIsRequestError(t *testing.T) {
 		t.Fatalf("err=%v (%T), want RequestError", err, err)
 	}
 }
+
+// TestMayFailWithTruncatedBody は、許したステータスの応答でも本体を読み切れなかったときは、
+// 許さずに通信の失敗として記録することを確かめる。
+func TestMayFailWithTruncatedBody(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Length", "100")
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte("{"))
+		if hijacker, ok := w.(http.Hijacker); ok {
+			if conn, _, err := hijacker.Hijack(); err == nil {
+				conn.Close()
+			}
+		}
+	}))
+	defer server.Close()
+	observed := &recorder{}
+	_, err := fastRetry(observed, server.URL).CreateComment(client.MayFailWith(t.Context(), http.StatusForbidden), "token", "p1", "hi")
+	var requestErr *client.RequestError
+	if !errors.As(err, &requestErr) {
+		t.Fatalf("err=%v (%T), want RequestError", err, err)
+	}
+	records := observed.all()
+	if len(records) != 1 || records[0].Allowed || records[0].Err == nil {
+		t.Fatalf("records=%+v", records)
+	}
+}
