@@ -1,4 +1,6 @@
 DROP TABLE IF EXISTS
+  astra_history_changes,
+  astra_history_epoch,
   astra_search_dirty,
   astra_user_search,
   ip_bans,
