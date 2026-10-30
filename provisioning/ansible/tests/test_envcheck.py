@@ -39,6 +39,23 @@ class EnvcheckCommandTest(unittest.TestCase):
         ]
         self.assertIn("envcheck.service", enabled)
 
+    def test_ssh_configuration_is_available_before_both_checks(self):
+        root = pathlib.Path(__file__).resolve().parents[1]
+        for name in ["envcheck.service", "envcheck-baseline.service"]:
+            with self.subTest(unit=name):
+                unit = (root / "roles/envcheck/files" / name).read_text()
+                for directive in ["Wants=", "After="]:
+                    dependencies = (
+                        next(
+                            line
+                            for line in unit.splitlines()
+                            if line.startswith(directive)
+                        )
+                        .removeprefix(directive)
+                        .split()
+                    )
+                    self.assertIn("ssh.service", dependencies)
+
     def test_documented_command_uses_deployed_binary(self):
         root = pathlib.Path(__file__).resolve().parents[1]
         tasks = yaml.safe_load((root / "roles/envcheck/tasks/main.yml").read_text())
