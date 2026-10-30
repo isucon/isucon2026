@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"math/rand/v2"
+	"mime"
 	"mime/multipart"
 	"net"
 	"net/http"
@@ -939,11 +940,19 @@ func (c *Client) OpenNotifications(ctx context.Context, token string) (*Notifica
 		_ = stream.Close()
 		return nil, &APIError{Method: http.MethodGet, Path: apiPrefix + "/notifications", Status: res.StatusCode, Want: http.StatusOK, Code: problemCode(data)}
 	}
-	if !strings.HasPrefix(res.Header.Get("Content-Type"), "text/event-stream") {
+	if !isEventStream(res.Header.Get("Content-Type")) {
 		_ = stream.Close()
 		return nil, fmt.Errorf("通知の Content-Type が text/event-stream ではありません: %q", res.Header.Get("Content-Type"))
 	}
 	return stream, nil
+}
+
+// isEventStream は Content-Type の media type が text/event-stream か（大文字と小文字は区別
+// しない）。パラメーター（charset など）は問わず、読めないパラメーターがあっても media type が
+// 合っていればよい（ブラウザの EventSource と同じ）。
+func isEventStream(contentType string) bool {
+	mediaType, _, err := mime.ParseMediaType(contentType)
+	return (err == nil || errors.Is(err, mime.ErrInvalidMediaParameter)) && mediaType == "text/event-stream"
 }
 
 // Close はストリームの残りを読み切ってから閉じる。応答を最後まで読まずに閉じると、接続を
