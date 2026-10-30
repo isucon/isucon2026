@@ -1,4 +1,5 @@
 """Compare existing official runs without running or modifying either app."""
+import argparse
 import collections
 import hashlib
 import json
@@ -6,7 +7,11 @@ from pathlib import Path
 import re
 
 here = Path(__file__).resolve().parent
-rust = here.parents[1] / 'results/20261029T131830Z-team12'
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument('--rust-run', default='20261029T131830Z-team12')
+parser.add_argument('--output', type=Path, default=here / 'comparison.json')
+args = parser.parse_args()
+rust = here.parents[1] / 'results' / args.rust_run
 
 
 def read(directory):
@@ -57,7 +62,7 @@ output = dict(rust=current, comparisons=comparisons,
               caveats=['Different VMs and execution times; this is not an isolated causal experiment.',
                        'runner_checkout_commit records the benchmark invocation checkout, not the deployed Go binary.',
                        'Route percentiles include transport, queuing and processing; they do not isolate SQL execution time.'])
-(here / 'comparison.json').write_text(json.dumps(output, ensure_ascii=False, indent=2)+'\n')
+args.output.write_text(json.dumps(output, ensure_ascii=False, indent=2)+'\n')
 for row in comparisons:
     print(row['reference']['run'], 'score', row['reference']['score'], 'gap', row['score_gap'],
           'history+export share', round(row['history_export_share']*100, 1))
