@@ -13,27 +13,36 @@ import (
 	"github.com/isucon/isucon2026/bench/internal/metrics"
 )
 
-// TestHungSubscriptions は、負荷ユーザーの誰の通知の購読にも応答がなければ負荷走行を始めずに
-// fail とし（#249）、一部のユーザーだけなら待ちの上限のあとで負荷走行を始めることを確かめる。
+// TestHungSubscriptions は、負荷走行の終わりまで誰の通知の購読にも応答がなければ fail にし、
+// 一部の人だけの場合や、応答が遅れても走行の途中で購読が始まる場合は走りきることを確かめる（#249）。
 func TestHungSubscriptions(t *testing.T) {
 	for _, tc := range []struct {
-		name string
-		hang func(country string) bool
-		want string
+		name  string
+		hang  func(country string) bool
+		delay time.Duration
+		want  string
 	}{
-		{"everyone", func(string) bool { return true }, "通知の購読"},
-		{"europe only", func(country string) bool { return geo.RegionOf(country) == geo.Europe }, ""},
+		{name: "everyone", hang: func(string) bool { return true }, want: "通知の購読"},
+		{name: "europe only", hang: func(country string) bool { return geo.RegionOf(country) == geo.Europe }},
+		{name: "slow", hang: func(string) bool { return false }, delay: subscribeTimeout + 500*time.Millisecond},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			r, app := newTestRunner(t, 1, metrics.SLO{FailRate: 1000, MinOps: 1})
+			begin := time.Now()
 			serveThrough(t, r, app, func(w http.ResponseWriter, req *http.Request) bool {
-				if req.URL.Path != "/api/notifications" || !tc.hang(req.Header.Get("X-Country-Code")) {
+				if req.URL.Path != "/api/notifications" {
 					return false
 				}
-				// 応答のヘッダーを返さずに待たせる。
-				<-req.Context().Done()
-				return true
+				if tc.hang(req.Header.Get("X-Country-Code")) {
+					// 応答のヘッダーを返さずに待たせる。
+					<-req.Context().Done()
+					return true
+				}
+				if wait := time.Until(begin.Add(tc.delay)); wait > 0 {
+					time.Sleep(wait)
+				}
+				return false
 			})
 			reason := r.load(t.Context())
 			if tc.want == "" && reason != "" || !strings.Contains(reason, tc.want) {

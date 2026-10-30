@@ -243,6 +243,9 @@ func (r *Runner) listen(ctx context.Context, u *user, out chan notice, subscribe
 	for ctx.Err() == nil && !u.stopped.Load() {
 		opened := time.Now()
 		stream, err := u.API.OpenNotifications(ctx, u.Token)
+		if err == nil {
+			r.subscriptions.Add(1)
+		}
 		if subscribed != nil {
 			select {
 			case subscribed <- struct{}{}:
