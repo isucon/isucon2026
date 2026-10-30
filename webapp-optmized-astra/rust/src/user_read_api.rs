@@ -80,6 +80,7 @@ pub async fn search_users_handler(
     // Keep candidate matching and returned account fields in one snapshot.
     // Most candidates do not match; their bio, key, and other large fields
     // need not be transferred from PostgreSQL or decoded by SQLx.
+    let permit = crate::query_admission::graph_query().await;
     let mut tx =
         h.db.begin_with("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY")
             .await?;
@@ -148,6 +149,7 @@ pub async fn search_users_handler(
         .await?
     };
     tx.commit().await?;
+    drop(permit);
     let mut items = Vec::new();
     for mut user in users {
         user.set_image_key()?;
