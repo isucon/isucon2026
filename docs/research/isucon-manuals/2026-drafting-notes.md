@@ -305,3 +305,8 @@ portalとworkerのecspresso差分が残っていないことも確認してい�
 `router/tests/e2e/main.go`の`assertClientIP`には指定値の転送と未指定時の補完を確認する既存の検査があります。
 `bench/internal/client/client.go`の`WithClientIP`と`bench/internal/scenario/user.go`などを照合し、ベンチマーカーがユーザーごとにIPを指定する説明を競技環境に追加しました。
 現在のヘッダー名は`X-Client-IP`で、`X-Real-IP`はこの用途には使用しません。
+
+## 2026年10月30日の言語賞の条件統一
+
+追加レビューで、すべての言語賞はそれぞれの対象言語を使用した最終スコア上位3チームに授与することが確定しました。
+当日マニュアルは共通条件と3件の箇条書きに簡略化し、以前のスライドにあったミラー賞の回文数と同率時の条件を削除しました。
