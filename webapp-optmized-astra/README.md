@@ -470,3 +470,4 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261030T112413Z-team12 | session admission 16; candidate=05760028; seed=1; diagnostics off; remote recommendation32 sessionpool8 | PASS | 181,990 |
 | 20261030T113121Z-team12 | search dirty-set statistics after initialize; candidate=1ba00c91; seed=1; diagnostics off; session admission16 remote recommendation32 | PASS | 197,417 |
 | 20261030T113727Z-team12 | short read pool8 after search statistics and session admission; candidate=2b6d4ceb; seed=1; memorypool0; diagnostics off | PASS | 197,586 |
+| 20261030T114906Z-team12 | primary recommendation pool4; candidate=4da37ba5; seed=1; short/memory pool0; diagnostics off | PASS | 183,523 |
