@@ -272,6 +272,16 @@ pub async fn new_server(config: Config) -> Router {
         }
         _ => handler_context.clone(),
     };
+    let primary_sessions_enabled = std::env::var("ISUREAL_PRIMARY_ASIA_SESSIONS").as_deref() == Ok("1");
+    let local_session_writes = std::env::var("ISUREAL_LOCAL_ASIA_SESSION_WRITES").as_deref() == Ok("1");
+    assert!(!local_session_writes || primary_sessions_enabled, "local session responses require primary authentication");
+    let primary_sessions = if primary_sessions_enabled {
+        assert!(std::env::var("ISUREAL_SESSION_CACHE").as_deref() != Ok("1"), "primary session routing requires fresh SQL authentication");
+        let null_authorities: i64 = sqlx::query_scalar("SELECT count(*) FROM users WHERE auth_home_region IS NULL")
+            .fetch_one(&handler_context.db).await.expect("install session authority migration first");
+        assert_eq!(null_authorities, 0);
+        Some(crate::primary_session::PrimarySessionPolicy::new(handler_context.db.clone(), Arc::ptr_eq(&read_context, &handler_context), local_session_writes))
+    } else { None };
     let scope = std::env::var("ISUREAL_DB_READ_SCOPE").unwrap_or_else(|_| "all".into());
     assert!(
         matches!(scope.as_str(), "all" | "feed_search"),
@@ -391,6 +401,7 @@ pub async fn new_server(config: Config) -> Router {
         )
         .with_state(handler_context.clone());
 
+    let server = if let Some(policy) = primary_sessions { server.layer(axum::Extension(policy)) } else { server };
     let server = if let Some(graph) = graph { server.layer(axum::Extension(graph)) } else { server };
     let server = if let Some(history) = history { server.layer(axum::Extension(history)) } else { server };
 

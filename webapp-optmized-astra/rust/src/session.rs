@@ -49,19 +49,26 @@ fn token_hash(headers: &HeaderMap) -> Result<Option<String>, Error> {
 async fn get_session_by_hash<'c>(
     token_hash: &str,
     db: impl Executor<'c, Database = Postgres>,
+    exclude_primary_sessions: bool,
 ) -> Result<Option<Session>, Error> {
-    let session: Option<Session> = sqlx::query_as(
-        r#"
+    let sql = r#"
 		SELECT s.user_id, s.token_hash, s.created_at, u.region
 		FROM login_sessions s JOIN users u ON u.id = s.user_id
 		WHERE s.token_hash = $1
 		  AND s.active = true AND u.status = 'active'
-	"#,
-    )
-    .bind(token_hash)
-    .fetch_optional(db)
-    .await
-    .context("failed to get session")?;
+	"#;
+    let filtered;
+    let sql = if exclude_primary_sessions {
+        filtered = format!("{sql} AND u.auth_home_region <> 'asia'");
+        filtered.as_str()
+    } else {
+        sql
+    };
+    let session: Option<Session> = sqlx::query_as(sql)
+        .bind(token_hash)
+        .fetch_optional(db)
+        .await
+        .context("failed to get session")?;
     Ok(session)
 }
 
@@ -113,14 +120,30 @@ async fn authenticate_request(
     let session = if let Some(session) = cached {
         Some(session)
     } else if let Some(hash) = token_hash {
-        let session = if reuse_connection {
+        let policy = req
+            .extensions()
+            .get::<crate::primary_session::PrimarySessionPolicy>()
+            .cloned();
+        let authority = policy.as_ref().filter(|p| !p.local_is_primary);
+        let local_session = if reuse_connection {
             let mut db = handler_context.db.acquire().await?;
-            let session = get_session_by_hash(&hash, &mut *db).await?;
-            req.extensions_mut()
-                .insert(SessionConnection(Arc::new(Mutex::new(Some(db)))));
+            let session = get_session_by_hash(&hash, &mut *db, authority.is_some()).await?;
+            if session.is_some() {
+                req.extensions_mut()
+                    .insert(SessionConnection(Arc::new(Mutex::new(Some(db)))));
+            }
             session
         } else {
-            get_session_by_hash(&hash, &handler_context.db).await?
+            get_session_by_hash(&hash, &handler_context.db, authority.is_some()).await?
+        };
+        // Unknown tokens also reach the primary: a newly issued token may not
+        // have replayed yet. A stale local Asia token is never trusted.
+        let session = if local_session.is_none()
+            && let Some(policy) = authority
+        {
+            get_session_by_hash(&hash, &policy.primary, false).await?
+        } else {
+            local_session
         };
         if let (Some(cache), Some(session)) = (&cache, &session) {
             cache.cache.insert(session.clone(), generation, started);

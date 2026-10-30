@@ -49,6 +49,7 @@ pub async fn write_fence_middleware(
     next: Next,
 ) -> Response {
     let cache = crate::session_cache::coordinator(&req);
+    let session_policy = req.extensions().get::<crate::primary_session::PrimarySessionPolicy>().cloned();
     let method = req.method().clone();
     let path = req.uri().path().to_owned();
     let timing = if req.method() == Method::POST {
@@ -91,8 +92,14 @@ pub async fn write_fence_middleware(
     // responses are fenced as well, since a handler may have committed work.
     // The outer run_to_completion layer also finishes this after disconnects.
     let changed = cache.as_ref().and_then(|_| crate::session_cache::changed_user(&method, &path, &response));
+    let local_session_user = session_policy.as_ref().and_then(|p| p.local_mutation_user(&method, &path, &response));
     let visibility = async {
-        if mutation && let Some(fence) = &fence { fence.wait().await } else { Ok(()) }
+        if mutation && let Some(fence) = &fence {
+            if let (Some(policy), Some(user)) = (&session_policy, &local_session_user)
+                && policy.is_primary_authority(user).await {
+                Ok(())
+            } else { fence.wait().await }
+        } else { Ok(()) }
     };
     let invalidation = async {
         if let (Some(cache), Some(user)) = (&cache, changed) { cache.publish(user).await } else { Ok(()) }
