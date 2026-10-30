@@ -1,6 +1,6 @@
 // Package score は利用者の行動（ゲート通過、閲覧、交流、関係、アカウントの手入れ、
-// 思い出）を数え、重み付きの和をスコアにする。減点はない。可用性は metrics の SLO で
-// 判定し、正しさの違反は Critical として走行を失格にする。
+// 思い出）を数え、重み付きの和に地域の倍率を掛けてスコアにする。減点はない。可用性は
+// metrics の SLO で判定し、正しさの違反は Critical として走行を失格にする。
 package score
 
 import (
@@ -9,6 +9,8 @@ import (
 	"maps"
 	"slices"
 	"sync"
+
+	"github.com/isucon/isucon2026/bench/internal/geo"
 )
 
 type Tag string
@@ -98,11 +100,25 @@ func DefaultWeights() Weights {
 	}
 }
 
+// regionHalves は地域の倍率を 2 倍した値（ここにない地域は 2、つまり 1 倍）。海外（europe と
+// america）は 1.5 倍にする。海外のサーバーは asia の DB から遠く、同じ人数でも点を取りにくい
+// （webapp-optimized v3 で人数の 47%、点の 35%）ので、海外で応答する工夫に見合う点にする。
+// 半分を単位にして整数で足し、端数は最後に 1 回だけ切り捨てる。
+var regionHalves = map[string]int64{geo.Europe: 3, geo.America: 3}
+
+func halves(region string) int64 {
+	if h, ok := regionHalves[region]; ok {
+		return h
+	}
+	return 2
+}
+
 // MaxMessages は保持するメッセージ数の上限。件数は上限を超えても数え続ける。
 const MaxMessages = 20
 
 // Cell はリージョンと日と要素ごとの件数と得点（運営向け）。Day はリージョンの日
-// （1 始まり）で、日が始まる前の操作は 0。
+// （1 始まり）で、日が始まる前の操作は 0。Points は地域の倍率を掛けて切り捨てた値なので、
+// 足すと Total より少しだけ小さくなることがある。
 type Cell struct {
 	Region string `json:"region"`
 	Day    int    `json:"day"`
@@ -196,15 +212,15 @@ func (b *Board) Critical() []string {
 	return append([]string(nil), b.critical...)
 }
 
-// Total は件数の重み付き和。
+// Total は件数の重み付き和に地域の倍率を掛けたもの。
 func (b *Board) Total() int64 {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	var total int64
-	for tag, count := range b.counts {
-		total += b.weights[tag] * count
+	for key, count := range b.cells {
+		total += b.weights[key.tag] * count * halves(key.region)
 	}
-	return total
+	return total / 2
 }
 
 // Cells はリージョンと日と要素ごとの件数と得点を、日、リージョン、要素の順に並べて返す
@@ -214,7 +230,7 @@ func (b *Board) Cells() []Cell {
 	defer b.mu.Unlock()
 	out := make([]Cell, 0, len(b.cells))
 	for key, count := range b.cells {
-		out = append(out, Cell{Region: key.region, Day: key.day, Tag: key.tag, Count: count, Points: b.weights[key.tag] * count})
+		out = append(out, Cell{Region: key.region, Day: key.day, Tag: key.tag, Count: count, Points: b.weights[key.tag] * count * halves(key.region) / 2})
 	}
 	slices.SortFunc(out, func(a, c Cell) int {
 		return cmp.Or(cmp.Compare(a.Day, c.Day), cmp.Compare(a.Region, c.Region), cmp.Compare(a.Tag, c.Tag))
@@ -222,7 +238,7 @@ func (b *Board) Cells() []Cell {
 	return out
 }
 
-// DayPoints は region の day 日目の得点。
+// DayPoints は region の day 日目の得点（地域の倍率を掛けたもの）。
 func (b *Board) DayPoints(region string, day int) int64 {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -232,7 +248,7 @@ func (b *Board) DayPoints(region string, day int) int64 {
 			total += b.weights[key.tag] * count
 		}
 	}
-	return total
+	return total * halves(region) / 2
 }
 
 // Breakdown はタグごとの件数を返す（運営向け、D-005）。
