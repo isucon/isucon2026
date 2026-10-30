@@ -474,3 +474,4 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261030T120422Z-team12 | initial post image metadata cache; candidate=a6e766ba; seed=1; remote recommendations32; diagnostics off | PASS | 199,704 |
 | 20261030T121452Z-team12 | initial image guard pool4; candidate=bbc994dd; seed=1; remote recommendation32; diagnostics off | PASS | 192,508 |
 | 20261030T123225Z-team12 | Asia-only coherent session cache; image guard pool reverted to 0; candidate=90ab1b5a; seed=1 | PASS | 193,650 |
+| 20261030T124007Z-team12 | Single-statement search with Asia-local session cache; candidate=b4067b6c; seed=1 | PASS | 169,733 |

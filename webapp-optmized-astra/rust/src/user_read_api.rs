@@ -77,67 +77,26 @@ pub async fn search_users_handler(
             .replace('%', "!%")
             .replace('_', "!_")
     );
-    // A normal page fits in one statement. Keep the full row fetch after the
-    // candidate limit, and validate dirty Unicode names with the same Rust
-    // normalization as the fallback. If dirty nonmatches consume the page,
-    // restart the existing paginated lookup in its own consistent snapshot.
-    let fast_sql = format!(
-        r#"WITH candidate_ids AS MATERIALIZED (
-        SELECT user_id FROM astra_user_search
-        WHERE normalized_username LIKE $4 ESCAPE '!'
-           OR normalized_display_name LIKE $4 ESCAPE '!'
-        UNION SELECT user_id FROM astra_search_dirty
-      ), page AS MATERIALIZED (
-        SELECT u.id,u.username FROM candidate_ids c JOIN users u ON u.id=c.user_id
-        WHERE u.status='active' AND u.id<>$1
-          AND ($2='' OR (u.username,u.id)>($2,$3))
-          AND NOT EXISTS(SELECT 1 FROM block_relations b WHERE b.blocker_id=$1 AND b.blocked_id=u.id)
-          AND NOT EXISTS(SELECT 1 FROM block_relations b WHERE b.blocked_id=$1 AND b.blocker_id=u.id)
-        ORDER BY u.username,u.id LIMIT 64
-      ) SELECT {} FROM page JOIN users u ON u.id=page.id ORDER BY page.username,page.id"#,
-        USER_COLUMNS
-            .iter()
-            .map(|column| format!("u.{column}"))
-            .collect::<Vec<_>>()
-            .join(",")
-    );
-    let mut fast_users: Vec<User> = sqlx::query_as(&fast_sql)
-        .persistent(false)
-        .bind(viewer)
-        .bind(&input.before_username)
-        .bind(&input.before_id)
-        .bind(&pattern)
-        .fetch_all(&h.db)
-        .await?;
-    let exhausted = fast_users.len() < 64;
-    fast_users.retain(|user| {
-        search_text::matches(&user.username, &query)
-            || search_text::matches(&user.display_name, &query)
-    });
-    let users = if exhausted || fast_users.len() >= 51 {
-        fast_users.truncate(51);
-        fast_users
-    } else {
-        // Keep candidate matching and returned account fields in one snapshot.
-        // Most candidates do not match; their bio, key, and other large fields
-        // need not be transferred from PostgreSQL or decoded by SQLx.
-        let mut tx =
-            h.db.begin_with("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY")
-                .await?;
-        #[derive(sqlx::FromRow)]
-        struct Candidate {
-            id: String,
-            username: String,
-            display_name: String,
-        }
-        // Match immutable derived text first. Name changes, missing derived rows,
-        // and reset mark users dirty in the same transaction, so the fallback
-        // below preserves coverage until Rust has rebuilt their normalization.
-        let mut cursor = (input.before_username.clone(), input.before_id.clone());
-        let mut ids = Vec::with_capacity(51);
-        let mut batch_size = 64_i64;
-        loop {
-            let candidates: Vec<Candidate> = sqlx::query_as(
+    // Keep candidate matching and returned account fields in one snapshot.
+    // Most candidates do not match; their bio, key, and other large fields
+    // need not be transferred from PostgreSQL or decoded by SQLx.
+    let mut tx =
+        h.db.begin_with("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY")
+            .await?;
+    #[derive(sqlx::FromRow)]
+    struct Candidate {
+        id: String,
+        username: String,
+        display_name: String,
+    }
+    // Match immutable derived text first. Name changes, missing derived rows,
+    // and reset mark users dirty in the same transaction, so the fallback
+    // below preserves coverage until Rust has rebuilt their normalization.
+    let mut cursor = (input.before_username.clone(), input.before_id.clone());
+    let mut ids = Vec::with_capacity(51);
+    let mut batch_size = 64_i64;
+    loop {
+        let candidates: Vec<Candidate> = sqlx::query_as(
         r#"WITH candidate_ids AS MATERIALIZED (
              SELECT user_id FROM astra_user_search
              WHERE normalized_username LIKE $4 ESCAPE '!'
@@ -156,41 +115,39 @@ pub async fn search_users_handler(
         .persistent(false)
         .bind(viewer).bind(&cursor.0).bind(&cursor.1).bind(&pattern).bind(batch_size)
         .fetch_all(&mut *tx).await?;
-            let exhausted = candidates.len() < batch_size as usize;
-            if let Some(last) = candidates.last() {
-                cursor = (last.username.clone(), last.id.clone());
-            }
-            for user in candidates {
-                if search_text::matches(&user.username, &query)
-                    || search_text::matches(&user.display_name, &query)
-                {
-                    ids.push(user.id);
-                    if ids.len() == 51 {
-                        break;
-                    }
+        let exhausted = candidates.len() < batch_size as usize;
+        if let Some(last) = candidates.last() {
+            cursor = (last.username.clone(), last.id.clone());
+        }
+        for user in candidates {
+            if search_text::matches(&user.username, &query)
+                || search_text::matches(&user.display_name, &query)
+            {
+                ids.push(user.id);
+                if ids.len() == 51 {
+                    break;
                 }
             }
-            if ids.len() == 51 || exhausted {
-                break;
-            }
-            // A rebuild/import can temporarily leave many dirty candidates. Bound
-            // memory while avoiding hundreds of roundtrips through that fallback.
-            batch_size = (batch_size * 2).min(4096);
         }
-        let users: Vec<User> = if ids.is_empty() {
-            Vec::new()
-        } else {
-            sqlx::query_as(&format!(
-                "SELECT {} FROM users WHERE id=ANY($1) ORDER BY username,id",
-                USER_COLUMNS.join(", ")
-            ))
-            .bind(&ids)
-            .fetch_all(&mut *tx)
-            .await?
-        };
-        tx.commit().await?;
-        users
+        if ids.len() == 51 || exhausted {
+            break;
+        }
+        // A rebuild/import can temporarily leave many dirty candidates. Bound
+        // memory while avoiding hundreds of roundtrips through that fallback.
+        batch_size = (batch_size * 2).min(4096);
+    }
+    let users: Vec<User> = if ids.is_empty() {
+        Vec::new()
+    } else {
+        sqlx::query_as(&format!(
+            "SELECT {} FROM users WHERE id=ANY($1) ORDER BY username,id",
+            USER_COLUMNS.join(", ")
+        ))
+        .bind(&ids)
+        .fetch_all(&mut *tx)
+        .await?
     };
+    tx.commit().await?;
     let mut items = Vec::new();
     for mut user in users {
         user.set_image_key()?;
