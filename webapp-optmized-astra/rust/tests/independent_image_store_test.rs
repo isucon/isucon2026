@@ -77,6 +77,7 @@ fn image_url(id: &str, key: &[u8]) -> String {
 }
 fn app(db: PgPool, store: Option<ImageStore>) -> Router {
     let h = Arc::new(HandlerContext {
+        session_lookups: Default::default(),
         db,
         config: config_from_env(),
         ip_bans: Default::default(),
@@ -1260,6 +1261,7 @@ async fn independent_bytes_publish_atomically_and_preserve_visibility_export_and
                     .any(|bytes| bytes == original)
             );
             let h = Arc::new(HandlerContext {
+                session_lookups: Default::default(),
                 db: db.clone(),
                 config: config_from_env(),
                 ip_bans: Default::default(),
