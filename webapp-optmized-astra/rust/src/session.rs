@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use anyhow::Context as _;
 use axum::extract::{Request, State};
@@ -7,7 +7,7 @@ use axum::middleware::Next;
 use axum::response::Response;
 use chrono::{DateTime, Utc};
 use sha2::{Digest, Sha256};
-use sqlx::{PgConnection, PgPool};
+use sqlx::{Executor, PgConnection, PgPool, Postgres, pool::PoolConnection};
 use uuid::Uuid;
 
 use crate::api_error::{Error, new_api_error};
@@ -30,9 +30,9 @@ pub fn get_session(req: &Request) -> Option<&Session> {
     req.extensions().get::<Session>()
 }
 
-async fn get_session_from_header(
+async fn get_session_from_header<'c>(
     headers: &HeaderMap,
-    db: &PgPool,
+    db: impl Executor<'c, Database = Postgres>,
 ) -> Result<Option<Session>, Error> {
     let auth_header = headers
         .get(header::AUTHORIZATION)
@@ -62,13 +62,49 @@ async fn get_session_from_header(
     Ok(session)
 }
 
+/// A connection belongs to one request and is consumed once by its memory handler.
+/// The Arc only satisfies Axum's Clone requirement for request extensions.
+#[derive(Clone)]
+pub struct SessionConnection(Arc<Mutex<Option<PoolConnection<Postgres>>>>);
+
+impl SessionConnection {
+    pub fn take(&self) -> Option<PoolConnection<Postgres>> {
+        self.0.lock().unwrap().take()
+    }
+}
+
 pub async fn session_middleware(
-    State((handler_context, auth_required)): State<(Arc<HandlerContext>, bool)>,
-    mut req: Request,
+    State(context): State<(Arc<HandlerContext>, bool)>,
+    req: Request,
     next: Next,
 ) -> Result<Response, Error> {
+    authenticate_request(context, req, next, false).await
+}
+
+pub async fn memory_session_middleware(
+    State(context): State<(Arc<HandlerContext>, bool)>,
+    req: Request,
+    next: Next,
+) -> Result<Response, Error> {
+    authenticate_request(context, req, next, true).await
+}
+
+async fn authenticate_request(
+    (handler_context, auth_required): (Arc<HandlerContext>, bool),
+    mut req: Request,
+    next: Next,
+    reuse_connection: bool,
+) -> Result<Response, Error> {
     let mut probe = ReadProbe::sample(req.uri().path());
-    let session = get_session_from_header(req.headers(), &handler_context.db).await?;
+    let session = if reuse_connection {
+        let mut db = handler_context.db.acquire().await?;
+        let session = get_session_from_header(req.headers(), &mut *db).await?;
+        req.extensions_mut()
+            .insert(SessionConnection(Arc::new(Mutex::new(Some(db)))));
+        session
+    } else {
+        get_session_from_header(req.headers(), &handler_context.db).await?
+    };
     ReadProbe::mark(&mut probe, "auth");
     if let Some(probe) = probe {
         req.extensions_mut().insert(probe);

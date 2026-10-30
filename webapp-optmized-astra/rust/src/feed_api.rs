@@ -181,9 +181,7 @@ pub async fn get_feed_handler(
                  CROSS JOIN LATERAL ({candidates}) candidate WHERE w.ended_at IS NULL"
             ),
         );
-        let permit = crate::query_admission::graph_query().await;
         let mut posts: Vec<RankedPost> = sqlx::query_as_with(&query, args).fetch_all(&h.db).await?;
-        drop(permit);
         let has_more = posts.len() > 50;
         let mut items = Vec::with_capacity(posts.len().min(50));
         for ranked in posts.iter_mut().take(50) {
@@ -207,9 +205,7 @@ pub async fn get_feed_handler(
         ORDER BY candidate.posted_at DESC, candidate.id DESC LIMIT 51
     "#
     );
-    let permit = crate::query_admission::graph_query().await;
     let mut posts: Vec<PostWithAuthor> = sqlx::query_as_with(&query, args).fetch_all(&h.db).await?;
-    drop(permit);
     let has_more = posts.len() > 50;
     let mut items = Vec::with_capacity(posts.len().min(50));
     for post in posts.iter_mut().take(50) {

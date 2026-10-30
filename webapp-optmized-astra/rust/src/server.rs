@@ -297,6 +297,9 @@ pub async fn new_server(config: Config) -> Router {
     let read_session = |auth_required| {
         from_fn_with_state((general_reads.clone(), auth_required), session_middleware)
     };
+    let memory_session = || {
+        from_fn_with_state((general_reads.clone(), true), crate::session::memory_session_middleware)
+    };
     let graph_session = |auth_required| {
         from_fn_with_state((read_context.clone(), auth_required), session_middleware)
     };
@@ -332,8 +335,8 @@ pub async fn new_server(config: Config) -> Router {
         .route("/api/posts/{postId}", patch(update_post_handler).route_layer(region()).route_layer(session(true)))
         .route("/api/posts/{postId}", delete(delete_post_handler).route_layer(region()).route_layer(session(true)))
         .route("/api/feeds/{feed}", get(get_feed_handler).route_layer(region()).route_layer(graph_session(true)).route_layer(from_fn_with_state(graph_fence.clone(), read_fence_middleware)).with_state(read_context.clone()))
-        .route("/api/memories", get(get_memories_handler).route_layer(region()).route_layer(read_session(true)).with_state(general_reads.clone()))
-        .route("/api/memories/{date}", get(get_memories_by_date_handler).route_layer(region()).route_layer(read_session(true)).with_state(general_reads.clone()))
+        .route("/api/memories", get(get_memories_handler).route_layer(region()).route_layer(memory_session()).with_state(general_reads.clone()))
+        .route("/api/memories/{date}", get(get_memories_by_date_handler).route_layer(region()).route_layer(memory_session()).with_state(general_reads.clone()))
         .route("/api/posts/{postId}/comments", post(create_comment_handler).route_layer(region()).route_layer(session(true)))
         .route("/api/posts/{postId}/comments", get(get_comments_handler).route_layer(region()).route_layer(read_session(true)).with_state(general_reads.clone()))
         .route("/api/comments/{commentId}", delete(delete_comment_handler).route_layer(region()).route_layer(session(true)))

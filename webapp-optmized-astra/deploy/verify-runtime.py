@@ -40,7 +40,6 @@ def inspect(app):
             'ISUREAL_LISTEN_BACKLOG':str(runtime['listenBacklog']),
             'TOKIO_WORKER_THREADS':str(runtime['tokioWorkerThreads']),
             'ISUREAL_IMAGE_CACHE_MIB':str(runtime['imageCacheMiB']),
-            'ISUREAL_GRAPH_QUERY_CONCURRENCY':str(runtime.get('graphQueryConcurrency',0)),
             'ISUREAL_EXPORT_CONCURRENCY':str(runtime.get('exportConcurrency',2)),
             'ISUREAL_METADATA_POOL_CONNECTIONS':str(runtime['metadataPoolConnections']),
             'ISUREAL_NOTIFICATION_BATCH_WRITES':str(int(runtime['notificationBatchWritesEnabled'])),
