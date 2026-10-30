@@ -232,19 +232,15 @@ const RANKING_RELATIONS: &str = r#"
 ), mutual AS (
   SELECT id,n FROM friends_of_friends WHERE id <> $1
 ), connection AS (
-  SELECT authors.id, contribution.n
-  FROM (SELECT DISTINCT author_id AS id FROM fof_posts) authors
-  CROSS JOIN LATERAL (
-    SELECT sum(bounded.n) AS n FROM (
-      SELECT mutual.n FROM (
-        SELECT f.user_high_id AS friend_id FROM friendships f WHERE f.user_low_id=authors.id
-        UNION ALL
-        SELECT f.user_low_id AS friend_id FROM friendships f WHERE f.user_high_id=authors.id
-      ) side
-      JOIN mutual ON mutual.id=side.friend_id
-      LIMIT 30
-    ) bounded
-  ) contribution
+  SELECT side.id, sum(mutual.n) AS n FROM (
+    SELECT f.user_low_id AS id, f.user_high_id AS friend_id
+    FROM friendships f WHERE f.user_low_id IN (SELECT author_id FROM fof_posts)
+    UNION ALL
+    SELECT f.user_high_id AS id, f.user_low_id AS friend_id
+    FROM friendships f WHERE f.user_high_id IN (SELECT author_id FROM fof_posts)
+  ) side
+  JOIN mutual ON mutual.id = side.friend_id
+  GROUP BY side.id
 ), engaged AS (
   SELECT reaction.post_id, count(*) AS n FROM (
     SELECT r.post_id, r.reactor_id AS user_id FROM realmojis r
@@ -259,9 +255,7 @@ const RANKING_RELATIONS: &str = r#"
 )
 "#;
 
-// Every contributing mutual.n is a positive count. If at least 30 terms
-// exist their sum is >=30; otherwise LIMIT 30 retains all terms. Thus the
-// bounded connection sum preserves min(C,30) exactly, in either row order.
+// Reuse the same two-hop paths for membership and mutual-friend counts.
 fn ranked_viewer_relations() -> String {
     format!(
         "{VIEWER_AND_FRIENDS}, friends_of_friends AS MATERIALIZED (\n\
