@@ -148,7 +148,7 @@ func (r *Runner) requestFriend(ctx context.Context, u *user, target *user, searc
 	switch {
 	case isStatus(err, http.StatusNotFound):
 		// 送っている間に相手が退会すれば 404 が正しい。
-		w.Rejected()
+		settle(w, err)
 		if r.model.Visible(u.ID, target.ID, r.model.ReadBetween(sent, time.Now())) == model.True {
 			r.invalid(ctx, u, "%s: 有効なユーザー %s への友達申請が 404 になりました", u.Username, target.Username)
 		}
@@ -167,7 +167,7 @@ func (r *Runner) requestFriend(ctx context.Context, u *user, target *user, searc
 		return true
 	case isStatus(err, http.StatusConflict):
 		// 送る前に友達になったか、同じ申請が保留中。
-		w.Rejected()
+		settle(w, err)
 	default:
 		settle(w, err)
 		r.requestError(ctx, u, "%s: 友達申請を送れません: %v", u.Username, err)

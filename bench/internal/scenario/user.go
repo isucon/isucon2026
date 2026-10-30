@@ -418,10 +418,11 @@ func (r *Runner) post(ctx context.Context, u *user, windowID string) (client.Pos
 	creation := r.model.BeginCreatePost(u.ID)
 	post, err := u.API.CreatePost(client.MayFailWith(ctx, http.StatusConflict), u.Token, image, caption, visibility, location)
 	if isStatus(err, http.StatusConflict) {
-		creation.Rejected()
+		settle(creation.Write, err)
 		// 確かめてから送るまでに次の投稿期間が開き、その日付にはもう投稿していた（リージョンを
-		// 移った人に起きる）なら、投稿できないのが正しい。
-		if r.currentWindowID(u.Region) == windowID {
+		// 移った人に起きる）なら、投稿できないのが正しい。503 で送り直した要求なら、前の試行で
+		// 投稿できていたかもしれない。
+		if isRejection(err) && r.currentWindowID(u.Region) == windowID {
 			r.invalid(ctx, u, "%s: 投稿できるはずの投稿期間で投稿が拒否されました: %v", u.Username, err)
 		}
 		return client.Post{}, "", false

@@ -413,10 +413,12 @@ func (r *Runner) recoverWindow(ctx context.Context, region string, day int, date
 	return client.Window{}, false
 }
 
-// isRejection は err が、書き込みが確実に反映されなかったことを表す 4xx か。
+// isRejection は err が、書き込みが確実に反映されなかったことを表す 4xx か。クライアントは
+// 503 を受けると同じ要求を送り直し、最後の応答だけを返す。2 回以上試した要求の 4xx は、
+// 503 を返した前の試行が反映されたあとの拒否（たとえば重複の 409）かもしれないので含めない。
 func isRejection(err error) bool {
 	var apiErr *client.APIError
-	return errors.As(err, &apiErr) && apiErr.Status >= 400 && apiErr.Status < 500
+	return errors.As(err, &apiErr) && apiErr.Status >= 400 && apiErr.Status < 500 && apiErr.Attempts <= 1
 }
 
 // admit は count 人の新しいユーザーを、その日の始めの 4 割の時間に均等に散らして登録する。
