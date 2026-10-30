@@ -447,3 +447,4 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261030T050517Z-team12 | repeat eight concurrent streaming exports without restart; candidate=3b89c4e6; seed=1 | PASS | 147,419 |
 | 20261030T052724Z-team12 | post-GC control: f9aeafc9 read paths plus eight streaming exports; candidate=eeb69dc; deployment=dbc4068; seed=1 | PASS | 173,329 |
 | 20261030T053242Z-team12 | repeat post-GC baseline reads plus eight streaming exports without restart; candidate=eeb69dc; seed=1 | PASS | 146,194 |
+| 20261030T054432Z-team12 | Memory phase diagnostic, baseline reads and export eight candidate=17bad8c2; seed=1 | PASS | 151,558 |
