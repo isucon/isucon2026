@@ -180,7 +180,7 @@ func TestConflictAfterWindowSwitch(t *testing.T) {
 }
 
 // TestCurrentWindowChecked は、投稿の前に読んだ今の投稿期間が開いた投稿期間と食い違うとき
-// （ID がない #206、内容が違う #300、投稿していないのに投稿できないと返す #206）にエラーにし、
+// （ID がない #206、内容が違う #300、投稿していないのに canPost が偽 #206）にエラーにし、
 // 正しい応答では投稿することを確かめる。
 func TestCurrentWindowChecked(t *testing.T) {
 	for _, tc := range []struct {
@@ -195,7 +195,8 @@ func TestCurrentWindowChecked(t *testing.T) {
 		{"wrong date", func(body map[string]any) { body["window"].(map[string]any)["localDate"] = "1999-01-01" }, true},
 		{"no start", func(body map[string]any) { delete(body["window"].(map[string]any), "startsAt") }, true},
 		{"cannot post", func(body map[string]any) { body["canPost"] = false }, true},
-		{"has posted", func(body map[string]any) { body["hasPosted"] = true }, true},
+		// hasPosted の意味は参加者向けの文書にないので、canPost が真なら投稿する。
+		{"has posted", func(body map[string]any) { body["hasPosted"] = true }, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			r, app, w1 := newWindowRunner(t)
