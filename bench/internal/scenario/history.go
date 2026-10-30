@@ -111,7 +111,7 @@ func (r *Runner) revisit(ctx context.Context, u *user, free *client.Client) {
 		case isStatus(err, http.StatusUnauthorized):
 			r.board.Criticalf("初期データのユーザー %s としてログインできません: %v", u.Username, err)
 		default:
-			r.requestError(ctx, u, "%s: ログインできません: %v", u.Username, err)
+			r.agentError(ctx, u, err, "%s: ログインできません: %v", u.Username, err)
 		}
 		return
 	}
@@ -153,6 +153,18 @@ func (r *Runner) revisit(ctx context.Context, u *user, free *client.Client) {
 			r.requestError(ctx, u, "%s: ログアウトできません: %v", u.Username, err)
 		}
 	}
+}
+
+// agentError は agent の登録とログインの失敗 err を記録する。応答は届いたが内容が違った
+// （agent.ResponseError）なら、Observer は成功として数えているので検証の失敗として数える。
+// ほかは requestError と同じ。
+func (r *Runner) agentError(ctx context.Context, u *user, err error, format string, args ...any) {
+	var invalid *agent.ResponseError
+	if errors.As(err, &invalid) {
+		r.invalid(ctx, u, format, args...)
+		return
+	}
+	r.requestError(ctx, u, format, args...)
 }
 
 func (r *Runner) historyRandFloat() float64 {
