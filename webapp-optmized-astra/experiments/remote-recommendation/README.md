@@ -27,3 +27,9 @@ recommendationReadRegion=americaを指定すると、Asiaの公開アプリだ�
 検索統計更新とセッション受付分離を含む197,417点の構成でも、Asia /api/me p50は474ms、月履歴p90は317msだった。診断で認証SQLそのものより接続取得待ちが大きいことを確認済み。次は既存shortReadPoolConnectionsを8へ設定する。画像・ユーザー情報・履歴などの短い読み取りが、フィード・検索・exportと共有16接続を奪い合わないようにする。memoryPoolConnectionsは0で、履歴も短い読み取りの8接続を使う。認証、SQL、参照先、複製の保証は変更しない。以前の不採用候補はログインが複製と一般受付を待つ構成であり、今回はその待ちを除いた状態で比較する。実機は未測定。
 
 短い読み取り8接続2b6d4ceb、20261030T113727Z-team12は197,586点PASSで、197,417点とほぼ横ばい。Asia検索p90は655.9→459.4msへ短縮したが、/api/me p50は474.0→875.2ms、月履歴p90は317.1→518.1msとなった。短い読み取りの遅延改善を確認できず、shortReadPoolConnectionsを0へ戻す。
+
+## 主DBの専用4接続
+
+短い読み取りの分離は0へ戻した。次の比較は197,417点構成を基準に、recommendationReadRegion=primary、recommendationPoolConnections=4へ変更する。推薦SQL専用の読み取り専用接続を使い、USへの1往復を省く一方で、主DB上の推薦SQLを同時4本に制限する。一般の認証・読み取り・更新プールと待ち行列は共有しない。EU/USアプリの接続先は変わらない。既存の主DBにだけ接続し、AWSリソースは増やさない。
+
+起動時は主DBなら非recovery、レプリカならrecoveryとスロット名を検証する。実DBテストでprimary/replicaの取り違え、異なるスロット名、読み取り専用設定を確認した。既存の推薦SQL独立参照テストも全件一致。Clippy全ターゲットとPulumi TypeScriptも成功。総合点は実機で確認する。
