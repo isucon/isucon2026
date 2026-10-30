@@ -13,12 +13,12 @@ import (
 // InteractionPageSize は RealMoji とコメントの一覧の 1 ページの件数（アプリの仕様）。
 const InteractionPageSize = 50
 
-// pageSizeProblem は、1 ページの件数が仕様と合わなければ問題を返す。続きがあるのに足りない
-// ページを返すと、それより後ろの交流の欠落を確かめられなくなる（空のページでも続きがあると
-// して隠せてしまう）。
+// pageSizeProblem は、1 ページの件数が仕様と合わなければ問題を返す。仕様は 1 ページ「最大」
+// 50 件なので、続きがあって 50 件に満たないページは許し、最後の項目より前の交流だけを必須に
+// する。続きがあるのに空のページは、次のページを読む位置がなく、すべての欠落を隠せてしまう。
 func pageSizeProblem(kind string, n int, hasMore bool) string {
-	if (hasMore && n < InteractionPageSize) || n > InteractionPageSize {
-		return fmt.Sprintf("%sが %d 件です（1 ページ %d 件、続きがあるか %t）", kind, n, InteractionPageSize, hasMore)
+	if (hasMore && n == 0) || n > InteractionPageSize {
+		return fmt.Sprintf("%sが %d 件です（1 ページ最大 %d 件、続きがあるか %t）", kind, n, InteractionPageSize, hasMore)
 	}
 	return ""
 }
