@@ -71,16 +71,39 @@ func (b scoreBounds) hi() int64 {
 	return engagementWeight*b.engagement[1] + mutualWeight*b.mutual[1] + min(b.connections[1], connectionsCap)
 }
 
-// admits は score がこの範囲の入力から出うる点数か。M と C が決まっていれば、残りは E の
-// engagementWeight 倍なので、下限と上限の間でも倍数からずれた点数は誤りとする。
+// admits は score がこの範囲の入力から出うる点数か。各項を範囲の中の整数から独立に選んで
+// 10E + 3M + min(C, 30) = score にできるかを見るので、下限と上限の間でも、どの組み合わせ
+// からも出ない点数（M だけが不確かなときの 3 点刻みの間など）は誤りとする。項どうしは同じ
+// 友達関係でつながっていて、独立に選べる組み合わせは実際に出うるものを含むので、出うる点数を
+// 誤りとすることはない。
 func (b scoreBounds) admits(score int64) bool {
 	if score < b.lo() || score > b.hi() {
 		return false
 	}
-	if c := min(b.connections[0], connectionsCap); b.mutual[0] == b.mutual[1] && c == min(b.connections[1], connectionsCap) {
-		return (score-mutualWeight*b.mutual[0]-c)%engagementWeight == 0
+	cLo, cHi := min(b.connections[0], connectionsCap), min(b.connections[1], connectionsCap)
+	for mutual := b.mutual[0]; mutual <= b.mutual[1]; mutual++ {
+		// 残りを 10E + C（E は engagement、C は cLo から cHi）で出せるか。
+		rest := score - mutualWeight*mutual
+		lo := max(b.engagement[0], ceilDiv(rest-cHi, engagementWeight))
+		hi := min(b.engagement[1], floorDiv(rest-cLo, engagementWeight))
+		if lo <= hi {
+			return true
+		}
 	}
-	return true
+	return false
+}
+
+// floorDiv と ceilDiv は b > 0 で割った商を、負の数でも切り下げ、切り上げる。
+func floorDiv(a, b int64) int64 {
+	q := a / b
+	if a%b != 0 && a < 0 {
+		q--
+	}
+	return q
+}
+
+func ceilDiv(a, b int64) int64 {
+	return -floorDiv(-a, b)
 }
 
 // recommendationBounds は viewerID から見た p の点数の各項の下限と上限。
