@@ -1,0 +1,47 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.10s
+     Running unittests src/lib.rs (webapp-optmized-astra/rust/target/debug/deps/isureal-df67e182949e89bc)
+
+running 40 tests
+test archive_peer::tests::reads_exact_ranges_and_rejects_incorrect_peer_responses ... ok
+test archive_store::tests::grouped_ranges_preserve_order_duplicates_gaps_and_archive_boundaries ... ok
+test archive_store::tests::ranges_preserve_exact_images_and_reject_missing_bytes ... ok
+test archive_store::tests::references_are_canonical_and_bounded ... ok
+test export_api::tests::export_supports_empty_history ... ok
+test export_api::tests::partition_hint_matches_full_export_and_falls_back_for_moved_images ... ok
+test export_api::tests::slow_or_disconnected_export_bounds_output_and_releases_writer ... ok
+test export_api::tests::streamed_export_preserves_images_order_and_manifest ... ok
+test file_store::tests::immutable_files_survive_new_instances_and_failed_publication ... ok
+test file_store::tests::regional_file_reads_preserve_bytes_and_missing_file_errors ... ok
+test image_api::cache_tests::byte_budget_evicts_cold_entries_and_retained_responses_survive ... ok
+test image_api::cache_tests::compare_export_owner_index_with_full_scan ... ignored, local export-cache timing comparison
+test image_api::cache_tests::eviction_retains_recently_used_images_and_preserves_byte_accounting ... ok
+test image_api::cache_tests::owner_index_tracks_learning_replacement_and_eviction ... ok
+test image_cache_push::tests::asynchronous_push_delivers_exact_immutable_bytes ... ok
+test image_cache_push::tests::receiver_requires_actual_writer_socket_and_valid_payload ... ok
+test image_cache_push::tests::slow_or_failed_deliveries_have_a_bounded_pending_budget ... ok
+test image_signature::cache_tests::file_issued_url_keeps_its_older_expiry_when_cached ... ok
+test image_signature::cache_tests::issued_urls_preserve_original_expiry_and_renew_at_boundary ... ok
+test image_signature::cache_tests::simultaneous_requests_share_one_calculation ... ok
+test image_signature::cache_tests::verification_reuses_issued_signature_after_memo_eviction ... ok
+test image_store::tests::asset_cache_checks_bytes_and_bounds_memory_and_entries ... ok
+test memory_batch::tests::batched_memory_matches_reference_visibility_limits_and_pagination ... ok
+test native_write_fence::admission_tests::tiny_images_cannot_consume_account_or_control_admission ... ok
+test notification_api::tests::batched_notifications_preserve_connection_and_recipient_rules ... ok
+test notification_api::tests::fenced_poll_does_not_deliver_to_a_deleted_recipient_on_lagging_replica ... ok
+test notification_api::tests::snapshot_candidates_recheck_live_state_and_preserve_mixed_order ... ok
+test read_fence::tests::physical_replica_barrier_waits_for_new_commits_and_fails_closed ... ok
+test search_text::tests::search_matches_preserve_unicode_and_literal_semantics ... ok
+test search_text::tests::search_text_cpu_comparison ... ignored, local CPU comparison, run with --release --ignored --nocapture
+test server::listen_tests::configured_backlog_accepts_a_burst_before_the_application_polls ... ok
+test signature_file::tests::matches_exact_current_key_and_canonical_image_id ... ok
+test stored_upload::tests::proof_requires_exact_body_headers_path_expiry_region_and_actual_peer ... ok
+test upload_proxy::tests::forwards_exact_body_credentials_and_status_without_retries ... ok
+test upload_proxy::tests::only_exact_upload_routes_are_intercepted ... ok
+test write_fence::tests::native_commit_waits_for_both_replicas_without_application_locks ... ok
+test write_fence::tests::native_commit_waits_when_only_third_replica_is_paused ... ok
+test write_fence::tests::responses_wait_for_both_replicas_after_releasing_write_locks ... ok
+test write_ingress::region_tests::forwarding_preserves_ingress_region_and_public_server_stays_asia ... ok
+test write_ingress::tests::only_socket_peer_selects_original_ingress_region ... ok
+
+test result: ok. 38 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 3.25s
+
