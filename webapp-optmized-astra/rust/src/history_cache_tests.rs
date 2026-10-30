@@ -119,12 +119,17 @@ async fn cached_records_follow_commits_user_changes_pagination_and_reset() {
         .execute(&db)
         .await
         .unwrap();
+    // Opening/closing windows does not change historical response fields.
+    sqlx::raw_sql("UPDATE posting_windows SET ended_at=clock_timestamp(); INSERT INTO posting_windows VALUES('new-window','2026-01-02','2026-01-02T01:00Z',NULL)")
+        .execute(&db).await.unwrap();
+    assert_matches(&db, "owner", None, "").await;
+    assert!(Arc::ptr_eq(&snapshot, &load(&db, "owner").await.unwrap()));
     for query in [
         "UPDATE comments SET deleted_at=clock_timestamp() WHERE id='c1'",
         "UPDATE realmojis SET replaced_at=clock_timestamp() WHERE id='r55'",
         "INSERT INTO comments VALUES('new','p055','friend','new','2026-01-01T00:00Z',NULL)",
         "UPDATE posts SET caption='changed' WHERE id='p055'",
-        "UPDATE posting_windows SET ended_at=clock_timestamp()",
+        "UPDATE posting_windows SET on_time_deadline=on_time_deadline-interval '1 hour'",
         "UPDATE posts SET deleted_at=clock_timestamp() WHERE id='p055'",
     ] {
         let old = load(&db, "owner").await.unwrap();
