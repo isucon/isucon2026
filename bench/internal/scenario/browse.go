@@ -2,7 +2,6 @@ package scenario
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -258,7 +257,7 @@ func (r *Runner) deleteRealMoji(ctx context.Context, u *user, s *session) {
 	w := r.model.BeginDeleteRealMoji(postID, u.ID)
 	sent := time.Now()
 	err := u.API.DeleteRealMoji(client.MayFailWith(ctx, http.StatusNotFound, http.StatusForbidden), u.Token, id)
-	settleRetried(w, err)
+	settle(w, err)
 	switch {
 	case r.bannedErr(u, err):
 		// BAN されたユーザーは止める。失敗には数えない。
@@ -267,7 +266,7 @@ func (r *Runner) deleteRealMoji(ctx context.Context, u *user, s *session) {
 	case isStatus(err, http.StatusNotFound) || isStatus(err, http.StatusForbidden):
 		// 投稿が削除されたり、投稿者が先に消したりしていれば正しい拒否。確実に消せたはずの自分の
 		// RealMoji の取り消しを拒否したときだけエラーにする。
-		if !retried(err) && r.model.RealMojiDeletable(postID, u.ID, id, r.model.ReadBetween(sent, time.Now())) == model.True {
+		if isRejection(err) && r.model.RealMojiDeletable(postID, u.ID, id, r.model.ReadBetween(sent, time.Now())) == model.True {
 			r.invalid(ctx, u, "%s: 自分の RealMoji %s の取り消しが拒否されました: %v", u.Username, id, err)
 		}
 	default:
@@ -356,36 +355,19 @@ func (r *Runner) deleteComment(ctx context.Context, u *user, s *session) {
 	w := r.model.BeginDeleteComment(id)
 	sent := time.Now()
 	err := u.API.DeleteComment(client.MayFailWith(ctx, http.StatusNotFound, http.StatusForbidden), u.Token, id)
-	settleRetried(w, err)
+	settle(w, err)
 	switch {
 	case r.bannedErr(u, err):
 	case err == nil:
 		r.award(u, s.day, score.TagDeleteReaction)
 	case isStatus(err, http.StatusNotFound) || isStatus(err, http.StatusForbidden):
 		// RealMoji の取り消しと同じく、確実に消せたはずのときだけエラーにする。
-		if !retried(err) && r.model.CommentDeletable(id, r.model.ReadBetween(sent, time.Now())) == model.True {
+		if isRejection(err) && r.model.CommentDeletable(id, r.model.ReadBetween(sent, time.Now())) == model.True {
 			r.invalid(ctx, u, "%s: 自分のコメント %s の削除が拒否されました: %v", u.Username, id, err)
 		}
 	default:
 		r.requestError(ctx, u, "%s: コメント %s を消せません: %v", u.Username, id, err)
 	}
-}
-
-// retried は err が、503 を受けて送り直した要求の応答か。前の試行が反映されていれば
-// （削除済みなど）、送り直した要求の拒否は正しい。
-func retried(err error) bool {
-	var apiErr *client.APIError
-	return errors.As(err, &apiErr) && apiErr.Attempts > 1
-}
-
-// settleRetried は settle と同じく結果を記録するが、503 のあとに送り直して拒否された要求は、
-// 前の試行が反映されたかもしれないので結果不明とする。
-func settleRetried(w *model.Write, err error) {
-	if retried(err) {
-		w.Unknown()
-		return
-	}
-	settle(w, err)
 }
 
 // listComments は投稿のコメントの一覧を読み、bench が書いたコメントと突き合わせる。
@@ -455,9 +437,9 @@ func (r *Runner) answerRequest(ctx context.Context, u *user, request client.Rela
 		closing.Unknown()
 	} else {
 		if w != nil {
-			settleRetried(w, err)
+			settle(w, err)
 		}
-		settleRetried(closing, err)
+		settle(closing, err)
 	}
 	switch {
 	case r.bannedErr(u, err):
@@ -470,7 +452,7 @@ func (r *Runner) answerRequest(ctx context.Context, u *user, request client.Rela
 		r.award(u, r.dayNow(u.Region), score.TagFriendDecline)
 	case isStatus(err, http.StatusForbidden) || isStatus(err, http.StatusConflict) || isStatus(err, http.StatusNotFound):
 		// 送っている間ずっと確実に保留中だった（bench が送って記録した）申請の拒否だけをエラーにする。
-		if !retried(err) && r.model.FriendRequestPending(request.RelationID, r.model.ReadBetween(sent, time.Now())) == model.True {
+		if isRejection(err) && r.model.FriendRequestPending(request.RelationID, r.model.ReadBetween(sent, time.Now())) == model.True {
 			r.invalid(ctx, u, "%s: 保留中の友達申請 %s を%sできません: %v", u.Username, request.RelationID, map[string]string{"accept": "承認", "reject": "拒否"}[action], err)
 		}
 	default:

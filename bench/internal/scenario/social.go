@@ -263,7 +263,7 @@ func (r *Runner) cancelRequest(ctx context.Context, u *user) {
 		// 取り下げられたのかわからない。
 		closing.Unknown()
 	} else {
-		settleRetried(closing, err)
+		settle(closing, err)
 	}
 	switch {
 	case malformed:
@@ -336,18 +336,6 @@ func relationProblem(kind string, items []client.Relationship) string {
 	return ""
 }
 
-// settleRelation は関係の書き込みの結果を settle と同じくモデルに記録する。ただし 503 を
-// 受けて送り直したあとの 4xx（もう友達でない、もうフォローしているなどの 409）は、前の
-// 試行で反映されたかもしれないので結果不明とする。
-func settleRelation(w *model.Write, err error) {
-	var apiErr *client.APIError
-	if errors.As(err, &apiErr) && apiErr.Attempts > 1 && isRejection(err) {
-		w.Unknown()
-		return
-	}
-	settle(w, err)
-}
-
 // unfriend は友達を 1 人解除する。
 func (r *Runner) unfriend(ctx context.Context, u *user) {
 	now := r.model.Now()
@@ -364,7 +352,7 @@ func (r *Runner) unfriend(ctx context.Context, u *user) {
 	w := r.model.BeginFriendship(u.ID, target.ID, false)
 	sent := time.Now()
 	err := u.API.Unfriend(client.MayFailWith(ctx, http.StatusConflict, http.StatusNotFound), u.Token, target.ID)
-	settleRelation(w, err)
+	settle(w, err)
 	switch {
 	case err == nil:
 		r.removeFriendship(u.ID, target.ID)
@@ -552,7 +540,7 @@ func (r *Runner) toggleFollow(ctx context.Context, u *user) {
 		w := r.model.BeginFollow(u.ID, id, false)
 		sent := time.Now()
 		err := u.API.Unfollow(client.MayFailWith(ctx, http.StatusConflict), u.Token, id)
-		settleRelation(w, err)
+		settle(w, err)
 		switch {
 		case err == nil:
 			delete(u.follows, id)
@@ -593,7 +581,7 @@ func (r *Runner) followCertified(ctx context.Context, u *user, n int) {
 		w := r.model.BeginFollow(u.ID, id, true)
 		sent := time.Now()
 		err := u.API.Follow(client.MayFailWith(ctx, http.StatusConflict, http.StatusNotFound), u.Token, id)
-		settleRelation(w, err)
+		settle(w, err)
 		switch {
 		case err == nil:
 			u.follows[id] = true
@@ -656,7 +644,7 @@ func (r *Runner) toggleBlock(ctx context.Context, u *user) {
 		sent := time.Now()
 		// ブロックしていなければアプリは 403 を返す（409 を返す実装もありうる）。
 		err := u.API.Unblock(client.MayFailWith(ctx, http.StatusForbidden, http.StatusConflict, http.StatusNotFound), u.Token, id)
-		settleRelation(w, err)
+		settle(w, err)
 		switch {
 		case err == nil:
 			u.blocking = u.blocking[:len(u.blocking)-1]
