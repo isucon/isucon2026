@@ -59,6 +59,11 @@ export declare type GetCurrentSessionResponse = Message<"isuxportal.proto.servic
    * @generated from field: string push_vapid_key = 6;
    */
   pushVapidKey: string;
+
+  /**
+   * @generated from field: string router_public_ipv4_address = 7;
+   */
+  routerPublicIpv4Address: string;
 };
 
 /**

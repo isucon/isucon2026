@@ -59,15 +59,16 @@ func (*GetCurrentSessionRequest) Descriptor() ([]byte, []int) {
 }
 
 type GetCurrentSessionResponse struct {
-	state               protoimpl.MessageState          `protogen:"open.v1"`
-	Team                *resources.Team                 `protobuf:"bytes,1,opt,name=team,proto3" json:"team,omitempty"`
-	Contestant          *resources.Contestant           `protobuf:"bytes,2,opt,name=contestant,proto3" json:"contestant,omitempty"`
-	DiscordServerId     string                          `protobuf:"bytes,3,opt,name=discord_server_id,json=discordServerId,proto3" json:"discord_server_id,omitempty"`
-	Contest             *resources.Contest              `protobuf:"bytes,4,opt,name=contest,proto3" json:"contest,omitempty"`
-	ContestantInstances []*resources.ContestantInstance `protobuf:"bytes,5,rep,name=contestant_instances,json=contestantInstances,proto3" json:"contestant_instances,omitempty"`
-	PushVapidKey        string                          `protobuf:"bytes,6,opt,name=push_vapid_key,json=pushVapidKey,proto3" json:"push_vapid_key,omitempty"`
-	unknownFields       protoimpl.UnknownFields
-	sizeCache           protoimpl.SizeCache
+	state                   protoimpl.MessageState          `protogen:"open.v1"`
+	Team                    *resources.Team                 `protobuf:"bytes,1,opt,name=team,proto3" json:"team,omitempty"`
+	Contestant              *resources.Contestant           `protobuf:"bytes,2,opt,name=contestant,proto3" json:"contestant,omitempty"`
+	DiscordServerId         string                          `protobuf:"bytes,3,opt,name=discord_server_id,json=discordServerId,proto3" json:"discord_server_id,omitempty"`
+	Contest                 *resources.Contest              `protobuf:"bytes,4,opt,name=contest,proto3" json:"contest,omitempty"`
+	ContestantInstances     []*resources.ContestantInstance `protobuf:"bytes,5,rep,name=contestant_instances,json=contestantInstances,proto3" json:"contestant_instances,omitempty"`
+	PushVapidKey            string                          `protobuf:"bytes,6,opt,name=push_vapid_key,json=pushVapidKey,proto3" json:"push_vapid_key,omitempty"`
+	RouterPublicIpv4Address string                          `protobuf:"bytes,7,opt,name=router_public_ipv4_address,json=routerPublicIpv4Address,proto3" json:"router_public_ipv4_address,omitempty"`
+	unknownFields           protoimpl.UnknownFields
+	sizeCache               protoimpl.SizeCache
 }
 
 func (x *GetCurrentSessionResponse) Reset() {
@@ -142,12 +143,19 @@ func (x *GetCurrentSessionResponse) GetPushVapidKey() string {
 	return ""
 }
 
+func (x *GetCurrentSessionResponse) GetRouterPublicIpv4Address() string {
+	if x != nil {
+		return x.RouterPublicIpv4Address
+	}
+	return ""
+}
+
 var File_isuxportal_services_common_me_proto protoreflect.FileDescriptor
 
 const file_isuxportal_services_common_me_proto_rawDesc = "" +
 	"\n" +
 	"#isuxportal/services/common/me.proto\x12 isuxportal.proto.services.common\x1a\x1fisuxportal/resources/team.proto\x1a%isuxportal/resources/contestant.proto\x1a.isuxportal/resources/contestant_instance.proto\x1a\"isuxportal/resources/contest.proto\"\x1a\n" +
-	"\x18GetCurrentSessionRequest\"\x8d\x03\n" +
+	"\x18GetCurrentSessionRequest\"\xca\x03\n" +
 	"\x19GetCurrentSessionResponse\x124\n" +
 	"\x04team\x18\x01 \x01(\v2 .isuxportal.proto.resources.TeamR\x04team\x12F\n" +
 	"\n" +
@@ -156,7 +164,8 @@ const file_isuxportal_services_common_me_proto_rawDesc = "" +
 	"\x11discord_server_id\x18\x03 \x01(\tR\x0fdiscordServerId\x12=\n" +
 	"\acontest\x18\x04 \x01(\v2#.isuxportal.proto.resources.ContestR\acontest\x12a\n" +
 	"\x14contestant_instances\x18\x05 \x03(\v2..isuxportal.proto.resources.ContestantInstanceR\x13contestantInstances\x12$\n" +
-	"\x0epush_vapid_key\x18\x06 \x01(\tR\fpushVapidKeyB\x9a\x02\n" +
+	"\x0epush_vapid_key\x18\x06 \x01(\tR\fpushVapidKey\x12;\n" +
+	"\x1arouter_public_ipv4_address\x18\a \x01(\tR\x17routerPublicIpv4AddressB\x9a\x02\n" +
 	"$com.isuxportal.proto.services.commonB\aMeProtoP\x01ZEgithub.com/isucon/isucon2026/portal/gen/pb/isuxportal/services/common\xa2\x02\x04IPSC\xaa\x02 Isuxportal.Proto.Services.Common\xca\x02 Isuxportal\\Proto\\Services\\Common\xe2\x02,Isuxportal\\Proto\\Services\\Common\\GPBMetadata\xea\x02#Isuxportal::Proto::Services::Commonb\x06proto3"
 
 var (

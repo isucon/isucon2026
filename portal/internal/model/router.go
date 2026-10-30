@@ -6,7 +6,7 @@ import (
 )
 
 // TeamRouter is deliberately separate from ContestantInstance: Router addresses
-// must not be serialized into contestant/admin server lists or target-selection lists.
+// are exposed separately for preview links, never as servers or benchmark targets.
 type TeamRouter struct {
 	PublicIP      sql.NullString
 	BenchmarkHost sql.NullString
