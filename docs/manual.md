@@ -155,7 +155,7 @@ CloudFormationのスタック作成やサーバの起動が完了していても
 
 ## アプリケーションの表示確認
 
-[ポータルのサーバリスト](https://portal.isucon.net/contestant/contestant_instances)の「ルーター IP（表示確認用）」にある「ISURealを開く」からアプリケーションを開き、ログイン、投稿、フィードと画像の表示を確認してください。
+[ポータルのサーバリスト](https://portal.isucon.net/contestant/contestant_instances)の「ルーター IP」欄の「ISURealを開く」からアプリケーションを開き、ログイン、投稿、フィードと画像の表示を確認してください。
 変更前にポータルからベンチマークを1回実行してください。
 
 ## 競技環境
