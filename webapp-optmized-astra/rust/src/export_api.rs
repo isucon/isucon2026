@@ -139,8 +139,13 @@ pub(crate) async fn export_rows(
     owner: &str,
     cached: &crate::image_api::ExportCache,
 ) -> Result<Vec<ExportPost>, Error> {
-    let version = crate::history_cache::revision(&mut *db.acquire().await?, owner).await?;
-    let found = METADATA.lock().unwrap().get(owner, &version);
+    let present = METADATA.lock().unwrap().contains(owner);
+    let found = if present {
+        let version = crate::history_cache::revision(&mut *db.acquire().await?, owner).await?;
+        METADATA.lock().unwrap().get(owner, &version)
+    } else {
+        None
+    };
     if let Some(metadata) = found {
         let versions: std::collections::HashMap<_, _> =
             cached.ids.iter().zip(&cached.versions).collect();
@@ -159,18 +164,33 @@ pub(crate) async fn export_rows(
             })
             .collect());
     }
-    let mut tx = db
-        .begin_with("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY")
-        .await?;
-    let version = crate::history_cache::revision(&mut tx, owner).await?;
-    let rows = sqlx::query_as::<_, ExportPost>(&export_query())
+    let query = format!(
+        r#"
+        WITH version AS MATERIALIZED (
+          SELECT epoch,
+            (SELECT count(*) FROM astra_history_changes WHERE owner_id='') AS global_changes,
+            (SELECT count(*) FROM astra_history_changes WHERE owner_id=$1) AS owner_changes
+          FROM astra_history_epoch WHERE singleton
+        ), exported AS MATERIALIZED ({})
+        SELECT exported.*,version.* FROM exported CROSS JOIN version ORDER BY posted_at,id
+    "#,
+        export_query()
+    );
+    let raw = sqlx::query(&query)
         .bind(owner)
         .bind(&cached.ids)
         .bind(&cached.versions)
         .bind(&cached.timestamps)
-        .fetch_all(&mut *tx)
+        .fetch_all(db)
         .await?;
-    tx.commit().await?;
+    let Some(first) = raw.first() else {
+        return Ok(Vec::new());
+    };
+    let version = crate::history_cache::Revision::from_row(first)?;
+    let rows = raw
+        .iter()
+        .map(ExportPost::from_row)
+        .collect::<sqlx::Result<Vec<_>>>()?;
     // Immutable external assets can be re-read by key. Inline image bodies
     // retain the original SQL path; they are never stored in this cache.
     if rows.iter().all(|r| r.asset_key.is_some()) {

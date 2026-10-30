@@ -175,7 +175,7 @@ pub async fn cached_memories(
     if before_at.is_none() != before_id.is_empty() {
         return Err(new_api_error(StatusCode::BAD_REQUEST, "invalid_pagination"));
     }
-    let history = crate::history_cache::load(db, user_id).await?;
+    let history = crate::history_cache::load(db, user_id, start).await?;
     let mut posts: Vec<_> = history
         .posts
         .iter()
