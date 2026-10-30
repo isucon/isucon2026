@@ -27,6 +27,8 @@ export const ContestantContestantInstanceList: React.FC<Props> = ({ session, cli
     })();
   }, []);
 
+  const previewURL = session.routerPublicIpv4Address ? `http://${session.routerPublicIpv4Address}:8080` : "";
+
   const templateBase64 = `data:text/plain,${encodeURIComponent(template)}`;
 
   const renderRow = (ci: ContestantInstance) => {
@@ -70,6 +72,22 @@ export const ContestantContestantInstanceList: React.FC<Props> = ({ session, cli
 
         <tbody>{(session.contestantInstances || []).map((ci) => renderRow(ci))}</tbody>
       </table>
+
+      <section className="mb-5">
+        <header>
+          <h1 className="title is-1">表示確認用</h1>
+        </header>
+        {previewURL ? (
+          <p>
+            <a href={previewURL} target="_blank" rel="noopener noreferrer">
+              {previewURL}
+            </a>
+            <SmallCopyButton content={previewURL} />
+          </p>
+        ) : (
+          <p>未登録</p>
+        )}
+      </section>
 
       {true && (
         <>
