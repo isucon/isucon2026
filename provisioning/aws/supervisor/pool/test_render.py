@@ -20,6 +20,7 @@ TASK = {
                 {"name": "ISUXPORTAL_SUPERVISOR_INSTANCE_NAME", "value": "old-az"},
                 {"name": "ISUXPORTAL_SUPERVISOR_HARD_TIMEOUT", "value": "150"},
                 {"name": "ISUXBENCH_IMAGES", "value": "/old/archive.zip"},
+                {"name": "ISUXBENCH_IMAGE_DIGESTS", "value": "/old/digests.bin"},
             ],
             "secrets": [{"name": "TOKEN", "valueFrom": "reference"}],
         }
@@ -117,6 +118,7 @@ class SharedTest(unittest.TestCase):
         # 指定がなければ雛形の値を保ち、アーカイブの指定は雛形から引き継がない
         self.assertEqual(env["ISUXPORTAL_SUPERVISOR_HARD_TIMEOUT"], "150")
         self.assertNotIn("ISUXBENCH_IMAGES", env)
+        self.assertNotIn("ISUXBENCH_IMAGE_DIGESTS", env)
         self.assertEqual(result["serviceDefinition"]["desiredCount"], 3)
         self.assertEqual(result["taskDefinition"]["family"], "shared-test")
         self.assertEqual(c["image"], CONFIG["image"])
@@ -136,12 +138,16 @@ class SharedTest(unittest.TestCase):
             "benchTimeout": "300s",
             "hardTimeout": "310",
             "benchImages": "/opt/isucon/photos/merged.zip",
+            "benchImageDigests": "/opt/isucon/photos/image-digests-large.bin",
         }
         result = build(copy.deepcopy(TASK), SERVICE, config)
         c = result["taskDefinition"]["containerDefinitions"][0]
         env = {e["name"]: e["value"] for e in c["environment"]}
         self.assertEqual(env["ISUXPORTAL_SUPERVISOR_HARD_TIMEOUT"], "310")
         self.assertEqual(env["ISUXBENCH_IMAGES"], "/opt/isucon/photos/merged.zip")
+        self.assertEqual(
+            env["ISUXBENCH_IMAGE_DIGESTS"], "/opt/isucon/photos/image-digests-large.bin"
+        )
         self.assertEqual(
             [e["name"] for e in c["environment"]],
             sorted(e["name"] for e in c["environment"]),
@@ -176,6 +182,8 @@ class SharedTest(unittest.TestCase):
             ("benchImages", "var/photos/merged.zip"),
             ("benchImages", "http://assets.example/merged.zip"),
             ("benchImages", "/opt/isucon/photos/merged.zip\nX=1"),
+            ("benchImageDigests", "var/photos/image-digests-large.bin"),
+            ("benchImageDigests", "/opt/isucon/photos/image-digests-large.bin\nX=1"),
         ]:
             with self.assertRaises(ValueError, msg=f"{key}={value!r}"):
                 build(copy.deepcopy(TASK), SERVICE, {**CONFIG, key: value})

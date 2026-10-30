@@ -7,6 +7,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"flag"
@@ -14,6 +15,7 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"net/http"
 	"net/url"
 	"os"
 	"os/signal"
@@ -74,6 +76,7 @@ func run(parent context.Context, args []string, stdout, stderr io.Writer) int {
 	port := flags.Int("target-port", 80, "HTTP port for targets without an explicit port")
 	users := flags.Int("users", 8, "initial load users per region (cohort users of the initial data join up to the same number)")
 	images := flags.String("images", os.Getenv("ISUXBENCH_IMAGES"), "photo archive (zip path or http(s) URL) for posts; empty uses small generated images (env ISUXBENCH_IMAGES)")
+	imageDigests := flags.String("image-digests", os.Getenv("ISUXBENCH_IMAGE_DIGESTS"), "SHA-256 table of the initial data's images (path or http(s) URL, made by cmd/imagedigests for the same -scale); empty renders the images to check them (env ISUXBENCH_IMAGE_DIGESTS)")
 	seed := flags.Uint64("seed", 0, "run seed (0 picks one at random)")
 	evilUsers := flags.Bool("evil", true, "run the abusive users during the load phase")
 	quickShare := flags.Float64("quick-share", scenario.DefaultGrowth.QuickShare, "share of a day at which a gate pass invites QuickInvites newcomers; the invite curve scales with it (calibration)")
@@ -181,6 +184,33 @@ func run(parent context.Context, args []string, stdout, stderr io.Writer) int {
 			}
 		}
 	}
+	// 画像のダイジェストの表は初期データの生成と並行して取得する。読めなければベンチマーカー側の
+	// 失敗とする（表が違えば、正しいアプリの画像も誤りとみなすため）。
+	type fetched struct {
+		data []byte
+		err  error
+	}
+	digestData := make(chan fetched, 1)
+	if *imageDigests != "" {
+		go func() {
+			data, err := fetchSource(parent, *imageDigests)
+			digestData <- fetched{data: data, err: err}
+		}()
+	}
+	world := dataset.Generate(datasetConfig())
+	var digests *dataset.ImageDigests
+	if *imageDigests != "" {
+		started := time.Now()
+		f := <-digestData
+		if f.err == nil {
+			digests, f.err = dataset.ReadImageDigests(bytes.NewReader(f.data), world)
+		}
+		if f.err != nil {
+			logger.Error("image digests", "error", f.err)
+			return fail("benchmarker setup failed: image digests", 2)
+		}
+		logger.Info("image digests loaded", "images", digests.Len(), "waited", time.Since(started).Round(time.Millisecond))
+	}
 	var evilFunc scenario.EvilFunc
 	if *evilUsers {
 		evilFunc = evil.Run
@@ -191,7 +221,7 @@ func run(parent context.Context, args []string, stdout, stderr io.Writer) int {
 	runner, err := scenario.NewRunner(scenario.Config{
 		Photos: photos, AwaitPhotos: awaitPhotos, Seed: *seed, Evil: evilFunc, Growth: growth,
 		Target: normalized, Host: *host, Users: *users, Duration: *duration, VerifyRate: *verifyRate, MoveRate: *moveRate, SignOffRate: *signOffRate,
-		Dataset: dataset.Generate(datasetConfig()), Logger: progressLogger,
+		Dataset: world, ImageDigests: digests, Logger: progressLogger,
 		OnProgress: func(result scenario.Result) {
 			if reportErr != nil {
 				return
@@ -245,6 +275,31 @@ func run(parent context.Context, args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	return 0
+}
+
+// fetchSourceTimeout は fetchSource が URL から取得するのにかける時間の上限。
+const fetchSourceTimeout = 2 * time.Minute
+
+// fetchSource は source（ファイルのパスか http(s) の URL）の中身を返す。
+func fetchSource(ctx context.Context, source string) ([]byte, error) {
+	if !strings.HasPrefix(source, "http://") && !strings.HasPrefix(source, "https://") {
+		return os.ReadFile(source)
+	}
+	ctx, cancel := context.WithTimeout(ctx, fetchSourceTimeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, source, nil)
+	if err != nil {
+		return nil, err
+	}
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("status %d", res.StatusCode)
+	}
+	return io.ReadAll(res.Body)
 }
 
 // startCPUProfile は path へ CPU プロファイルを書き始め、止める関数を返す。

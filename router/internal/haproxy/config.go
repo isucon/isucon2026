@@ -56,12 +56,19 @@ func streamBackend(server domain.ServerID) string { return string(server) + "_st
 // The benchmark marks its downloads of images and exports with this header.
 // They go to isureal-digest (router/digest), which reads the app's response and
 // answers with its digest, so that the Router forwards those bytes once instead
-// of twice. Browsers never send the header.
+// of twice. Browsers never send the header. With digestModeHeader the benchmark
+// asks for SHA-256 instead of XXH3 (the images of the initial data).
 const (
-	benchmarkHeader = "x-benchmark-request-id"
-	imagePathPrefix = "/api/images/"
-	exportPath      = "/api/me/export"
+	benchmarkHeader  = "x-benchmark-request-id"
+	digestModeHeader = "x-benchmark-digest"
+	imagePathPrefix  = "/api/images/"
+	exportPath       = "/api/me/export"
 )
+
+// isureal-digest answers with these headers instead of the body. The app's own
+// are removed while it answers instead, or it could give the benchmark the
+// SHA-256 of an image it did not send (the SHA-256 needs no seed).
+var digestResponseHeaders = []string{"x-body-sha256", "x-body-xxh3", "x-body-length"}
 
 func digestBackend(server domain.ServerID) string { return string(server) + "_digest" }
 
@@ -217,11 +224,12 @@ func Render(cfg config.Config) (map[string]string, error) {
 		// isureal-digest gets the app's address and the route's bandwidth
 		// limit, which it applies to the bodies HAProxy no longer forwards.
 		// While it is down the app answers instead, without the benchmark's
-		// header, and the benchmark compares the bytes.
+		// headers and the digest headers, and the benchmark compares the bytes.
 		line("")
 		line("backend %s", digestBackend(server))
 		line("    acl digest_up srv_is_up(%s/digest)", digestBackend(server))
 		line("    http-request del-header %s unless digest_up", benchmarkHeader)
+		line("    http-request del-header %s unless digest_up", digestModeHeader)
 		line("    http-request set-header X-Isureal-Upstream %s if digest_up", upstream)
 		line("    http-request set-header X-Isureal-Route %%[var(txn.route)] if digest_up")
 		limits := map[uint64][]string{}
@@ -232,6 +240,9 @@ func Render(cfg config.Config) (map[string]string, error) {
 		}
 		for _, bps := range slices.Sorted(maps.Keys(limits)) {
 			line("    http-request set-header X-Isureal-Limit %d if digest_up { var(txn.pair) -m str %s }", max(bps/8, 1), strings.Join(limits[bps], " "))
+		}
+		for _, header := range digestResponseHeaders {
+			line("    http-response del-header %s unless { srv_name -m str digest }", header)
 		}
 		line("    server digest %s check inter 1s fall 2 rise 2", cfg.DigestAddress)
 		line("    server %s %s backup", server, upstream)

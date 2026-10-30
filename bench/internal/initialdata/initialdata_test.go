@@ -4,12 +4,17 @@ import (
 	"archive/zip"
 	"bytes"
 	"cmp"
+	"crypto/sha256"
+	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -17,6 +22,7 @@ import (
 	"github.com/isucon/isucon2026/bench/internal/client"
 	"github.com/isucon/isucon2026/bench/internal/imageurl"
 	"github.com/isucon/isucon2026/dataset"
+	"github.com/zeebo/xxh3"
 )
 
 var testWorld = func() *dataset.World {
@@ -24,6 +30,19 @@ var testWorld = func() *dataset.World {
 	cfg.Users, cfg.Days = 120, 35
 	return dataset.Generate(cfg)
 }()
+
+// testDigests は testWorld の画像の SHA-256 の表。
+var testDigests = sync.OnceValue(func() *dataset.ImageDigests {
+	var table bytes.Buffer
+	if _, err := dataset.WriteImageDigests(&table, testWorld); err != nil {
+		panic(err)
+	}
+	digests, err := dataset.ReadImageDigests(bytes.NewReader(table.Bytes()), testWorld)
+	if err != nil {
+		panic(err)
+	}
+	return digests
+})
 
 // fakeApp は初期データどおりに応答するアプリ。mutate で応答を壊して、Checker が
 // 見逃さないことを確かめる。
@@ -39,6 +58,23 @@ type fakeApp struct {
 	signer func(img *dataset.Image) *dataset.User
 	mutate func(path string, body any) any
 	image  func(img *dataset.Image, data []byte) []byte
+	// raw なら、Router が本体をそのまま返したとき（Content-Encoding が付いている、isureal-digest
+	// が止まっている）と同じく、SHA-256 を求められても画像の本体を返す。
+	raw bool
+}
+
+// forgedDigest は、アプリが画像 data の代わりに返す、Router のダイジェストの形をしたバイト列。
+// xxh3 ならアプリが選んだ種で計算する。
+func forgedDigest(kind string, data []byte) []byte {
+	if kind == "xxh3" {
+		out := []byte("\x00isureal-xxh3:")
+		out = binary.BigEndian.AppendUint64(out, 7)
+		out = binary.BigEndian.AppendUint64(out, xxh3.HashSeed(data, 7))
+		return binary.BigEndian.AppendUint64(out, uint64(len(data)))
+	}
+	sum := sha256.Sum256(data)
+	out := append([]byte("\x00isureal-sha256:"), sum[:]...)
+	return binary.BigEndian.AppendUint64(out, uint64(len(data)))
 }
 
 func newFakeApp(c *Checker) *fakeApp {
@@ -202,6 +238,13 @@ func (f *fakeApp) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if f.image != nil {
 			data = f.image(img, data)
 		}
+		if r.Header.Get("X-Benchmark-Digest") == "sha256" && !f.raw {
+			// Router（isureal-digest）と同じく、本体の代わりに SHA-256 を返す。
+			sum := sha256.Sum256(data)
+			w.Header().Set("X-Body-Sha256", hex.EncodeToString(sum[:]))
+			w.Header().Set("X-Body-Length", strconv.Itoa(len(data)))
+			return
+		}
 		w.Write(data)
 		return
 	default:
@@ -259,6 +302,24 @@ func TestChecker(t *testing.T) {
 				return data
 			}
 		}, wantErr: "中身が初期データと違います"},
+		"image replaced by a forged SHA-256": {setup: func(f *fakeApp) {
+			f.raw = true
+			f.image = func(img *dataset.Image, data []byte) []byte {
+				if img.Kind == dataset.ImageRealMoji {
+					return forgedDigest("sha256", data)
+				}
+				return data
+			}
+		}, wantErr: "中身が初期データと違います"},
+		"image replaced by a forged XXH3": {setup: func(f *fakeApp) {
+			f.raw = true
+			f.image = func(img *dataset.Image, data []byte) []byte {
+				if img.Kind == dataset.ImageRealMoji {
+					return forgedDigest("xxh3", data)
+				}
+				return data
+			}
+		}, wantErr: "中身が初期データと違います"},
 		"friend missing": {setup: func(f *fakeApp) {
 			f.mutate = func(path string, body any) any {
 				if page, ok := body.(client.RelationshipPage); ok && len(page.Items) > 0 {
@@ -277,26 +338,30 @@ func TestChecker(t *testing.T) {
 			}
 		}, wantErr: "エクスポート"},
 	} {
-		t.Run(name, func(t *testing.T) {
-			app := newFakeApp(c)
-			if tc.setup != nil {
-				tc.setup(app)
-			}
-			server := httptest.NewServer(app)
-			defer server.Close()
-			var err error
-			for _, user := range targets {
-				if err = c.Check(t.Context(), client.New(server.URL), user); err != nil {
-					break
+		// 画像は描き直して比べるときと、SHA-256 の表と比べるときの両方で確かめる。
+		for _, digests := range []*dataset.ImageDigests{nil, testDigests()} {
+			t.Run(fmt.Sprintf("%s/digests=%v", name, digests != nil), func(t *testing.T) {
+				c.ImageDigests = digests
+				app := newFakeApp(c)
+				if tc.setup != nil {
+					tc.setup(app)
 				}
-			}
-			if tc.wantErr == "" && err != nil {
-				t.Fatal(err)
-			}
-			if tc.wantErr != "" && (err == nil || !strings.Contains(err.Error(), tc.wantErr)) {
-				t.Fatalf("want error containing %q, got %v", tc.wantErr, err)
-			}
-		})
+				server := httptest.NewServer(app)
+				defer server.Close()
+				var err error
+				for _, user := range targets {
+					if err = c.Check(t.Context(), client.New(server.URL), user); err != nil {
+						break
+					}
+				}
+				if tc.wantErr == "" && err != nil {
+					t.Fatal(err)
+				}
+				if tc.wantErr != "" && (err == nil || !strings.Contains(err.Error(), tc.wantErr)) {
+					t.Fatalf("want error containing %q, got %v", tc.wantErr, err)
+				}
+			})
+		}
 	}
 }
 
@@ -370,12 +435,40 @@ func TestCheckExportImages(t *testing.T) {
 		t.Fatal(err)
 	}
 	isNew := func(string) bool { return false }
-	if err := c.CheckExport(t.Context(), a, 0, isNew); err != nil {
-		t.Fatalf("images=0 compared images: %v", err)
+	for _, digests := range []*dataset.ImageDigests{nil, testDigests()} {
+		c.ImageDigests = digests
+		if err := c.CheckExport(t.Context(), a, 0, isNew); err != nil {
+			t.Fatalf("images=0 compared images: %v", err)
+		}
+		for _, images := range []int{1, AllImages} {
+			if err := c.CheckExport(t.Context(), a, images, isNew); err == nil || !strings.Contains(err.Error(), "画像と違います") {
+				t.Fatalf("digests=%v images=%d: err=%v", digests != nil, images, err)
+			}
+		}
 	}
-	for _, images := range []int{1, AllImages} {
-		if err := c.CheckExport(t.Context(), a, images, isNew); err == nil || !strings.Contains(err.Error(), "画像と違います") {
-			t.Fatalf("images=%d: err=%v", images, err)
+}
+
+// TestCheckExportForgedDigests は、Router が書き換えなかったエクスポートの ZIP に、アプリが画像の
+// 代わりにダイジェストの形の項目を入れても通らないことを確かめる。
+func TestCheckExportForgedDigests(t *testing.T) {
+	c := New(testWorld)
+	app := newFakeApp(c)
+	server := httptest.NewServer(app)
+	defer server.Close()
+	user := c.Targets()[0]
+	a := agent.New(client.New(server.URL), user.Region, 0)
+	a.ID, a.Username, a.SecretKey = user.ID, user.Username, user.SecretKey
+	if err := a.Login(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	isNew := func(string) bool { return false }
+	for _, kind := range []string{"sha256", "xxh3"} {
+		app.image = func(_ *dataset.Image, data []byte) []byte { return forgedDigest(kind, data) }
+		for _, digests := range []*dataset.ImageDigests{nil, testDigests()} {
+			c.ImageDigests = digests
+			if err := c.CheckExport(t.Context(), a, AllImages, isNew); err == nil || !strings.Contains(err.Error(), "画像と違います") {
+				t.Fatalf("%s digests=%v: err=%v", kind, digests != nil, err)
+			}
 		}
 	}
 }
