@@ -25,7 +25,10 @@ pub async fn initialize_handler(State(h): State<Arc<HandlerContext>>) -> Result<
     }
 
     crate::search_index::refresh(&h.db).await?;
-    sqlx::query("ANALYZE astra_user_search")
+    // Reset fills the dirty set, then normalization empties it. Without fresh
+    // statistics the planner estimates thousands of dirty users and scans the
+    // entire users table for each otherwise selective search.
+    sqlx::query("ANALYZE astra_user_search, astra_search_dirty")
         .execute(&h.db)
         .await?;
 
