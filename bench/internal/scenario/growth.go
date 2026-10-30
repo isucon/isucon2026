@@ -357,7 +357,7 @@ func (r *Runner) openDay(ctx context.Context, region string, day int) (string, e
 	r.lastWindow[region] = window.ID
 	r.opened[region]++
 	r.mu.Unlock()
-	r.model.OpenedWindow(open, model.Window{ID: window.ID, Region: region, LocalDate: date})
+	r.model.OpenedWindow(open, model.Window{ID: window.ID, Region: region, LocalDate: date, StartsAt: window.StartsAt})
 
 	stats := r.books.Load().decide(r.cfg.Growth, region, day, r.population(region))
 	r.tell(region, day, stats, took)

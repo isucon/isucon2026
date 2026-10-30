@@ -48,7 +48,10 @@ type fakeReaction struct {
 	reactorID, image string
 }
 
-type fakeWindow struct{ id, date string }
+type fakeWindow struct {
+	id, date string
+	startsAt time.Time
+}
 
 // fakeRelationTime は関係の一覧の項目の更新日時（偽のアプリは関係の時刻を持たない）。
 var fakeRelationTime = time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
@@ -357,16 +360,16 @@ func (a *fakeApp) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		var input map[string]string
 		_ = json.NewDecoder(r.Body).Decode(&input)
 		a.mu.Lock()
-		a.windows[input["region"]] = fakeWindow{id: a.id(), date: input["localDate"]}
+		a.windows[input["region"]] = fakeWindow{id: a.id(), date: input["localDate"], startsAt: time.Now().Truncate(time.Microsecond)}
 		a.opened[input["region"]]++
-		id := a.windows[input["region"]].id
+		window := a.windows[input["region"]]
 		a.mu.Unlock()
 		select {
 		case <-time.After(openDelay):
 		case <-r.Context().Done():
 			return
 		}
-		respond(http.StatusCreated, map[string]string{"id": id, "region": input["region"], "localDate": input["localDate"]})
+		respond(http.StatusCreated, map[string]any{"id": window.id, "region": input["region"], "localDate": input["localDate"], "startsAt": window.startsAt})
 		return
 	}
 	if path[0] == "posts" && len(path) == 1 && r.Method == http.MethodPost && a.postStatus != 0 {
@@ -448,9 +451,10 @@ func (a *fakeApp) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case path[0] == "admin":
 		var input map[string]string
 		_ = json.NewDecoder(r.Body).Decode(&input)
-		a.windows[input["region"]] = fakeWindow{id: a.id(), date: input["localDate"]}
+		a.windows[input["region"]] = fakeWindow{id: a.id(), date: input["localDate"], startsAt: time.Now().Truncate(time.Microsecond)}
 		a.opened[input["region"]]++
-		respond(http.StatusCreated, map[string]string{"id": a.windows[input["region"]].id, "region": input["region"], "localDate": input["localDate"]})
+		window := a.windows[input["region"]]
+		respond(http.StatusCreated, map[string]any{"id": window.id, "region": input["region"], "localDate": input["localDate"], "startsAt": window.startsAt})
 	case path[0] == "me" && len(path) == 1 && method == http.MethodGet:
 		respond(http.StatusOK, a.profile(viewer))
 	case path[0] == "me" && len(path) == 1:
@@ -575,7 +579,18 @@ func (a *fakeApp) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case path[0] == "relationships":
 		a.serveRelationships(respond, viewer, path[1])
 	case path[0] == "posting-window":
-		respond(http.StatusOK, map[string]any{"window": map[string]string{"id": a.windows[region].id, "region": region, "localDate": a.windows[region].date}, "canPost": true, "hasPosted": a.postedOn(viewer, a.windows[region].date)})
+		// アプリと同じく、同じ日付に有効な投稿があるか、2 回削除していれば投稿できない。
+		window, active, deleted := a.windows[region], 0, 0
+		for _, p := range a.posts {
+			if p.Author.ID == viewer.id && p.date == window.date {
+				if p.deleted {
+					deleted++
+				} else {
+					active++
+				}
+			}
+		}
+		respond(http.StatusOK, map[string]any{"window": map[string]any{"id": window.id, "region": region, "localDate": window.date, "startsAt": window.startsAt}, "canPost": active == 0 && deleted < 2, "hasPosted": active > 0})
 	case path[0] == "posts" && len(path) == 1:
 		// アプリと同じく、同じ日付に有効な投稿があるか、2 回削除していれば受け付けない。
 		date, active, deleted := a.windows[region].date, 0, 0
