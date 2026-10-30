@@ -1,11 +1,11 @@
-# syntax=docker/dockerfile:1.10
-FROM rust:1.99.1-slim-trixie AS rust-build
+# syntax=mirror.gcr.io/docker/dockerfile:1.10
+FROM mirror.gcr.io/library/rust:1.99.1-slim-trixie AS rust-build
 WORKDIR /src
 COPY webapp/rust/Cargo.toml webapp/rust/Cargo.lock webapp/rust/rust-toolchain.toml ./
 COPY webapp/rust/src ./src
 RUN --mount=type=cache,target=/usr/local/cargo/registry --mount=type=cache,target=/src/target cargo build --release --locked && install -D -m 0755 target/release/isureal /out/isureal
 
-FROM node:24.14.1-alpine AS frontend-build
+FROM mirror.gcr.io/library/node:24.14.1-alpine AS frontend-build
 WORKDIR /src
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
@@ -13,7 +13,7 @@ COPY frontend/ ./
 ENV VITE_API_PREFIX=/api
 RUN npm run build
 
-FROM debian:trixie-slim
+FROM mirror.gcr.io/library/debian:trixie-slim
 RUN apt-get update \
   && apt-get install -y --no-install-recommends ca-certificates curl iproute2 nginx postgresql-client tzdata \
   && rm -rf /var/lib/apt/lists/* /etc/nginx/sites-enabled/default

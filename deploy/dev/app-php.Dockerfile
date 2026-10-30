@@ -1,5 +1,5 @@
-# syntax=docker/dockerfile:1.10
-FROM php:8.5.12-fpm-trixie@sha256:f49965c6e6a237eb3b27a6fc565e167839dc8abc65ee0652af0078f6ecdf4bbd AS php-base
+# syntax=mirror.gcr.io/docker/dockerfile:1.10
+FROM mirror.gcr.io/library/php:8.5.12-fpm-trixie@sha256:f49965c6e6a237eb3b27a6fc565e167839dc8abc65ee0652af0078f6ecdf4bbd AS php-base
 # 拡張をビルドしたら、ビルドにだけ要るパッケージを消す
 RUN apt-get update \
   && apt-get install -y --no-install-recommends libicu-dev libjpeg62-turbo-dev libpng-dev libpq-dev libzip-dev \
@@ -17,7 +17,7 @@ RUN --mount=type=cache,target=/root/.cache/composer composer install --no-dev --
 COPY webapp/php/ ./
 RUN composer dump-autoload --no-dev --optimize --no-interaction
 
-FROM node:24.14.1-alpine AS frontend-build
+FROM mirror.gcr.io/library/node:24.14.1-alpine AS frontend-build
 WORKDIR /src
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci

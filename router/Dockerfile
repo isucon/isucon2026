@@ -1,6 +1,6 @@
-# syntax=docker/dockerfile:1.10
+# syntax=mirror.gcr.io/docker/dockerfile:1.10
 
-FROM golang:1.26.5-alpine AS build
+FROM mirror.gcr.io/library/golang:1.26.5-alpine AS build
 
 WORKDIR /src
 
@@ -17,7 +17,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 
 # HAProxy runs next to the Router in its network namespace. It renders its
 # configuration from the same environment as the Router when it starts.
-FROM haproxy:2.8.16-alpine AS haproxy
+FROM mirror.gcr.io/library/haproxy:2.8.16-alpine AS haproxy
 
 USER root
 RUN install -d -o haproxy -g haproxy /run/isureal-haproxy
@@ -29,7 +29,7 @@ ENTRYPOINT ["/bin/sh", "-c", "isureal-router haproxy-config && exec haproxy -W -
 # isureal-digest answers the benchmark's image and export downloads with their
 # digests (router/digest). The binary is static (musl), so the same file runs in
 # the container and on the Router AMI.
-FROM rust:1.95.0-alpine3.23 AS digest-build
+FROM mirror.gcr.io/library/rust:1.95.0-alpine3.23 AS digest-build
 
 WORKDIR /src
 COPY router/digest/ ./
@@ -42,12 +42,12 @@ FROM scratch AS digest-artifact
 COPY --from=digest-build /out/isureal-digest /isureal-digest
 
 # It runs next to HAProxy in the Router's network namespace.
-FROM alpine:3.23 AS digest
+FROM mirror.gcr.io/library/alpine:3.23 AS digest
 COPY --from=digest-build /out/isureal-digest /usr/local/bin/isureal-digest
 USER nobody
 ENTRYPOINT ["/usr/local/bin/isureal-digest"]
 
-FROM alpine:3.23 AS router
+FROM mirror.gcr.io/library/alpine:3.23 AS router
 
 RUN apk add --no-cache ca-certificates iproute2 nftables tzdata
 
