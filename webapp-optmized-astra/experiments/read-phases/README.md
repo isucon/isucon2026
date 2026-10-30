@@ -10,3 +10,5 @@ baseline-summary.jsonに平均と分位点、baseline-phases.jsonに匿名の生
 同じ接続でフィードのPREPARE/EXECUTEを9回繰り返す読み取り専用診断では、autoは5回のcustom plan後にgeneric planへ切り替わった。再利用後のPlanning Timeは約0.02〜0.05msだった。force_generic_planへの一律変更は採用していない。実行結果の集計はfeed-plan-reuse.json。
 
 次の候補はgraphQueryConcurrency=4。フィードと検索が共有するSemaphoreをDB接続取得前に待ち、SQL終了直後に解放する。SQL・認証・応答の内容は変更しない。既定0は制限無効。readTimingEnabledは比較のため維持する。接続上限を増やさず、短い処理が重いSQLの後ろで待つ状況を改善できるかを測る。実DBを使うフィードと検索の統合テスト、Clippy全ターゲットが成功した。
+
+4件制限の走行20261030T055415Z-team12は164,536点でPASS。Asia履歴の内部平均は199.1→56.7ms、認証＋接続待ちは185.3→41.9msへ低下。ただしAsia検索のp50は406→2182ms、friendsフィードのp90は549→2782msへ悪化し、待ちが重い処理へ移った。以前の対照版173,329点を超えておらず、単独では採用を確定しない。
