@@ -55,6 +55,13 @@ func (h *Handler) APISession(w http.ResponseWriter, r *http.Request) error {
 			return err
 		}
 		if open {
+			router, err := model.FindTeamRouter(ctx, h.db, team.ID)
+			if err != nil {
+				return err
+			}
+			if router != nil && router.PublicIP.Valid {
+				res.RouterPublicIpv4Address = router.PublicIP.String
+			}
 			instances, err := model.TeamInstances(ctx, h.db, team.ID)
 			if err != nil {
 				return err
