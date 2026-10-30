@@ -127,6 +127,7 @@ async fn authenticate_request(
         let authority = policy.as_ref().filter(|p| !p.local_is_primary);
         let local_session = if reuse_connection {
             let mut db = handler_context.db.acquire().await?;
+            ReadProbe::mark(&mut probe, "auth_acquire");
             let session = get_session_by_hash(&hash, &mut *db, authority.is_some()).await?;
             if session.is_some() {
                 req.extensions_mut()
