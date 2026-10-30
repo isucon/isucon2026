@@ -32,7 +32,9 @@ type EvilEnv struct {
 	// RegisterUser は不正な利用者が作ったユーザーを知らせる。正常なユーザーは、このユーザー
 	// からの友達申請などを bench の知らないユーザーとして咎めない。
 	RegisterUser func(id string)
-	Logger       *slog.Logger
+	// Logger は運営向けのロガー。不正な利用者の通信や応答の内訳は bench 側の攻撃が
+	// 狙いどおり動いたかを確認するための記録で、参加者には見せない。
+	Logger *slog.Logger
 }
 
 // EvilTarget は正常な負荷ユーザー。
@@ -67,7 +69,7 @@ func (r *Runner) evilEnv(start time.Time) EvilEnv {
 			defer r.mu.Unlock()
 			r.evilUsers[id] = true
 		},
-		Logger: r.cfg.Logger,
+		Logger: r.operatorLogger(),
 	}
 }
 
