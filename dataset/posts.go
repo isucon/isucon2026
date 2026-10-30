@@ -115,17 +115,32 @@ func (w *World) PostOn(user *User, day int) *Post {
 		post.DeletedAt = &deletedAt
 	}
 	post.Image = &Image{ID: derivedID(seed, "post-image", day, i), OwnerID: user.ID, Kind: ImagePost, CreatedAt: post.PostedAt}
+	// キャプションの多くは写真のタイトルにする。投稿の乱数列とは別の列で決めるので、投稿の
+	// ほかの値は変わらない。
+	photo, _ := w.imagePhoto(post.Image)
+	if dayRand(seed, "caption", day, i).Float64() < titleCaptionRate {
+		post.Caption = photo.titles[language.code]
+	}
 	if !deleted {
-		w.interactions(post, i, day, window)
+		w.interactions(post, photo, i, day, window)
 	}
 	return post
 }
 
+// titleCaptionRate は投稿のキャプションを写真のタイトルにする割合。残りは椅子の投稿によくある
+// 一言（空のこともある）。
+const titleCaptionRate = 0.6
+
+// themeCommentRate はコメントを写真のテーマに合わせたものにする割合。残りはどの椅子にも
+// 付けられる一言。
+const themeCommentRate = 0.6
+
 // interactions は post に RealMoji とコメントを付ける。付けるのはその日に投稿していて
 // （投稿しないと他人の投稿は見えない）、ブロック関係になく、公開範囲から見える人だけ。
 // 友達を優先する。友達以外は、公開の投稿なら全員から、友達の友達までの投稿なら友達の
-// 友達から候補を引く。コメントは公開の投稿か、投稿者の友達だけが付けられる。
-func (w *World) interactions(post *Post, author, day int, window *Window) {
+// 友達から候補を引く。コメントは公開の投稿か、投稿者の友達だけが付けられる。コメントの多くは
+// photo のテーマに合わせる。
+func (w *World) interactions(post *Post, photo *chair, author, day int, window *Window) {
 	seed := w.Config.Seed
 	r := dayRand(seed, "interactions", day, author)
 	var friends, others []int
@@ -174,10 +189,17 @@ func (w *World) interactions(post *Post, author, day int, window *Window) {
 	if post.Visibility == "public" {
 		commenters = reactors
 	}
+	// コメントの文面は別の列で選び直すので、ほかの値は変わらない。
+	texts := dayRand(seed, "comment-text", day, author)
 	for _, commenter := range commenters[:min(len(commenters), poisson(r, popularity))] {
+		language := languageFor(w.Users[commenter].Region, w.Users[commenter].ID)
+		body := choose(r, language.comments)
+		if texts.Float64() < themeCommentRate {
+			body = choose(texts, themeComments[photo.theme][language.code])
+		}
 		comment := &Comment{
 			ID: derivedID(seed, "comment", day, author, len(post.Comments)), PostID: post.ID, AuthorID: w.Users[commenter].ID,
-			Body: choose(r, languageFor(w.Users[commenter].Region, w.Users[commenter].ID).comments), CreatedAt: between(r, post.PostedAt.Add(time.Minute), window.EndedAt),
+			Body: body, CreatedAt: between(r, post.PostedAt.Add(time.Minute), window.EndedAt),
 		}
 		if r.Float64() < 0.03 {
 			deletedAt := comment.CreatedAt.Add(time.Minute)

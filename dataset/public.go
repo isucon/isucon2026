@@ -18,7 +18,7 @@ func Bio(r *rand.Rand) string {
 	return choose(r, bios)
 }
 
-// CommentBody は初期データと同じ候補からコメントの本文を選ぶ。空の本文は返さない。
+// CommentBody は初期データの、どの椅子にも付く一言からコメントの本文を選ぶ。空の本文は返さない。
 func CommentBody(r *rand.Rand) string {
 	return choose(r, commentBodies)
 }
