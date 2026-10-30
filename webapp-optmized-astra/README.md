@@ -460,3 +460,4 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261030T084652Z-team12 | cached initial export metadata plus fresh delta posts candidate=1611eeb; seed=1 | PASS | 165,969 |
 | 20261030T085252Z-team12 | cached initial export metadata repeat without restart candidate=1611eeb; seed=1 | PASS | 155,910 |
 | 20261030T090033Z-team12 | initial history with separate four-connection memory pool candidate=b23ff1c; seed=1 | PASS | 176,795 |
+| 20261030T090959Z-team12 | separate short-read eight and memory four connection pools candidate=6d0443a; seed=1 | PASS | 164,505 |
