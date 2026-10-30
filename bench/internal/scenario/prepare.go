@@ -33,11 +33,13 @@ func (r *Runner) initialRegistrations(region string) (users, influencers int) {
 // ログインし、負荷ユーザーに加える（初期データの関係をそのまま持つ）。
 func (r *Runner) prepareUsers(ctx context.Context) string {
 	r.step("負荷ユーザーの準備")
-	r.cfg.Logger.Info("phase: prepare users")
+	// phase 行も含め、負荷ユーザーの準備の経過は運営向け（参加者には不要）。
+	r.operatorLogger().Info("phase: prepare users")
 	started := time.Now()
 	lap := func(name string) {
 		r.step("負荷ユーザーの準備: " + name)
-		r.cfg.Logger.Info("prepare users", "step", name, "elapsed", time.Since(started).Round(time.Millisecond))
+		// 準備の内訳と所要時間も運営向け。
+		r.operatorLogger().Info("prepare users", "step", name, "elapsed", time.Since(started).Round(time.Millisecond))
 	}
 	type plan struct {
 		u          *user
