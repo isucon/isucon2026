@@ -67,23 +67,31 @@ func TestBlockedInteractionsMayBeHidden(t *testing.T) {
 	}
 }
 
-// TestShortInteractionPageWithMoreIsInvalid は、続きがあるとする 50 件に満たないページ（空の
-// ページを含む）で、既知の交流の欠落を隠せないことを確かめる。
+// TestShortInteractionPageWithMoreIsInvalid は、コメントと RealMoji の一覧で、続きがあるのに空の
+// ページや、最後の項目より前にあるはずの交流を欠いたページはエラーにし、加点しないことを
+// 確かめる。仕様は 1 ページ「最大」50 件なので、続きがあって 50 件に満たないだけのページは
+// エラーにしない（#133）。
 func TestShortInteractionPageWithMoreIsInvalid(t *testing.T) {
 	f := newInteractionFixture(t)
 	s := &session{day: 1}
 	if !f.r.comment(t.Context(), f.guest, s, f.post.FeedPost()) || !f.r.comment(t.Context(), f.guest, s, f.post.FeedPost()) || !f.r.react(t.Context(), f.guest, s, f.post.FeedPost()) {
 		t.Fatal(f.r.board.Errors())
 	}
-	var short atomic.Bool
+	// mode 1: 続きがあるとして最初のコメントだけを返す（正しい）。
+	// mode 2: 続きがあるとして 2 つ目のコメントだけを返し（1 つ目を隠す）、RealMoji は空で続きがあるとする。
+	var mode atomic.Int32
 	comments := rewrite(t, f.app, is(http.MethodGet, "/api/posts/"+f.post.ID+"/comments"), func(page *client.CommentPage) {
-		page.Items, page.HasMore = page.Items[:1], true
+		if mode.Load() == 1 {
+			page.Items, page.HasMore = page.Items[:1], true
+		} else {
+			page.Items, page.HasMore = page.Items[1:2], true
+		}
 	})
 	rec := f.route(t, f.owner, func(w http.ResponseWriter, req *http.Request) {
 		switch {
-		case short.Load() && strings.HasSuffix(req.URL.Path, "/comments"):
+		case mode.Load() != 0 && strings.HasSuffix(req.URL.Path, "/comments"):
 			comments(w, req)
-		case short.Load() && strings.HasSuffix(req.URL.Path, "/realmojis"):
+		case mode.Load() == 2 && strings.HasSuffix(req.URL.Path, "/realmojis"):
 			writeJSON(t, w, http.StatusOK, client.RealMojiPage{Items: []client.RealMoji{}, HasMore: true})
 		default:
 			f.app.ServeHTTP(w, req)
@@ -92,9 +100,13 @@ func TestShortInteractionPageWithMoreIsInvalid(t *testing.T) {
 	if n := f.listBoth(t, f.owner, f.post.ID); n != 0 || f.r.board.Count(score.TagReactionList) != 2 {
 		t.Fatalf("full lists: %v", f.r.board.Errors())
 	}
-	short.Store(true)
-	if n := f.listBoth(t, f.owner, f.post.ID); n != 2 || rec.Total(0).Failures != 2 || f.r.board.Count(score.TagReactionList) != 2 {
-		t.Fatalf("short pages with more: stats=%+v lists=%d errors=%v", rec.Total(0), f.r.board.Count(score.TagReactionList), f.r.board.Errors())
+	mode.Store(1)
+	if n := f.listBoth(t, f.owner, f.post.ID); n != 0 || rec.Total(0).Failures != 0 || f.r.board.Count(score.TagReactionList) != 4 {
+		t.Fatalf("short page with more: stats=%+v lists=%d errors=%v", rec.Total(0), f.r.board.Count(score.TagReactionList), f.r.board.Errors())
+	}
+	mode.Store(2)
+	if n := f.listBoth(t, f.owner, f.post.ID); n != 2 || rec.Total(0).Failures != 2 || f.r.board.Count(score.TagReactionList) != 4 {
+		t.Fatalf("pages hiding interactions: stats=%+v lists=%d errors=%v", rec.Total(0), f.r.board.Count(score.TagReactionList), f.r.board.Errors())
 	}
 }
 
