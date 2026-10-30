@@ -112,6 +112,8 @@ type Model struct {
 	// 置き換えの応答を待つ間は "?"）。
 	reactions    map[[2]string]*timeline[string]
 	reactionsFor map[string][]string
+	// realMojiByID は ID のわかった RealMoji（作成の応答の値）。
+	realMojiByID map[string]*RealMoji
 
 	// ranking は友達の友達フィードで確かめた点数の記録。
 	ranking rankingRecorder
@@ -139,6 +141,7 @@ func New() *Model {
 		pendingComments:  map[string][]pendingComment{},
 		reactions:        map[[2]string]*timeline[string]{},
 		reactionsFor:     map[string][]string{},
+		realMojiByID:     map[string]*RealMoji{},
 	}
 }
 

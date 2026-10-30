@@ -135,7 +135,7 @@ func rankingBenchModel() (*Model, []string) {
 		m.Created(c, p, []string{"public", "friends", "friends_of_friends"}[r.IntN(3)])
 		if len(friends[a]) > 0 && r.Float64() < 0.7 {
 			reactor := friends[a][r.IntN(len(friends[a]))]
-			m.ReplacedRealMoji(m.BeginReplaceRealMoji(p.ID, id(reactor)), fmt.Sprintf("rm%d", k))
+			m.ReplacedRealMoji(m.BeginReplaceRealMoji(p.ID, id(reactor)), client.RealMoji{ID: fmt.Sprintf("rm%d", k)})
 		}
 	}
 	slices.SortFunc(active, func(x, y int) int { return len(friends[y]) - len(friends[x]) })
