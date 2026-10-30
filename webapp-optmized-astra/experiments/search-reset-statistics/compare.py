@@ -1,7 +1,7 @@
 from pathlib import Path
 import json,re,subprocess,uuid,statistics
 root=Path(__file__).resolve().parents[3];schema='astra_search_reset_'+uuid.uuid4().hex
-query=re.search(r'r#"(WITH candidate_ids.*?)"#',(root/'webapp-optmized-astra/rust/src/user_read_api.rs').read_text(),re.S)[1].replace('$5','64')
+query=next(q for q in re.findall(r'r#"(WITH candidate_ids.*?)"#',(root/'webapp-optmized-astra/rust/src/user_read_api.rs').read_text(),re.S) if '$5' in q).replace('$5','64')
 def sql(q):
  return subprocess.check_output(['docker','exec','-i','astra-local-assets','psql','-XqAt','-U','postgres','-v','ON_ERROR_STOP=1'],input='SET search_path='+schema+',public;\n'+q,text=True,stderr=None)
 setup=f'CREATE SCHEMA {schema}; CREATE TABLE users(id text PRIMARY KEY,username text,display_name text,status text); CREATE TABLE block_relations(blocker_id text,blocked_id text); CREATE INDEX user_names ON users(username,id);'
