@@ -692,8 +692,17 @@ func (a *fakeApp) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			before, _ = time.Parse(time.RFC3339Nano, value)
 		}
 		items := []client.Post{}
+		// 投稿は投稿時刻の順に作られる。同じ時刻の投稿は作った順の逆に並べ、ページ送りの位置の
+		// 投稿より後ろのものから返す。
+		passed := before.IsZero()
 		for _, p := range slices.Backward(a.posts) {
-			if (before.IsZero() || p.PostedAt.Before(before)) && a.inFeed(viewer, p, path[1]) {
+			if !passed {
+				passed = p.PostedAt.Before(before) || p.ID == r.URL.Query().Get("beforeId")
+				if !passed || p.ID == r.URL.Query().Get("beforeId") {
+					continue
+				}
+			}
+			if a.inFeed(viewer, p, path[1]) {
 				items = append(items, p.Post)
 			}
 		}

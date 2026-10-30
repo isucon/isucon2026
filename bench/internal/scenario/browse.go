@@ -39,11 +39,11 @@ func (r *Runner) browse(ctx context.Context, u *user, s *session) {
 		r.readHistory(ctx, u)
 	}
 	feed := u.pickFeed()
-	page, ok := r.readFeed(ctx, u, feed, nil, r.sample())
+	var scroll model.Scroll
+	page, ok := r.readFeed(ctx, u, feed, &scroll, r.sample())
 	// 続きがあれば、ときどき次のページも読む（スクロール）。
 	for ok && page.HasMore && len(page.Items) > 0 && u.rng.Float64() < u.persona.scroll {
-		last := page.Items[len(page.Items)-1]
-		page, ok = r.readFeed(ctx, u, feed, &last, r.sample())
+		page, ok = r.readFeed(ctx, u, feed, &scroll, r.sample())
 	}
 	if !ok {
 		return
