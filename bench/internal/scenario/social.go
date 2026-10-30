@@ -3,6 +3,7 @@ package scenario
 import (
 	"context"
 	"crypto/sha256"
+	"fmt"
 	"net/http"
 	"slices"
 	"strings"
@@ -242,12 +243,16 @@ func (r *Runner) cancelRequest(ctx context.Context, u *user) {
 	}
 }
 
-// listRelationships はフォロー、フォロワー、友達のどれかの一覧を最後まで読む。フォローの
-// 一覧は bench のフォローと突き合わせる。
+// listRelationships はフォロー、フォロワー、友達のどれかの一覧を最後まで読み、bench の
+// フォローや友達関係と突き合わせる。
 func (r *Runner) listRelationships(ctx context.Context, u *user) {
-	kind := []string{"following", "followers", "friends"}[u.rng.IntN(3)]
+	r.readRelationships(ctx, u, []string{"following", "followers", "friends"}[u.rng.IntN(3)])
+}
+
+// readRelationships は kind の関係の一覧を最後まで読み、bench のフォローや友達関係と突き合わせる。
+func (r *Runner) readRelationships(ctx context.Context, u *user, kind string) {
 	sent := time.Now()
-	var ids []string
+	var items []client.Relationship
 	var before *client.Relationship
 	for {
 		page, err := u.API.Relationships(ctx, u.Token, kind, before)
@@ -255,21 +260,28 @@ func (r *Runner) listRelationships(ctx context.Context, u *user) {
 			r.requestError(ctx, u, "%s: %s の一覧を取得できません: %v", u.Username, kind, err)
 			return
 		}
-		for _, item := range page.Items {
-			ids = append(ids, item.User.ID)
-		}
+		items = append(items, page.Items...)
 		if !page.HasMore || len(page.Items) == 0 {
 			break
 		}
 		before = &page.Items[len(page.Items)-1]
 	}
 	read := r.model.ReadBetween(sent, time.Now())
+	ids := make([]string, len(items))
+	for i, item := range items {
+		ids[i] = item.User.ID
+	}
 	var problems []string
+	if problem := relationProblem(kind, items); problem != "" {
+		problems = append(problems, problem)
+	}
 	switch kind {
 	case "following":
-		problems = r.model.CheckFollowing(u.ID, ids, read)
+		problems = append(problems, r.model.CheckFollowing(u.ID, ids, read)...)
+	case "followers":
+		problems = append(problems, r.model.CheckFollowers(u.ID, ids, read)...)
 	case "friends":
-		problems = r.model.CheckFriends(u.ID, ids, read)
+		problems = append(problems, r.model.CheckFriends(u.ID, ids, read)...)
 	}
 	for _, problem := range problems {
 		r.invalid(ctx, u, "%s: %s の一覧: %s", u.Username, kind, problem)
@@ -277,6 +289,17 @@ func (r *Runner) listRelationships(ctx context.Context, u *user) {
 	if len(problems) == 0 {
 		r.award(u, r.dayNow(u.Region), score.TagRelationships)
 	}
+}
+
+// relationProblem は、関係の一覧 items の各項目が kind の関係を表し（status が kind）、
+// 関係の ID と更新日時を持つことを確かめる。違う項目があれば最初の 1 つを説明して返す。
+func relationProblem(kind string, items []client.Relationship) string {
+	for _, item := range items {
+		if item.Status != kind || item.RelationID == "" || item.UpdatedAt.IsZero() {
+			return fmt.Sprintf("ユーザー %s の項目が不正です（relationId %q、status %q、updatedAt %s）", item.User.ID, item.RelationID, item.Status, item.UpdatedAt.Format(time.RFC3339Nano))
+		}
+	}
+	return ""
 }
 
 // unfriend は友達を 1 人解除する。

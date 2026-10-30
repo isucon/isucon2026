@@ -49,12 +49,12 @@ func (m *Model) CheckOwnPosts(userID string, got []string, r Read) []string {
 }
 
 // CheckFriends は userID の友達の一覧として返ったユーザー got を、友達関係の書き込みと
-// 突き合わせる。有効なユーザーとの確実な友達関係が無い、確実に友達でない人がいる場合を
-// 違反として返す。
+// 突き合わせる。有効なユーザーとの確実な友達関係が無い、確実に友達でない人がいる、同じ人が
+// 2 回以上いる場合を違反として返す。
 func (m *Model) CheckFriends(userID string, got []string, r Read) []string {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	var violations []string
+	violations := duplicates(got, "友達の一覧")
 	for _, id := range got {
 		if friend := m.users[id]; friend == nil || m.activeTri(id, r) == False || m.friendTri(userID, id, r) == False {
 			violations = append(violations, fmt.Sprintf("友達でないユーザー %s が友達の一覧にいます", id))
@@ -70,16 +70,13 @@ func (m *Model) CheckFriends(userID string, got []string, r Read) []string {
 }
 
 // CheckFollowing は userID のフォローの一覧として返ったユーザー got を、フォローの書き込みと
-// 突き合わせる。確実にフォローしている有効なユーザーが無い、確実にフォローしていない人が
-// いる場合を返す。
+// 突き合わせる。確実にフォローしている有効なユーザーが無い、確実にフォローしていない人
+// （bench の知らない人を含む）がいる、同じ人が 2 回以上いる場合を返す。
 func (m *Model) CheckFollowing(userID string, got []string, r Read) []string {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	var problems []string
+	problems := duplicates(got, "フォローの一覧")
 	for _, id := range got {
-		if m.users[id] == nil {
-			continue
-		}
 		if m.activeTri(id, r) == False || m.followTri(userID, id, r) == False {
 			problems = append(problems, fmt.Sprintf("フォローしていないユーザー %s がフォローの一覧にいます", id))
 		}
@@ -87,6 +84,39 @@ func (m *Model) CheckFollowing(userID string, got []string, r Read) []string {
 	for id := range m.followCandidates[userID] {
 		if m.activeTri(id, r) == True && !slices.Contains(got, id) && m.followTri(userID, id, r) == True {
 			problems = append(problems, fmt.Sprintf("フォローしているユーザー %s がフォローの一覧にいません", id))
+		}
+	}
+	return problems
+}
+
+// CheckFollowers は userID のフォロワーの一覧として返ったユーザー got を、フォローの書き込みと
+// 突き合わせる。確実にフォローしている有効なユーザーが無い、確実にフォローしていない人
+// （bench の知らない人を含む）がいる、同じ人が 2 回以上いる場合を返す。
+func (m *Model) CheckFollowers(userID string, got []string, r Read) []string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	problems := duplicates(got, "フォロワーの一覧")
+	for _, id := range got {
+		if m.activeTri(id, r) == False || m.followTri(id, userID, r) == False {
+			problems = append(problems, fmt.Sprintf("フォローしていないユーザー %s がフォロワーの一覧にいます", id))
+		}
+	}
+	for id := range m.followedBy[userID] {
+		if m.activeTri(id, r) == True && !slices.Contains(got, id) && m.followTri(id, userID, r) == True {
+			problems = append(problems, fmt.Sprintf("フォローしているユーザー %s がフォロワーの一覧にいません", id))
+		}
+	}
+	return problems
+}
+
+// duplicates は一覧 got（全ページ）に 2 回以上現れる ID を返す。ページ送りで、返したものより
+// 後の関係だけを返していれば、並行に関係が変わっても同じ相手は 2 回現れない。
+func duplicates(got []string, list string) []string {
+	var problems []string
+	seen := make(map[string]int, len(got))
+	for _, id := range got {
+		if seen[id]++; seen[id] == 2 {
+			problems = append(problems, fmt.Sprintf("ユーザー %s が%sに重複しています", id, list))
 		}
 	}
 	return problems

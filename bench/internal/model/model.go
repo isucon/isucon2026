@@ -107,6 +107,8 @@ type Model struct {
 	requestsByPair map[pair][]*friendRequest
 	// followCandidates はフォローしたことがあるかもしれない相手。following フィードの判定に使う。
 	followCandidates map[string]map[string]bool
+	// followedBy はフォローされたことがあるかもしれない相手（followCandidates の逆）。
+	followedBy map[string]map[string]bool
 
 	// comments は投稿ごとの bench が書いたコメント、pendingComments は ID のわからない作成。
 	comments        map[string][]*Comment
@@ -142,6 +144,7 @@ func New() *Model {
 		friendRequests:   map[string]*friendRequest{},
 		requestsByPair:   map[pair][]*friendRequest{},
 		followCandidates: map[string]map[string]bool{},
+		followedBy:       map[string]map[string]bool{},
 		comments:         map[string][]*Comment{},
 		commentByID:      map[string]*Comment{},
 		pendingComments:  map[string][]pendingComment{},
@@ -224,6 +227,10 @@ func (m *Model) follow(follower, followee string) *timeline[bool] {
 			m.followCandidates[follower] = map[string]bool{}
 		}
 		m.followCandidates[follower][followee] = true
+		if m.followedBy[followee] == nil {
+			m.followedBy[followee] = map[string]bool{}
+		}
+		m.followedBy[followee][follower] = true
 	}
 	return m.follows[key]
 }
