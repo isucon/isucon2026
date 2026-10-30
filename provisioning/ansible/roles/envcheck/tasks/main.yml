@@ -1,0 +1,43 @@
+---
+- name: Install post-contest checker
+  ansible.builtin.copy:
+    src: "{{ build_dir }}/isucon-contest-envcheck"
+    dest: /usr/local/bin/isucon-contest-envcheck
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install participant envcheck command
+  ansible.builtin.file:
+    src: /usr/local/bin/isucon-contest-envcheck
+    path: /usr/local/bin/envcheck
+    state: link
+    owner: root
+    group: root
+
+- name: Create protected checker state directory
+  ansible.builtin.file:
+    path: /var/lib/isucon-envcheck
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Install checker units
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: /etc/systemd/system/{{ item }}
+    mode: "0644"
+  loop: [envcheck.service, envcheck-baseline.service]
+
+- name: Enable one-time baseline collection after provisioning
+  ansible.builtin.systemd_service:
+    name: envcheck-baseline.service
+    enabled: true
+    daemon_reload: true
+
+- name: Enable environment validation on every boot
+  ansible.builtin.systemd_service:
+    name: envcheck.service
+    enabled: true
+    daemon_reload: true

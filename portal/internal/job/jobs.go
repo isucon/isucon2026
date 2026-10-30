@@ -61,8 +61,9 @@ type ExecuteOnInstanceArgs struct {
 	RequestResultID int64 `json:"request_result_id"`
 }
 type ExecuteOnMultipleArgs struct {
-	TeamIDs []int64 `json:"team_ids"`
-	Command string  `json:"command"`
+	IncludeRouter bool    `json:"include_router,omitempty"`
+	TeamIDs       []int64 `json:"team_ids"`
+	Command       string  `json:"command"`
 }
 
 // BenchmarkCompletion は BenchmarkCompletionJob 相当。
@@ -657,13 +658,51 @@ func (e *Env) SyncContestantInstances(ctx context.Context, project string) error
 }
 
 // ExecuteOnContestantInstance は 1 台への SSH コマンド実行と結果記録。
-func (e *Env) ExecuteOnContestantInstance(ctx context.Context, requestResultID int64) error {
+func (e *Env) ExecuteOnContestantInstance(ctx context.Context, requestResultID int64) (retErr error) {
 	result, err := model.FindCommandRequestResult(ctx, e.DB, requestResultID)
 	if err != nil || result == nil {
 		return err
 	}
+	if result.RouterTeamID.Valid {
+		defer func() {
+			if err := e.enqueueTeamCommands(ctx, result.RequestID, result.RouterTeamID.Int64); err != nil && retErr == nil {
+				retErr = err
+			}
+		}()
+	}
 	instance, err := model.FindInstance(ctx, e.DB, result.ContestantInstanceID)
-	if err != nil || instance == nil {
+	if err != nil {
+		return err
+	}
+	address := ""
+	jump := ""
+	if instance != nil {
+		address = instance.PublicIPv4Address.String
+	}
+	if result.RouterTeamID.Valid {
+		router, err := model.FindTeamRouter(ctx, e.DB, result.RouterTeamID.Int64)
+		if err != nil {
+			return err
+		}
+		if router != nil {
+			address = router.PrivateIP.String
+			servers, err := model.TeamInstances(ctx, e.DB, result.RouterTeamID.Int64)
+			if err != nil {
+				return err
+			}
+			for _, server := range servers {
+				if server.PublicIPv4Address.Valid {
+					jump = server.PublicIPv4Address.String
+					break
+				}
+			}
+			if jump == "" {
+				address = ""
+			}
+		}
+	}
+	if address == "" {
+		_, err = e.DB.ExecContext(ctx, `UPDATE instance_command_execute_request_results SET output=$1, exit_code=-1, finished_at=now(), updated_at=now() WHERE id=$2`, "target has no public IP", result.ID)
 		return err
 	}
 	request, err := model.FindCommandRequest(ctx, e.DB, result.RequestID)
@@ -671,11 +710,12 @@ func (e *Env) ExecuteOnContestantInstance(ctx context.Context, requestResultID i
 		return err
 	}
 
-	output, exitCode, runErr := e.SSH.Run(instance.PublicIPv4Address.String, request.Command.String)
+	output, exitCode, runErr := e.SSH.RunVia(jump, address, request.Command.String)
 	if runErr != nil {
 		output = runErr.Error()
 		exitCode = -1
 	}
+
 	_, err = e.DB.ExecContext(ctx, `
 		UPDATE instance_command_execute_request_results
 		SET output = $1, exit_code = $2, finished_at = now(), updated_at = now() WHERE id = $3`,
@@ -683,8 +723,35 @@ func (e *Env) ExecuteOnContestantInstance(ctx context.Context, requestResultID i
 	return err
 }
 
+func (e *Env) enqueueTeamCommands(ctx context.Context, requestID, teamID int64) error {
+	rows, err := e.DB.QueryContext(ctx, `SELECT r.id FROM instance_command_execute_request_results r JOIN contestant_instances i ON i.id=r.contestant_instance_id WHERE r.instance_command_execute_request_id=$1 AND i.team_id=$2 AND r.finished_at IS NULL`, requestID, teamID)
+	if err != nil {
+		return err
+	}
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return err
+		}
+		ids = append(ids, id)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return err
+	}
+	for _, id := range ids {
+		if err := e.queue.Enqueue(ctx, "execute_on_contestant_instance", ExecuteOnInstanceArgs{RequestResultID: id}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // ExecuteOnMultipleContestantInstances は一括実行のリクエスト作成と各台の実行投入。
-func (e *Env) ExecuteOnMultipleContestantInstances(ctx context.Context, teamIDs []int64, command string) error {
+func (e *Env) ExecuteOnMultipleContestantInstances(ctx context.Context, teamIDs []int64, command string, includeRouter ...bool) error {
 	var requestID int64
 	if err := e.DB.QueryRowContext(ctx,
 		`INSERT INTO instance_command_execute_requests (command, created_at, updated_at) VALUES ($1, now(), now()) RETURNING id`, command).Scan(&requestID); err != nil {
@@ -701,11 +768,22 @@ func (e *Env) ExecuteOnMultipleContestantInstances(ctx context.Context, teamIDs 
 		return err
 	}
 
+	if len(includeRouter) > 0 && includeRouter[0] {
+		_, err := e.DB.ExecContext(ctx, `INSERT INTO instance_command_execute_request_results (instance_command_execute_request_id, router_team_id, created_at, updated_at)
+ SELECT $1, id, now(), now() FROM teams WHERE id=ANY($2)`, requestID, teamIDs)
+		if err != nil {
+			return err
+		}
+	}
+
 	results, err := model.ListCommandRequestResults(ctx, e.DB, requestID)
 	if err != nil {
 		return err
 	}
 	for _, r := range results {
+		if len(includeRouter) > 0 && includeRouter[0] && !r.RouterTeamID.Valid {
+			continue
+		}
 		e.Enqueue(ctx, "execute_on_contestant_instance", ExecuteOnInstanceArgs{RequestResultID: r.ID})
 	}
 	return nil

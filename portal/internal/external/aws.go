@@ -103,6 +103,14 @@ func (a *AWS) ListContestantInstances(ctx context.Context, project string) ([]EC
 				if inst.TeamID <= 0 || inst.Number <= 0 || inst.Number > 5 {
 					continue
 				}
+				if inst.Number == 5 {
+					inst.PrivateIPAddress = ""
+					for _, eni := range i.NetworkInterfaces {
+						if eni.Attachment != nil && eni.Attachment.DeviceIndex != nil && *eni.Attachment.DeviceIndex == 1 && eni.PrivateIpAddress != nil {
+							inst.PrivateIPAddress = *eni.PrivateIpAddress
+						}
+					}
+				}
 				out = append(out, inst)
 			}
 		}

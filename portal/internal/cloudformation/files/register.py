@@ -38,6 +38,15 @@ def register(config, get):
         "private_ipv4_address": get("local-ipv4"),
         "public_ipv4_address": get("public-ipv4"),
     }
+    if config["number"] == 5:
+        mac = next(
+            mac
+            for mac in get("network/interfaces/macs/").splitlines()
+            if get("network/interfaces/macs/" + mac + "device-number") == "1"
+        )
+        body["private_ipv4_address"] = get(
+            "network/interfaces/macs/" + mac + "local-ipv4s"
+        ).splitlines()[0]
     request = Request(
         "https://" + config["host"] + "/api/instance_registrations",
         data=json.dumps(body).encode(),

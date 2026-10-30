@@ -3,7 +3,7 @@
 # （初期データの画像のダイジェストの表）を /opt/isucon/photos/ に同梱する。
 # 既定の none では同梱しないので、アーカイブがなくてもビルドできる（bench-runner はこちらで、走行ごとに URL を渡す）。
 ARG PHOTOS=none
-FROM rust:1.90-bookworm@sha256:3914072ca0c3b8aad871db9169a651ccfce30cf58303e5d6f2db16d1d8a7e58f AS source
+FROM mirror.gcr.io/library/rust:1.90-bookworm@sha256:3914072ca0c3b8aad871db9169a651ccfce30cf58303e5d6f2db16d1d8a7e58f AS source
 WORKDIR /src/supervisor
 COPY supervisor/Cargo.toml supervisor/Cargo.lock supervisor/rustfmt.toml ./
 COPY supervisor/src ./src
@@ -17,7 +17,7 @@ RUN cargo fmt --check && cargo test --locked && cargo check --locked --all-targe
 FROM source AS build
 RUN cargo build --locked --release --bin isuxportal-supervisor
 
-FROM golang:1.26.5-alpine@sha256:0178a641fbb4858c5f1b48e34bdaabe0350a330a1b1149aabd498d0699ff5fb2 AS bench
+FROM mirror.gcr.io/library/golang:1.26.5-alpine@sha256:0178a641fbb4858c5f1b48e34bdaabe0350a330a1b1149aabd498d0699ff5fb2 AS bench
 WORKDIR /src/bench
 COPY bench/ ./
 COPY portal/ /src/portal/
@@ -32,7 +32,7 @@ FROM scratch AS photos-archive
 COPY var/photos/merged.zip var/photos/image-digests-large.bin /photos/
 FROM photos-${PHOTOS} AS photos
 
-FROM debian:bookworm-slim@sha256:3783cc01769c7b2b1b83a5c5ad96c815348e28ed7da68e2e3687004faa906251 AS runtime
+FROM mirror.gcr.io/library/debian:bookworm-slim@sha256:3783cc01769c7b2b1b83a5c5ad96c815348e28ed7da68e2e3687004faa906251 AS runtime
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates libssl3 \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --system --uid 10001 --create-home supervisor \

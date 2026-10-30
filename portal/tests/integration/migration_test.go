@@ -22,7 +22,7 @@ func TestMigrationCreatesAllTablesAndIsIdempotent(t *testing.T) {
 		"contestant_instances", "contestants", "coupons", "env_checks", "extra_time_assignments",
 		"instance_command_execute_request_results", "instance_command_execute_requests",
 		"notifications", "push_subscriptions", "ssh_public_keys", "survey_response_history", "survey_responses", "teams",
-		"jobs", "team_routers",
+		"jobs", "team_routers", "benchmark_validation_snapshots",
 	}
 	for _, table := range expected {
 		var n int

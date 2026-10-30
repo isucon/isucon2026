@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"github.com/isucon/isucon2026/bench/internal/benchrun"
+	"github.com/isucon/isucon2026/bench/internal/client"
 	"github.com/isucon/isucon2026/bench/internal/evil"
 	"github.com/isucon/isucon2026/bench/internal/photo"
 	"github.com/isucon/isucon2026/bench/internal/scenario"
@@ -83,7 +84,10 @@ func run(parent context.Context, args []string, stdout, stderr io.Writer) int {
 	duration := flags.Duration("duration", 60*time.Second, "length of the load phase (shorter values are for development)")
 	scale := flags.String("scale", "small", "scale of the initial data in the target DB: small or large (must match datagen -scale)")
 	timeout := flags.Duration("timeout", 190*time.Second, "overall benchmark deadline; supervisor hard timeout must be longer")
-	postValidation := flags.Bool("only-post-validation", false, "reserved: report unsupported without initializing the application")
+	postValidation := flags.Bool("only-post-validation", false, "verify saved evidence without initializing the application")
+	validationPath := flags.String("validation-state", "", "private evidence file to write/read")
+	validationURL := flags.String("validation-url", "", "operator evidence endpoint")
+	validationToken := flags.String("validation-token", os.Getenv("ISUXBENCH_VALIDATION_TOKEN"), "evidence endpoint credential (prefer ISUXBENCH_VALIDATION_TOKEN)")
 	verifyRate := flags.Float64("verify-rate", scenario.DefaultVerifyRate, "fraction of load-phase operations that get heavy verification, in (0, 1] (env ISUXBENCH_VERIFY_RATE)")
 	signOffRate := flags.Float64("signoff-rate", 0, "development: if positive, every user logs out after each day with this probability and logs in again the next day (default follows each user's persona)")
 	moveRate := flags.Float64("move-rate", 0, "development: if positive, every registered user moves to another region with this probability after each day (default follows each user's persona)")
@@ -136,12 +140,37 @@ func run(parent context.Context, args []string, stdout, stderr io.Writer) int {
 		growth.QuickShare *= scale
 		growth.SlowShare *= scale
 	}
-	if *postValidation {
-		return fail("post-validation is not implemented; application was not initialized", 1)
-	}
 	normalized, err := normalizeTarget(*target, *port)
 	if err != nil {
 		return fail("invalid benchmark target", 2)
+	}
+	store := validationStore{path: *validationPath, url: *validationURL, token: *validationToken}
+	if *postValidation {
+		ctx, cancel := context.WithTimeout(parent, *timeout)
+		defer cancel()
+		snapshot, err := store.load(ctx)
+		if err != nil {
+			return fail("post-validation evidence unavailable", 1)
+		}
+		if snapshot.Target != normalized || snapshot.Host != *host {
+			return fail("post-validation target differs from the recorded environment", 1)
+		}
+		result := scenario.Result{Pass: true}
+		if err := scenario.ValidateSnapshot(ctx, client.NewWithHost(normalized, *host), snapshot); err != nil {
+			result.Pass = false
+			result.Reason = err.Error()
+			result.Messages = []string{result.Reason}
+		}
+		if err := report(result, true, reportReason(result.Reason)); err != nil {
+			return 2
+		}
+		if err := json.NewEncoder(stdout).Encode(result); err != nil {
+			return 2
+		}
+		if !result.Pass && reporter == nil {
+			return 1
+		}
+		return 0
 	}
 	if *cpuProfile != "" {
 		stopProfile, err := startCPUProfile(*cpuProfile)
@@ -234,6 +263,13 @@ func run(parent context.Context, args []string, stdout, stderr io.Writer) int {
 	})
 	if err != nil {
 		return fail("benchmarker setup failed", 2)
+	}
+	if *validationPath != "" || *validationURL != "" {
+		runner.SetValidationSaver(func(ctx context.Context, snapshot scenario.ValidationSnapshot) error {
+			snapshot.Target = normalized
+			snapshot.Host = *host
+			return store.save(ctx, snapshot)
+		})
 	}
 	result := runner.Run(ctx)
 	if photoErr != nil {

@@ -209,14 +209,17 @@ RSpec.describe 'admin API' do
       res = portal_get('/api/admin/instance_command_execute_requests', {}, staff_headers)
       body = Isuxportal::Proto::Services::Admin::ListInstanceCommandExecuteRequestsResponse.decode(res.body)
       expect(body.requests.size).to eq(1)
-      expect(body.requests[0].command).to eq('sudo systemctl restart envcheck --no-block')
-      expect(body.requests[0].total_target_count).to eq(1)
+      expect(body.requests[0].command).to eq('sudo rm -f /var/lib/isucon-envcheck/result.json || exit $?; sudo systemctl restart envcheck; status=$?; sudo cat /var/lib/isucon-envcheck/result.json; exit "$status"')
+      expect(body.requests[0].total_target_count).to eq(2)
     end
 
     it 'requeues benchmarks with post_validation carrying over last target' do
       instance = create(:contestant_instance, team: team1, number: 1)
       job = create(:benchmark_job, :passed, scored: 100, team: team1)
       job.update!(target_id: instance.id)
+      ActiveRecord::Base.connection.execute(
+        "INSERT INTO benchmark_validation_snapshots(job_id, data) VALUES (#{job.id}, '{\"version\":1,\"users\":[{}]}')"
+      )
 
       req = Isuxportal::Proto::Services::Admin::TriggerBenchmarksRequest.new(team_ids: [team1.id, team2.id], post_validation: true)
       res = portal_post('/api/admin/last_validations/benchmarks', {}, staff_headers,

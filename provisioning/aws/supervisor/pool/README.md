@@ -197,3 +197,26 @@ ECS が複数 AZ に配置し、実際の稼働数は配備後に確認します
 - `pulumi up` は stack の出力 `deployments` の変更だけ（リソース 1 件変更なし）。`ecspresso diff` はタスク定義の
   イメージと環境変数の追加だけで、サービス定義に差分なし。
 - 走行中のジョブがないことを 3 ストリームで確かめてから `ecspresso deploy` した。
+
+### 2026-10-30 追試対応版の実機検証
+
+共有プールを、ソース `cffd7a63` からビルドした写真入りARM64イメージ
+`sha256:316895852be6b348c09748ee4212519e74166b3bf78b6fcbf1c205fcbb731e04`
+へ更新しました。Pulumiの配備設定を更新したうえで、実行中ジョブがない状態から
+ecspressoでrevision 13を配備しました。稼働中のrevision 12との差分はイメージのみです。
+`ISUXBENCH_IMAGE_DIGESTS=/opt/isucon/photos/image-digests-large.bin` は維持しています。
+配備後のPulumi previewとecspresso diffに差分はありません。
+
+team 60001の新規CloudFormation環境 `portal-dev-envcheck-60001-a` で検証しました。
+サーバーAMIは `ami-046bb2179ba4818ab`、Router AMIは `ami-0d74406faa8e09fa6` です。
+`ap-northeast-1d` で `c6in.large` の容量不足が発生したため、AZ IDのみ
+`apne1-az4`（このアカウントの `ap-northeast-1a`）へ変更して構築しました。
+
+- 初回起動時のenvcheckは5台すべて成功しました。VM内の手動修正は行っていません。
+- [通常ベンチ #448](https://portal-dev.isucon.net/admin/benchmark_jobs/448) は `passed=true`、スコア3245で完了しました。
+- [再起動 #14](https://portal-dev.isucon.net/admin/last_validations/command_result/14) で5台を再起動し、全台のboot IDの変化と初期状態ファイルのSHA-256の一致を確認しました。
+- 再起動時の自動envcheckと[Portalからのenvcheck #15](https://portal-dev.isucon.net/admin/last_validations/command_result/15) は、いずれも5台すべて成功しました。
+- [追試 #449](https://portal-dev.isucon.net/admin/benchmark_jobs/449) は `post_validation=true`、`passed=true` で完了しました。通常ベンチの証跡を使い、初期化・負荷生成なしで再起動後のデータを検証しています。
+
+本番側のSupervisorはこの配備の対象ではありません。本番投入時には、同じ検証済みAMIペアと
+追試対応Supervisor/benchを組み合わせて配備してください。

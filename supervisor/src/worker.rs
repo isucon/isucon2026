@@ -46,6 +46,7 @@ impl Worker {
 
     pub fn process(&self) -> Process {
         Process {
+            validation_token: self.job_handle.handle.clone(),
             exec: self.command_exec.clone(),
             args: self.command_args.clone(),
             stdout_path: self.stdout_path(),
@@ -329,6 +330,13 @@ mod tests {
             command_args: vec![],
             log_directory: "/tmp".into(),
         }
+    }
+
+    #[test]
+    fn evidence_handle_is_environment_only() {
+        let process = worker().process();
+        assert_eq!(process.validation_token, "secret-handle");
+        assert!(!process.args.iter().any(|arg| arg.contains("secret-handle")));
     }
 
     #[test]

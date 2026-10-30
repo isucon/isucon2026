@@ -3,6 +3,7 @@ package external
 import (
 	"bytes"
 	"fmt"
+	"net"
 	"os"
 	"time"
 
@@ -18,6 +19,19 @@ type SSHExecutor struct {
 
 // Run はコマンドを実行して出力（stdout+stderr）と exit code を返す。
 func (e *SSHExecutor) Run(host, command string) (string, int, error) {
+	return e.RunVia("", host, command)
+}
+func validRouterAddress(host string) bool {
+	ip := net.ParseIP(host)
+	return ip != nil && ip.To4() != nil && ip.IsPrivate()
+}
+
+// RunVia authenticates both SSH hops with the operator key. No agent/key is
+// forwarded to the contestant server and no public router SSH ingress is needed.
+func (e *SSHExecutor) RunVia(jump, host, command string) (string, int, error) {
+	if jump != "" && !validRouterAddress(host) {
+		return "", -1, fmt.Errorf("router data ENI address is missing or invalid")
+	}
 	key, err := os.ReadFile(e.PrivateKeyPath)
 	if err != nil {
 		return "", -1, fmt.Errorf("ssh: read key: %w", err)
@@ -30,16 +44,36 @@ func (e *SSHExecutor) Run(host, command string) (string, int, error) {
 	if user == "" {
 		user = "isuadmin"
 	}
-	client, err := ssh.Dial("tcp", host+":22", &ssh.ClientConfig{
-		User:            user,
-		Auth:            []ssh.AuthMethod{ssh.PublicKeys(signer)},
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
-		Timeout:         5 * time.Second,
-	})
+
+	cfg := &ssh.ClientConfig{User: user, Auth: []ssh.AuthMethod{ssh.PublicKeys(signer)}, HostKeyCallback: ssh.InsecureIgnoreHostKey(), Timeout: 5 * time.Second}
+	var client *ssh.Client
+	if jump == "" {
+		client, err = ssh.Dial("tcp", net.JoinHostPort(host, "22"), cfg)
+	} else {
+		bastion, dialErr := ssh.Dial("tcp", net.JoinHostPort(jump, "22"), cfg)
+		if dialErr != nil {
+			return "", -1, dialErr
+		}
+		defer bastion.Close()
+		jumpTimeout := time.AfterFunc(4*time.Minute, func() { bastion.Close() })
+		defer jumpTimeout.Stop()
+		conn, dialErr := bastion.Dial("tcp", net.JoinHostPort(host, "22"))
+		if dialErr != nil {
+			return "", -1, dialErr
+		}
+		handshake, chans, requests, dialErr := ssh.NewClientConn(conn, net.JoinHostPort(host, "22"), cfg)
+		if dialErr != nil {
+			conn.Close()
+			return "", -1, dialErr
+		}
+		client = ssh.NewClient(handshake, chans, requests)
+	}
 	if err != nil {
 		return "", -1, err
 	}
 	defer client.Close()
+	timer := time.AfterFunc(4*time.Minute, func() { client.Close() })
+	defer timer.Stop()
 
 	sess, err := client.NewSession()
 	if err != nil {
