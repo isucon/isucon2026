@@ -20,6 +20,7 @@ const serverNames: Record<string, string> = {
 
 export const ContestantContestantInstanceList: React.FC<Props> = ({ session, client }) => {
   const [template, setTemplate] = useState("");
+  const [copiedURL, setCopiedURL] = useState("");
   useEffect(() => {
     (async () => {
       const res = await client.getCloudFormation();
@@ -73,19 +74,56 @@ export const ContestantContestantInstanceList: React.FC<Props> = ({ session, cli
         <tbody>{(session.contestantInstances || []).map((ci) => renderRow(ci))}</tbody>
       </table>
 
-      <section className="mb-5">
-        <header>
-          <h1 className="title is-1">表示確認用</h1>
+      <section className="notification is-info is-light my-5" aria-labelledby="router-preview-title">
+        <header className="mb-3">
+          <h1 id="router-preview-title" className="title is-4 mb-2">
+            ルーター IP（表示確認用）
+          </h1>
+          <p>ルーター経由でISURealを開き、アプリケーションの表示を確認できます。</p>
         </header>
         {previewURL ? (
-          <p>
-            <a href={previewURL} target="_blank" rel="noopener noreferrer">
-              {previewURL}
-            </a>
-            <SmallCopyButton content={previewURL} />
-          </p>
+          <>
+            <div className="field has-addons mb-4">
+              <div className="control is-expanded">
+                <input className="input is-family-monospace" aria-label="表示確認用URL" value={previewURL} readOnly />
+              </div>
+              <div className="control">
+                <button
+                  className="button is-info is-light"
+                  aria-label="URLをコピー"
+                  onClick={async () => {
+                    await navigator.clipboard.writeText(previewURL);
+                    setCopiedURL(previewURL);
+                  }}
+                >
+                  <span className="icon">
+                    <span className="material-icons-outlined" aria-hidden="true">
+                      content_copy
+                    </span>
+                  </span>
+                  <span>コピー</span>
+                </button>
+              </div>
+            </div>
+            <div className="is-flex is-align-items-center is-flex-wrap-wrap" style={{ gap: "0.75rem" }}>
+              <a className="button is-info" href={previewURL} target="_blank" rel="noopener noreferrer">
+                <span>ISURealを開く</span>
+                <span className="icon">
+                  <span className="material-icons-outlined" aria-hidden="true">
+                    open_in_new
+                  </span>
+                </span>
+              </a>
+              <span className="is-size-7">新しいタブで開きます</span>
+              <span className="is-size-7" role="status">
+                {copiedURL === previewURL ? "コピーしました" : ""}
+              </span>
+            </div>
+          </>
         ) : (
-          <p>未登録</p>
+          <p>
+            <span className="tag is-light mr-2">未登録</span>ルーターの登録後に、表示確認用のURLが表示されます。
+          </p>
         )}
       </section>
 
