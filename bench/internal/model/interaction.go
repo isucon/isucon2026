@@ -113,14 +113,12 @@ func (m *Model) CommentDeletable(commentID string, r Read) Tri {
 	return And(boolTri(c.exists, r), m.liveTri(p, r), m.activeTri(p.AuthorID, r), m.activeTri(c.AuthorID, r))
 }
 
-// CheckComments は viewer が投稿 postID のコメントの一覧で after より後を読んだ 1 ページを、
-// bench が書いたコメントと突き合わせる。削除されたコメントや bench の知らないコメント
-// （その作成者の結果のわからない作成がなければ）が返った、書いた人、本文、作成時刻が作成の
-// 応答と違う、確実に残っているコメントがない、古い順に並んでいない場合を返す。
-//
-// viewer とブロックの関係にある（かもしれない）人のコメントは、仕様では見えないが、参照実装は
-// 返すので、あってもなくてもよい。
-func (m *Model) CheckComments(viewerID, postID string, after *client.Comment, page client.CommentPage, r Read) []string {
+// CheckComments は投稿 postID のコメントの一覧で after より後を読んだ 1 ページを、bench が
+// 書いたコメントと突き合わせる。削除されたコメントや bench の知らないコメント（その作成者の
+// 結果のわからない作成がなければ）が返った、書いた人、本文、作成時刻が作成の応答と違う、
+// 確実に残っているコメントがない、古い順に並んでいない場合を返す。閲覧者とブロックの関係に
+// ある人のコメントも一覧に含める（参照実装と同じ）。
+func (m *Model) CheckComments(postID string, after *client.Comment, page client.CommentPage, r Read) []string {
 	if problem := pageSizeProblem("コメント", len(page.Items), page.HasMore); problem != "" {
 		return []string{problem}
 	}
@@ -161,7 +159,7 @@ func (m *Model) CheckComments(viewerID, postID string, after *client.Comment, pa
 		last = &page.Items[len(page.Items)-1]
 	}
 	for _, c := range m.comments[postID] {
-		if seen[c.ID] || boolTri(c.exists, r) != True || m.activeTri(c.AuthorID, r) != True || m.blockedTri(viewerID, c.AuthorID, r) != False {
+		if seen[c.ID] || boolTri(c.exists, r) != True || m.activeTri(c.AuthorID, r) != True {
 			continue
 		}
 		key := client.Comment{ID: c.ID, CreatedAt: c.CreatedAt}
@@ -273,12 +271,12 @@ func (m *Model) RealMojiDeletable(postID, reactorID, id string, r Read) Tri {
 	return And(current, m.liveTri(p, r), m.activeTri(p.AuthorID, r), m.activeTri(reactorID, r))
 }
 
-// CheckRealMojis は viewer が読んだ投稿 postID の RealMoji の一覧の最初のページを、bench が
-// 送った RealMoji と突き合わせる。置き換えや削除をした RealMoji が返った、同じ人の RealMoji や
-// 同じ ID が 2 件ある、送った RealMoji と種類・画像・作成時刻が違う、確実に残っている RealMoji
-// がない（続きがあるなら最後の項目より新しいもの）、新しい順に並んでいない場合を返す。viewer と
-// ブロックの関係にある人の RealMoji は、CheckComments と同じくあってもなくてもよい。
-func (m *Model) CheckRealMojis(viewerID, postID string, page client.RealMojiPage, r Read) []string {
+// CheckRealMojis は投稿 postID の RealMoji の一覧の最初のページを、bench が送った RealMoji と
+// 突き合わせる。置き換えや削除をした RealMoji が返った、同じ人の RealMoji や同じ ID が 2 件
+// ある、送った RealMoji と種類・画像・作成時刻が違う、確実に残っている RealMoji がない（続きが
+// あるなら最後の項目より新しいもの）、新しい順に並んでいない場合を返す。閲覧者とブロックの
+// 関係にある人の RealMoji も、CheckComments と同じく一覧に含める。
+func (m *Model) CheckRealMojis(postID string, page client.RealMojiPage, r Read) []string {
 	if problem := pageSizeProblem("RealMoji ", len(page.Items), page.HasMore); problem != "" {
 		return []string{problem}
 	}
@@ -317,7 +315,7 @@ func (m *Model) CheckRealMojis(viewerID, postID string, page client.RealMojiPage
 		}
 	}
 	for _, reactor := range m.reactionsFor[postID] {
-		if reactors[reactor] || m.activeTri(reactor, r) != True || m.blockedTri(viewerID, reactor, r) != False {
+		if reactors[reactor] || m.activeTri(reactor, r) != True {
 			continue
 		}
 		values := m.reactions[[2]string{postID, reactor}].possible(r)
