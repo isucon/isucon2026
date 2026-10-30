@@ -92,3 +92,61 @@ func TestImageURLWithSchemeIsInvalid(t *testing.T) {
 		t.Fatalf("stats=%+v errors=%v", got, f.r.board.Errors())
 	}
 }
+
+// TestBanDuringInteractionsIsReputation は、走行中に BAN されたユーザーが画像、RealMoji、
+// コメント、友達申請の操作で初めて 403 ip_banned を受けたとき、閲覧権限の拒否としてエラーに
+// せず、ユーザーを止めて悪評に記録することを確かめる。
+func TestBanDuringInteractionsIsReputation(t *testing.T) {
+	for name, run := range map[string]func(t *testing.T, f *interactionFixture, s *session){
+		"checkImage": func(t *testing.T, f *interactionFixture, s *session) {
+			f.r.checkImage(t.Context(), f.guest, f.post.FeedPost())
+		},
+		"react": func(t *testing.T, f *interactionFixture, s *session) {
+			f.r.react(t.Context(), f.guest, s, f.post.FeedPost())
+		},
+		"comment": func(t *testing.T, f *interactionFixture, s *session) {
+			f.r.comment(t.Context(), f.guest, s, f.post.FeedPost())
+		},
+		"listRealMojis": func(t *testing.T, f *interactionFixture, s *session) {
+			f.r.listRealMojis(t.Context(), f.guest, s, f.post.ID)
+		},
+		"listComments": func(t *testing.T, f *interactionFixture, s *session) {
+			f.r.listComments(t.Context(), f.guest, s, f.post.ID)
+		},
+		"deleteRealMoji": func(t *testing.T, f *interactionFixture, s *session) {
+			f.r.deleteRealMoji(t.Context(), f.guest, s)
+		},
+		"deleteComment": func(t *testing.T, f *interactionFixture, s *session) {
+			f.r.deleteComment(t.Context(), f.guest, s)
+		},
+		"answerRequest": func(t *testing.T, f *interactionFixture, s *session) {
+			f.r.answerRequest(t.Context(), f.guest, f.pendingRequest(t, f.r.users[geo.Europe][0], f.guest), "accept")
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newInteractionFixture(t)
+			s := &session{day: 1}
+			if !f.r.react(t.Context(), f.guest, s, f.post.FeedPost()) || !f.r.comment(t.Context(), f.guest, s, f.post.FeedPost()) {
+				t.Fatal(f.r.board.Errors())
+			}
+			rec := f.route(t, f.guest, nil)
+			f.app.mu.Lock()
+			f.app.banned[f.guest.API.ClientIP()] = true
+			f.app.mu.Unlock()
+			run(t, f, s)
+			if got := rec.Total(0); got.Failures != 0 || !f.guest.stopped.Load() || !f.guest.banned.Load() || f.r.reputations() != 1 || f.r.board.ErrorCount() != 0 {
+				t.Fatalf("stats=%+v stopped=%v banned=%v reputation=%d errors=%v", got, f.guest.stopped.Load(), f.guest.banned.Load(), f.r.reputations(), f.r.board.Errors())
+			}
+		})
+	}
+}
+
+// pendingRequest は from から to への友達申請を送り、to に届いた申請として返す。
+func (f *interactionFixture) pendingRequest(t *testing.T, from, to *user) client.Relationship {
+	t.Helper()
+	request, err := from.API.CreateFriendRequest(t.Context(), from.Token, to.ID)
+	if err != nil || request.Status != "pending" {
+		t.Fatalf("request=%+v err=%v", request, err)
+	}
+	return client.Relationship{RelationID: request.RelationID, User: client.UserSummary{ID: from.ID, Username: from.Username}, Status: "pending"}
+}

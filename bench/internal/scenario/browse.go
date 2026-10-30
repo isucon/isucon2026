@@ -175,6 +175,9 @@ func (r *Runner) react(ctx context.Context, u *user, s *session, post client.Fee
 	reaction, err := u.API.ReplaceRealMoji(client.MayFailWith(ctx, http.StatusForbidden, http.StatusNotFound), u.Token, post.ID, u.reactionType(), r.photos.RealMoji(hashOf(r.seed, "realmoji", u.Username, itoa(s.day), itoa(s.realMojis))))
 	allowed := r.model.CanView(u.ID, post.ID, r.model.ReadBetween(sent, time.Now()))
 	switch {
+	case r.bannedErr(u, err):
+		// BAN は閲覧権限の拒否より先に判定する（拒否されたので反映されていない）。
+		w.Rejected()
 	case isStatus(err, http.StatusNotFound) && allowed != model.True:
 		// 送っている間に投稿者が退会していれば 404 が正しい。
 		w.Rejected()
@@ -214,6 +217,8 @@ func (r *Runner) deleteRealMoji(ctx context.Context, u *user, s *session) {
 	err := u.API.DeleteRealMoji(client.MayFailWith(ctx, http.StatusNotFound, http.StatusForbidden), u.Token, id)
 	settle(w, err)
 	switch {
+	case r.bannedErr(u, err):
+		// BAN されたユーザーは止める。失敗には数えない。
 	case err == nil:
 		r.award(u, s.day, score.TagDeleteReaction)
 	case isStatus(err, http.StatusNotFound) || isStatus(err, http.StatusForbidden):
@@ -232,6 +237,8 @@ func (r *Runner) listRealMojis(ctx context.Context, u *user, s *session, postID 
 	page, err := u.API.RealMojis(client.MayFailWith(ctx, http.StatusForbidden), u.Token, postID, nil)
 	read := r.model.ReadBetween(sent, time.Now())
 	switch {
+	case r.bannedErr(u, err):
+		return
 	case isStatus(err, http.StatusForbidden):
 		if r.model.CanView(u.ID, postID, read) == model.True {
 			r.invalid(ctx, u, "%s: 見える投稿 %s の RealMoji の一覧が拒否されました", u.Username, postID)
@@ -262,6 +269,8 @@ func (r *Runner) comment(ctx context.Context, u *user, s *session, post client.F
 	created, err := u.API.CreateComment(client.MayFailWith(ctx, http.StatusForbidden, http.StatusNotFound), u.Token, post.ID, body)
 	allowed := r.model.CanComment(u.ID, post.ID, r.model.ReadBetween(sent, time.Now()))
 	switch {
+	case r.bannedErr(u, err):
+		creation.Rejected()
 	case isStatus(err, http.StatusNotFound) && allowed != model.True:
 		// 送っている間に投稿者が退会していれば 404 が正しい。
 		creation.Rejected()
@@ -300,6 +309,7 @@ func (r *Runner) deleteComment(ctx context.Context, u *user, s *session) {
 	err := u.API.DeleteComment(client.MayFailWith(ctx, http.StatusNotFound, http.StatusForbidden), u.Token, id)
 	settle(w, err)
 	switch {
+	case r.bannedErr(u, err):
 	case err == nil:
 		r.award(u, s.day, score.TagDeleteReaction)
 	case isStatus(err, http.StatusNotFound) || isStatus(err, http.StatusForbidden):
@@ -317,6 +327,8 @@ func (r *Runner) listComments(ctx context.Context, u *user, s *session, postID s
 	page, err := u.API.Comments(client.MayFailWith(ctx, http.StatusForbidden), u.Token, postID, nil)
 	read := r.model.ReadBetween(sent, time.Now())
 	switch {
+	case r.bannedErr(u, err):
+		return
 	case isStatus(err, http.StatusForbidden):
 		if r.model.CanComment(u.ID, postID, read) == model.True {
 			r.invalid(ctx, u, "%s: コメントできる投稿 %s のコメントの一覧が拒否されました", u.Username, postID)
@@ -366,6 +378,7 @@ func (r *Runner) answerRequest(ctx context.Context, u *user, request client.Rela
 		settle(w, err)
 	}
 	switch {
+	case r.bannedErr(u, err):
 	case err == nil && action == "accept":
 		r.addFriendship(request.User.ID, u.ID)
 		r.award(u, r.dayNow(u.Region), score.TagFriendAccept)
