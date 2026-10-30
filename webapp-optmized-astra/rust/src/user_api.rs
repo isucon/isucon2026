@@ -187,13 +187,15 @@ pub async fn login_handler(
     }
     let session = create_login_session_for_locked_user_tx(&mut tx, &user.id).await?;
     tx.commit().await?;
-    json(
+    let mut response = json(
         StatusCode::OK,
         LoginResponse {
             token: session.token,
             user: new_session_user_response(&user),
         },
-    )
+    )?;
+    response.extensions_mut().insert(crate::session_cache::ChangedSessionUser(user.id));
+    Ok(response)
 }
 
 pub async fn logout_handler(

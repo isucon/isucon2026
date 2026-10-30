@@ -48,6 +48,9 @@ pub async fn write_fence_middleware(
     req: Request,
     next: Next,
 ) -> Response {
+    let cache = crate::session_cache::coordinator(&req);
+    let method = req.method().clone();
+    let path = req.uri().path().to_owned();
     let timing = if req.method() == Method::POST {
         match req.uri().path() {
             "/api/auth/register" if *AUTH_TIMING => Some(("register", Instant::now())),
@@ -87,19 +90,27 @@ pub async fn write_fence_middleware(
     // Capture WAL only after the handler has completed its commits. Failed
     // responses are fenced as well, since a handler may have committed work.
     // The outer run_to_completion layer also finishes this after disconnects.
-    let response = if mutation
-        && let Some(fence) = &fence
-        && let Err(err) = fence.wait().await
-    {
-        logger::error("failed to make write visible on replicas", &err);
-        new_api_error(
-            StatusCode::SERVICE_UNAVAILABLE,
-            "replica_visibility_unavailable",
-        )
-        .into_response()
-    } else {
-        response
+    let changed = cache.as_ref().and_then(|_| crate::session_cache::changed_user(&method, &path, &response));
+    let visibility = async {
+        if mutation && let Some(fence) = &fence { fence.wait().await } else { Ok(()) }
     };
+    let invalidation = async {
+        if let (Some(cache), Some(user)) = (&cache, changed) { cache.publish(user).await } else { Ok(()) }
+    };
+    // Receivers wait for this write's WAL position before evicting. Run their
+    // acknowledgements alongside the existing native visibility barrier.
+    let (visible, invalidated) = tokio::join!(visibility, invalidation);
+    let response = if let Err(err) = visible {
+        logger::error("failed to make write visible on replicas", &err);
+        new_api_error(StatusCode::SERVICE_UNAVAILABLE, "replica_visibility_unavailable").into_response()
+    } else if let Err(err) = invalidated {
+        logger::error("failed to invalidate regional session caches", &err);
+        if let Some(cache) = &cache { cache.cache.invalidate(None); }
+        // Replicas are caught up. Every stale lookup started before that point,
+        // so even an unreachable peer must expire it before this error returns.
+        tokio::time::sleep(crate::session_cache::LEASE).await;
+        new_api_error(StatusCode::SERVICE_UNAVAILABLE, "session_cache_unavailable").into_response()
+    } else { response };
     if let Some((action, started)) = timing
         && started.elapsed().as_millis() >= 250
     {

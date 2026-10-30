@@ -21,6 +21,10 @@ print('ISUREAL_POST_TIMING='+str(int(post_timing)))
 read_timing=runtime.get('readTimingEnabled',False)
 assert type(read_timing) is bool
 print('ISUREAL_READ_TIMING='+str(int(read_timing)))
+session_cache=runtime.get('sessionCacheEnabled',False)
+assert type(session_cache) is bool
+print('ISUREAL_SESSION_CACHE='+str(int(session_cache)))
+print("ISUREAL_SESSION_CACHE_PEERS='"+json.dumps([app['host']+':8080' for app in runtime['applications']],separators=(',',':'))+"'")
 entries=runtime['issuedImageUrlCacheEntries']
 assert type(entries) is int and 16 <= entries <= 262144 and entries % 16 == 0
 print('ISUREAL_ISSUED_URL_CACHE_ENTRIES='+str(entries))

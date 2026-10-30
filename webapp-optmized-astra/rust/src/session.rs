@@ -2,7 +2,7 @@ use std::sync::{Arc, Mutex};
 
 use anyhow::Context as _;
 use axum::extract::{Request, State};
-use axum::http::{HeaderMap, StatusCode, header};
+use axum::http::{HeaderMap, Method, StatusCode, header};
 use axum::middleware::Next;
 use axum::response::Response;
 use chrono::{DateTime, Utc};
@@ -30,10 +30,7 @@ pub fn get_session(req: &Request) -> Option<&Session> {
     req.extensions().get::<Session>()
 }
 
-async fn get_session_from_header<'c>(
-    headers: &HeaderMap,
-    db: impl Executor<'c, Database = Postgres>,
-) -> Result<Option<Session>, Error> {
+fn token_hash(headers: &HeaderMap) -> Result<Option<String>, Error> {
     let auth_header = headers
         .get(header::AUTHORIZATION)
         .map(|value| String::from_utf8_lossy(value.as_bytes()).into_owned())
@@ -46,7 +43,13 @@ async fn get_session_from_header<'c>(
         return Err(new_api_error(StatusCode::UNAUTHORIZED, "invalid_session"));
     };
 
-    let token_hash = hex::encode(Sha256::digest(token.as_bytes()));
+    Ok(Some(hex::encode(Sha256::digest(token.as_bytes()))))
+}
+
+async fn get_session_by_hash<'c>(
+    token_hash: &str,
+    db: impl Executor<'c, Database = Postgres>,
+) -> Result<Option<Session>, Error> {
     let session: Option<Session> = sqlx::query_as(
         r#"
 		SELECT s.user_id, s.token_hash, s.created_at, u.region
@@ -55,7 +58,7 @@ async fn get_session_from_header<'c>(
 		  AND s.active = true AND u.status = 'active'
 	"#,
     )
-    .bind(&token_hash)
+    .bind(token_hash)
     .fetch_optional(db)
     .await
     .context("failed to get session")?;
@@ -96,14 +99,35 @@ async fn authenticate_request(
     reuse_connection: bool,
 ) -> Result<Response, Error> {
     let mut probe = ReadProbe::sample(req.uri().path());
-    let session = if reuse_connection {
-        let mut db = handler_context.db.acquire().await?;
-        let session = get_session_from_header(req.headers(), &mut *db).await?;
-        req.extensions_mut()
-            .insert(SessionConnection(Arc::new(Mutex::new(Some(db)))));
+    let started = std::time::Instant::now();
+    let cache = if matches!(*req.method(), Method::GET | Method::HEAD) {
+        crate::session_cache::coordinator(&req)
+    } else {
+        None
+    };
+    let token_hash = token_hash(req.headers())?;
+    let (cached, generation) = match (&cache, &token_hash) {
+        (Some(cache), Some(hash)) => cache.cache.lookup(hash),
+        _ => (None, 0),
+    };
+    let session = if let Some(session) = cached {
+        Some(session)
+    } else if let Some(hash) = token_hash {
+        let session = if reuse_connection {
+            let mut db = handler_context.db.acquire().await?;
+            let session = get_session_by_hash(&hash, &mut *db).await?;
+            req.extensions_mut()
+                .insert(SessionConnection(Arc::new(Mutex::new(Some(db)))));
+            session
+        } else {
+            get_session_by_hash(&hash, &handler_context.db).await?
+        };
+        if let (Some(cache), Some(session)) = (&cache, &session) {
+            cache.cache.insert(session.clone(), generation, started);
+        }
         session
     } else {
-        get_session_from_header(req.headers(), &handler_context.db).await?
+        None
     };
     ReadProbe::mark(&mut probe, "auth");
     if let Some(probe) = probe {
