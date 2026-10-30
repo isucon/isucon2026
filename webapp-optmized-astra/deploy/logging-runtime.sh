@@ -21,6 +21,9 @@ print('ISUREAL_POST_TIMING='+str(int(post_timing)))
 read_timing=runtime.get('readTimingEnabled',False)
 assert type(read_timing) is bool
 print('ISUREAL_READ_TIMING='+str(int(read_timing)))
+history=runtime.get('initialHistoryEnabled',False)
+assert type(history) is bool
+print('ISUREAL_INITIAL_HISTORY='+str(int(history)))
 session_cache=runtime.get('sessionCacheEnabled',False)
 assert type(session_cache) is bool
 print('ISUREAL_SESSION_CACHE='+str(int(session_cache)))

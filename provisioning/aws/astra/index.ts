@@ -205,3 +205,7 @@ if (runtime.sessionCacheEnabled !== undefined && typeof runtime.sessionCacheEnab
 if (runtime.sessionCacheEnabled && (!runtime.writeFenceEnabled || runtime.writeFenceMode !== "native" || !runtime.replicasEnabled || !runtime.replicaReads)) {
     throw new Error("Session caching requires native write visibility and regional replicas");
 }
+
+if (runtime.initialHistoryEnabled !== undefined && typeof runtime.initialHistoryEnabled !== "boolean") {
+    throw new Error("Invalid initial history flag");
+}
