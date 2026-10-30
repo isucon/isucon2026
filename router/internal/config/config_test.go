@@ -27,9 +27,6 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.Servers[domain.App1].RouterIP.String() != "172.31.1.2" || cfg.Servers[domain.App3].ServerIP.String() != "172.31.3.10" {
 		t.Fatalf("unexpected topology: %+v", cfg.Servers)
 	}
-	if cfg.Hosts.App != "app.team1-abc123.isucon2026.westens.tokyo" {
-		t.Fatalf("unexpected app host: %s", cfg.Hosts.App)
-	}
 	if cfg.HTTPListenAddress != "0.0.0.0:8080" || cfg.HTTPSListenAddress != "" || cfg.UpstreamPort != 8080 ||
 		cfg.HAProxyDir != "/run/isureal-haproxy" || cfg.HAProxyRuntimeAddress != "127.0.0.1:18001" {
 		t.Fatalf("unexpected proxy defaults: %+v", cfg)
@@ -51,10 +48,6 @@ func TestLoadOverrides(t *testing.T) {
 		"ROUTER_APP2_REGION_LOCAL_IP":         "10.42.2.2",
 		"ROUTER_APP2_IP":                      "10.42.2.10",
 		"ROUTER_APP2_SUBNET":                  "10.42.2.0/24",
-		"ROUTER_APP_HOST":                     "app.example.test",
-		"ROUTER_APP1_HOST":                    "one.example.test",
-		"ROUTER_APP2_HOST":                    "two.example.test",
-		"ROUTER_APP3_HOST":                    "three.example.test",
 		"ROUTER_COMMAND_TIMEOUT":              "7s",
 		"ROUTER_HTTPS_LISTEN_ADDRESS":         "0.0.0.0:443",
 		"ROUTER_TLS_CERTIFICATE":              "/etc/isucon/haproxy/tls/server.pem",
@@ -111,7 +104,6 @@ func TestLoadRejectsInvalidConfiguration(t *testing.T) {
 		"overlap subnet":    {"ROUTER_APP2_SUBNET": "172.31.1.0/24", "ROUTER_APP2_REGION_LOCAL_IP": "172.31.1.3", "ROUTER_APP2_IP": "172.31.1.11"},
 		"server outside":    {"ROUTER_APP1_IP": "192.0.2.1"},
 		"duplicate address": {"ROUTER_APP2_REGION_LOCAL_IP": "172.31.2.10"},
-		"bad hostname":      {"ROUTER_APP_HOST": "http://example.test"},
 		"bad backoff":       {"ROUTER_PORTAL_RECONNECT_MIN_BACKOFF": "3s", "ROUTER_PORTAL_RECONNECT_MAX_BACKOFF": "1s"},
 		"https without key": {"ROUTER_HTTPS_LISTEN_ADDRESS": "0.0.0.0:443"},
 		"zero port":         {"ROUTER_UPSTREAM_PORT": "0"},

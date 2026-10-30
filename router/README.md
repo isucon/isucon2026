@@ -93,16 +93,11 @@ runtime API で書き換える。
 `X-Benchmark-Digest: sha256` が付いていれば SHA-256。[設計文書](../docs/router.md) の「ベンチの画像のダウンロード」）。isureal-digest は上の 2 つのアドレスだけを環境変数から読む。単体テストは
 `cargo test --manifest-path router/digest/Cargo.toml`。
 
-### Public hostnames
+### Host
 
-| Environment variable | Default |
-|---|---|
-| `ROUTER_APP_HOST` | `app.team1-abc123.isucon2026.westens.tokyo` |
-| `ROUTER_APP1_HOST` | `app1.team1-abc123.isucon2026.westens.tokyo` |
-| `ROUTER_APP2_HOST` | `app2.team1-abc123.isucon2026.westens.tokyo` |
-| `ROUTER_APP3_HOST` | `app3.team1-abc123.isucon2026.westens.tokyo` |
-
-4値は妥当な小文字 hostname かつ相互に異なる必要がある。HAProxy は Host の port と大文字小文字を無視して照合するため、同じhostnameを任意の公開port経由で利用できる。
+Host 名は設定しない。HAProxy は Host が `asia.`、`europe.`、`america.` で始まる要求をそれぞれ app1、app2、app3 へ送り、
+それ以外の要求（IP アドレスや Host のない要求を含む）は `X-Country-Code` の国、なければ Portal の既定の国で振り分ける。
+接頭辞は大文字小文字を区別しない。`asia.<Router の IP>.nip.io` のような名前を使えば、DNS を用意しなくても個別のサーバーへ届く。
 
 ### Server topology
 
@@ -170,5 +165,5 @@ Router と HAProxy は namespace を共有するため、runtime API は Router 
 - Controller state は memory のみである。再起動後は Portal から snapshot を受けて再構築するまで ready にならない。
 - HTTPS は `ROUTER_HTTPS_LISTEN_ADDRESS` と証明書を渡したときだけ有効になる。WAF/外部認証/HA/長期 metrics は
   deployment 側の責務である。
-- HAProxy の bandwidth limit は route（Host と国の組）単位で、要求と応答のそれぞれにかかる。本 feature は1要求・1経路の分類と上限を保証し、複数要求を束ねた
+- HAProxy の bandwidth limit は route（宛先と国の組）単位で、要求と応答のそれぞれにかかる。本 feature は1要求・1経路の分類と上限を保証し、複数要求を束ねた
   region-wide aggregate rate の厳密性は後続の競技 deployment で決定する。
