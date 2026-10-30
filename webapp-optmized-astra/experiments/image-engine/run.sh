@@ -12,8 +12,8 @@ cleanup() {
     for name in "${created[@]}"; do docker rm -fv "$name" >/dev/null; done
 }
 trap cleanup EXIT
-pg=postgres@sha256:9e2cf6287f25c3151f4c9421ccce2b17f3e60061c111a29165e0d2cdd9ff0a97
-my=mysql@sha256:a0225d1ea6631c8bc2385dc4c2faba17bbf1834ecf369e1659a9a382bd8d5dd7
+pg=mirror.gcr.io/library/postgres@sha256:9e2cf6287f25c3151f4c9421ccce2b17f3e60061c111a29165e0d2cdd9ff0a97
+my=mirror.gcr.io/library/mysql@sha256:a0225d1ea6631c8bc2385dc4c2faba17bbf1834ecf369e1659a9a382bd8d5dd7
 docker run -d --name astra-engine-postgres --cpus 2 --memory 1g -p 127.0.0.1:26216:5432 \
     -e POSTGRES_HOST_AUTH_METHOD=trust -e POSTGRES_DB=astra_engine "$pg" \
     -c shared_buffers=256MB -c max_connections=40 -c wal_level=minimal -c max_wal_senders=0 \

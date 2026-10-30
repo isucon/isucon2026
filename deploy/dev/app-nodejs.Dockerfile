@@ -1,10 +1,10 @@
-# syntax=docker/dockerfile:1.10
-FROM node:26.12.1-alpine AS nodejs-build
+# syntax=mirror.gcr.io/docker/dockerfile:1.10
+FROM mirror.gcr.io/library/node:26.12.1-alpine AS nodejs-build
 WORKDIR /app/nodejs
 COPY webapp/nodejs/package.json webapp/nodejs/package-lock.json ./
 RUN npm ci --omit=dev
 
-FROM node:24.14.1-alpine AS frontend-build
+FROM mirror.gcr.io/library/node:24.14.1-alpine AS frontend-build
 WORKDIR /src
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
@@ -12,7 +12,7 @@ COPY frontend/ ./
 ENV VITE_API_PREFIX=/api
 RUN npm run build
 
-FROM node:26.12.1-alpine
+FROM mirror.gcr.io/library/node:26.12.1-alpine
 RUN apk add --no-cache bash ca-certificates curl iproute2 nginx postgresql-client tzdata
 WORKDIR /app/nodejs
 COPY --from=nodejs-build /app/nodejs/node_modules ./node_modules

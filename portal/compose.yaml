@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgres:16-alpine
+    image: mirror.gcr.io/library/postgres:16-alpine
     container_name: isuxportal-postgres
     environment:
       POSTGRES_DB: isuxportal
@@ -17,7 +17,7 @@ services:
       retries: 30
 
   redis:
-    image: redis:7
+    image: mirror.gcr.io/library/redis:7
     container_name: isuxportal-redis
     ports:
       - "16379:6379"
