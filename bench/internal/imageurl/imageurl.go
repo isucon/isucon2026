@@ -42,14 +42,44 @@ func Sign(secretKey, imageID string, exp int64) string {
 	return base64.RawURLEncoding.EncodeToString(value)
 }
 
+// prefix は画像 URL のパスの始まり。
+const prefix = "/api/images/"
+
+// parse は rawURL を、/api/images/ で始まる相対 URL として解釈する。スキームやホストの
+// 付いた URL（invalid:/api/images/... や //host/api/images/... など）は、パスが正しくても
+// アプリと同じオリジンの画像として取得できないので拒否する。
+func parse(rawURL string) (*url.URL, error) {
+	if !strings.HasPrefix(rawURL, prefix) {
+		return nil, fmt.Errorf("画像 URL %q が %s で始まる相対 URL ではありません", rawURL, prefix)
+	}
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return nil, fmt.Errorf("画像 URL %q を解釈できません: %w", rawURL, err)
+	}
+	return parsed, nil
+}
+
+// CheckForm は rawURL が /api/images/{imageId} で始まる相対 URL であることだけを確かめる
+// （署名は確かめない）。この形でない URL は取得できない。
+func CheckForm(rawURL string) error {
+	parsed, err := parse(rawURL)
+	if err != nil {
+		return err
+	}
+	if parsed.Path == prefix {
+		return fmt.Errorf("画像 URL %q に画像 ID がありません", rawURL)
+	}
+	return nil
+}
+
 // Verify は rawURL が imageID の画像を指し、期限内で、secretKey の持ち主が署名したもの
 // であることを確かめる。
 func Verify(rawURL, imageID, secretKey string, now time.Time) error {
-	parsed, err := url.Parse(rawURL)
+	parsed, err := parse(rawURL)
 	if err != nil {
-		return fmt.Errorf("画像 URL %q を解釈できません: %w", rawURL, err)
+		return err
 	}
-	if want := "/api/images/" + imageID; parsed.Path != want || parsed.Host != "" {
+	if want := prefix + imageID; parsed.Path != want {
 		return fmt.Errorf("画像 URL %q のパスが %s ではありません", rawURL, want)
 	}
 	query := parsed.Query()
@@ -73,7 +103,7 @@ func ImageID(rawURL string) string {
 	if err != nil {
 		return ""
 	}
-	return strings.TrimPrefix(parsed.Path, "/api/images/")
+	return strings.TrimPrefix(parsed.Path, prefix)
 }
 
 // signatures は Verify が計算した署名の控え。負荷走行では同じ投稿の画像 URL を多くの
