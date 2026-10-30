@@ -62,6 +62,16 @@ func TestRealMojiIDReuse(t *testing.T) {
 	if m.ReplacedRealMoji(empty, client.RealMoji{}) {
 		t.Fatal("empty ID recorded")
 	}
+	// 同じ人が同じ投稿の RealMoji を置き換えて ID が変わらない実装は許し、記録を新しい応答で
+	// 書き換える。
+	again := item("b")
+	again.ReactionType, again.CreatedAt = "smile", w.c.tick()
+	if !m.ReplacedRealMoji(m.BeginReplaceRealMoji("p-a", "b"), again) {
+		t.Fatal("replacement keeping its own ID rejected")
+	}
+	if problems := m.CheckRealMojis("a", "p-a", client.RealMojiPage{Items: []client.RealMoji{again}}, w.later()); len(problems) != 0 {
+		t.Fatalf("replacement keeping its own ID: %v", problems)
+	}
 }
 
 // TestRealMojiMissingBeforeLastItem は、続きのある（50 件の）ページでも、最後の項目より
