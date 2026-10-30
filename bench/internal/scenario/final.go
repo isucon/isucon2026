@@ -10,6 +10,7 @@ import (
 
 	"github.com/isucon/isucon2026/bench/internal/agent"
 	"github.com/isucon/isucon2026/bench/internal/client"
+	"github.com/isucon/isucon2026/bench/internal/imageurl"
 )
 
 // finalCheckTimeout は走行後の整合性チェックにかける時間の上限。
@@ -72,7 +73,7 @@ func (r *Runner) finalCheckUser(ctx context.Context, user *agent.Agent, months [
 		return err
 	}
 	sent := time.Now()
-	var posts []string
+	var posts []client.Post
 	for _, month := range months {
 		var before *client.Post
 		for {
@@ -82,7 +83,7 @@ func (r *Runner) finalCheckUser(ctx context.Context, user *agent.Agent, months [
 			}
 			for _, item := range page.Items {
 				if r.model.HasWindow(item.PostingWindowID) {
-					posts = append(posts, item.ID)
+					posts = append(posts, item.Post)
 				}
 			}
 			if !page.HasMore || len(page.Items) == 0 {
@@ -113,6 +114,12 @@ func (r *Runner) finalCheckUser(ctx context.Context, user *agent.Agent, months [
 	violations := append(r.model.CheckOwnPosts(user.ID, posts, read), r.model.CheckFriends(user.ID, friends, read)...)
 	if len(violations) > 0 {
 		return fmt.Errorf("%s: %s", user.Username, violations[0])
+	}
+	// 走行後の確認は間引かないので、画像 URL の署名もすべて確かめる（自分の投稿の画像の持ち主は自分）。
+	for _, post := range posts {
+		if err := imageurl.Verify(post.ImageURL, imageurl.ImageID(post.ImageURL), user.SecretKey, time.Now()); err != nil {
+			return fmt.Errorf("%s: Memories の投稿 %s の画像 URL が不正です: %v", user.Username, post.ID, err)
+		}
 	}
 	return nil
 }
