@@ -653,16 +653,38 @@ func (r *Runner) load(ctx context.Context) string {
 		u.API = u.API.WithObserver(&accounting{r: r, slo: true, growth: true})
 		wg.Go(func() { r.runUser(ctx, u, false, subscribed) })
 	}
+	logout := func() {
+		// 負荷走行の時間が過ぎてもログアウトはするが、全体の期限や中断（CLI の -timeout、SIGTERM）
+		// では打ち切る。
+		if err := r.admin.AdminLogout(parent, r.adminToken); err != nil {
+			r.adminError(parent, "管理者としてログアウトできません: %v", err)
+		}
+	}
 	deadline := time.NewTimer(subscribeTimeout)
+	waiting := len(users)
 wait:
-	for range users {
+	for ; waiting > 0; waiting-- {
 		select {
 		case <-subscribed:
 		case <-deadline.C:
 			break wait
+		case <-ctx.Done():
+			break wait
 		}
 	}
 	deadline.Stop()
+	if waiting > 0 && ctx.Err() == nil {
+		r.operatorLogger().Info(fmt.Sprintf("%d 人の通知の購読が %s 以内に始まりませんでした", waiting, subscribeTimeout))
+		if waiting == len(users) {
+			// 誰も購読できなければ通知が届かず、誰も投稿しない。応答の遅い購読は数えないので、
+			// そのまま走ると失敗のない走行になる。
+			reason := fmt.Sprintf("負荷ユーザーの通知の購読に %s 以内に応答がありません（%d 人）", subscribeTimeout, waiting)
+			abort(errors.New(reason))
+			wg.Wait()
+			logout()
+			return reason
+		}
+	}
 
 	start := time.Now()
 	r.recorder.Store(metrics.New(start, metrics.DefaultWidth))
@@ -710,11 +732,7 @@ wait:
 	wg.Wait()
 	<-monitorDone
 	r.tellGrandPrix()
-	// 負荷走行の時間が過ぎてもログアウトはするが、全体の期限や中断（CLI の -timeout、SIGTERM）
-	// では打ち切る。
-	if err := r.admin.AdminLogout(parent, r.adminToken); err != nil {
-		r.adminError(parent, "管理者としてログアウトできません: %v", err)
-	}
+	logout()
 
 	if cause := context.Cause(ctx); cause != nil && !errors.Is(cause, context.Canceled) && !errors.Is(cause, context.DeadlineExceeded) {
 		return cause.Error()
