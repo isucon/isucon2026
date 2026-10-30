@@ -158,6 +158,15 @@ CloudFormationのスタック作成やサーバの起動が完了していても
 [ポータルのサーバリスト](https://portal.isucon.net/contestant/contestant_instances)の「ルーター IP」欄の「表示確認用 URL」のリンクからアプリケーションを開き、ログイン、投稿、フィードと画像の表示を確認してください。
 変更前にポータルからベンチマークを1回実行してください。
 
+動作確認には、以下の初期ユーザーでログインできます。
+
+| 項目 | 値 |
+|---|---|
+| ユーザ名 | `yuma_kobayashi_186` |
+| SecretKey | `0f6-BAnyBELD2MA-t-fekeDtQN4ynqD0mfgOF8JWwWs` |
+| 表示名 | 小林 悠真 186 |
+| リージョン | `asia` |
+
 ## 競技環境
 
 - 競技終了後は主催者からアナウンスがあるまで競技環境のシャットダウンや停止などは行わず、asia1、europe1、america1とasia2の4台とも起動した状態を維持してください。
