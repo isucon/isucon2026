@@ -11,7 +11,7 @@ Team 12で稼働するRust最適化実装。`webapp/rust`と`webapp/sql`を2335d
 [署名検証での発行済みURLキャッシュ利用](experiments/signature-verification/README.md)を追加した。現在の鍵・画像ID・期限が一致すればキャッシュ内の署名と比較し、画像の有効性・期限の確認は毎回行う。キャッシュのロックは待たず、使用中なら従来の検証へ戻る。最終版は179,991点PASS（1走、スコア改善は未確定）。
 
 <!-- astra-final-summary-start -->
-10月30日の追加候補は[履歴](experiments/memory-batch/README.md)、[フィード](experiments/feed-bounded/README.md)、[認証集約](experiments/session-batch/README.md)に記録した。安定した総合改善は未確認のため、現在はこれらを外した従来の読み取り実装と[エクスポート8枠の対照版](experiments/export-concurrency/README.md)を評価している。反復で蓄積した未参照画像は公開参照と照合してGCし、配備時の一時展開とベンチ前の容量確認を追加した。
+10月30日の追加候補は[履歴](experiments/memory-batch/README.md)、[フィード](experiments/feed-bounded/README.md)、[認証集約](experiments/session-batch/README.md)に記録した。これらは安定した総合改善を確認できず撤回した。現在はSQLの内容を維持し、[履歴APIで認証接続を引き継ぐ改善](experiments/read-phases/README.md)を配備している。通常設定の176,708点、再起動なし反復169,952点はいずれもPASS。Asiaの月履歴p50は対照2走187/234msから119/117msになった。診断ログは無効。同時実行数制限の候補も撤回し、[エクスポート8枠](experiments/export-concurrency/README.md)は維持する。反復で蓄積した未参照画像は公開参照と照合してGCし、配備時の一時展開とベンチ前の容量確認を追加した。
 
 ## Team 10時代の構成と検証記録
 
@@ -452,3 +452,4 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261030T060147Z-team12 | Graph SQL admission eight with memory timing; seed=1 | PASS | 158,296 |
 | 20261030T061210Z-team12 | Reuse memory authentication connection; graph admission removed; timing enabled; seed=1 | PASS | 175,865 |
 | 20261030T061823Z-team12 | Memory authentication connection reuse; timing disabled; seed=1 | PASS | 176,708 |
+| 20261030T062138Z-team12 | Memory authentication connection reuse; no restart repeat; timing disabled; seed=1 | PASS | 169,952 |
