@@ -361,11 +361,12 @@ func (r *Runner) openDay(ctx context.Context, region string, day int) (string, e
 
 	stats := r.books.Load().decide(r.cfg.Growth, region, day, r.population(region))
 	r.tell(region, day, stats, took)
-	if stats.newcomers > 0 {
-		r.admit(ctx, region, day, stats.newcomers)
-	}
+	// 新しいユーザーは登録してすぐ認定公開アカウントをフォローするので、その日の認定を先に済ませる。
 	if previous != "" {
 		r.certifyTop(ctx, region, previous)
+	}
+	if stats.newcomers > 0 {
+		r.admit(ctx, region, day, stats.newcomers)
 	}
 	return window.ID, nil
 }
