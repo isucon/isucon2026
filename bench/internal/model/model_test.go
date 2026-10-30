@@ -281,21 +281,32 @@ func TestPostLiveWithGrace(t *testing.T) {
 	}
 }
 
+// memoryItem は投稿 p を Memories の投稿として返したもの。
+func memoryItem(p *Post, author User) client.Post {
+	item := feedItem(p, author)
+	return client.Post{
+		ID: item.ID, Author: client.UserSummary{ID: author.ID, Username: author.Username}, PostingWindowID: p.WindowID,
+		ImageURL: item.ImageURL, Caption: item.Caption, Visibility: item.Visibility, PostedAt: item.PostedAt,
+	}
+}
+
 func TestFinalChecks(t *testing.T) {
 	w := newWorld(t)
 	m := w.m
 	r := w.later()
-	if v := m.CheckOwnPosts("a", []string{"p-a"}, r); len(v) != 0 {
+	memory := func(author string) client.Post { return memoryItem(w.posts[author], *m.User(author)) }
+	stranger := client.Post{ID: "stranger", Author: client.UserSummary{ID: "a", Username: "a"}, PostingWindowID: "w1"}
+	if v := m.CheckOwnPosts("a", []client.Post{memory("a")}, r); len(v) != 0 {
 		t.Fatalf("consistent posts: %v", v)
 	}
 	if v := m.CheckOwnPosts("a", nil, r); len(v) != 1 || !strings.Contains(v[0], "ありません") {
 		t.Fatalf("lost post: %v", v)
 	}
-	if v := m.CheckOwnPosts("a", []string{"p-a", "p-b", "stranger"}, r); len(v) != 2 {
+	if v := m.CheckOwnPosts("a", []client.Post{memory("a"), memory("b"), stranger}, r); len(v) != 2 {
 		t.Fatalf("other user's and unknown posts: %v", v)
 	}
 	m.BeginDeletePost("p-a").Applied()
-	if v := m.CheckOwnPosts("a", []string{"p-a"}, w.later()); len(v) != 1 || !strings.Contains(v[0], "削除した投稿") {
+	if v := m.CheckOwnPosts("a", []client.Post{memory("a")}, w.later()); len(v) != 1 || !strings.Contains(v[0], "削除した投稿") {
 		t.Fatalf("deleted post: %v", v)
 	}
 

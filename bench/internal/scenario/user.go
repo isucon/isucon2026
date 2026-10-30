@@ -603,7 +603,7 @@ func (r *Runner) readFeed(ctx context.Context, u *user, feed string, scroll *mod
 	return page, len(result.Violations)+len(result.Errors)+len(result.Thorough) == 0
 }
 
-// checkMemory は前回の投稿が、その月の Memories に入っていることを確かめる。
+// checkMemory は前回の投稿が、その月の Memories に記録どおりの内容で入っていることを確かめる。
 func (r *Runner) checkMemory(ctx context.Context, u *user, previous *client.Post) {
 	p := r.model.Post(previous.ID)
 	if p == nil {
@@ -613,21 +613,34 @@ func (r *Runner) checkMemory(ctx context.Context, u *user, previous *client.Post
 	var before *client.Post
 	seen := make(map[string]bool)
 	for {
+		sent := time.Now()
 		page, err := u.API.MemoriesMonth(ctx, u.Token, month, before)
 		if err != nil {
 			r.requestError(ctx, u, "%s: Memories を取得できません: %v", u.Username, err)
 			return
 		}
+		read := r.model.ReadBetween(sent, time.Now())
 		for _, post := range page.Items {
 			if seen[post.ID] {
 				r.invalid(ctx, u, "%s: Memories に投稿 %s が重複しています", u.Username, post.ID)
 				return
 			}
 			seen[post.ID] = true
-			if post.ID == previous.ID {
-				r.award(u, r.dayNow(u.Region), score.TagMemory)
+			if post.ID != previous.ID {
+				continue
+			}
+			if problem := r.model.CheckOwnPost(post.Post, read); problem != "" {
+				r.invalid(ctx, u, "%s: Memories（%s）の%s", u.Username, month, problem)
 				return
 			}
+			if weight := r.sample(); weight > 0 {
+				if err := imageurl.Verify(post.ImageURL, p.ImageID, u.SecretKey, time.Now()); err != nil {
+					r.invalidN(ctx, u, weight, "%s: Memories の投稿 %s の画像 URL が不正です: %v", u.Username, post.ID, err)
+					return
+				}
+			}
+			r.award(u, r.dayNow(u.Region), score.TagMemory)
+			return
 		}
 		if !page.HasMore || len(page.Items) == 0 {
 			r.invalid(ctx, u, "%s: Memories（%s）に前回の投稿 %s がありません", u.Username, month, previous.ID)
