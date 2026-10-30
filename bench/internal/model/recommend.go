@@ -208,9 +208,7 @@ func (m *Model) checkRecommendedLocked(viewer *User, before *client.FeedPost, pa
 		}
 		p := m.posts[item.ID]
 		if p == nil {
-			if !m.mayHaveUnknownPost(item.Author.ID, r) {
-				result.violation("フィード %s: 存在しない投稿 %s が返りました", feed, item.ID)
-			}
+			m.checkUnknownPost(&result, &v, feed, item)
 			continue
 		}
 		if v.inFeedTri(p, feed) == False {

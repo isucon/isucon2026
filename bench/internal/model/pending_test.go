@@ -83,3 +83,76 @@ func TestUnknownCreationOpensSameDayGate(t *testing.T) {
 		}
 	}
 }
+
+// TestUnknownPostPrivacy は、bench の知らない投稿（結果のわからない作成でできたかもしれない
+// 投稿）でも、投稿を知らなくても決まる閲覧の条件（ブロック、閲覧者のゲート、自分の投稿、
+// フィードの対象、作成が入りえた投稿期間）で見えてはいけないものを失格にすることを確かめる。
+func TestUnknownPostPrivacy(t *testing.T) {
+	for name, tc := range map[string]struct {
+		viewer, feed, author string
+		setup                func(*world)
+		violation            bool
+	}{
+		"blocked author":          {"a", "public", "d", nil, true},
+		"viewer without a post":   {"e", "public", "a", (*world).openEurope, true},
+		"own post":                {"b", "public", "b", nil, true},
+		"not a friend":            {"a", "friends", "c", nil, true},
+		"not followed":            {"a", "following", "b", nil, true},
+		"friend in fof":           {"a", "friends-of-friends", "b", nil, true},
+		"author without a window": {"b", "public", "e", nil, true},
+		"public":                  {"b", "public", "a", nil, false},
+		"friend":                  {"a", "friends", "b", nil, false},
+		"friend of friend":        {"a", "friends-of-friends", "c", nil, false},
+		"europe author":           {"b", "public", "e", (*world).openEurope, false},
+	} {
+		for _, thorough := range []bool{false, true} {
+			w := newWorld(t)
+			if tc.setup != nil {
+				tc.setup(w)
+			}
+			w.m.BeginCreatePost(tc.author).Unknown()
+			score := int64(0)
+			item := client.FeedPost{ID: "p-unknown", Author: client.FeedAuthor{ID: tc.author, Username: tc.author}, Caption: "hi", PostedAt: w.c.now(), Visibility: "public", Score: &score}
+			result := w.m.CheckFeed(tc.viewer, tc.feed, nil, client.FeedPage{Items: []client.FeedPost{item}}, w.later(), thorough)
+			if got := len(result.Violations) > 0; got != tc.violation {
+				t.Errorf("%s (thorough=%t): violation=%t, want %t: %+v", name, thorough, got, tc.violation, result)
+			}
+		}
+	}
+}
+
+// openEurope は europe の投稿期間を開く（e はまだ投稿していない）。
+func (w *world) openEurope() {
+	w.c.tick()
+	open := w.m.BeginOpenWindow("europe")
+	w.c.tick()
+	w.m.OpenedWindow(open, Window{ID: "w-eu", Region: "europe", LocalDate: w.window.LocalDate})
+	w.c.tick()
+}
+
+// TestUnknownPostInClosedWindow は、5xx を返した前日の作成でできたかもしれない投稿は、前日の
+// 投稿期間にしか入らないので、翌日のフィードに出れば失格にすることを確かめる。タイムアウト
+// した作成はアプリがあとで処理して翌日の投稿になることがあるので許す。
+func TestUnknownPostInClosedWindow(t *testing.T) {
+	for _, tc := range []struct {
+		settle    func(*Write)
+		violation bool
+	}{{(*Write).Failed, true}, {(*Write).Unknown, false}} {
+		w := newWorld(t)
+		m := w.m
+		creation := m.BeginCreatePost("b")
+		w.c.tick()
+		tc.settle(creation.Write)
+		w.nextDay()
+		// c は翌日にも投稿してゲートを通る。
+		next := m.BeginCreatePost("c")
+		w.c.tick()
+		m.Created(next, Post{ID: "p-c2", AuthorID: "c", WindowID: "w2", ImageID: "img-c2", Caption: "hi", PostedAt: w.c.now()}, "public")
+		item := client.FeedPost{ID: "p-unknown", Author: client.FeedAuthor{ID: "b", Username: "b"}, Caption: "hi", PostedAt: w.c.now(), Visibility: "public"}
+		page := client.FeedPage{Items: []client.FeedPost{item, feedItem(w.posts["a2"], *m.User("a"))}}
+		result := m.CheckFeed("c", "public", nil, page, w.later(), false)
+		if got := len(result.Violations) > 0; got != tc.violation {
+			t.Errorf("violation=%t, want %t: %+v", got, tc.violation, result)
+		}
+	}
+}

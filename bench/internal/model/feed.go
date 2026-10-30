@@ -106,9 +106,7 @@ func (m *Model) checkFeedLocked(viewerID, feed string, before *client.FeedPost, 
 		}
 		p := m.posts[item.ID]
 		if p == nil {
-			if !m.mayHaveUnknownPost(item.Author.ID, r) {
-				result.violation("フィード %s: 存在しない投稿 %s が返りました", feed, item.ID)
-			}
+			m.checkUnknownPost(&result, &v, feed, item)
 			continue
 		}
 		if v.inFeedTri(p, feed) == False {
@@ -146,6 +144,18 @@ func (m *Model) checkFeedLocked(viewerID, feed string, before *client.FeedPost, 
 func (m *Model) checkPageSize(result *FeedResult, feed string, page client.FeedPage) {
 	if (page.HasMore && len(page.Items) < m.PageSize) || len(page.Items) > m.PageSize {
 		result.error("フィード %s: 投稿が %d 件です（1 ページ %d 件、続きがあるか %t）", feed, len(page.Items), m.PageSize, page.HasMore)
+	}
+}
+
+// checkUnknownPost は bench の知らない投稿 item を確かめる。投稿者に結果のわからない作成が
+// なければ存在しない投稿、あっても投稿を知らずに決まる条件（ブロック、閲覧者のゲート、自分の
+// 投稿でないことなど）で見えてはいけなければ違反とする。
+func (m *Model) checkUnknownPost(result *FeedResult, v *view, feed string, item client.FeedPost) {
+	switch {
+	case !m.mayHaveUnknownPost(item.Author.ID, v.r):
+		result.violation("フィード %s: 存在しない投稿 %s が返りました", feed, item.ID)
+	case v.unknownInFeedTri(item.Author.ID, feed) == False:
+		result.violation("フィード %s: %s に見えてはいけない投稿 %s が返りました", feed, v.viewer.Username, item.ID)
 	}
 }
 

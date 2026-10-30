@@ -69,13 +69,18 @@ func (m *Model) liveTri(p *Post, r Read) Tri {
 
 // windowOpenTri は投稿の投稿期間がまだ開いているか。同じリージョンで次の期間が開くと終わる。
 func (m *Model) windowOpenTri(p *Post, r Read) Tri {
-	window := m.windows[p.WindowID]
+	return m.windowIDOpenTri(p.WindowID, r)
+}
+
+// windowIDOpenTri は投稿期間 windowID がまだ開いているか。
+func (m *Model) windowIDOpenTri(windowID string, r Read) Tri {
+	window := m.windows[windowID]
 	if window == nil {
 		return Unknown
 	}
 	return forAll(m.currentWindowOf(window.Region), r, func(id string) Tri {
 		switch id {
-		case p.WindowID:
+		case windowID:
 			return True
 		case "?":
 			return Unknown
@@ -186,13 +191,17 @@ func (v *view) postedTodayTri() Tri {
 }
 
 func (v *view) windowOpenTri(p *Post) Tri {
+	return v.windowIDOpenTri(p.WindowID)
+}
+
+func (v *view) windowIDOpenTri(windowID string) Tri {
 	for _, w := range v.windows {
-		if w.id == p.WindowID {
+		if w.id == windowID {
 			return w.open
 		}
 	}
-	open := v.m.windowOpenTri(p, v.r)
-	v.windows = append(v.windows, windowOpen{id: p.WindowID, open: open})
+	open := v.m.windowIDOpenTri(windowID, v.r)
+	v.windows = append(v.windows, windowOpen{id: windowID, open: open})
 	return open
 }
 
@@ -266,6 +275,64 @@ func (v *view) inFeedTri(p *Post, feed string) Tri {
 		return False
 	}
 	return min(member, v.canViewTri(p))
+}
+
+// unknownPostTri は、authorID に、結果のわからない作成でできて、まだ開いている投稿期間にある
+// 投稿があるかもしれないか（不明か偽）。
+func (v *view) unknownPostTri(authorID string) Tri {
+	for _, p := range v.m.pending[authorID] {
+		if boolTri(p.exists, v.r) == False {
+			continue
+		}
+		open := false
+		v.m.pendingWindows(p, v.r, func(id string) {
+			open = open || id == "?" || v.windowIDOpenTri(id) != False
+		})
+		if open {
+			return Unknown
+		}
+	}
+	return False
+}
+
+// unknownInFeedTri は、bench の知らない投稿（authorID の、結果のわからない作成でできたかも
+// しれない投稿）が viewer の feed に出てよいか。投稿の公開範囲などは知らないので、作成が開いて
+// いる投稿期間に入りえたか、閲覧者と投稿者の状態と関係、閲覧者のゲートといった、投稿を知らなくても
+// 決まる条件だけを確かめる（真にはならない）。
+func (v *view) unknownInFeedTri(authorID, feed string) Tri {
+	m, viewer, r := v.m, v.viewer, v.r
+	if viewer == nil || authorID == viewer.ID || m.users[authorID] == nil {
+		return False
+	}
+	result := v.unknownPostTri(authorID)
+	if result == False {
+		return False
+	}
+	if result = min(result, boolTri(viewer.active, r), m.activeTri(authorID, r)); result == False {
+		return False
+	}
+	if result = min(result, v.postedTodayTri()); result == False {
+		return False
+	}
+	if result = min(result, Not(m.blockedTri(viewer.ID, authorID, r))); result == False {
+		return False
+	}
+	switch feed {
+	case "public":
+		// 公開範囲がわからないので、public かどうかも決まらない。
+		return result
+	case "following":
+		return min(result, m.followTri(viewer.ID, authorID, r))
+	case "friends":
+		return min(result, m.friendTri(viewer.ID, authorID, r))
+	case "friends-of-friends":
+		if result = min(result, Not(m.friendTri(viewer.ID, authorID, r))); result == False {
+			return False
+		}
+		return min(result, m.friendOfFriendTri(viewer.ID, authorID, r))
+	default:
+		return False
+	}
 }
 
 // PostLive は投稿が作成済みで削除されていないか。削除された投稿の画像は取得できない。

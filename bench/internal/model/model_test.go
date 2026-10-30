@@ -249,12 +249,14 @@ func TestCheckFeed(t *testing.T) {
 		t.Fatalf("blocked post without thorough check: %+v", result)
 	}
 
-	// bench の知らない投稿は違反。ただし結果のわからない投稿作成があればその投稿かもしれない。
+	// bench の知らない投稿は違反。ただし結果のわからない投稿作成があればその投稿かもしれない
+	// （作成は e のリージョンで開いている投稿期間に入る）。
 	stranger := client.FeedPost{ID: "p-unknown", Author: client.FeedAuthor{ID: "e"}, PostedAt: w.c.now()}
 	result = m.CheckFeed("b", "public", nil, client.FeedPage{Items: []client.FeedPost{stranger, item("d"), item("a")}}, r, true)
 	if len(result.Violations) != 1 || !strings.Contains(result.Violations[0], "存在しない") {
 		t.Fatalf("unknown post: %+v", result)
 	}
+	w.openEurope()
 	m.BeginCreatePost("e").Unknown()
 	result = m.CheckFeed("b", "public", nil, client.FeedPage{Items: []client.FeedPost{stranger, item("d"), item("a")}}, w.later(), true)
 	if len(result.Violations) != 0 {
