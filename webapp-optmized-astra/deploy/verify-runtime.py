@@ -33,6 +33,7 @@ def inspect(app):
         read_host, fenced=read_settings(runtime,app,writer=service.endswith('-writer'))
         expected[service]={
             'ISUREAL_INITIAL_HISTORY_EXPORT':str(int(runtime.get('initialHistoryExportEnabled',False))),
+            'ISUREAL_SHORT_READ_POOL_CONNECTIONS':str(runtime.get('shortReadPoolConnections',0)),
             'ISUREAL_MEMORY_POOL_CONNECTIONS':str(runtime.get('memoryPoolConnections',0)),
             'ISUREAL_INITIAL_HISTORY':str(int(runtime.get('initialHistoryEnabled',False))),
             'ISUREAL_SESSION_CACHE':str(int(runtime.get('sessionCacheEnabled',False))),

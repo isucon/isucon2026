@@ -221,3 +221,8 @@ const memoryPoolConnections = runtime.memoryPoolConnections ?? 0;
 if (!Number.isInteger(memoryPoolConnections) || memoryPoolConnections < 0 || memoryPoolConnections > 16) {
     throw new Error("Invalid memory pool capacity");
 }
+
+const shortReadPoolConnections = runtime.shortReadPoolConnections ?? 0;
+if (!Number.isInteger(shortReadPoolConnections) || shortReadPoolConnections < 0 || shortReadPoolConnections > 16) {
+    throw new Error("Invalid short read pool capacity");
+}

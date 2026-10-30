@@ -289,6 +289,9 @@ pub async fn new_server(config: Config) -> Router {
     } else {
         read_context.clone()
     };
+    let export_reads = general_reads.clone();
+    let short_read_connections: u32 = std::env::var("ISUREAL_SHORT_READ_POOL_CONNECTIONS").unwrap_or_else(|_| "0".into()).parse().expect("short read pool capacity");
+    let general_reads = crate::db_pool::short_read_context(&general_reads, if WriteIngress::from_env().is_none() { short_read_connections } else { 0 }).await.expect("connect short read pool");
     let history = if std::env::var("ISUREAL_INITIAL_HISTORY").as_deref() == Ok("1") && WriteIngress::from_env().is_none() {
         let history = Arc::new(crate::initial_history::InitialHistory::load_with_export(&general_reads.db, &handler_context.config.region, std::env::var("ISUREAL_INITIAL_HISTORY_EXPORT").as_deref() == Ok("1")).await.expect("load initial history"));
         history.observe();
@@ -310,6 +313,7 @@ pub async fn new_server(config: Config) -> Router {
     let read_session = |auth_required| {
         from_fn_with_state((general_reads.clone(), auth_required), session_middleware)
     };
+    let export_session = || { from_fn_with_state((export_reads.clone(), true), session_middleware) };
     let memory_session = || {
         from_fn_with_state((memory_reads.clone(), true), crate::session::memory_session_middleware)
     };
@@ -335,7 +339,7 @@ pub async fn new_server(config: Config) -> Router {
         .route("/api/auth/logout", post(logout_handler).route_layer(session(true)))
         .route("/api/users", get(search_users_handler).route_layer(region()).route_layer(graph_session(true)).route_layer(from_fn_with_state(graph_fence.clone(), read_fence_middleware)).with_state(read_context.clone()))
         .route("/api/users/{userId}", get(get_user_handler).route_layer(region()).route_layer(read_session(true)).with_state(general_reads.clone()))
-        .route("/api/me/export", get(export_posts_handler).route_layer(region()).route_layer(read_session(true)).with_state(general_reads.clone()))
+        .route("/api/me/export", get(export_posts_handler).route_layer(region()).route_layer(export_session()).with_state(export_reads.clone()))
         .route("/api/me", get(get_me_handler).route_layer(region()).route_layer(read_session(true)).with_state(general_reads.clone()))
         .route("/api/me", patch(update_me_handler).route_layer(session(true)))
         .route("/api/me/profile-image", put(put_profile_image_handler).route_layer(session(true)))
