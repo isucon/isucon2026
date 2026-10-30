@@ -22,16 +22,16 @@ func TestRealMojiTieOrder(t *testing.T) {
 		m.ReplacedRealMoji(m.BeginReplaceRealMoji("p-a", x[0]), item(x[0], x[1]))
 	}
 	r := w.later()
-	if problems := m.CheckRealMojis("a", "p-a", client.RealMojiPage{Items: []client.RealMoji{item("b", "rm-z"), item("c", "rm-a")}}, r); len(problems) != 0 {
+	if problems := m.CheckRealMojis("p-a", client.RealMojiPage{Items: []client.RealMoji{item("b", "rm-z"), item("c", "rm-a")}}, r); len(problems) != 0 {
 		t.Fatalf("ID order: %v", problems)
 	}
-	problems := m.CheckRealMojis("a", "p-a", client.RealMojiPage{Items: []client.RealMoji{item("c", "rm-a"), item("b", "rm-z")}}, r)
+	problems := m.CheckRealMojis("p-a", client.RealMojiPage{Items: []client.RealMoji{item("c", "rm-a"), item("b", "rm-z")}}, r)
 	if len(problems) != 1 || !strings.Contains(problems[0], "新しい順") {
 		t.Fatalf("reversed ID order: %v", problems)
 	}
 	early := item("b", "rm-z")
 	early.CreatedAt = at.Add(-time.Microsecond)
-	if problems := m.CheckRealMojis("a", "p-a", client.RealMojiPage{Items: []client.RealMoji{item("c", "rm-a"), early}}, r); len(problems) != 1 || !strings.Contains(problems[0], "内容") {
+	if problems := m.CheckRealMojis("p-a", client.RealMojiPage{Items: []client.RealMoji{item("c", "rm-a"), early}}, r); len(problems) != 1 || !strings.Contains(problems[0], "内容") {
 		t.Fatalf("time order: %v", problems)
 	}
 }
@@ -53,7 +53,7 @@ func TestRealMojiIDReuse(t *testing.T) {
 		t.Fatal("reused ID recorded")
 	}
 	second.Unknown()
-	problems := m.CheckRealMojis("a", "p-a", client.RealMojiPage{Items: []client.RealMoji{item("c"), item("b")}}, w.later())
+	problems := m.CheckRealMojis("p-a", client.RealMojiPage{Items: []client.RealMoji{item("c"), item("b")}}, w.later())
 	if len(problems) == 0 || !strings.Contains(strings.Join(problems, "\n"), "重複") {
 		t.Fatalf("shared ID accepted: %v", problems)
 	}
@@ -69,7 +69,7 @@ func TestRealMojiIDReuse(t *testing.T) {
 	if !m.ReplacedRealMoji(m.BeginReplaceRealMoji("p-a", "b"), again) {
 		t.Fatal("replacement keeping its own ID rejected")
 	}
-	if problems := m.CheckRealMojis("a", "p-a", client.RealMojiPage{Items: []client.RealMoji{again}}, w.later()); len(problems) != 0 {
+	if problems := m.CheckRealMojis("p-a", client.RealMojiPage{Items: []client.RealMoji{again}}, w.later()); len(problems) != 0 {
 		t.Fatalf("replacement keeping its own ID: %v", problems)
 	}
 }
@@ -94,7 +94,7 @@ func TestRealMojiMissingBeforeLastItem(t *testing.T) {
 	for i := range InteractionPageSize {
 		items = append(items, client.RealMoji{ID: fmt.Sprintf("x%02d", i), Reactor: client.UserSummary{ID: fmt.Sprintf("x%02d", i)}, CreatedAt: base})
 	}
-	problems := m.CheckRealMojis("a", "p-a", client.RealMojiPage{Items: items, HasMore: true}, w.later())
+	problems := m.CheckRealMojis("p-a", client.RealMojiPage{Items: items, HasMore: true}, w.later())
 	missing := 0
 	for _, problem := range problems {
 		if strings.Contains(problem, "ありません") {
