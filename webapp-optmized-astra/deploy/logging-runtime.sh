@@ -53,7 +53,7 @@ print('ISUREAL_SESSION_POOL_CONNECTIONS='+str(session_pool))
 graph=runtime.get('initialGraphEnabled',False)
 assert type(graph) is bool
 print('ISUREAL_INITIAL_GRAPH='+str(int(graph)))
-for key,env in [('primaryAsiaSessionsEnabled','ISUREAL_PRIMARY_ASIA_SESSIONS'),('localAsiaSessionWritesEnabled','ISUREAL_LOCAL_ASIA_SESSION_WRITES')]:
+for key,env in [('asiaSessionCacheEnabled','ISUREAL_ASIA_SESSION_CACHE'),('primaryAsiaSessionsEnabled','ISUREAL_PRIMARY_ASIA_SESSIONS'),('localAsiaSessionWritesEnabled','ISUREAL_LOCAL_ASIA_SESSION_WRITES')]:
     assert type(runtime.get(key,False)) is bool
     print(env+'='+str(int(runtime.get(key,False))))
 session_cache=runtime.get('sessionCacheEnabled',False)

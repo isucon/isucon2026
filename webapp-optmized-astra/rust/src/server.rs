@@ -327,6 +327,12 @@ pub async fn new_server(config: Config) -> Router {
     let graph = if std::env::var("ISUREAL_INITIAL_GRAPH").as_deref() == Ok("1") && WriteIngress::from_env().is_none() {
         Some(Arc::new(crate::initial_graph::InitialGraph::load(&read_context.db).await.expect("load initial graph")))
     } else { None };
+    if std::env::var("ISUREAL_ASIA_SESSION_CACHE").as_deref() == Ok("1") {
+        assert!(primary_sessions_enabled && local_session_writes, "Asia cache requires primary session authority");
+        if handler_context.config.region == "asia" {
+            assert!(Arc::ptr_eq(&read_context, &handler_context), "Asia cache requires primary reads");
+        }
+    }
     let session_cache = crate::session_cache::SessionCacheCoordinator::from_env(
         handler_context.db.clone(), &general_reads.db, &handler_context.config.db_password,
     ).await;

@@ -86,6 +86,11 @@ async fn request(app: &Router, method: &str, token: &str) -> StatusCode {
 
 #[tokio::test]
 async fn read_cache_skips_sql_but_mutations_and_invalidated_sessions_use_fresh_authentication() {
+    check_read_cache(false).await;
+    check_read_cache(true).await;
+}
+
+async fn check_read_cache(local_primary: bool) {
     let Ok(dsn) = std::env::var("ISUREAL_SESSION_TEST_DSN") else {
         return;
     };
@@ -112,7 +117,12 @@ async fn read_cache_skips_sql_but_mutations_and_invalidated_sessions_use_fresh_a
         .execute(&db)
         .await
         .unwrap();
-    let cache = Arc::new(SessionCacheCoordinator::new(
+    let constructor = if local_primary {
+        SessionCacheCoordinator::new_local_primary
+    } else {
+        SessionCacheCoordinator::new
+    };
+    let cache = Arc::new(constructor(
         db.clone(),
         db.clone(),
         "test-secret".into(),
@@ -429,5 +439,81 @@ async fn unreachable_peer_cannot_leave_valid_old_leases_after_the_error_response
     assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
     assert!(started.elapsed() >= LEASE);
     assert!(peer.lookup("token").0.is_none());
+    db.close().await;
+}
+
+#[tokio::test]
+async fn local_primary_invalidation_waits_for_ack_without_any_database_connection() {
+    let Ok(dsn) = std::env::var("ISUREAL_SESSION_TEST_DSN") else {
+        return;
+    };
+    let db = PgPoolOptions::new()
+        .max_connections(1)
+        .connect(&dsn)
+        .await
+        .unwrap();
+    let cache = Arc::new(SessionCacheCoordinator::new_local_primary(
+        db.clone(),
+        db.clone(),
+        "test".into(),
+        vec![],
+    ));
+    cache
+        .cache
+        .insert(session("user", "token"), 0, Instant::now());
+    let gate = Arc::new(tokio::sync::Notify::new());
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap().to_string();
+    let target = cache.clone();
+    let receiver_gate = gate.clone();
+    let receiver = Router::new().route(
+        "/internal/astra/session-cache",
+        axum::routing::post(move |axum::Json(message): axum::Json<Invalidation>| {
+            let cache = target.clone();
+            let gate = receiver_gate.clone();
+            async move {
+                gate.notified().await;
+                cache.apply(message).await.unwrap();
+                StatusCode::NO_CONTENT
+            }
+        }),
+    );
+    let server = tokio::spawn(async move {
+        axum::serve(listener, receiver).await.unwrap();
+    });
+    let publisher = Arc::new(SessionCacheCoordinator::new_local_primary(
+        db.clone(),
+        db.clone(),
+        "test".into(),
+        vec![address],
+    ));
+    let held = db.acquire().await.unwrap();
+    let response = tokio::spawn(async move {
+        mutation_app(publisher)
+            .oneshot(
+                Request::post("/api/auth/login")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap()
+    });
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    let returned_early = response.is_finished();
+    assert!(cache.cache.lookup("token").0.is_some());
+    gate.notify_one();
+    assert!(!returned_early);
+    assert_eq!(
+        tokio::time::timeout(Duration::from_secs(1), response)
+            .await
+            .unwrap()
+            .unwrap()
+            .status(),
+        StatusCode::OK
+    );
+    assert!(cache.cache.lookup("token").0.is_none());
+    drop(held);
+    server.abort();
+    let _ = server.await;
     db.close().await;
 }

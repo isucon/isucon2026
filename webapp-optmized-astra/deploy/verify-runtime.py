@@ -45,6 +45,7 @@ def inspect(app):
             'ISUREAL_LOCAL_ASIA_SESSION_WRITES':str(int(runtime.get('localAsiaSessionWritesEnabled',False))),
             'ISUREAL_INITIAL_GRAPH':str(int(runtime.get('initialGraphEnabled',False))),
             'ISUREAL_INITIAL_HISTORY':str(int(runtime.get('initialHistoryEnabled',False))),
+            'ISUREAL_ASIA_SESSION_CACHE':str(int(runtime.get('asiaSessionCacheEnabled',False))),
             'ISUREAL_SESSION_CACHE':str(int(runtime.get('sessionCacheEnabled',False))),
             'ISUREAL_SESSION_CACHE_PEERS':json.dumps([app['host']+':8080' for app in runtime['applications']],separators=(',',':')),
             'ISUREAL_READ_TIMING':str(int(runtime.get('readTimingEnabled',False))),

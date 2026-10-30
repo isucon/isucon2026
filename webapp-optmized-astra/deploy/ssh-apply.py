@@ -62,16 +62,18 @@ primary_sessions = runtime.get("primaryAsiaSessionsEnabled", False)
 local_sessions = runtime.get("localAsiaSessionWritesEnabled", False)
 assert not local_sessions or primary_sessions
 assert not primary_sessions or not runtime.get("sessionCacheEnabled", False)
+asia_cache = runtime.get("asiaSessionCacheEnabled", False)
+assert not asia_cache or (primary_sessions and local_sessions and write_proxy and not runtime.get("asiaReplicaReads", False))
 authority_changed = False
 if mode in ("all", "application", "upgrade"):
     for app in applications:
         units = ["webapp-optmized-astra"] + (["webapp-optmized-astra-writer"] if app["region"] == "asia" else [])
         for unit in units:
-            script = "import json,pathlib,subprocess; pid=int(subprocess.check_output(['systemctl','show'," + repr(unit) + ",'--property=MainPID','--value'])); data=pathlib.Path('/proc/'+str(pid)+'/environ').read_bytes().split(bytes([0])) if pid else []; print(json.dumps({'reads':b'ISUREAL_PRIMARY_ASIA_SESSIONS=1' in data,'writes':b'ISUREAL_LOCAL_ASIA_SESSION_WRITES=1' in data}))"
+            script = "import json,pathlib,subprocess; pid=int(subprocess.check_output(['systemctl','show'," + repr(unit) + ",'--property=MainPID','--value'])); data=pathlib.Path('/proc/'+str(pid)+'/environ').read_bytes().split(bytes([0])) if pid else []; print(json.dumps({'reads':b'ISUREAL_PRIMARY_ASIA_SESSIONS=1' in data,'writes':b'ISUREAL_LOCAL_ASIA_SESSION_WRITES=1' in data,'asia_cache':b'ISUREAL_ASIA_SESSION_CACHE=1' in data}))"
             flags = json.loads(subprocess.check_output([ssh, app["instanceId"], "sudo python3 -c " + shlex.quote(script)], text=True))
-            authority_changed |= flags["reads"] != primary_sessions
+            authority_changed |= flags["reads"] != primary_sessions or flags["asia_cache"] != asia_cache
     if authority_changed and mode != "upgrade":
-        raise RuntimeError("Changing session authority requires apply.sh upgrade to stop all old readers and drain their WAL")
+        raise RuntimeError("Changing session authority or Asia caching requires apply.sh upgrade to stop all old readers and drain their WAL")
 
 
 def require_write_fences():
