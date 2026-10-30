@@ -523,6 +523,12 @@ func (r *Runner) checkImage(ctx context.Context, u *user, post client.FeedPost) 
 		r.invalid(ctx, u, "%s: 投稿 %s の投稿者を bench が知りません", u.Username, post.ID)
 		return false
 	}
+	// 形の違う URL はクライアントが送らずに拒否し、計測上の失敗に数えられないので、送る前に
+	// 応答の誤りとして数える。
+	if err := imageurl.CheckForm(post.ImageURL); err != nil {
+		r.invalid(ctx, u, "%s: 投稿 %s の画像 URL が不正です: %v", u.Username, post.ID, err)
+		return false
+	}
 	if weight := r.sample(); weight > 0 {
 		if err := imageurl.Verify(post.ImageURL, imageurl.ImageID(post.ImageURL), author.SecretKey, time.Now()); err != nil {
 			r.invalidN(ctx, u, weight, "%s: 投稿 %s の画像 URL が不正です: %v", u.Username, post.ID, err)

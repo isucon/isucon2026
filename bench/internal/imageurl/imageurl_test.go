@@ -37,9 +37,26 @@ func TestVerify(t *testing.T) {
 		"too far future":    {valid, "img1", "secret", now.Add(-time.Hour)},
 		"tampered exp":      {strings.Replace(valid, fmt.Sprint(exp), fmt.Sprint(exp-1), 1), "img1", "secret", now},
 		"other host":        {"http://evil.example" + valid, "img1", "secret", now},
+		"scheme":            {"invalid:" + valid, "img1", "secret", now},
+		"protocol relative": {"//evil.example" + valid, "img1", "secret", now},
 	} {
 		if err := imageurl.Verify(tc.url, tc.imageID, tc.secret, tc.now); err == nil {
 			t.Errorf("%s: accepted", name)
+		}
+	}
+}
+
+// TestCheckForm は、署名を確かめない形の検査が、取得できない URL（スキームやホストの付いた
+// もの、画像 ID のないもの）を拒否し、署名付きの相対 URL を通すことを確かめる。
+func TestCheckForm(t *testing.T) {
+	exp := time.Unix(1790553600, 0).Unix()
+	valid := fmt.Sprintf("/api/images/img1?exp=%d&sig=%s", exp, imageurl.Sign("secret", "img1", exp))
+	if err := imageurl.CheckForm(valid); err != nil {
+		t.Fatal(err)
+	}
+	for _, url := range []string{"invalid:" + valid, "http://evil.example" + valid, "//evil.example" + valid, "/api/images/", "/api/posts/p1", "", "api/images/img1"} {
+		if err := imageurl.CheckForm(url); err == nil {
+			t.Errorf("%q: accepted", url)
 		}
 	}
 }
