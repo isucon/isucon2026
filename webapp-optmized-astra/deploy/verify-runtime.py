@@ -65,6 +65,7 @@ def inspect(app):
             'ISUREAL_EXPORT_CONCURRENCY':str(runtime.get('exportConcurrency',2)),
             'ISUREAL_METADATA_POOL_CONNECTIONS':str(runtime['metadataPoolConnections']),
             'ISUREAL_NOTIFICATION_BATCH_WRITES':str(int(runtime['notificationBatchWritesEnabled'])),
+            'ISUREAL_OWNER_ARCHIVE_IMAGES':str(int(runtime.get('ownerArchive',{}).get('imageReadsEnabled',False))),
             'ISUREAL_OWNER_ARCHIVE_ROOT':runtime.get('ownerArchive',{}).get('root','') if runtime.get('ownerArchive',{}).get('enabled') else '',
             'ISUREAL_OWNER_ARCHIVE_SHA256':runtime.get('ownerArchive',{}).get('indexSha256','') if runtime.get('ownerArchive',{}).get('enabled') else '',
             'ISUREAL_FILE_IMAGE_ROOT':runtime.get('fileImageStore',{}).get('root','') if runtime.get('fileImageStore',{}).get('enabled') else '',

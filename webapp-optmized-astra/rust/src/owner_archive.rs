@@ -100,6 +100,13 @@ impl OwnerArchive {
             length: source.length,
         })
     }
+    pub fn read(&self, original: &Path, source: &ArchiveReference) -> io::Result<Vec<u8>> {
+        match self.resolve(source) {
+            Some(target) => target.read(&self.root),
+            None => source.read(original),
+        }
+    }
+
     pub fn read_many(
         &self,
         original: &Path,

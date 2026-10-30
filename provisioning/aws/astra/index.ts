@@ -285,3 +285,10 @@ if (runtime.remoteAllFeedsEnabled !== undefined && typeof runtime.remoteAllFeeds
 if (runtime.remoteAllFeedsEnabled && !runtime.recommendationReadRegion) {
     throw new Error("All-feed routing requires the validated dedicated read pool");
 }
+
+if (ownerArchive.imageReadsEnabled !== undefined && typeof ownerArchive.imageReadsEnabled !== "boolean") {
+    throw new Error("Invalid owner archive image read flag");
+}
+if (ownerArchive.imageReadsEnabled && !ownerArchive.enabled) {
+    throw new Error("Owner image reads require the verified owner archive");
+}
