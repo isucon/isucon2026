@@ -14,7 +14,7 @@ case "$read_fence" in 0|1) ;; *) exit 2 ;; esac
 case "$read_host" in ''|127.0.0.1) ;; *) exit 2 ;; esac
 destination=/home/isucon/webapp-optmized-astra
 mkdir -p "$destination"
-tar -xzf "$archive" -C "$destination"
+bash "$(dirname "$0")/extract-release.sh" "$archive" "$destination"
 chown -R isucon:isucon "$destination"
 cat >/etc/systemd/system/webapp-optmized-astra.service <<'UNIT'
 [Unit]

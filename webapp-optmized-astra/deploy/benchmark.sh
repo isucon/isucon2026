@@ -7,6 +7,7 @@ mkdir -p "$root/var/astra"
 exec 9>"$root/var/astra/operation.lock"
 flock -n 9 || { echo 'Another Astra deployment, maintenance operation, or benchmark is active' >&2; exit 1; }
 cd "$root"
+python3 webapp-optmized-astra/deploy/check-benchmark-space.py
 label=${1:?experiment label required}
 image=${IMAGE:-124502390568.dkr.ecr.ap-northeast-1.amazonaws.com/isucon2026-bench-runner-dev@sha256:55649c0a80a6c52e8add443356e24d794f47086d646a34828924595190cfb26d}
 previous=$(tail -n1 var/aws-bench/runs.tsv 2>/dev/null || true)
