@@ -43,11 +43,13 @@ func (r *Runner) ensureReturning(ctx context.Context, wg *sync.WaitGroup, region
 	// 初期データのユーザーの少ないリージョン（海外）では、候補の人数で頭打ちにする。
 	want := min((users+r.returningRatio-1)/r.returningRatio, len(r.initial.HistoryUsers(region)))
 	r.mu.Lock()
-	add := want - r.returningCount[region]
-	r.returningCount[region] = max(want, r.returningCount[region])
+	// 国は通し番号で散らすので、すでにいる人数から数える。
+	first := r.returningCount[region]
+	add := want - first
+	r.returningCount[region] = max(want, first)
 	r.mu.Unlock()
 	for i := range add {
-		wg.Go(func() { r.runReturning(ctx, region, i) })
+		wg.Go(func() { r.runReturning(ctx, region, first+i) })
 	}
 }
 

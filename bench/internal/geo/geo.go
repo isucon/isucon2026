@@ -44,6 +44,11 @@ func Country(region string, index int) string {
 	return list[index%len(list)]
 }
 
+// CountryCount は region へ振り分けられる国の数を返す。未知のリージョンなら 0。
+func CountryCount(region string) int {
+	return len(countries[region])
+}
+
 // RegionOf はルーターが country を振り分けるリージョンを返す。未知の国なら ""。
 func RegionOf(country string) string {
 	return regionOf[country]
