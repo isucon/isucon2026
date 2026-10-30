@@ -1,8 +1,12 @@
 package scenario
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"io"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -13,6 +17,49 @@ import (
 	"github.com/isucon/isucon2026/bench/internal/metrics"
 	"github.com/isucon/isucon2026/bench/internal/model"
 )
+
+// TestOpenWindowFailures は、投稿期間を開く要求が拒否されたら（BAN を除く）負荷走行を打ち切り、
+// 結果のわからない失敗が続いて 1 つも開けなかった走行も通さないことを確かめる（#120）。一部の
+// リージョンが BAN で開けないだけなら、ほかのリージョンで続ける。
+func TestOpenWindowFailures(t *testing.T) {
+	all := []string{geo.Asia, geo.Europe, geo.America}
+	for _, tc := range []struct {
+		name    string
+		status  int
+		code    string
+		regions []string
+		want    string
+	}{
+		{"all rejected", http.StatusForbidden, "forbidden", all, "拒否されました"},
+		{"one region rejected", http.StatusBadRequest, "invalid_posting_window", []string{geo.Europe}, "拒否されました"},
+		{"all unknown", http.StatusInternalServerError, "internal", all, "1 つも開けません"},
+		{"one region banned", http.StatusForbidden, "ip_banned", []string{geo.Europe}, ""},
+		{"all banned", http.StatusForbidden, "ip_banned", all, "1 つも開けません"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r, app := newTestRunner(t, 1, metrics.SLO{FailRate: 1000, MinOps: 1})
+			serveThrough(t, r, app, func(w http.ResponseWriter, req *http.Request) bool {
+				if req.URL.Path != "/api/admin/posting-window" {
+					return false
+				}
+				data, _ := io.ReadAll(req.Body)
+				req.Body = io.NopCloser(bytes.NewReader(data))
+				var input map[string]string
+				_ = json.Unmarshal(data, &input)
+				if !slices.Contains(tc.regions, input["region"]) {
+					return false
+				}
+				w.WriteHeader(tc.status)
+				_, _ = w.Write([]byte(`{"error":"` + tc.code + `"}`))
+				return true
+			})
+			reason := r.load(t.Context())
+			if tc.want == "" && reason != "" || !strings.Contains(reason, tc.want) {
+				t.Fatalf("reason=%q, want %q (opened=%v errors=%v)", reason, tc.want, r.openedCounts(), r.board.Errors())
+			}
+		})
+	}
+}
 
 // TestNewcomersFollowTodaysCertified は、1 日が始まるときに前日の人気のユーザーを認定してから
 // 新しいユーザーを迎え、認定が遅くても新しいユーザーがその人をフォローできることを確かめる（#243）。
