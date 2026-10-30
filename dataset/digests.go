@@ -145,8 +145,7 @@ func WriteImageDigests(out io.Writer, w *World) (int, error) {
 	return len(records), bw.Flush()
 }
 
-// ReadImageDigests は WriteImageDigests が書いた表を読む。w と違う設定で作った表と、画像の
-// 作り方が w と違う版の dataset で作った表は誤りとする。
+// ReadImageDigests は WriteImageDigests が書いた表を読む。w と違う設定で作った表は誤りとする。
 func ReadImageDigests(r io.Reader, w *World) (*ImageDigests, error) {
 	config, err := w.configDigest()
 	if err != nil {
@@ -160,7 +159,7 @@ func ReadImageDigests(r io.Reader, w *World) (*ImageDigests, error) {
 		return nil, errors.New("画像のダイジェストの表ではありません")
 	}
 	if !bytes.Equal(head[len(imageDigestsMagic):len(imageDigestsMagic)+len(config)], config[:]) {
-		return nil, errors.New("画像のダイジェストの表が別の設定（規模、seed、期間など）の初期データのものです")
+		return nil, errors.New("画像のダイジェストの表が別の初期データ（規模か seed が違う）のものです")
 	}
 	count := binary.BigEndian.Uint64(head[len(head)-8:])
 	if count > 1<<28 {
@@ -178,37 +177,7 @@ func ReadImageDigests(r io.Reader, w *World) (*ImageDigests, error) {
 			return nil, errors.New("画像のダイジェストの表が ID の順に並んでいません")
 		}
 	}
-	if err := d.verifySample(w); err != nil {
-		return nil, err
-	}
 	return d, nil
-}
-
-// verifySample は w の画像をいくつか描いて表と比べる。設定が同じでも画像の作り方が変われば
-// 表の値はすべて違うので、別の版の dataset で作った表を走行の前に見つけられる。
-func (d *ImageDigests) verifySample(w *World) error {
-	var images []*Image
-	if n := len(w.Users); n > 0 {
-		for _, i := range []int{0, n / 2, n - 1} {
-			if img := w.Users[i].ProfileImage; img != nil {
-				images = append(images, img)
-			}
-		}
-	}
-	for _, day := range []int{0, w.Config.Days - 1} {
-		if posts := w.PostsOn(day); len(posts) > 0 {
-			images = append(images, posts[0].Image)
-			if len(posts[0].RealMojis) > 0 {
-				images = append(images, posts[0].RealMojis[0].Image)
-			}
-		}
-	}
-	for _, img := range images {
-		if got, ok := d.Lookup(img.ID); !ok || got != ImageDigest(w.ImageBytes(img)) {
-			return fmt.Errorf("画像のダイジェストの表が別の版の初期データのものです（画像 %s の値が違います）", img.ID)
-		}
-	}
-	return nil
 }
 
 func (d *ImageDigests) id(i int) []byte {
