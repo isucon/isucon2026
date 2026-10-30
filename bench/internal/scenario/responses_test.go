@@ -110,8 +110,8 @@ func TestHistoryLoginValidation(t *testing.T) {
 }
 
 // TestNewcomerRegistrationValidation は、走行中に来たユーザーの登録が 201 で ID かシークレット
-// キーのない応答を返したとき、検証の失敗として数えることを確かめる。500 は Observer が 1 回
-// だけ数える。
+// キーのない応答や、要求と違うユーザー名を返したとき、検証の失敗として数えることを確かめる。
+// 500 は Observer が 1 回だけ数える。
 func TestNewcomerRegistrationValidation(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
@@ -119,6 +119,7 @@ func TestNewcomerRegistrationValidation(t *testing.T) {
 		body   string
 	}{
 		{"empty", http.StatusCreated, `{}`},
+		{"wrong username", http.StatusCreated, `{"secretKey":"secret","user":{"id":"u1","username":"wrong-user"}}`},
 		{"500", http.StatusInternalServerError, `{"error":"internal_server_error"}`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
