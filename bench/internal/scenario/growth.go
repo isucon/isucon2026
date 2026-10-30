@@ -450,7 +450,8 @@ func (r *Runner) arrived(region string) {
 // そのまま投稿してから、ほかのユーザーと同じループに入る。
 func (r *Runner) runNewcomer(ctx context.Context, region string) {
 	username, displayName := r.newName()
-	a := agent.New(r.api, region, int(hashOf(r.seed, "country", username)%3))
+	// 国はリージョンの国から一様に選ぶ（asia は 4 か国、海外は 3 か国）。
+	a := agent.New(r.api, region, int(hashOf(r.seed, "country", username)%uint64(max(1, geo.CountryCount(region)))))
 	a.Username = username
 	u := r.newUser(a, activityOf(r.seed, username))
 	u.registered = true

@@ -18,4 +18,7 @@ func TestCountriesRouteToTheirRegion(t *testing.T) {
 	if geo.Country("mars", 0) != "" || geo.RegionOf("XX") != "" || geo.Valid("mars") {
 		t.Fatal("unknown region or country accepted")
 	}
+	if geo.CountryCount(geo.Asia) != 4 || geo.CountryCount(geo.Europe) != 3 || geo.CountryCount(geo.America) != 3 || geo.CountryCount("mars") != 0 {
+		t.Fatal("wrong number of countries")
+	}
 }
