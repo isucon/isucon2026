@@ -7,3 +7,5 @@
 nginxResponseBufferingをPulumi astra・nginx-runtime.sh・実設定照合へ反映。実機と同じNginx 1.28.3のローカルコンテナでon/offと反復適用の4設定をnginx -tで確認した。TypeScript・シェル・Python構文チェックも成功。
 
 基準は利用者別export画像配置200,330点PASS。単一画像の配置共有189,772点と全フィードUS分散194,157点は撤回済み。今回の応答バッファ無効は未測定。
+
+edf8fe51、20261030T133033Z-team12は197,797点PASS。基準200,330点に対しexport得点21,580→21,080、Asiaの平均CPU63.5→68.1%、ディスク読み取り37.6→41.7 MB/sだった。総合改善を確認できず、nginxResponseBufferingをtrueへ戻す。
