@@ -865,7 +865,8 @@ func (r *Runner) sample() int64 {
 }
 
 // settle は書き込みの結果をモデルに記録する。4xx は拒否（反映されていない）、それ以外の
-// 失敗（5xx、タイムアウト、通信エラー）は結果不明として扱う。
+// 失敗（5xx、タイムアウト、通信エラー）は結果不明として扱う。アプリが処理を終えてから返した
+// 5xx（answeredFailure）は、反映されたとしても応答より前なので、Failed で区別する。
 func settle(w *model.Write, err error) {
 	var apiErr *client.APIError
 	switch {
@@ -873,9 +874,26 @@ func settle(w *model.Write, err error) {
 		w.Applied()
 	case errors.As(err, &apiErr) && apiErr.Status >= 400 && apiErr.Status < 500:
 		w.Rejected()
+	case answeredFailure(err):
+		w.Failed()
 	default:
 		w.Unknown()
 	}
+}
+
+// answeredFailure は err が、アプリが処理を終えてから返した 5xx か。中継が返す 502、503、504
+// はアプリがまだ処理しているかもしれず、503 で送り直した要求は前の試行があとで反映される
+// かもしれないので除く。タイムアウトと通信エラーも、アプリがあとで処理することがあるので除く。
+func answeredFailure(err error) bool {
+	var apiErr *client.APIError
+	if !errors.As(err, &apiErr) || apiErr.Attempts > 1 || apiErr.Status < 500 {
+		return false
+	}
+	switch apiErr.Status {
+	case http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
+		return false
+	}
+	return true
 }
 
 func isStatus(err error, status int) bool {
