@@ -109,13 +109,28 @@ async fn memory_reuses_one_connection_and_releases_it_on_errors_with_fresh_auth(
             memory_session_middleware,
         ))
         .with_state(isolated.clone());
+    let short = isureal::db_pool::short_read_context(&context, 1)
+        .await
+        .unwrap();
+    let short_app = Router::new()
+        .route("/api/me", get(isureal::user_api::get_me_handler))
+        .route_layer(from_fn_with_state(
+            (short.clone(), true),
+            isureal::session::session_middleware,
+        ))
+        .with_state(short.clone());
     let held = db.acquire().await.unwrap();
     let (status, body) = request(&isolated_app, "/api/memories?month=2026-10", "token").await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["items"][0]["comments"][0]["body"], "fresh");
     assert_eq!(isolated.db.size(), 1);
+    let (status, body) = request(&short_app, "/api/me", "token").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["id"], "owner");
+    assert_eq!(short.db.size(), 1);
     drop(held);
     isolated.db.close().await;
+    short.db.close().await;
     let app = Router::new()
         .route("/api/memories", get(get_memories_handler))
         .route("/api/memories/{date}", get(get_memories_by_date_handler))

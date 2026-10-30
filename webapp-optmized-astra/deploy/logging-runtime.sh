@@ -30,6 +30,9 @@ print('ISUREAL_INITIAL_HISTORY_EXPORT='+str(int(history_export)))
 memory_pool=runtime.get('memoryPoolConnections',0)
 assert type(memory_pool) is int and 0 <= memory_pool <= 16
 print('ISUREAL_MEMORY_POOL_CONNECTIONS='+str(memory_pool))
+short_pool=runtime.get('shortReadPoolConnections',0)
+assert type(short_pool) is int and 0 <= short_pool <= 16
+print('ISUREAL_SHORT_READ_POOL_CONNECTIONS='+str(short_pool))
 session_cache=runtime.get('sessionCacheEnabled',False)
 assert type(session_cache) is bool
 print('ISUREAL_SESSION_CACHE='+str(int(session_cache)))

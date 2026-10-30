@@ -37,7 +37,25 @@ pub async fn memory_context(
     context: &std::sync::Arc<crate::server::HandlerContext>,
     connections: u32,
 ) -> Result<std::sync::Arc<crate::server::HandlerContext>, sqlx::Error> {
-    assert!(connections <= 16, "memory pool must have 0–16 connections");
+    isolated_context(context, connections, "astra_memory").await
+}
+
+pub async fn short_read_context(
+    context: &std::sync::Arc<crate::server::HandlerContext>,
+    connections: u32,
+) -> Result<std::sync::Arc<crate::server::HandlerContext>, sqlx::Error> {
+    isolated_context(context, connections, "astra_short_reads").await
+}
+
+async fn isolated_context(
+    context: &std::sync::Arc<crate::server::HandlerContext>,
+    connections: u32,
+    name: &str,
+) -> Result<std::sync::Arc<crate::server::HandlerContext>, sqlx::Error> {
+    assert!(
+        connections <= 16,
+        "isolated pool must have 0–16 connections"
+    );
     if connections == 0 {
         return Ok(context.clone());
     }
@@ -45,7 +63,7 @@ pub async fn memory_context(
         .connect_with(
             (*context.db.connect_options())
                 .clone()
-                .application_name("astra_memory"),
+                .application_name(name),
         )
         .await?;
     Ok(std::sync::Arc::new(crate::server::HandlerContext {
