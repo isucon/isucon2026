@@ -184,19 +184,18 @@ type Runner struct {
 	// stepName は事前検証で今していること。時間切れの理由に使う。
 	stepName atomic.Value
 
-	mu                sync.Mutex
-	users             map[string][]*user
-	byID              map[string]*user
-	certified         []string
-	usernames         map[string]bool
-	registrations     int
-	nameRand          *rand.Rand
-	historyRand       *rand.Rand
-	opened            map[string]int
-	windowDay         map[string]int
-	lastWindow        map[string]string
-	friendCount       map[string]int
-	reactionsByWindow map[string]map[string]int
+	mu            sync.Mutex
+	users         map[string][]*user
+	byID          map[string]*user
+	certified     []string
+	usernames     map[string]bool
+	registrations int
+	nameRand      *rand.Rand
+	historyRand   *rand.Rand
+	opened        map[string]int
+	windowDay     map[string]int
+	lastWindow    map[string]string
+	friendCount   map[string]int
 	// arriving はリージョンごとの、登録中の新しいユーザーの数。
 	arriving       map[string]int
 	returningCount map[string]int
@@ -258,41 +257,40 @@ func NewRunner(cfg Config) (*Runner, error) {
 		usernames[u.Username] = true
 	}
 	r := &Runner{
-		cfg:               cfg,
-		api:               api,
-		board:             score.NewBoard(cfg.Weights),
-		initial:           initialdata.New(cfg.Dataset),
-		dataset:           cfg.Dataset,
-		model:             m,
-		photos:            cfg.Photos,
-		tt:                newTimetable(cfg.Duration),
-		seed:              cfg.Seed,
-		ips:               newIPPool(cfg.Seed),
-		deleteRate:        0.05,
-		peekRate:          0.1,
-		changeRate:        0.1,
-		historyImages:     4,
-		verifyRate:        cfg.VerifyRate,
-		moveRate:          cfg.MoveRate,
-		signOffRate:       cfg.SignOffRate,
-		returningRatio:    returningRatio,
-		users:             map[string][]*user{},
-		byID:              map[string]*user{},
-		usernames:         usernames,
-		nameRand:          rand.New(rand.NewPCG(cfg.Seed, 0x6e616d65)),
-		historyRand:       rand.New(rand.NewPCG(cfg.Seed, 0x68697374)),
-		opened:            map[string]int{},
-		windowDay:         map[string]int{},
-		lastWindow:        map[string]string{},
-		friendCount:       map[string]int{},
-		reactionsByWindow: map[string]map[string]int{},
-		arriving:          map[string]int{},
-		returningCount:    map[string]int{},
-		moves:             map[string]int{},
-		discoveries:       map[string]int{},
-		revisiting:        map[string]bool{},
-		evilUsers:         map[string]bool{},
-		openedAt:          map[string]time.Time{},
+		cfg:            cfg,
+		api:            api,
+		board:          score.NewBoard(cfg.Weights),
+		initial:        initialdata.New(cfg.Dataset),
+		dataset:        cfg.Dataset,
+		model:          m,
+		photos:         cfg.Photos,
+		tt:             newTimetable(cfg.Duration),
+		seed:           cfg.Seed,
+		ips:            newIPPool(cfg.Seed),
+		deleteRate:     0.05,
+		peekRate:       0.1,
+		changeRate:     0.1,
+		historyImages:  4,
+		verifyRate:     cfg.VerifyRate,
+		moveRate:       cfg.MoveRate,
+		signOffRate:    cfg.SignOffRate,
+		returningRatio: returningRatio,
+		users:          map[string][]*user{},
+		byID:           map[string]*user{},
+		usernames:      usernames,
+		nameRand:       rand.New(rand.NewPCG(cfg.Seed, 0x6e616d65)),
+		historyRand:    rand.New(rand.NewPCG(cfg.Seed, 0x68697374)),
+		opened:         map[string]int{},
+		windowDay:      map[string]int{},
+		lastWindow:     map[string]string{},
+		friendCount:    map[string]int{},
+		arriving:       map[string]int{},
+		returningCount: map[string]int{},
+		moves:          map[string]int{},
+		discoveries:    map[string]int{},
+		revisiting:     map[string]bool{},
+		evilUsers:      map[string]bool{},
+		openedAt:       map[string]time.Time{},
 	}
 	r.initial.ImageDigests = cfg.ImageDigests
 	// 管理者は JP から送る。IP は負荷ユーザーと同じく走行ごとに決める。
