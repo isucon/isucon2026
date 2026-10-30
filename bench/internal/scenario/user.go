@@ -285,18 +285,19 @@ func (r *Runner) listen(ctx context.Context, u *user, out chan notice, subscribe
 		if err == nil && !valid {
 			r.invalid(ctx, u, "%s: 通知の内容が不正です（リージョン %s）", u.Username, n.Region)
 		}
+		// 通知の点は、bench が開いたことを確かめた投稿期間の通知にだけ与える。通知は開く要求への
+		// 応答より先に届くことがあるので、記録されるまで待つ。開いていない投稿期間の通知は
+		// enterWindow がエラーにする。
 		if fresh {
-			// 通知の点は、bench が開いたことを確かめた投稿期間の通知にだけ与える。通知は開く要求への
-			// 応答より先に届くことがあるので、記録されるまで待つ。開いていない投稿期間の通知は
-			// enterWindow がエラーにする。
 			if _, err := r.model.WaitForNotifiedWindow(ctx, u.Region, n.PostingWindowID, received); err == nil {
 				r.award(u, day, score.TagNotification)
+				// 新しい通知のあとは、次の通知を逃さないようすぐに購読し直す。
+				continue
 			}
-			// 新しい通知のあとは、次の通知を逃さないようすぐに購読し直す。
-			continue
 		}
-		// 新しい通知を受けずに切れた（空の応答、重複した通知、不正な通知）。すぐに切れ続ける
-		// 実装に購読を繰り返さないよう、1 秒未満なら 1 秒まで待つ。
+		// 開いた投稿期間の新しい通知を受けずに切れた（空の応答、重複した通知、不正な通知、
+		// 開いていない投稿期間の通知）。すぐに切れ続ける実装に購読を繰り返さないよう、1 秒未満
+		// なら 1 秒まで待つ。
 		if time.Since(opened) < time.Second {
 			_ = sleepUntil(ctx, opened.Add(time.Second))
 		}

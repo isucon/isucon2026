@@ -12,6 +12,7 @@ import (
 	"github.com/isucon/isucon2026/bench/internal/client"
 	"github.com/isucon/isucon2026/bench/internal/geo"
 	"github.com/isucon/isucon2026/bench/internal/metrics"
+	"github.com/isucon/isucon2026/bench/internal/model"
 	"github.com/isucon/isucon2026/bench/internal/score"
 )
 
@@ -31,6 +32,15 @@ func notificationServer(t *testing.T, u *user, handle func(n int64) string) *ato
 	return &subscriptions
 }
 
+// openNextWindows は asia の投稿期間 next-1 から next-n を開いたことをモデルに記録する。
+// 購読のたびに新しい投稿期間の通知を返すサーバーで、listen が待たずに購読し直すようにする。
+func openNextWindows(r *Runner, n int) {
+	for i := 1; i <= n; i++ {
+		open := r.model.BeginOpenWindow(geo.Asia)
+		r.model.OpenedWindow(open, model.Window{ID: fmt.Sprintf("next-%d", i), Region: geo.Asia, LocalDate: r.firstDate.AddDate(0, 0, i)})
+	}
+}
+
 // TestNotificationRequeueStopsOnCancel は、投稿を待つ間に届いた次の通知を戻すのと、listen が
 // さらに新しい通知を入れるのが重なっても、走行が終われば投稿を待つ処理が止まることを確かめる（#128）。
 func TestNotificationRequeueStopsOnCancel(t *testing.T) {
@@ -38,6 +48,7 @@ func TestNotificationRequeueStopsOnCancel(t *testing.T) {
 	r.peekRate = 0
 	u := r.users[geo.Asia][0]
 	u.persona.attendance = 1
+	openNextWindows(r, 5000)
 	notificationServer(t, u, func(n int64) string {
 		return fmt.Sprintf(`{"id":"n%d","postingWindowId":"next-%d","region":"asia"}`, n, n)
 	})
@@ -77,21 +88,24 @@ func TestNotificationRequeueStopsOnCancel(t *testing.T) {
 	}
 }
 
-// TestNotificationReconnectBackoff は、新しい通知を受けずにすぐ切れる購読（空の応答、重複した
-// 通知、不正な通知）を 1 秒に 1 回までにし（#177）、新しい通知のあとはすぐに購読し直すことを
-// 確かめる。
+// TestNotificationReconnectBackoff は、開いた投稿期間の新しい通知を受けずにすぐ切れる購読（空の
+// 応答、重複した通知、不正な通知、開いていない投稿期間の通知）を 1 秒に 1 回までにし（#177）、
+// 新しい通知のあとはすぐに購読し直すことを確かめる。
 func TestNotificationReconnectBackoff(t *testing.T) {
 	for _, tc := range []struct {
 		mode     string
 		min, max int64
 	}{
-		{"empty", 1, 2},
-		{"duplicate", 1, 2},
-		{"invalid", 1, 2},
-		{"fresh", 5, 1 << 30},
+		{"empty", 1, 1},
+		// 最初の 1 件は新しい通知なので、すぐに購読し直す。
+		{"duplicate", 2, 2},
+		{"invalid", 1, 1},
+		{"unopened", 1, 1},
+		{"fresh", 50, 1 << 30},
 	} {
 		t.Run(tc.mode, func(t *testing.T) {
 			r, _, window := newWindowRunner(t)
+			openNextWindows(r, 5000)
 			u := r.users[geo.Asia][0]
 			subscriptions := notificationServer(t, u, func(n int64) string {
 				switch tc.mode {
@@ -99,6 +113,8 @@ func TestNotificationReconnectBackoff(t *testing.T) {
 					return fmt.Sprintf(`{"id":"n1","postingWindowId":%q,"region":"asia"}`, window)
 				case "invalid":
 					return fmt.Sprintf(`{"id":"n1","postingWindowId":%q,"region":"europe"}`, window)
+				case "unopened":
+					return fmt.Sprintf(`{"id":"n%d","postingWindowId":"never-%d","region":"asia"}`, n, n)
 				case "fresh":
 					return fmt.Sprintf(`{"id":"n%d","postingWindowId":"next-%d","region":"asia"}`, n, n)
 				}
@@ -123,9 +139,9 @@ func TestNotificationPointsOnlyForOpenedWindows(t *testing.T) {
 		notificationServer(t, u, func(n int64) string {
 			switch n {
 			case 1:
-				return `{"id":"n1","postingWindowId":"never-opened","region":"asia"}`
+				return fmt.Sprintf(`{"id":"n1","postingWindowId":%q,"region":"asia"}`, window)
 			case 2:
-				return fmt.Sprintf(`{"id":"n2","postingWindowId":%q,"region":"asia"}`, window)
+				return `{"id":"n2","postingWindowId":"never-opened","region":"asia"}`
 			}
 			return ""
 		})
