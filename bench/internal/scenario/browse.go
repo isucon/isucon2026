@@ -322,11 +322,13 @@ func (r *Runner) comment(ctx context.Context, u *user, s *session, post client.F
 	case err == nil && allowed == model.False:
 		creation.Unknown()
 		r.board.Criticalf("%s: コメントできない投稿 %s にコメントできてしまいました", u.Username, post.ID)
-	case err == nil && (created.ID == "" || created.Body != body):
+	case err == nil && (created.ID == "" || created.Body != body || created.Author.ID != u.ID || created.CreatedAt.IsZero()):
 		creation.Unknown()
 		r.invalid(ctx, u, "%s: コメントの応答が送った内容と違います", u.Username)
+	case err == nil && !r.model.CreatedComment(creation, created, u.ID):
+		creation.Unknown()
+		r.invalid(ctx, u, "%s: コメントの応答の ID %s が、ほかのコメントと同じです", u.Username, created.ID)
 	case err == nil:
-		r.model.CreatedComment(creation, created, u.ID)
 		r.award(u, s.day, score.TagComment)
 		r.reacted(post.Author.ID, post.PostingWindowID)
 		s.myComments = append(s.myComments, created.ID)
