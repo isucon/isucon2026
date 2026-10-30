@@ -21,12 +21,12 @@ targets = [('primary', runtime['database']['instanceId'])]
 targets += [(app['region'], app['instanceId']) for app in runtime['applications'] if app.get('replicaName')]
 query = """SELECT json_build_object('observed_at',extract(epoch FROM clock_timestamp()),'queries',
 coalesce(json_agg(row_to_json(s)), '[]'::json)) FROM (
-SELECT backend_type, state, left(regexp_replace(query,$q$'[^']*'$q$,'?','g'),1200) AS query,
+SELECT application_name, backend_type, state, left(regexp_replace(query,$q$'[^']*'$q$,'?','g'),1200) AS query,
 coalesce(wait_event_type,'CPU') AS wait_type, coalesce(wait_event,'none') AS wait_event,
 count(*) AS connections, max(extract(epoch FROM clock_timestamp()-query_start)) AS age_seconds
 FROM pg_stat_activity WHERE pid<>pg_backend_pid() AND
 ((datname=current_database() AND usename='isureal' AND state IN ('active','idle in transaction'))
-OR backend_type='startup') GROUP BY 1,2,3,4,5) s"""
+OR backend_type='startup') GROUP BY 1,2,3,4,5,6) s"""
 
 
 def sample(target):
