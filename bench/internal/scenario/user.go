@@ -539,6 +539,9 @@ func (r *Runner) checkImage(ctx context.Context, u *user, post client.FeedPost) 
 	// 403 は、その区間で投稿が確実に残っていた場合だけエラーにする。
 	sent := time.Now()
 	image, err := u.API.Image(client.MayFailWith(ctx, http.StatusForbidden, http.StatusNotFound), post.ImageURL)
+	if r.bannedErr(u, err) {
+		return false
+	}
 	if isStatus(err, http.StatusForbidden) || isStatus(err, http.StatusNotFound) {
 		if r.model.ImageServable(post.ID, r.model.ReadBetween(sent, time.Now())) == model.True {
 			r.invalid(ctx, u, "%s: 削除されていない投稿 %s の画像が拒否されました", u.Username, post.ID)
