@@ -72,6 +72,7 @@ Resources:
           - DeviceName: /dev/sda1
             Ebs:
               VolumeType: gp3
+              VolumeInitializationRate: 300
               DeleteOnTermination: true
   DatabaseLaunchTemplate:
     Type: AWS::EC2::LaunchTemplate
@@ -81,6 +82,7 @@ Resources:
           - DeviceName: /dev/sda1
             Ebs:
               VolumeType: gp3
+              VolumeInitializationRate: 300
               Iops: 6000
               Throughput: 200
               DeleteOnTermination: true
