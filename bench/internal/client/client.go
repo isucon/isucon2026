@@ -68,7 +68,13 @@ func (p RetryPolicy) wait(retry int, retryAfter string) time.Duration {
 		return p.backoff(retry)
 	}
 	var wait time.Duration
-	if seconds, err := strconv.Atoi(retryAfter); err == nil {
+	if isDigits(retryAfter) {
+		// 秒数は time.Duration に直す前に MaxWait と比べる。掛け算があふれて負になると、待たずに
+		// 再試行してしまう。uint64 に収まらない桁数の秒数も上限まで待つ。
+		seconds, err := strconv.ParseUint(retryAfter, 10, 64)
+		if err != nil || seconds > uint64(p.MaxWait/time.Second) {
+			return p.MaxWait
+		}
 		wait = time.Duration(seconds) * time.Second
 	} else if at, err := http.ParseTime(retryAfter); err == nil {
 		wait = time.Until(at)
@@ -76,6 +82,19 @@ func (p RetryPolicy) wait(retry int, retryAfter string) time.Duration {
 		return p.backoff(retry)
 	}
 	return min(max(wait, 0), p.MaxWait)
+}
+
+// isDigits は s が空でなく ASCII の数字だけからなるか（Retry-After の秒数の形）。
+func isDigits(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i := range len(s) {
+		if s[i] < '0' || s[i] > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 // Record は論理的な 1 操作を表す。503 の再試行を含めた、1 リクエストの
