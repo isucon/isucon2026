@@ -47,3 +47,23 @@ baseline-summary.jsonに平均と分位点、baseline-phases.jsonに匿名の生
 20261030T134356Z-team12の通常走行は202,980点PASS。初期履歴・初期画像メタデータ・Asia認証先固定・US推薦・所有者別export配置の現在の構成で、readTimingEnabledを一時的に有効化し、8件に1件の履歴リクエストを段階別に記録する。追加のSQLサンプリングは行わず、識別子を含まない既存計測のみを使う。診断走行の得点は通常走行と区別する。終了後に無効化して配備・照合する。
 
 診断20261030T134904Z-team12は197,904点PASS。通常走行202,980点と区別する。13:49:54.123〜13:50:59.665 UTCの負荷区間に完了したサンプルだけをsummarize.pyで集計し、current-20261030-summary.jsonへ保存。段階別p90は加算できず、段階がないリクエストはその段階の集計に含めない。readTimingEnabledをfalseへ戻し、未参照画像回収・配備・照合を行う。
+
+負荷区間のサンプルは計1,636件。Asia月984件、日284件。Asia月の平均114.085msのうちauth_acquireが109.337ms（95.8%）、authは1.467ms、cache_lookupは2.154msだった。p90は全体315.732ms、auth_acquire309.103ms。日履歴も平均103.418msのうちauth_acquire99.758ms（96.5%）で、同じ傾向。
+
+| Asia月履歴の段階 | 平均ms | p50 ms | p90 ms |
+|---|---:|---:|---:|
+| 計測対象の処理全体 | 114.085 | 32.574 | 315.732 |
+| 認証前の接続取得区間 | 109.337 | 23.987 | 309.103 |
+| 認証SQL後まで | 1.467 | 1.040 | 2.690 |
+| 履歴キャッシュ参照・現状態SQL・描画 | 2.154 | 1.766 | 4.134 |
+| 認証接続の受け取り | 0.017 | 0.014 | 0.024 |
+
+auth_acquireはsession.rsのPgPool.acquire完了までで、トークンのハッシュ化等の前処理とスケジューラ待ちも含む。純粋なDB接続キューだけを計測してはいない。一方auth区間には接続取得後の認証SQLが含まれる。cache_lookupも単なるHashMapアクセスではなく、ユーザー状態・世代・変更記録のSQLと応答構築を含む。HTTPの転送や前段middlewareは全体時間に含まれない。
+
+したがって、最新構成で最優先に調べるのは、Asiaの一般読み取り16接続を長く占有する処理と、初期履歴への接続割当である。履歴接続を認証から再利用する変更は効いており、後段pool_waitはほぼ消えている。以前の履歴専用プールでは総合改善がなかったが、当時はログインの同期反映待ちが残っていた。現在のローカル認証コミット・US推薦配置との組み合わせは別途比較する価値がある。全接続数を無条件に増やす結論ではない。今回の診断だけで33万点を達成できるとは判断しない。
+
+再計算:
+
+```sh
+python3 webapp-optmized-astra/experiments/read-phases/summarize.py webapp-optmized-astra/experiments/read-phases/current-20261030-phases.json webapp-optmized-astra/experiments/read-phases/current-20261030-summary.json --since 2026-10-30T13:49:54.123Z --until 2026-10-30T13:50:59.665Z
+```
