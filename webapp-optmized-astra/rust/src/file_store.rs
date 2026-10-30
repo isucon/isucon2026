@@ -23,6 +23,7 @@ pub struct FileStore {
     archives_enabled: bool,
     archive_peer: Option<std::net::SocketAddr>,
     owner_archive: Option<Arc<crate::owner_archive::OwnerArchive>>,
+    owner_archive_images: bool,
     writers: Arc<Semaphore>,
     client: Client<HttpConnector, Body>,
 }
@@ -76,6 +77,7 @@ impl FileStore {
             archives_enabled: false,
             archive_peer: None,
             owner_archive: None,
+            owner_archive_images: false,
             writers: Arc::new(Semaphore::new(16)),
             client: Client::builder().pool_max_idle_per_host(8).build(connector),
         }
@@ -146,6 +148,11 @@ impl FileStore {
             .with_archives(archives == "1")
             .with_archive_peer(peer);
         let owner_root = std::env::var("ISUREAL_OWNER_ARCHIVE_ROOT").unwrap_or_default();
+        let owner_images =
+            std::env::var("ISUREAL_OWNER_ARCHIVE_IMAGES").unwrap_or_else(|_| "0".into());
+        assert!(matches!(owner_images.as_str(), "0" | "1"));
+        assert!(owner_images == "0" || !owner_root.is_empty());
+        store.owner_archive_images = owner_images == "1";
         if !owner_root.is_empty() {
             assert_eq!(owner_root, "/var/lib/astra-owner-images");
             assert_eq!(archives, "1");
@@ -260,10 +267,18 @@ impl FileStore {
                 return crate::archive_peer::read(&self.client, peer, &reference).await;
             }
             let directory = self.root.join("packs");
-            return tokio::task::spawn_blocking(move || reference.read(&directory))
-                .await
-                .map_err(|error| sqlx::Error::Io(io::Error::other(error)))?
-                .map_err(io_failure);
+            let owner_archive = if self.owner_archive_images {
+                self.owner_archive.clone()
+            } else {
+                None
+            };
+            return tokio::task::spawn_blocking(move || match owner_archive {
+                Some(layout) => layout.read(&directory, &reference),
+                None => reference.read(&directory),
+            })
+            .await
+            .map_err(|error| sqlx::Error::Io(io::Error::other(error)))?
+            .map_err(io_failure);
         }
         let Some((region, id)) = key.strip_prefix("fs:").and_then(|key| key.split_once(':')) else {
             return Err(failure("invalid file image reference"));
@@ -405,6 +420,16 @@ mod tests {
         assert!(
             store.get(&key).await.is_err(),
             "single reads still use the original layout"
+        );
+        store.owner_archive_images = true;
+        assert_eq!(
+            store.get(&key).await.unwrap(),
+            image,
+            "enabled single reads use the same verified layout"
+        );
+        assert!(
+            store.get(&tail).await.is_err(),
+            "unmapped single reads require the original file"
         );
         fs::remove_dir_all(root).unwrap();
     }
