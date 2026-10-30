@@ -81,41 +81,34 @@ export const ContestantContestantInstanceList: React.FC<Props> = ({ session, cli
           </h1>
         </header>
         {previewURL ? (
-          <>
-            <div className="content">
-              <ul>
-                <li>
-                  IPアドレス: <code aria-label="ルーターIPアドレス">{session.routerPublicIpv4Address}</code>
-                </li>
-                <li>
-                  表示確認用 URL: <code aria-label="表示確認用URL">{previewURL}</code>
-                  <button
-                    className="button is-small ml-2"
-                    aria-label="URLをコピー"
-                    onClick={async () => {
-                      await navigator.clipboard.writeText(previewURL);
-                      setCopiedURL(previewURL);
-                    }}
-                  >
-                    <span className="material-icons-outlined is-size-6" aria-hidden="true">
-                      content_copy
-                    </span>
-                  </button>
-                  <span className="is-size-7 ml-2" role="status">
-                    {copiedURL === previewURL ? "コピーしました" : ""}
+          <div className="content">
+            <ul>
+              <li>
+                IPアドレス: <code aria-label="ルーターIPアドレス">{session.routerPublicIpv4Address}</code>
+              </li>
+              <li>
+                表示確認用 URL:{" "}
+                <a href={previewURL} target="_blank" rel="noopener noreferrer" aria-label="表示確認用URL">
+                  {previewURL}
+                </a>
+                <button
+                  className="button is-small ml-2"
+                  aria-label="URLをコピー"
+                  onClick={async () => {
+                    await navigator.clipboard.writeText(previewURL);
+                    setCopiedURL(previewURL);
+                  }}
+                >
+                  <span className="material-icons-outlined is-size-6" aria-hidden="true">
+                    content_copy
                   </span>
-                </li>
-              </ul>
-            </div>
-            <a className="button is-info" href={previewURL} target="_blank" rel="noopener noreferrer">
-              <span>ISURealを開く</span>
-              <span className="icon">
-                <span className="material-icons-outlined" aria-hidden="true">
-                  open_in_new
+                </button>
+                <span className="is-size-7 ml-2" role="status">
+                  {copiedURL === previewURL ? "コピーしました" : ""}
                 </span>
-              </span>
-            </a>
-          </>
+              </li>
+            </ul>
+          </div>
         ) : (
           <p>未登録（ルーターの登録後に、表示確認用のURLが表示されます。）</p>
         )}
