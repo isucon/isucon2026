@@ -95,6 +95,27 @@ async fn memory_reuses_one_connection_and_releases_it_on_errors_with_fresh_auth(
         read_fence: None,
         image_store: None,
     });
+    // Occupy the entire ordinary pool. The separately connected context must
+    // still authenticate and read the same schema without waiting behind it.
+    assert!(Arc::ptr_eq(
+        &isureal::db_pool::memory_context(&context, 0).await.unwrap(),
+        &context
+    ));
+    let isolated = isureal::db_pool::memory_context(&context, 1).await.unwrap();
+    let isolated_app = Router::new()
+        .route("/api/memories", get(get_memories_handler))
+        .route_layer(from_fn_with_state(
+            (isolated.clone(), true),
+            memory_session_middleware,
+        ))
+        .with_state(isolated.clone());
+    let held = db.acquire().await.unwrap();
+    let (status, body) = request(&isolated_app, "/api/memories?month=2026-10", "token").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["items"][0]["comments"][0]["body"], "fresh");
+    assert_eq!(isolated.db.size(), 1);
+    drop(held);
+    isolated.db.close().await;
     let app = Router::new()
         .route("/api/memories", get(get_memories_handler))
         .route("/api/memories/{date}", get(get_memories_by_date_handler))
