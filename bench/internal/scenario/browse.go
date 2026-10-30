@@ -208,7 +208,6 @@ func (r *Runner) react(ctx context.Context, u *user, s *session, post client.Fee
 			return false
 		}
 		r.award(u, s.day, score.TagRealMoji)
-		r.reacted(post.Author.ID, post.PostingWindowID)
 		s.myReactions = append(s.myReactions, post.ID)
 		return true
 	case isStatus(err, http.StatusForbidden) && allowed != model.True:
@@ -336,7 +335,6 @@ func (r *Runner) comment(ctx context.Context, u *user, s *session, post client.F
 		r.invalid(ctx, u, "%s: コメントの応答の ID %s が、ほかのコメントと同じです", u.Username, created.ID)
 	case err == nil:
 		r.award(u, s.day, score.TagComment)
-		r.reacted(post.Author.ID, post.PostingWindowID)
 		s.myComments = append(s.myComments, created.ID)
 		return true
 	case isStatus(err, http.StatusForbidden) && allowed != model.True:
@@ -485,17 +483,6 @@ func (r *Runner) addFriendship(a, b string) {
 	defer r.mu.Unlock()
 	r.friendCount[a]++
 	r.friendCount[b]++
-}
-
-// reacted は authorID の投稿が RealMoji かコメントを受けたことを数える。翌日に、その日に
-// 最も反応を集めた人を管理者が認定する。
-func (r *Runner) reacted(authorID, windowID string) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if r.reactionsByWindow[windowID] == nil {
-		r.reactionsByWindow[windowID] = map[string]int{}
-	}
-	r.reactionsByWindow[windowID][authorID]++
 }
 
 // pickTarget は candidates から友達の数 + 1 に比例した重みで 1 人選ぶ（優先的選択）。
