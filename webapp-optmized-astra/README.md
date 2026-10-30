@@ -455,3 +455,5 @@ GET/HEAD以外はエラーレスポンスも含めて確認し、30秒以内に�
 | 20261030T062138Z-team12 | Memory authentication connection reuse; no restart repeat; timing disabled; seed=1 | PASS | 169,952 |
 | 20261030T075453Z-team12 | Acknowledged regional session cache; five second bounded leases; candidate=35854c6; seed=1 | PASS | 160,884 |
 | 20261030T081221Z-team12 | per-user auth cache generations candidate=1df930d; seed=1 | PASS | 167,634 |
+| 20261030T082723Z-team12 | preloaded initial history with fresh users and dirty days candidate=c640118; seed=1 | PASS | 179,090 |
+| 20261030T083137Z-team12 | preloaded initial history repeat without restart candidate=c640118; seed=1 | PASS | 179,890 |
