@@ -1,13 +1,31 @@
 package scenario
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"testing"
 
+	"github.com/isucon/isucon2026/bench/internal/client"
 	"github.com/isucon/isucon2026/bench/internal/metrics"
 )
+
+// TestChangedProfileKeepsLateValues は、結果のわからないプロフィールの変更のあとで別の変更が
+// 受け付けられても、先の変更があとで反映されうるので候補から外さないことを確かめる。
+func TestChangedProfileKeepsLateValues(t *testing.T) {
+	timeout := &client.RequestError{Method: http.MethodPatch, Path: "/api/me", Err: context.DeadlineExceeded}
+	values := []string{"initial"}
+	values = changedProfile(values, "a", false, timeout)
+	values = changedProfile(values, "b", true, nil)
+	if !slices.Contains(values, "a") || !slices.Contains(values, "b") {
+		t.Fatalf("values after a timed-out and an accepted change = %v", values)
+	}
+	if got := changedProfile([]string{"initial"}, "b", true, nil); !slices.Equal(got, []string{"b"}) {
+		t.Fatalf("values after an accepted change = %v", got)
+	}
+}
 
 // 表示名と自己紹介の変更は、走行後の整合性チェックでプロフィールを読み直して確かめる。
 // 応答だけ変えて保存しないアプリは失敗にし、結果のわからない変更はどちらの値でもよい。

@@ -469,10 +469,17 @@ func (r *Runner) updateBio(ctx context.Context, u *user) {
 // changedProfile は、表示名か自己紹介としてありうる値 values に、value への変更の結果を
 // 反映する。受け付けられたら value だけになり、拒否されたら変わらず、結果がわからなければ
 // （応答が違う、5xx やタイムアウト、503 を受けて送り直したあとの 4xx）value も加わる。
-// values が nil なら今の値を知らないので、受け付けられるまで nil のまま（確かめない）。
+// 結果のわからない変更はアプリがあとで反映することもあるので、一度そうなったら、あとで
+// 受け付けられた変更でも候補を絞らない。values が nil なら今の値を知らないので、受け付け
+// られるまで nil のまま（確かめない）。
 func changedProfile(values []string, value string, accepted bool, err error) []string {
 	var apiErr *client.APIError
 	switch {
+	case accepted && len(values) > 1:
+		if slices.Contains(values, value) {
+			return values
+		}
+		return append(values, value)
 	case accepted:
 		return []string{value}
 	case values == nil || slices.Contains(values, value):
