@@ -18,7 +18,7 @@ import (
 
 // ImageDigests は初期データの画像ごとの SHA-256 の表。bench は初期データの画像を確かめるとき、
 // Router に画像の SHA-256 を返させてこの表と比べる。画像を描き直さずに済む（320 px の画像
-// 1 枚に約 1.5 ms かかり、bench の CPU の大半を占めていた）。
+// 1 枚を椅子の写真から描くのに約 2.5 ms かかり、bench の CPU の大半を占めていた）。
 //
 // 表は WriteImageDigests で前もって作ってファイルに置き、bench は ReadImageDigests で読む。
 // 形式は imageDigestsMagic、World の設定の SHA-256（32 バイト）、件数（uint64、ビッグエンディアン）

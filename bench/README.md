@@ -145,7 +145,7 @@ VM 環境では `make vm-benchmark BENCH_ARGS='-users 2 -duration 25s'` でも�
 
 画像の中身は、Router が本体の代わりに返すダイジェストで比べる（[Router の設計](../docs/router.md) の
 「ベンチの画像のダウンロード」）。XXH3 は要求ごとの種で計算するので、bench は期待する画像を描き直す必要があり、
-320 px の 1 枚に約 1.5 ms かかる。最上位帯の走行ではこれが bench の CPU の約 4 割を占めた。
+椅子の写真から描くので 320 px の 1 枚に約 2.5 ms かかる。最上位帯の走行ではこれが bench の CPU の約 4 割を占めた。
 
 `-image-digests` で初期データの画像の SHA-256 の表を渡すと、初期データの画像の取得（抜き取り検査と
 Memories の画像）では Router に SHA-256 を返させ（`X-Benchmark-Digest: sha256`）、表と比べるので描き直さない。
