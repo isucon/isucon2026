@@ -67,7 +67,7 @@ func TestAwards(t *testing.T) {
 		{"boundaries", "hatena", []map[string]any{teamInput(1, 0, runInput(900000, 9, true), runInput(100, 16, true), runInput(500, 17, true), runInput(999999, 18, true)), teamInput(2, 0, runInput(100, 15, true), runInput(200, 16, true), runInput(300, 17, true))}, []int64{1, 2}},
 		{"ratio", "lineyahoo", []map[string]any{teamInput(1, 0, runInput(100, 15, true), runInput(1050, 16, true)), teamInput(2, 0, runInput(1, 15, true), runInput(11, 16, true))}, []int64{1}},
 		{"zero first skipped", "lineyahoo", []map[string]any{teamInput(1, 0, runInput(0, 14, false), runInput(10, 15, true), runInput(100, 16, true))}, []int64{1}},
-		{"freee nonconsecutive", "freee", []map[string]any{teamInput(1, 91919), teamInput(2, 8888), teamInput(3, 12121), teamInput(4, 111), teamInput(5, 123)}, []int64{1, 2, 3}},
+		{"freee nonconsecutive", "freee", []map[string]any{teamInput(1, 91919), teamInput(2, 8888), teamInput(3, 12121), teamInput(4, 111), teamInput(5, 123)}, []int64{1, 3, 4}},
 		{"hex tie", "algoartis", []map[string]any{teamInput(1, 0xAA), teamInput(2, 0xAA), teamInput(3, 0xAA), teamInput(4, 0xAA), teamInput(5, 0xA)}, []int64{1, 2, 3}},
 		{"hex maximum only", "algoartis", []map[string]any{teamInput(1, 0xAA), teamInput(2, 0xA)}, []int64{1}},
 		{"count failures", "kakehashi", []map[string]any{teamInput(1, 0, runInput(0, 15, false), runInput(20259, 16, true)), teamInput(2, 20261)}, []int64{2}},
@@ -505,5 +505,25 @@ UPDATE benchmark_results SET exit_signal=9 WHERE id=10;
 	}
 	if len(result.Warnings) != 0 {
 		t.Fatal(result.Warnings)
+	}
+}
+
+func TestFreeeExactlyThree(t *testing.T) {
+	for _, tc := range []struct {
+		score int64
+		want  bool
+	}{
+		{111, true}, {91919, true}, {1000, true}, {1111222, true},
+		{11, false}, {1111, false}, {8888, false}, {100000, false}, {0, false},
+	} {
+		t.Run(fmt.Sprint(tc.score), func(t *testing.T) {
+			if got := hasTriple(tc.score); got != tc.want {
+				t.Fatalf("hasTriple(%d)=%v, want %v", tc.score, got, tc.want)
+			}
+		})
+	}
+	a := awardResult(t, "freee", teamInput(1, 8888), teamInput(2, 7777), teamInput(3, 6666), teamInput(4, 5555))
+	if len(a.Winners) != 0 || len(a.NearMisses) != 0 {
+		t.Fatal(a)
 	}
 }

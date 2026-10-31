@@ -182,7 +182,9 @@ func hasTriple(v int64) bool {
 	var counts [10]int
 	for _, c := range strconv.FormatInt(v, 10) {
 		counts[c-'0']++
-		if counts[c-'0'] >= 3 {
+	}
+	for _, count := range counts {
+		if count == 3 {
 			return true
 		}
 	}
