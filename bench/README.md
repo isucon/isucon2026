@@ -338,7 +338,7 @@ ISUXPORTAL_SUPERVISOR_HARD_TIMEOUT=210 \
 （210 秒）は、ベンチの全体上限と報告処理の余裕を含めて長く設定する。
 
 supervisor 実行時の stdout はシナリオの進行ログ（Story、ユーザー移動）と、`pass`、`score`、参加者向けの `messages` を含む JSON を出す。
-phase 行はすべて参加者に不要なため、運営向けの stderr にだけ出す（`scenario.Config.OperatorLogger`）。対象は `phase: initialize`、`phase: pretest`、`phase: initial data`、`phase: prepare users`、`phase: load`（実行条件 `usersPerRegion`、`duration`、`seed`、`photos` を含む）、`phase: final check`、`final check done`。同じく `prepare users`（準備の内訳と所要時間）、`initial user checked`（検証したユーザーと所要時間）、不正な利用者の通信記録（`不正な利用者の通信`、`不正アップロードの応答`）も運営向けにだけ出す。単独実行では進行ログと運営向けログはどちらも stderr に出るので、この振り分けは supervisor 実行時にだけ効く。
+phase 行はすべて参加者に不要なため、運営向けの stderr にだけ出す（`scenario.Config.OperatorLogger`）。対象は `phase: initialize`、`phase: pretest`、`phase: initial data`、`phase: prepare users`、`phase: load`（実行条件 `usersPerRegion`、`duration`、`seed`、`photos` を含む）、`phase: final check`、`final check done`。同じく `prepare users`（準備の内訳と所要時間）、`initial user checked`（検証したユーザーと所要時間）も運営向けにだけ出す。単独実行では進行ログと運営向けログはどちらも stderr に出るので、この振り分けは supervisor 実行時にだけ効く。
 ポータルの失敗理由には結果の `reason` を送り、初期化失敗やエラー率超過などの原因を参加者に表示する。
 supervisor 実行時は詳細 JSON を出さない（supervisor は stderr の末尾 64,000 バイトしかポータルへ送らない）。
 通常の不合格は終了コード 0 として、運営通知の対象となる実行障害と区別する。
