@@ -431,29 +431,6 @@ Resources:
               RemainAfterExit=yes
               [Install]
               WantedBy=cloud-init.target
-          - path: /etc/isucon/data-proxy-block.nft
-            permissions: '0644'
-            content: |
-              table inet isucon_data_proxy_block
-              delete table inet isucon_data_proxy_block
-              table inet isucon_data_proxy_block {
-                chain input {
-                  type filter hook input priority filter; policy accept;
-                  ip daddr 192.168.10.10 tcp dport { 8080, 443 } counter drop
-                }
-              }
-          - path: /etc/systemd/system/isucon-data-proxy-block.service
-            permissions: '0644'
-            content: |
-              [Unit]
-              Description=Drop HTTP(S) to the Router data interface
-              Before=isucon-router-bootstrap.service isureal-router.service isureal-haproxy.service
-              [Service]
-              Type=oneshot
-              RemainAfterExit=yes
-              ExecStart=/usr/sbin/nft -f /etc/isucon/data-proxy-block.nft
-              [Install]
-              WantedBy=multi-user.target
 {{template "contest_registration_service" .}}
           runcmd:
             - |
@@ -466,7 +443,8 @@ Resources:
               chmod 0640 server.pem
               rm server.key server.crt
             - systemctl daemon-reload
-            - systemctl enable --now isucon-data-proxy-block.service
+            - |
+              sudo sh -c 'mkdir -p /etc/isucon && printf "%s\n" "table inet isucon_data_proxy_block" "delete table inet isucon_data_proxy_block" "table inet isucon_data_proxy_block {" "  chain input {" "    type filter hook input priority filter; policy accept;" "    ip daddr 192.168.10.10 tcp dport { 8080, 443 } counter drop" "  }" "}" >/etc/isucon/data-proxy-block.nft && printf "%s\n" "[Unit]" "Description=Drop HTTP(S) to the Router data interface" "[Service]" "Type=oneshot" "RemainAfterExit=yes" "ExecStart=/usr/sbin/nft -f /etc/isucon/data-proxy-block.nft" "[Install]" "WantedBy=multi-user.target" >/etc/systemd/system/isucon-data-proxy-block.service && systemctl daemon-reload && systemctl enable isucon-data-proxy-block.service && systemctl restart isucon-data-proxy-block.service && nft list table inet isucon_data_proxy_block'
             - systemctl enable --now --no-block isucon-router-bootstrap.service
             - systemctl enable --now --no-block isucon-register.service
             - systemctl enable --now --no-block envcheck.service
