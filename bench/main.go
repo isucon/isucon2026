@@ -21,6 +21,7 @@ import (
 	"os/signal"
 	"runtime/debug"
 	"runtime/pprof"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -29,8 +30,10 @@ import (
 	"github.com/isucon/isucon2026/bench/internal/benchrun"
 	"github.com/isucon/isucon2026/bench/internal/client"
 	"github.com/isucon/isucon2026/bench/internal/evil"
+	"github.com/isucon/isucon2026/bench/internal/geo"
 	"github.com/isucon/isucon2026/bench/internal/photo"
 	"github.com/isucon/isucon2026/bench/internal/scenario"
+	"github.com/isucon/isucon2026/bench/internal/score"
 	"github.com/isucon/isucon2026/dataset"
 	pb "github.com/isucon/isucon2026/portal/gen/pb/isuxportal/resources"
 )
@@ -292,8 +295,9 @@ func run(parent context.Context, args []string, stdout, stderr io.Writer) int {
 		enc := json.NewEncoder(stderr)
 		enc.SetIndent("", "  ")
 		if err := enc.Encode(struct {
-			Breakdown map[string]int64 `json:"breakdown"`
-		}{result.Breakdown}); err != nil {
+			Breakdown         map[string]int64   `json:"breakdown"`
+			BreakdownByRegion map[string][]int64 `json:"breakdownByRegion"`
+		}{result.Breakdown, regionBreakdown(result.Scores)}); err != nil {
 			return fail("encode result failed", 2)
 		}
 	}
@@ -372,6 +376,22 @@ func writeAllocProfile(path string, logger *slog.Logger) {
 	if err := pprof.Lookup("allocs").WriteTo(f, 0); err != nil {
 		logger.Error("memory profile failed", "error", err)
 	}
+}
+
+// regionBreakdown は採点内訳の件数を地域ごとに分け、geo.Regions の順（asia、europe、america）に並べる。
+func regionBreakdown(cells []score.Cell) map[string][]int64 {
+	out := map[string][]int64{}
+	for _, cell := range cells {
+		i := slices.Index(geo.Regions, cell.Region)
+		if i < 0 {
+			continue
+		}
+		if out[string(cell.Tag)] == nil {
+			out[string(cell.Tag)] = make([]int64, len(geo.Regions))
+		}
+		out[string(cell.Tag)][i] += cell.Count
+	}
+	return out
 }
 
 // reportReason は結果の要約を1行で返す。詳細は stdout の messages に残す。

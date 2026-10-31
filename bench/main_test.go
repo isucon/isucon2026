@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
+	"github.com/isucon/isucon2026/bench/internal/score"
 	pb "github.com/isucon/isucon2026/portal/gen/pb/isuxportal/resources"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
@@ -13,6 +14,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"os/exec"
+	"reflect"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -32,6 +34,21 @@ func TestReportReason(t *testing.T) {
 				t.Fatalf("got %q, want %q", got, tc.want)
 			}
 		})
+	}
+}
+
+// TestRegionBreakdown は、地域ごとの採点内訳が日をまたいで件数を足し、asia、europe、america の
+// 順に並ぶことを確かめる。
+func TestRegionBreakdown(t *testing.T) {
+	got := regionBreakdown([]score.Cell{
+		{Region: "europe", Day: 1, Tag: "feed", Count: 2},
+		{Region: "asia", Day: 1, Tag: "feed", Count: 5},
+		{Region: "asia", Day: 2, Tag: "feed", Count: 3},
+		{Region: "america", Day: 2, Tag: "gate_pass", Count: 1},
+	})
+	want := map[string][]int64{"feed": {8, 2, 0}, "gate_pass": {0, 0, 1}}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %v, want %v", got, want)
 	}
 }
 
@@ -228,7 +245,7 @@ func TestSupervisorIntegration(t *testing.T) {
 				if !ok || !strings.Contains(message, diagnostic) {
 					t.Fatalf("missing contestant messages: %s", &stdout)
 				}
-				// 運営向けの stderr の最後は採点内訳だけの JSON。
+				// 運営向けの stderr の最後は採点内訳（全体と地域ごと）だけの JSON。
 				start := strings.LastIndex(stderr.String(), "\n{\n")
 				if start < 0 {
 					t.Fatalf("breakdown missing from operator stderr: %s", &stderr)
@@ -237,7 +254,9 @@ func TestSupervisorIntegration(t *testing.T) {
 				if err := json.Unmarshal(stderr.Bytes()[start+1:], &operator); err != nil {
 					t.Fatal(err)
 				}
-				if _, ok := operator["breakdown"].(map[string]any); !ok || len(operator) != 1 {
+				_, total := operator["breakdown"].(map[string]any)
+				_, byRegion := operator["breakdownByRegion"].(map[string]any)
+				if !total || !byRegion || len(operator) != 2 {
 					t.Fatalf("operator stderr: %s", &stderr)
 				}
 			}
