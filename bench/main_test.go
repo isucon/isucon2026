@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
+	"github.com/isucon/isucon2026/bench/internal/score"
 	pb "github.com/isucon/isucon2026/portal/gen/pb/isuxportal/resources"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
@@ -13,6 +14,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"os/exec"
+	"reflect"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -32,6 +34,21 @@ func TestReportReason(t *testing.T) {
 				t.Fatalf("got %q, want %q", got, tc.want)
 			}
 		})
+	}
+}
+
+// TestRegionBreakdown は、地域ごとの採点内訳が日をまたいで件数を足し、asia、europe、america の
+// 順に並ぶことを確かめる。
+func TestRegionBreakdown(t *testing.T) {
+	got := regionBreakdown([]score.Cell{
+		{Region: "europe", Day: 1, Tag: "feed", Count: 2},
+		{Region: "asia", Day: 1, Tag: "feed", Count: 5},
+		{Region: "asia", Day: 2, Tag: "feed", Count: 3},
+		{Region: "america", Day: 2, Tag: "gate_pass", Count: 1},
+	})
+	want := map[string][]int64{"feed": {8, 2, 0}, "gate_pass": {0, 0, 1}}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %v, want %v", got, want)
 	}
 }
 
@@ -230,6 +247,22 @@ func TestSupervisorIntegration(t *testing.T) {
 				}
 				if !strings.Contains(stderr.String(), diagnostic) {
 					t.Fatalf("missing private diagnostic: %s", &stderr)
+				}
+				// 運営向けの stderr の最後は結果 JSON。scores と routes は null で、地域ごとの採点内訳が足してある。
+				start := strings.LastIndex(stderr.String(), "\n{\n")
+				if start < 0 {
+					t.Fatalf("result missing from operator stderr: %s", &stderr)
+				}
+				var operator map[string]any
+				if err := json.Unmarshal(stderr.Bytes()[start+1:], &operator); err != nil {
+					t.Fatal(err)
+				}
+				_, total := operator["breakdown"].(map[string]any)
+				_, byRegion := operator["breakdownByRegion"].(map[string]any)
+				_, scores := operator["scores"]
+				_, routes := operator["routes"]
+				if !total || !byRegion || !scores || !routes || operator["scores"] != nil || operator["routes"] != nil || operator["pass"] != false {
+					t.Fatalf("operator stderr: %s", &stderr)
 				}
 			}
 			if strings.Contains(stdout.String(), "operator-only-detail") || strings.Contains(final.Execution.Reason, "operator-only-detail") {

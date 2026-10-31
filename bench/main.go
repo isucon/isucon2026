@@ -21,6 +21,7 @@ import (
 	"os/signal"
 	"runtime/debug"
 	"runtime/pprof"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -29,8 +30,10 @@ import (
 	"github.com/isucon/isucon2026/bench/internal/benchrun"
 	"github.com/isucon/isucon2026/bench/internal/client"
 	"github.com/isucon/isucon2026/bench/internal/evil"
+	"github.com/isucon/isucon2026/bench/internal/geo"
 	"github.com/isucon/isucon2026/bench/internal/photo"
 	"github.com/isucon/isucon2026/bench/internal/scenario"
+	"github.com/isucon/isucon2026/bench/internal/score"
 	"github.com/isucon/isucon2026/dataset"
 	pb "github.com/isucon/isucon2026/portal/gen/pb/isuxportal/resources"
 )
@@ -281,13 +284,22 @@ func run(parent context.Context, args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	// スーパーバイザーの下では詳しい結果は運営だけが見る。標準出力は参加者に見える。
+	// supervisor は標準エラー出力の末尾 64,000 バイトしか送らないので、大きくなる scores と
+	// routes は null にし、scores の代わりに地域ごとの採点内訳を足す。
 	output := stdout
+	var detail any = result
 	if reporter != nil {
 		output = stderr
+		slim := result
+		slim.Scores, slim.Routes = nil, nil
+		detail = struct {
+			scenario.Result
+			BreakdownByRegion map[string][]int64 `json:"breakdownByRegion"`
+		}{slim, regionBreakdown(result.Scores)}
 	}
 	enc := json.NewEncoder(output)
 	enc.SetIndent("", "  ")
-	if err := enc.Encode(result); err != nil {
+	if err := enc.Encode(detail); err != nil {
 		return fail("encode result failed", 2)
 	}
 	if err := report(result, true, reportReason(result.Reason)); err != nil {
@@ -365,6 +377,22 @@ func writeAllocProfile(path string, logger *slog.Logger) {
 	if err := pprof.Lookup("allocs").WriteTo(f, 0); err != nil {
 		logger.Error("memory profile failed", "error", err)
 	}
+}
+
+// regionBreakdown は採点内訳の件数を地域ごとに分け、geo.Regions の順（asia、europe、america）に並べる。
+func regionBreakdown(cells []score.Cell) map[string][]int64 {
+	out := map[string][]int64{}
+	for _, cell := range cells {
+		i := slices.Index(geo.Regions, cell.Region)
+		if i < 0 {
+			continue
+		}
+		if out[string(cell.Tag)] == nil {
+			out[string(cell.Tag)] = make([]int64, len(geo.Regions))
+		}
+		out[string(cell.Tag)][i] += cell.Count
+	}
+	return out
 }
 
 // reportReason は結果の要約を1行で返す。詳細は stdout の messages に残す。
