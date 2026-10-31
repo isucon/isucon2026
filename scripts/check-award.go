@@ -18,9 +18,10 @@ import (
 )
 
 type Run struct {
-	At     time.Time `json:"at"`
-	Score  *int64    `json:"score"`
-	Passed *bool     `json:"passed"`
+	EnqueuedAt time.Time `json:"enqueued_at"`
+	At         time.Time `json:"at"`
+	Score      *int64    `json:"score"`
+	Passed     *bool     `json:"passed"`
 }
 type Team struct {
 	ID           int64  `json:"id"`
@@ -89,8 +90,8 @@ func prepare(in Input) ([]teamStats, []Excluded, error) {
 		}
 		runs := []Run{}
 		for _, r := range team.Runs {
-			if r.At.IsZero() || r.Score == nil || *r.Score < 0 || r.Passed == nil {
-				return nil, nil, fmt.Errorf("team %d: valid at, nonnegative score and passed required", team.ID)
+			if r.EnqueuedAt.IsZero() || r.At.IsZero() || r.EnqueuedAt.After(r.At) || r.Score == nil || *r.Score < 0 || r.Passed == nil {
+				return nil, nil, fmt.Errorf("team %d: valid enqueued_at <= at, nonnegative score and passed required", team.ID)
 			}
 			if !*r.Passed {
 				zero := int64(0)
@@ -126,7 +127,7 @@ func prepare(in Input) ([]teamStats, []Excluded, error) {
 		s := teamStats{Team: team, score: *runs[len(runs)-1].Score, first: *runs[0].Score, count: int64(len(runs))}
 		var baseline int64
 		for i, r := range runs {
-			if r.At.Before(in.Close) {
+			if r.EnqueuedAt.Before(in.Close) {
 				s.hasBaseline = true
 				if *r.Score > baseline {
 					baseline = *r.Score
@@ -383,7 +384,7 @@ func evaluate(reader io.Reader) (Result, error) {
 			result.Warnings = append(result.Warnings, fmt.Sprintf("team %d: first score is zero; excluded from lineyahoo", t.ID))
 		}
 		if !t.hasBaseline {
-			result.Warnings = append(result.Warnings, fmt.Sprintf("team %d: no pre-close baseline; excluded from hatena", t.ID))
+			result.Warnings = append(result.Warnings, fmt.Sprintf("team %d: no run enqueued before close; excluded from hatena", t.ID))
 		}
 	}
 	for _, r := range rules(maxA) {
