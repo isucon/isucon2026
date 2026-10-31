@@ -4,6 +4,7 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"math/big"
@@ -11,7 +12,9 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"text/tabwriter"
 	"time"
+	"unicode"
 )
 
 type Run struct {
@@ -418,14 +421,114 @@ func evaluate(reader io.Reader) (Result, error) {
 	}
 	return result, nil
 }
-func runCLI(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
-	if len(args) == 1 && (args[0] == "-h" || args[0] == "--help") {
-		fmt.Fprintln(stdout, "Usage: check-award INPUT\nEvaluate corporate awards from a JSON file, or - for stdin. See scripts/README.md.")
-		return 0
+
+// Names go last so wide Japanese characters do not affect column alignment.
+// Strip control characters to keep user-provided names on a single terminal row.
+func terminalText(s string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
+			return ' '
+		}
+		return r
+	}, s)
+}
+func displayMetric(id string, c Candidate) string {
+	m := c.Metric
+	positive := func(i int) string { return strings.TrimPrefix(m[i], "-") }
+	switch id {
+	case "hatena", "enechain":
+		return "gain=" + positive(0)
+	case "layerx":
+		return "score/member=" + positive(0)
+	case "lineyahoo":
+		return "10x-distance=" + m[0]
+	case "kokorozashi":
+		return "55634-distance=" + m[0]
+	case "kakehashi":
+		return "20260-distance=" + m[0] + ", runs=" + m[1]
+	case "kauche":
+		return "8s:score=" + positive(0) + ", rank=" + positive(1)
+	case "algoartis":
+		return "As=" + positive(0)
+	default:
+		return "rank=" + m[0]
 	}
+}
+func writeTable(w io.Writer, result Result) error {
+	var out strings.Builder
+	fmt.Fprintln(&out, "WIN = 受賞 / TIE = 同点候補（要確認） / NEAR = 前後・次点")
+	for _, a := range result.Awards {
+		fmt.Fprintf(&out, "\n%s [%s]\n", a.Name, a.ID)
+		if a.NeedsReview {
+			fmt.Fprintln(&out, "REVIEW: 同点候補からの選定が必要")
+		}
+		if a.UnfilledPlaces > 0 {
+			fmt.Fprintf(&out, "未確定・未充足の枠: %d\n", a.UnfilledPlaces)
+		}
+		type row struct {
+			status string
+			c      Candidate
+		}
+		rows := []row{}
+		for _, group := range []struct {
+			status     string
+			candidates []Candidate
+		}{{"WIN", a.Winners}, {"TIE", a.TiedCandidates}, {"NEAR", a.NearMisses}} {
+			for _, c := range group.candidates {
+				rows = append(rows, row{group.status, c})
+			}
+		}
+		if len(rows) == 0 {
+			fmt.Fprintln(&out, "(no candidates)")
+			continue
+		}
+		if len(fixedRanks(a.ID)) > 0 {
+			sort.Slice(rows, func(i, j int) bool { return rows[i].c.FinalRank < rows[j].c.FinalRank })
+		}
+		table := tabwriter.NewWriter(&out, 0, 4, 2, ' ', 0)
+		fmt.Fprintln(table, "STATUS\tRANK\tSCORE\tID\tVALUE\tTEAM")
+		fmt.Fprintln(table, "------\t----\t-----\t--\t-----\t----")
+		for _, r := range rows {
+			fmt.Fprintf(table, "%s\t%d\t%d\t%d\t%s\t%s\n", r.status, r.c.FinalRank, r.c.FinalScore, r.c.ID, displayMetric(a.ID, r.c), terminalText(r.c.Name))
+		}
+		if err := table.Flush(); err != nil {
+			return err
+		}
+	}
+	if len(result.ExcludedTeams) > 0 {
+		fmt.Fprintln(&out, "\nExcluded:")
+		for _, t := range result.ExcludedTeams {
+			fmt.Fprintf(&out, "  %d: %s (%s)\n", t.ID, terminalText(t.Name), t.Reason)
+		}
+	}
+	if len(result.Warnings) > 0 {
+		fmt.Fprintln(&out, "\nWarnings:")
+		for _, s := range result.Warnings {
+			fmt.Fprintln(&out, "  "+s)
+		}
+	}
+	_, err := io.WriteString(w, out.String())
+	return err
+}
+
+func runCLI(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	fail := func(err error) int { fmt.Fprintln(stderr, "check-award:", err); return 2 }
+	flags := flag.NewFlagSet("check-award", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	jsonOutput := flags.Bool("json", false, "output JSON instead of a terminal table")
+	flags.Usage = func() {
+		fmt.Fprintln(stderr, "Usage: check-award [--json] INPUT\nEvaluate corporate awards from a JSON file, or - for stdin. See scripts/README.md.")
+		flags.PrintDefaults()
+	}
+	if err := flags.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return 0
+		}
+		return 2
+	}
+	args = flags.Args()
 	if len(args) != 1 {
-		return fail(errors.New("usage: check-award INPUT (JSON file or - for stdin)"))
+		return fail(errors.New("usage: check-award [--json] INPUT (JSON file or - for stdin)"))
 	}
 	reader := stdin
 	if args[0] != "-" {
@@ -439,6 +542,12 @@ func runCLI(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	result, err := evaluate(reader)
 	if err != nil {
 		return fail(err)
+	}
+	if !*jsonOutput {
+		if err := writeTable(stdout, result); err != nil {
+			return fail(err)
+		}
+		return 0
 	}
 	enc := json.NewEncoder(stdout)
 	enc.SetIndent("", "  ")

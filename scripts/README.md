@@ -7,7 +7,8 @@ Goの標準ライブラリだけで動作し、DB接続やポータルの起動�
 入力JSONは運営側で用意してください。
 
 ```sh
-./scripts/check-award results.json > awards.json
+./scripts/check-award results.json
+./scripts/check-award --json results.json > awards.json
 cat results.json | ./scripts/check-award -
 go test scripts/check-award.go scripts/check-award_test.go
 go vet scripts/check-award.go
@@ -83,11 +84,18 @@ go build -o /tmp/check-award scripts/check-award.go
 
 ## 出力
 
-標準出力にJSON、入力エラーは標準エラーに出力します。
+標準出力には賞ごとの表を出力します。
+`STATUS` は `WIN`（受賞）、`TIE`（同点候補）、`NEAR`（前後または次点）です。
+`RANK`、`SCORE`、`ID`、`VALUE`、`TEAM` は最終順位、最終スコア、チームID、判定値、チーム名を表します。
+順位指定の賞では、前後のチームを受賞チームと一緒に順位順に並べます。
+判定値の比率は丸めず分数で表示します。
+同点の要確認表示、未充足枠、除外理由、警告も出力します。
+入力エラーは標準エラーに出力します。
 終了コードは正常時0、入力エラー時2です。
-要確認の同点があってもJSONの生成に成功すれば0です。
+要確認の同点があっても出力に成功すれば0です。
 
-`awards` は賞ごとの以下の情報を含みます。
+`--json` を付けるとJSON形式を出力します。
+JSONの `awards` は賞ごとの以下の情報を含みます。
 
 - `id`、`name`：賞のIDと名称。
 - `winners`：条件から決まる受賞チーム。
@@ -122,7 +130,7 @@ freee賞は同じ数字が3個以上あるチームから次点を選びます�
 順位は確定順位の抜粋で、実際の参加チームや競技結果ではありません。
 
 ```sh
-./scripts/check-award scripts/testdata/check-award-example.json > /tmp/awards-example.json
+./scripts/check-award scripts/testdata/check-award-example.json
 ```
 
 たとえばフォルシア賞は、25位を `winners`、24位と26位を `near_misses` に出力します。
