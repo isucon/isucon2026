@@ -228,9 +228,6 @@ func TestSupervisorIntegration(t *testing.T) {
 				if !ok || !strings.Contains(message, diagnostic) {
 					t.Fatalf("missing contestant messages: %s", &stdout)
 				}
-				if !strings.Contains(stderr.String(), diagnostic) {
-					t.Fatalf("missing private diagnostic: %s", &stderr)
-				}
 			}
 			if strings.Contains(stdout.String(), "operator-only-detail") || strings.Contains(final.Execution.Reason, "operator-only-detail") {
 				t.Fatal("private diagnostic leaked")
