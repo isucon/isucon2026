@@ -67,6 +67,7 @@ type teamStats struct {
 	Team
 	score, first, growth, increase int64
 	hasBaseline                    bool
+	finalAt                        time.Time
 	count                          int64
 }
 
@@ -124,20 +125,23 @@ func prepare(in Input) ([]teamStats, []Excluded, error) {
 			return nil, nil, fmt.Errorf("team %d: invalid or duplicate final rank", team.ID)
 		}
 		ranks[team.FinalRank] = true
-		s := teamStats{Team: team, score: *runs[len(runs)-1].Score, first: *runs[0].Score, count: int64(len(runs))}
-		var baseline int64
+		s := teamStats{Team: team, score: *runs[len(runs)-1].Score, finalAt: runs[len(runs)-1].At, count: int64(len(runs))}
+		var baseline, previousNonzero int64
 		var baselineEnqueuedAt time.Time
-		for i, r := range runs {
+		for _, r := range runs {
 			if r.EnqueuedAt.Before(in.Close) && *r.Score > 0 && !r.EnqueuedAt.Before(baselineEnqueuedAt) {
 				s.hasBaseline = true
 				baseline = *r.Score
 				baselineEnqueuedAt = r.EnqueuedAt
 			}
-			if i > 0 {
-				delta := *r.Score - *runs[i-1].Score
-				if delta > s.increase {
-					s.increase = delta
+			if *r.Score > 0 {
+				if s.first == 0 {
+					s.first = *r.Score
 				}
+				if previousNonzero > 0 && *r.Score-previousNonzero > s.increase {
+					s.increase = *r.Score - previousNonzero
+				}
+				previousNonzero = *r.Score
 			}
 		}
 		s.growth = s.score - baseline
@@ -220,7 +224,7 @@ func rules(maxA int64) []rule {
 			v.Sub(v, big.NewRat(10, 1))
 			return metric{v.Abs(v)}
 		}},
-		{"kokorozashi", "ココロザシ賞", 1, func(t teamStats) metric { return numbers(abs(t.score - 55634)) }},
+		{"kokorozashi", "ココロザシ賞", 1, func(t teamStats) metric { return numbers(abs(t.score-55634), t.FinalRank) }},
 		{"forcia", "フォルシア賞", 1, fixed(fixedRanks("forcia")...)},
 		{"kauche", "カウシェ800万ダウンロード記念賞", 1, func(t teamStats) metric {
 			return numbers(-digitCount(t.score, "8"), -digitCount(t.FinalRank, "8"), t.FinalRank)
@@ -381,10 +385,16 @@ func evaluate(reader io.Reader) (Result, error) {
 			maxA = n
 		}
 		if t.first == 0 {
-			result.Warnings = append(result.Warnings, fmt.Sprintf("team %d: first score is zero; excluded from lineyahoo", t.ID))
+			result.Warnings = append(result.Warnings, fmt.Sprintf("team %d: no nonzero score; excluded from lineyahoo", t.ID))
 		}
 		if !t.hasBaseline {
 			result.Warnings = append(result.Warnings, fmt.Sprintf("team %d: no nonzero run enqueued before close; excluded from hatena", t.ID))
+		}
+	}
+	for i := 1; i < len(teams); i++ {
+		before, after := teams[i-1], teams[i]
+		if before.score < after.score || (before.score == after.score && before.finalAt.After(after.finalAt)) {
+			result.Warnings = append(result.Warnings, fmt.Sprintf("final_rank order conflicts with final score/marked_at: teams %d and %d", before.ID, after.ID))
 		}
 	}
 	for _, r := range rules(maxA) {
