@@ -72,7 +72,7 @@ func TestAwards(t *testing.T) {
 		{"count failures", "kakehashi", []map[string]any{teamInput(1, 0, runInput(0, 15, false), runInput(20259, 16, true)), teamInput(2, 20261)}, []int64{2}},
 		{"no baseline", "hatena", []map[string]any{teamInput(1, 0, runInput(100, 17, true)), teamInput(2, 0, runInput(200, 15, true), runInput(100, 16, true))}, []int64{}},
 		{"no increase", "enechain", []map[string]any{teamInput(1, 100), teamInput(2, 0, runInput(200, 15, true), runInput(100, 16, true))}, []int64{}},
-		{"best baseline sorted", "hatena", []map[string]any{teamInput(1, 0, runInput(150, 17, true), runInput(200, 14, true), runInput(100, 16, true))}, []int64{}},
+		{"latest baseline sorted", "hatena", []map[string]any{teamInput(1, 0, runInput(150, 17, true), runInput(200, 14, true), runInput(100, 16, true))}, []int64{1}},
 		{"failure is zero", "enechain", []map[string]any{teamInput(1, 0, runInput(100, 10, true), runInput(999999, 15, false), runInput(200, 16, true)), teamInput(2, 0, runInput(100, 15, true), runInput(250, 16, true))}, []int64{1}},
 	}
 	for _, tc := range cases {
@@ -371,5 +371,42 @@ func TestInvalidEnqueueTime(t *testing.T) {
 	delete(r, "enqueued_at")
 	if _, err := evaluate(bytes.NewReader(document(teamInput(1, 0, r)))); err == nil {
 		t.Fatal("accepted missing enqueue time")
+	}
+}
+
+func TestHatenaLatestNonzeroBaseline(t *testing.T) {
+	cases := []struct {
+		name string
+		runs []map[string]any
+		want string
+	}{
+		{"lower latest score", []map[string]any{runInput(900, 14, true), runInput(100, 15, true), runInput(500, 17, true)}, "-400"},
+		{"successful zero skipped", []map[string]any{runInput(900, 14, true), runInput(100, 15, true), runInput(0, 16, true), runInput(500, 17, true)}, "-400"},
+		{"failure skipped", []map[string]any{runInput(900, 14, true), runInput(100, 15, true), runInput(9999, 16, false), runInput(500, 17, true)}, "-400"},
+		{"only zero before close", []map[string]any{runInput(0, 15, true), runInput(0, 16, false), runInput(500, 17, true)}, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			a := awardResult(t, "hatena", teamInput(1, 0, tc.runs...))
+			if tc.want == "" {
+				if len(a.Winners) != 0 {
+					t.Fatal(a)
+				}
+				return
+			}
+			if len(a.Winners) != 1 || a.Winners[0].Metric[0] != tc.want {
+				t.Fatal(a)
+			}
+		})
+	}
+	// Use enqueue order even when result timestamps arrive in the opposite order.
+	earlier := runInput(900, 17, true)
+	earlier["enqueued_at"] = "2026-10-31T15:00:00+09:00"
+	later := runInput(100, 16, true)
+	final := runInput(500, 17, true)
+	final["at"] = "2026-10-31T17:30:00+09:00"
+	a := awardResult(t, "hatena", teamInput(1, 0, earlier, later, final))
+	if len(a.Winners) != 1 || a.Winners[0].Metric[0] != "-400" {
+		t.Fatal(a)
 	}
 }

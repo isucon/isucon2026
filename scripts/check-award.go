@@ -126,12 +126,12 @@ func prepare(in Input) ([]teamStats, []Excluded, error) {
 		ranks[team.FinalRank] = true
 		s := teamStats{Team: team, score: *runs[len(runs)-1].Score, first: *runs[0].Score, count: int64(len(runs))}
 		var baseline int64
+		var baselineEnqueuedAt time.Time
 		for i, r := range runs {
-			if r.EnqueuedAt.Before(in.Close) {
+			if r.EnqueuedAt.Before(in.Close) && *r.Score > 0 && !r.EnqueuedAt.Before(baselineEnqueuedAt) {
 				s.hasBaseline = true
-				if *r.Score > baseline {
-					baseline = *r.Score
-				}
+				baseline = *r.Score
+				baselineEnqueuedAt = r.EnqueuedAt
 			}
 			if i > 0 {
 				delta := *r.Score - *runs[i-1].Score
@@ -384,7 +384,7 @@ func evaluate(reader io.Reader) (Result, error) {
 			result.Warnings = append(result.Warnings, fmt.Sprintf("team %d: first score is zero; excluded from lineyahoo", t.ID))
 		}
 		if !t.hasBaseline {
-			result.Warnings = append(result.Warnings, fmt.Sprintf("team %d: no run enqueued before close; excluded from hatena", t.ID))
+			result.Warnings = append(result.Warnings, fmt.Sprintf("team %d: no nonzero run enqueued before close; excluded from hatena", t.ID))
 		}
 	}
 	for _, r := range rules(maxA) {
