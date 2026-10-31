@@ -194,3 +194,76 @@ func TestLargeScoresRemainExact(t *testing.T) {
 		t.Fatal(got)
 	}
 }
+
+func TestNearMisses(t *testing.T) {
+	t.Run("next three including boundary ties", func(t *testing.T) {
+		a := awardResult(t, "layerx", teamInput(1, 100), teamInput(2, 90), teamInput(3, 80), teamInput(4, 70), teamInput(5, 70), teamInput(6, 60))
+		if got := ids(a.NearMisses); !reflect.DeepEqual(got, []int64{2, 3, 4, 5}) {
+			t.Fatal(got)
+		}
+	})
+	t.Run("unresolved candidates are not losers", func(t *testing.T) {
+		a := awardResult(t, "kokorozashi", teamInput(1, 55633), teamInput(2, 55635), teamInput(3, 55630))
+		if got := ids(a.NearMisses); !reflect.DeepEqual(got, []int64{3}) {
+			t.Fatal(got)
+		}
+	})
+	t.Run("each fixed rank has both neighbors", func(t *testing.T) {
+		teams := []map[string]any{}
+		for _, rank := range []int64{2, 3, 4, 32, 33, 34, 332, 333, 334} {
+			teams = append(teams, teamInput(rank, 10000-rank))
+		}
+		a := awardResult(t, "m3", teams...)
+		if got := ids(a.NearMisses); !reflect.DeepEqual(got, []int64{2, 4, 32, 34, 332, 334}) {
+			t.Fatal(got)
+		}
+	})
+	t.Run("missing winner and disqualified neighbor", func(t *testing.T) {
+		dq := teamInput(24, 200)
+		dq["disqualified"] = true
+		a := awardResult(t, "forcia", teamInput(23, 300), dq, teamInput(26, 100))
+		if got := ids(a.NearMisses); !reflect.DeepEqual(got, []int64{23, 26}) {
+			t.Fatal(got)
+		}
+	})
+	t.Run("hex lower counts included", func(t *testing.T) {
+		a := awardResult(t, "algoartis", teamInput(1, 0xAA), teamInput(2, 0), teamInput(3, 0xA), teamInput(4, 0xA))
+		if got := ids(a.NearMisses); !reflect.DeepEqual(got, []int64{3, 4, 2}) {
+			t.Fatal(got)
+		}
+	})
+	t.Run("freee still requires three digits", func(t *testing.T) {
+		a := awardResult(t, "freee", teamInput(1, 123), teamInput(2, 111), teamInput(3, 222), teamInput(4, 333), teamInput(5, 444))
+		if got := ids(a.NearMisses); !reflect.DeepEqual(got, []int64{5}) {
+			t.Fatal(got)
+		}
+	})
+	t.Run("empty arrays for every award", func(t *testing.T) {
+		result, err := evaluate(bytes.NewReader(document()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, a := range result.Awards {
+			if a.NearMisses == nil || len(a.NearMisses) != 0 {
+				t.Fatal(a)
+			}
+		}
+	})
+}
+
+func TestExample(t *testing.T) {
+	f, err := os.Open("testdata/check-award-example.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	result, err := evaluate(f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, a := range result.Awards {
+		if len(a.Winners) == 0 || len(a.NearMisses) == 0 {
+			t.Fatalf("example must show winners and near misses for %s", a.ID)
+		}
+	}
+}

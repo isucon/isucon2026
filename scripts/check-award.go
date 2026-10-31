@@ -41,6 +41,7 @@ type Candidate struct {
 	Metric     []string `json:"metric"`
 }
 type Award struct {
+	NearMisses     []Candidate `json:"near_misses"`
 	ID             string      `json:"id"`
 	Name           string      `json:"name"`
 	Winners        []Candidate `json:"winners"`
@@ -206,7 +207,7 @@ func rules(maxA int64) []rule {
 			return numbers(-t.growth)
 		}},
 		{"layerx", "チームメンバー、何人いるんで賞", 1, func(t teamStats) metric { return metric{big.NewRat(-t.score, t.MemberCount)} }},
-		{"m3", "M3賞", 3, fixed(3, 33, 333)},
+		{"m3", "M3賞", 3, fixed(fixedRanks("m3")...)},
 		{"lineyahoo", "スピード10倍賞 by LINEヤフー", 1, func(t teamStats) metric {
 			if t.first == 0 {
 				return nil
@@ -216,7 +217,7 @@ func rules(maxA int64) []rule {
 			return metric{v.Abs(v)}
 		}},
 		{"kokorozashi", "ココロザシ賞", 1, func(t teamStats) metric { return numbers(abs(t.score - 55634)) }},
-		{"forcia", "フォルシア賞", 1, fixed(25)},
+		{"forcia", "フォルシア賞", 1, fixed(fixedRanks("forcia")...)},
 		{"kauche", "カウシェ800万ダウンロード記念賞", 1, func(t teamStats) metric {
 			return numbers(-digitCount(t.score, "8"), -digitCount(t.FinalRank, "8"), t.FinalRank)
 		}},
@@ -232,14 +233,14 @@ func rules(maxA int64) []rule {
 			}
 			return rank(t)
 		}},
-		{"splunk", "Splunk O11y賞", 1, fixed(110)},
+		{"splunk", "Splunk O11y賞", 1, fixed(fixedRanks("splunk")...)},
 		{"algoartis", "A（エース）がいっぱい賞", 3, func(t teamStats) metric {
 			if hexCount(t) != maxA {
 				return nil
 			}
-			return rank(t)
+			return numbers(-hexCount(t), t.FinalRank)
 		}},
-		{"cyberagent", "0xCA賞", 1, fixed(202)},
+		{"cyberagent", "0xCA賞", 1, fixed(fixedRanks("cyberagent")...)},
 		{"kakehashi", "カケハシ10周年賞", 1, func(t teamStats) metric { return numbers(abs(t.score-20260), t.count) }},
 	}
 }
@@ -267,10 +268,7 @@ func selectAward(teams []teamStats, r rule) Award {
 		cutoff = entries[r.limit-1].key
 	}
 	for i, e := range entries {
-		c := Candidate{ID: e.team.ID, Name: e.team.Name, FinalRank: e.team.FinalRank, FinalScore: e.team.score, Metric: []string{}}
-		for _, v := range e.key {
-			c.Metric = append(c.Metric, v.RatString())
-		}
+		c := candidate(e.team, e.key)
 		if cutoff != nil {
 			switch compare(e.key, cutoff) {
 			case -1:
@@ -284,8 +282,107 @@ func selectAward(teams []teamStats, r rule) Award {
 	}
 	result.NeedsReview = len(result.TiedCandidates) > 0
 	result.UnfilledPlaces = r.limit - len(result.Winners)
+	result.NearMisses = nearMisses(teams, r, result)
 	return result
 }
+func candidate(t teamStats, key metric) Candidate {
+	c := Candidate{ID: t.ID, Name: t.Name, FinalRank: t.FinalRank, FinalScore: t.score, Metric: []string{}}
+	for _, v := range key {
+		c.Metric = append(c.Metric, v.RatString())
+	}
+	return c
+}
+
+func fixedRanks(id string) []int64 {
+	switch id {
+	case "m3":
+		return []int64{3, 33, 333}
+	case "forcia":
+		return []int64{25}
+	case "splunk":
+		return []int64{110}
+	case "cyberagent":
+		return []int64{202}
+	}
+	return nil
+}
+
+// nearMisses keeps unresolved ties separate and never includes ineligible teams.
+func nearMisses(teams []teamStats, r rule, award Award) []Candidate {
+	out := []Candidate{}
+	excluded := map[int64]bool{}
+	for _, group := range [][]Candidate{award.Winners, award.TiedCandidates} {
+		for _, t := range group {
+			excluded[t.ID] = true
+		}
+	}
+	if targets := fixedRanks(r.id); len(targets) > 0 {
+		for _, target := range targets {
+			var before, after *teamStats
+			for i := range teams {
+				t := &teams[i]
+				if excluded[t.ID] {
+					continue
+				}
+				if t.FinalRank < target && (before == nil || t.FinalRank > before.FinalRank) {
+					before = t
+				}
+				if t.FinalRank > target && (after == nil || t.FinalRank < after.FinalRank) {
+					after = t
+				}
+			}
+			for _, t := range []*teamStats{before, after} {
+				if t != nil {
+					out = append(out, candidate(*t, numbers(t.FinalRank)))
+				}
+			}
+		}
+		// A sparse ranking can share the same neighbor across target ranks.
+		seen := map[int64]bool{}
+		unique := []Candidate{}
+		for _, c := range out {
+			if !seen[c.ID] {
+				unique = append(unique, c)
+				seen[c.ID] = true
+			}
+		}
+		sort.Slice(unique, func(i, j int) bool { return unique[i].FinalRank < unique[j].FinalRank })
+		return unique
+	}
+	type entry struct {
+		team teamStats
+		key  metric
+	}
+	entries := []entry{}
+	for _, t := range teams {
+		if excluded[t.ID] {
+			continue
+		}
+		key := r.key(t)
+		// Teams with fewer As are the next candidates even when fewer than three win.
+		if r.id == "algoartis" {
+			key = numbers(-hexCount(t), t.FinalRank)
+		}
+		if key != nil {
+			entries = append(entries, entry{t, key})
+		}
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		c := compare(entries[i].key, entries[j].key)
+		if c == 0 {
+			return entries[i].team.FinalRank < entries[j].team.FinalRank
+		}
+		return c < 0
+	})
+	for i, e := range entries {
+		if i >= 3 && compare(e.key, entries[2].key) != 0 {
+			break
+		}
+		out = append(out, candidate(e.team, e.key))
+	}
+	return out
+}
+
 func evaluate(reader io.Reader) (Result, error) {
 	var in Input
 	dec := json.NewDecoder(reader)
