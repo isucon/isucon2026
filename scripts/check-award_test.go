@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -65,7 +66,7 @@ func TestAwards(t *testing.T) {
 		{"final not best and exclusions", "kokorozashi", []map[string]any{teamInput(1, 0, runInput(999999, 15, true), runInput(0, 16, false)), teamInput(2, 0, runInput(99999, 15, true), runInput(55634, 16, true)), dq, teamInput(4, 0, []map[string]any{}...)}, []int64{2}},
 		{"boundaries", "hatena", []map[string]any{teamInput(1, 0, runInput(900000, 9, true), runInput(100, 16, true), runInput(500, 17, true), runInput(999999, 18, true)), teamInput(2, 0, runInput(100, 15, true), runInput(200, 16, true), runInput(300, 17, true))}, []int64{1, 2}},
 		{"ratio", "lineyahoo", []map[string]any{teamInput(1, 0, runInput(100, 15, true), runInput(1050, 16, true)), teamInput(2, 0, runInput(1, 15, true), runInput(11, 16, true))}, []int64{1}},
-		{"zero first", "lineyahoo", []map[string]any{teamInput(1, 0, runInput(0, 14, false), runInput(10, 15, true), runInput(100, 16, true))}, []int64{}},
+		{"zero first skipped", "lineyahoo", []map[string]any{teamInput(1, 0, runInput(0, 14, false), runInput(10, 15, true), runInput(100, 16, true))}, []int64{1}},
 		{"freee nonconsecutive", "freee", []map[string]any{teamInput(1, 91919), teamInput(2, 8888), teamInput(3, 12121), teamInput(4, 111), teamInput(5, 123)}, []int64{1, 2, 3}},
 		{"hex tie", "algoartis", []map[string]any{teamInput(1, 0xAA), teamInput(2, 0xAA), teamInput(3, 0xAA), teamInput(4, 0xAA), teamInput(5, 0xA)}, []int64{1, 2, 3}},
 		{"hex maximum only", "algoartis", []map[string]any{teamInput(1, 0xAA), teamInput(2, 0xA)}, []int64{1}},
@@ -73,7 +74,7 @@ func TestAwards(t *testing.T) {
 		{"no baseline", "hatena", []map[string]any{teamInput(1, 0, runInput(100, 17, true)), teamInput(2, 0, runInput(200, 15, true), runInput(100, 16, true))}, []int64{}},
 		{"no increase", "enechain", []map[string]any{teamInput(1, 100), teamInput(2, 0, runInput(200, 15, true), runInput(100, 16, true))}, []int64{}},
 		{"latest baseline sorted", "hatena", []map[string]any{teamInput(1, 0, runInput(150, 17, true), runInput(200, 14, true), runInput(100, 16, true))}, []int64{1}},
-		{"failure is zero", "enechain", []map[string]any{teamInput(1, 0, runInput(100, 10, true), runInput(999999, 15, false), runInput(200, 16, true)), teamInput(2, 0, runInput(100, 15, true), runInput(250, 16, true))}, []int64{1}},
+		{"failure skipped", "enechain", []map[string]any{teamInput(1, 0, runInput(100, 10, true), runInput(999999, 15, false), runInput(200, 16, true)), teamInput(2, 0, runInput(100, 15, true), runInput(250, 16, true))}, []int64{2}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -105,7 +106,7 @@ func TestKauche(t *testing.T) {
 	}
 }
 func TestTies(t *testing.T) {
-	a := awardResult(t, "kokorozashi", teamInput(1, 55633), teamInput(2, 55635))
+	a := awardResult(t, "layerx", teamInput(1, 100), teamInput(2, 100))
 	if !a.NeedsReview || len(a.Winners) != 0 || !reflect.DeepEqual(ids(a.TiedCandidates), []int64{1, 2}) {
 		t.Fatal(a)
 	}
@@ -203,7 +204,7 @@ func TestNearMisses(t *testing.T) {
 		}
 	})
 	t.Run("unresolved candidates are not losers", func(t *testing.T) {
-		a := awardResult(t, "kokorozashi", teamInput(1, 55633), teamInput(2, 55635), teamInput(3, 55630))
+		a := awardResult(t, "layerx", teamInput(1, 100), teamInput(2, 100), teamInput(3, 90))
 		if got := ids(a.NearMisses); !reflect.DeepEqual(got, []int64{3}) {
 			t.Fatal(got)
 		}
@@ -293,11 +294,11 @@ func TestTableTiesWarningsAndEmpty(t *testing.T) {
 	var out, stderr bytes.Buffer
 	dq := teamInput(4, 1)
 	dq["disqualified"] = true
-	code := runCLI([]string{"-"}, bytes.NewReader(document(teamInput(1, 55633), teamInput(2, 55635), teamInput(3, 0, runInput(0, 15, false), runInput(100, 17, true)), dq)), &out, &stderr)
+	code := runCLI([]string{"-"}, bytes.NewReader(document(teamInput(1, 100), teamInput(2, 100), teamInput(3, 0, runInput(0, 15, false), runInput(0, 17, true)), dq)), &out, &stderr)
 	if code != 0 {
 		t.Fatal(stderr.String())
 	}
-	for _, want := range []string{"TIE", "REVIEW", "Excluded", "disqualified", "Warnings", "first score is zero"} {
+	for _, want := range []string{"TIE", "REVIEW", "Excluded", "disqualified", "Warnings", "no nonzero score"} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("missing %s", want)
 		}
@@ -408,5 +409,101 @@ func TestHatenaLatestNonzeroBaseline(t *testing.T) {
 	a := awardResult(t, "hatena", teamInput(1, 0, earlier, later, final))
 	if len(a.Winners) != 1 || a.Winners[0].Metric[0] != "-400" {
 		t.Fatal(a)
+	}
+}
+
+func TestClarifications(t *testing.T) {
+	a := awardResult(t, "lineyahoo", teamInput(1, 0, runInput(0, 13, false), runInput(0, 14, true), runInput(5000, 15, true), runInput(50000, 17, true)), teamInput(2, 0, runInput(5000, 15, true), runInput(49000, 17, true)))
+	if !reflect.DeepEqual(ids(a.Winners), []int64{1}) {
+		t.Fatal(a)
+	}
+	a = awardResult(t, "enechain", teamInput(1, 0, runInput(80000, 13, true), runInput(0, 14, true), runInput(0, 15, false), runInput(85000, 17, true)), teamInput(2, 0, runInput(1000, 15, true), runInput(50000, 17, true)))
+	if !reflect.DeepEqual(ids(a.Winners), []int64{2}) {
+		t.Fatal(a)
+	}
+	for _, scores := range [][2]int64{{55635, 55633}, {55634, 55634}} {
+		a = awardResult(t, "kokorozashi", teamInput(1, scores[0]), teamInput(2, scores[1]))
+		if a.NeedsReview || !reflect.DeepEqual(ids(a.Winners), []int64{1}) {
+			t.Fatal(a)
+		}
+	}
+}
+func TestRankConsistencyWarning(t *testing.T) {
+	for _, teams := range [][]map[string]any{{teamInput(1, 100), teamInput(2, 200)}, {teamInput(1, 0, runInput(100, 17, true)), teamInput(2, 0, runInput(100, 16, true))}} {
+		result, err := evaluate(bytes.NewReader(document(teams...)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		found := false
+		for _, w := range result.Warnings {
+			if strings.Contains(w, "final_rank order") {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatal("missing rank consistency warning")
+		}
+	}
+}
+
+// Run against an isolated PostgreSQL database; all fixture tables are temporary.
+func TestPortalExport(t *testing.T) {
+	dsn := os.Getenv("CHECK_AWARD_TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("set CHECK_AWARD_TEST_DATABASE_URL for PostgreSQL export test")
+	}
+	query, err := os.ReadFile("export-award.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixture := `
+CREATE TEMP TABLE teams(id bigint, name text, disqualified boolean DEFAULT false, withdrawn boolean DEFAULT false, is_hidden boolean DEFAULT false);
+CREATE TEMP TABLE contestants(id bigint, team_id bigint);
+CREATE TEMP TABLE benchmark_jobs(id bigint, team_id bigint, created_at timestamptz, post_validation boolean DEFAULT false);
+CREATE TEMP TABLE benchmark_results(id bigint, team_id bigint, benchmark_job_id bigint, score bigint, passed boolean, finished boolean DEFAULT true, exit_status int DEFAULT 0, exit_signal int, marked_at timestamptz);
+INSERT INTO teams(id,name) SELECT i, 'Team '||i FROM generate_series(1,7) i;
+INSERT INTO contestants SELECT i,i FROM generate_series(1,7) i;
+UPDATE teams SET withdrawn=true WHERE id=5;
+UPDATE teams SET is_hidden=true WHERE id=6;
+UPDATE teams SET disqualified=true WHERE id=7;
+INSERT INTO benchmark_jobs(id,team_id,created_at) SELECT i,i,'2026-10-31 15:00:00+09' FROM generate_series(1,7) i;
+INSERT INTO benchmark_results(id,team_id,benchmark_job_id,score,passed,marked_at)
+SELECT i,i,i,CASE i WHEN 2 THEN 55635 WHEN 3 THEN 55633 ELSE 500 END,i<>4,'2026-10-31 15:05:00+09' FROM generate_series(1,7) i;
+INSERT INTO benchmark_jobs(id,team_id,created_at,post_validation) VALUES (8,1,'2026-10-31 16:00:00+09',true),(9,1,'2026-10-31 16:00:00+09',false),(10,1,'2026-10-31 16:00:00+09',false),(11,1,'2026-10-31 18:00:00+09',false),(12,1,'2026-10-31 10:00:00+09',false);
+INSERT INTO benchmark_results(id,team_id,benchmark_job_id,score,passed,exit_status,marked_at) VALUES
+(8,1,8,999999,true,0,'2026-10-31 16:05:00+09'),
+(9,1,9,999999,true,1,'2026-10-31 16:06:00+09'),
+(10,1,10,999999,true,0,'2026-10-31 16:07:00+09'),
+(11,1,11,999999,true,0,'2026-10-31 18:05:00+09'),
+(12,1,12,999999,false,0,'2026-10-31 10:05:00+09');
+UPDATE benchmark_results SET exit_signal=9 WHERE id=10;
+`
+	cmd := exec.Command("psql", dsn, "-XqAt", "-v", "ON_ERROR_STOP=1", "-v", "contest_start=2026-10-31T10:00:00+09:00", "-v", "scoreboard_close=2026-10-31T17:00:00+09:00", "-v", "contest_end=2026-10-31T18:00:00+09:00")
+	cmd.Stdin = strings.NewReader(fixture + string(query))
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	output, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("%v: %s", err, &stderr)
+	}
+	var in Input
+	if err := json.Unmarshal(output, &in); err != nil {
+		t.Fatalf("%s: %v", output, err)
+	}
+	if len(in.Teams) != 4 {
+		t.Fatal(in.Teams)
+	}
+	if in.Teams[0].FinalRank != 3 || len(in.Teams[0].Runs) != 2 || *in.Teams[0].Runs[0].Score != 0 {
+		t.Fatal(in.Teams[0])
+	}
+	result, err := evaluate(bytes.NewReader(output))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.ExcludedTeams) != 1 || result.ExcludedTeams[0].ID != 4 {
+		t.Fatal(result.ExcludedTeams)
+	}
+	if len(result.Warnings) != 0 {
+		t.Fatal(result.Warnings)
 	}
 }
