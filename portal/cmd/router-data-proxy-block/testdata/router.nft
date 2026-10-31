@@ -1,0 +1,10 @@
+table inet isureal_router {
+    chain forward {
+        type filter hook forward priority filter; policy drop;
+        ct state established,related accept
+        ip saddr 192.168.1.0/24 ip daddr 192.168.2.0/24 counter accept comment "app1-to-app2"
+        ip saddr 192.168.2.0/24 ip daddr 192.168.1.0/24 counter accept comment "app2-to-app1"
+        ip saddr 192.168.1.0/24 ip daddr 192.168.4.0/24 counter accept comment "app1-to-db1"
+        ip saddr 192.168.4.0/24 ip daddr 192.168.1.0/24 counter accept comment "db1-to-app1"
+    }
+}
