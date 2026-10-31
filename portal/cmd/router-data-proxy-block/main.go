@@ -116,6 +116,7 @@ mv -f "$tmp" "$f"
 func main() {
 	var o options
 	flag.StringVar(&o.targets, "targets", "", "TSV written by list-targets.sh")
+	flag.StringVar(&o.jump, "jump", "", "comma-separated asia server addresses to use instead of -targets")
 	flag.StringVar(&o.keySecret, "key-secret", "portal-production/admin-ssh-key", "Secrets Manager secret holding the isuadmin private key")
 	flag.StringVar(&o.key, "key", "", "isuadmin private key file, instead of -key-secret")
 	flag.StringVar(&o.state, "state", "router-data-proxy-block-state", "directory for known_hosts and results.jsonl")
@@ -133,25 +134,29 @@ func main() {
 }
 
 type options struct {
-	targets, keySecret, key, state, teams string
-	parallel                              int
-	apply                                 bool
+	targets, jump, keySecret, key, state, teams string
+	parallel                                    int
+	apply                                       bool
 }
 
 func run(ctx context.Context, o options) error {
-	if o.targets == "" || o.parallel < 1 {
-		return errors.New("usage: router-data-proxy-block -targets targets.tsv [-teams 1,2] [-apply]")
+	if (o.targets == "") == (o.jump == "") || (o.jump != "" && o.teams != "") || o.parallel < 1 {
+		return errors.New("usage: router-data-proxy-block {-targets targets.tsv [-teams 1,2] | -jump 203.0.113.1} [-apply]")
 	}
-	data, err := os.ReadFile(o.targets)
-	if err != nil {
-		return err
-	}
-	targets, err := parseTargets(data)
-	if err != nil {
-		return err
-	}
-	if targets, err = selectTeams(targets, o.teams); err != nil {
-		return err
+	var targets []target
+	if o.jump != "" {
+		targets = jumpTargets(o.jump)
+	} else {
+		data, err := os.ReadFile(o.targets)
+		if err != nil {
+			return err
+		}
+		if targets, err = parseTargets(data); err != nil {
+			return err
+		}
+		if targets, err = selectTeams(targets, o.teams); err != nil {
+			return err
+		}
 	}
 	if err := os.MkdirAll(o.state, 0o700); err != nil {
 		return err
@@ -219,7 +224,7 @@ func run(ctx context.Context, o options) error {
 			return err
 		}
 		counts[res.Outcome]++
-		fmt.Printf("team %d %s: %s", res.Team, res.Router, res.Outcome)
+		fmt.Printf("%s %s: %s", res.Name, res.Router, res.Outcome)
 		if res.Detail != "" {
 			fmt.Printf(": %s", res.Detail)
 		}
@@ -241,6 +246,7 @@ func run(ctx context.Context, o options) error {
 }
 
 type target struct {
+	Name               string
 	Team               int64
 	RouterID, RouterIP string
 	BenchmarkHost      string
@@ -270,9 +276,20 @@ func parseTargets(data []byte) ([]target, error) {
 				return nil, fmt.Errorf("targets line %d: invalid status %q", n+1, f[6])
 			}
 		}
-		targets = append(targets, target{team, f[1], f[2], f[3], f[4], f[5], status})
+		targets = append(targets, target{fmt.Sprintf("team%d", team), team, f[1], f[2], f[3], f[4], f[5], status})
 	}
 	return targets, nil
+}
+
+// jumpTargets reaches Routers through known asia servers without the portal
+// database, so the Router's instance ID is only reported, not checked.
+func jumpTargets(list string) []target {
+	var targets []target
+	for _, address := range strings.Split(list, ",") {
+		address = strings.TrimSpace(address)
+		targets = append(targets, target{Name: "via-" + address, AsiaID: "asia", AsiaIP: address, AsiaStatus: runningStatus})
+	}
+	return targets
 }
 
 func selectTeams(targets []target, list string) ([]target, error) {
@@ -312,7 +329,7 @@ func (t target) skipReason() string {
 	return ""
 }
 
-func (t target) host() string { return fmt.Sprintf("team%d-router", t.Team) }
+func (t target) host() string { return t.Name + "-router" }
 
 // Host key aliases include instance IDs, so a recreated stack does not collide
 // with the keys recorded for its predecessor.
@@ -322,8 +339,12 @@ func sshConfig(targets []target, key, knownHosts string) string {
 		if t.skipReason() != "" {
 			continue
 		}
-		fmt.Fprintf(&b, "Host team%d-asia\n  HostName %s\n  HostKeyAlias team%d-%s\n", t.Team, t.AsiaIP, t.Team, t.AsiaID)
-		fmt.Fprintf(&b, "Host %s\n  HostName 192.168.10.10\n  HostKeyAlias team%d-%s\n  ProxyJump team%d-asia\n", t.host(), t.Team, t.RouterID, t.Team)
+		router := t.RouterID
+		if router == "" {
+			router = "router"
+		}
+		fmt.Fprintf(&b, "Host %s-asia\n  HostName %s\n  HostKeyAlias %s-%s\n", t.Name, t.AsiaIP, t.Name, t.AsiaID)
+		fmt.Fprintf(&b, "Host %s\n  HostName 192.168.10.10\n  HostKeyAlias %s-%s\n  ProxyJump %s-asia\n", t.host(), t.Name, router, t.Name)
 	}
 	fmt.Fprintf(&b, `Host *
   User isuadmin
@@ -357,7 +378,8 @@ func fetchKey(ctx context.Context, secret, dir string) (string, error) {
 }
 
 type result struct {
-	Team    int64     `json:"team"`
+	Name    string    `json:"name"`
+	Team    int64     `json:"team,omitempty"`
 	Router  string    `json:"router"`
 	Outcome string    `json:"outcome"` // done, would-apply, applied, skipped or failed
 	Detail  string    `json:"detail,omitempty"`
@@ -370,7 +392,7 @@ type runner struct {
 }
 
 func (r *runner) process(ctx context.Context, t target) result {
-	res := result{Team: t.Team, Router: t.RouterID}
+	res := result{Name: t.Name, Team: t.Team, Router: t.RouterID}
 	if reason := t.skipReason(); reason != "" {
 		res.Outcome, res.Detail = "skipped", reason
 		return res
@@ -379,6 +401,9 @@ func (r *runner) process(ctx context.Context, t target) result {
 	if err != nil {
 		res.Outcome, res.Detail = "failed", err.Error()
 		return res
+	}
+	if res.Router == "" {
+		res.Router = before.instanceID
 	}
 	d, err := decide(t, before)
 	switch {
@@ -524,7 +549,7 @@ func (d decision) describe() string {
 }
 
 func decide(t target, s routerState) (decision, error) {
-	if s.instanceID != t.RouterID {
+	if s.instanceID == "" || (t.RouterID != "" && s.instanceID != t.RouterID) {
 		return decision{}, fmt.Errorf("reached instance %q, portal has Router %s", s.instanceID, t.RouterID)
 	}
 	if !s.registration || !s.dataIP {

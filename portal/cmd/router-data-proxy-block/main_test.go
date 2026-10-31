@@ -14,7 +14,7 @@ import (
 	"github.com/isucon/isucon2026/portal/internal/contestcheck"
 )
 
-var testTarget = target{Team: 7, RouterID: "i-router", RouterIP: "203.0.113.5", AsiaID: "i-asia", AsiaIP: "203.0.113.1", AsiaStatus: runningStatus}
+var testTarget = target{Name: "team7", Team: 7, RouterID: "i-router", RouterIP: "203.0.113.5", AsiaID: "i-asia", AsiaIP: "203.0.113.1", AsiaStatus: runningStatus}
 
 func fixture(t *testing.T, name string) []byte {
 	t.Helper()
@@ -246,5 +246,27 @@ func TestTargets(t *testing.T) {
 	}
 	if _, err := selectTeams(targets, "10"); err == nil {
 		t.Error("unknown team must fail")
+	}
+}
+
+func TestJumpTargets(t *testing.T) {
+	targets := jumpTargets("13.115.15.90")
+	if len(targets) != 1 || targets[0].skipReason() != "" || targets[0].host() != "via-13.115.15.90-router" {
+		t.Fatalf("%+v", targets)
+	}
+	config := sshConfig(targets, "/k", "/known_hosts")
+	if !strings.Contains(config, "Host via-13.115.15.90-router\n  HostName 192.168.10.10\n  HostKeyAlias via-13.115.15.90-router\n  ProxyJump via-13.115.15.90-asia\n") ||
+		!strings.Contains(config, "Host via-13.115.15.90-asia\n  HostName 13.115.15.90\n") {
+		t.Fatalf("ssh config:\n%s", config)
+	}
+	// Without the portal database any instance is accepted, but it must be known.
+	state := installedState(t, fixture(t, "before.json"), baseline(t, normalized(t, "before.json")))
+	state.instanceID = "i-anything"
+	if _, err := decide(targets[0], state); err != nil {
+		t.Fatal(err)
+	}
+	state.instanceID = ""
+	if _, err := decide(targets[0], state); err == nil {
+		t.Fatal("unknown instance must fail")
 	}
 }
