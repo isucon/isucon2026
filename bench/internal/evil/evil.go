@@ -148,10 +148,7 @@ func runRateActor(parent context.Context, env scenario.EvilEnv, api *client.Clie
 	var wg sync.WaitGroup
 	var sent, skipped atomic.Int64
 	var banned atomic.Bool
-	defer func() {
-		wg.Wait()
-		logActor(env, api, p, sent.Load(), skipped.Load(), banned.Load())
-	}()
+	defer wg.Wait()
 	slots := make(chan struct{}, 64)
 	interval := time.Second / time.Duration(p.rate)
 	start := env.Start.Add(p.at)
@@ -189,13 +186,7 @@ func runUploadActor(parent context.Context, env scenario.EvilEnv, api *client.Cl
 	var banned atomic.Bool
 	var invalidImage, tooLarge, otherUploadResult atomic.Int64
 	var wg sync.WaitGroup
-	defer func() {
-		wg.Wait()
-		logActor(env, api, p, sent.Load(), 0, banned.Load())
-		if env.Logger != nil {
-			env.Logger.Info("不正アップロードの応答", "ip", api.ClientIP(), "invalid_image", invalidImage.Load(), "too_large", tooLarge.Load(), "other", otherUploadResult.Load())
-		}
-	}()
+	defer wg.Wait()
 	u, err := api.Register(ctx, p.username, "Evil upload user", "asia")
 	sent.Add(1)
 	if isBan(err) {
@@ -238,12 +229,6 @@ func runUploadActor(parent context.Context, env scenario.EvilEnv, api *client.Cl
 				cancel()
 			}
 		}()
-	}
-}
-
-func logActor(env scenario.EvilEnv, api *client.Client, p actorPlan, sent, skipped int64, banned bool) {
-	if env.Logger != nil {
-		env.Logger.Info("不正な利用者の通信", "type", p.kind, "ip", api.ClientIP(), "operations", sent, "skipped", skipped, "banned", banned)
 	}
 }
 
