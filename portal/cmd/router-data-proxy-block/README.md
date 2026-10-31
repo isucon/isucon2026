@@ -25,6 +25,15 @@ go run ./cmd/router-data-proxy-block -targets targets.tsv -apply
 使い捨ての Fargate タスクで `targets.sql` を読み取り専用トランザクションとして 1 回実行し、終了後に task definition を deregister します。
 CloudWatch Logs に `targets-complete` の行がなければ失敗として扱います。
 
+asia サーバーの公開 IP が分かっていれば、DB を使わずに `-jump` で指定できます。
+`ssh -o ProxyJump=isuadmin@<IP> isuadmin@192.168.10.10` と同じ経路で入ります。
+この場合は portal に登録された Router のインスタンス ID と照合できないので、つながったインスタンスの ID を結果に出すだけです。
+
+```sh
+go run ./cmd/router-data-proxy-block -jump 13.115.15.90
+go run ./cmd/router-data-proxy-block -jump 13.115.15.90 -apply
+```
+
 ## 接続
 
 asia サーバー（number 1）の公開 IP に `isuadmin` で SSH し、ProxyJump で Router の `192.168.10.10` に入ります。
