@@ -245,10 +245,13 @@ func TestSupervisorIntegration(t *testing.T) {
 				if !ok || !strings.Contains(message, diagnostic) {
 					t.Fatalf("missing contestant messages: %s", &stdout)
 				}
-				// 運営向けの stderr の最後は採点内訳（全体と地域ごと）だけの JSON。
+				if !strings.Contains(stderr.String(), diagnostic) {
+					t.Fatalf("missing private diagnostic: %s", &stderr)
+				}
+				// 運営向けの stderr の最後は結果 JSON。scores と routes は null で、地域ごとの採点内訳が足してある。
 				start := strings.LastIndex(stderr.String(), "\n{\n")
 				if start < 0 {
-					t.Fatalf("breakdown missing from operator stderr: %s", &stderr)
+					t.Fatalf("result missing from operator stderr: %s", &stderr)
 				}
 				var operator map[string]any
 				if err := json.Unmarshal(stderr.Bytes()[start+1:], &operator); err != nil {
@@ -256,7 +259,9 @@ func TestSupervisorIntegration(t *testing.T) {
 				}
 				_, total := operator["breakdown"].(map[string]any)
 				_, byRegion := operator["breakdownByRegion"].(map[string]any)
-				if !total || !byRegion || len(operator) != 2 {
+				_, scores := operator["scores"]
+				_, routes := operator["routes"]
+				if !total || !byRegion || !scores || !routes || operator["scores"] != nil || operator["routes"] != nil || operator["pass"] != false {
 					t.Fatalf("operator stderr: %s", &stderr)
 				}
 			}
