@@ -12,7 +12,7 @@ import (
 )
 
 func runInput(score int64, hour int, passed bool) map[string]any {
-	return map[string]any{"at": fmt.Sprintf("2026-10-31T%02d:00:00+09:00", hour), "score": score, "passed": passed}
+	return map[string]any{"at": fmt.Sprintf("2026-10-31T%02d:00:00+09:00", hour), "enqueued_at": fmt.Sprintf("2026-10-31T%02d:00:00+09:00", hour), "score": score, "passed": passed}
 }
 func teamInput(id, score int64, runs ...map[string]any) map[string]any {
 	if runs == nil {
@@ -334,5 +334,42 @@ func TestTableExampleAndNames(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "日本語 チーム 名前 ") || strings.ContainsRune(out.String(), '\x1b') {
 		t.Fatal("team name broke terminal output")
+	}
+}
+
+func TestHatenaEnqueueBoundary(t *testing.T) {
+	before := runInput(800, 17, true)
+	before["at"] = "2026-10-31T17:05:00+09:00"
+	before["enqueued_at"] = "2026-10-31T16:59:59.999+09:00"
+	boundary := runInput(900, 17, true)
+	boundary["at"] = "2026-10-31T17:10:00+09:00"
+	boundary["enqueued_at"] = "2026-10-31T17:00:00+09:00"
+	final := runInput(1000, 17, true)
+	final["at"] = "2026-10-31T17:30:00+09:00"
+	a := awardResult(t, "hatena", teamInput(1, 0, runInput(100, 16, true), before, boundary, final), teamInput(2, 0, runInput(100, 16, true), runInput(500, 17, true)))
+	if got := ids(a.Winners); !reflect.DeepEqual(got, []int64{2, 1}) {
+		t.Fatal(got)
+	}
+	if got := a.Winners[1].Metric; !reflect.DeepEqual(got, []string{"-200"}) {
+		t.Fatal(got)
+	}
+	// Even with no result before close, the queued run supplies the baseline.
+	a = awardResult(t, "hatena", teamInput(1, 0, before, final))
+	if len(a.Winners) != 1 || a.Winners[0].Metric[0] != "-200" {
+		t.Fatal(a)
+	}
+}
+func TestInvalidEnqueueTime(t *testing.T) {
+	for _, value := range []any{nil, "bad", "2026-10-31T16:00:00", "2026-10-31T16:00:01+09:00"} {
+		r := runInput(100, 16, true)
+		r["enqueued_at"] = value
+		if _, err := evaluate(bytes.NewReader(document(teamInput(1, 0, r)))); err == nil {
+			t.Fatalf("accepted enqueue time %v", value)
+		}
+	}
+	r := runInput(100, 16, true)
+	delete(r, "enqueued_at")
+	if _, err := evaluate(bytes.NewReader(document(teamInput(1, 0, r)))); err == nil {
+		t.Fatal("accepted missing enqueue time")
 	}
 }
