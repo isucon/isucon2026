@@ -228,6 +228,18 @@ func TestSupervisorIntegration(t *testing.T) {
 				if !ok || !strings.Contains(message, diagnostic) {
 					t.Fatalf("missing contestant messages: %s", &stdout)
 				}
+				// 運営向けの stderr の最後は採点内訳だけの JSON。
+				start := strings.LastIndex(stderr.String(), "\n{\n")
+				if start < 0 {
+					t.Fatalf("breakdown missing from operator stderr: %s", &stderr)
+				}
+				var operator map[string]any
+				if err := json.Unmarshal(stderr.Bytes()[start+1:], &operator); err != nil {
+					t.Fatal(err)
+				}
+				if _, ok := operator["breakdown"].(map[string]any); !ok || len(operator) != 1 {
+					t.Fatalf("operator stderr: %s", &stderr)
+				}
 			}
 			if strings.Contains(stdout.String(), "operator-only-detail") || strings.Contains(final.Execution.Reason, "operator-only-detail") {
 				t.Fatal("private diagnostic leaked")
