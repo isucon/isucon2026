@@ -1,7 +1,7 @@
 // Command bench は ISUReal のベンチマーク（初期化 → 事前検証 → 初期データの検証 → 負荷走行 →
 // 走行後の整合性チェック）を実行する。単独でも、スーパーバイザーの子プロセスとしても動く。
 // 単独では結果 JSON を標準出力へ出す。スーパーバイザーの下では途中経過と結果を報告用の
-// パイプへ送り、運営向けのログは標準エラー出力、参加者に見える標準出力には進行ログと
+// パイプへ送り、運営向けのログと採点内訳は標準エラー出力、参加者に見える標準出力には進行ログと
 // pass、score、参加者向けメッセージの JSON を出す。単独実行の終了コードは pass=0、fail=1、設定の誤りなど=2。
 // スーパーバイザーの下では通常の fail も終了コード 0 とし、Passed=false で報告する。
 package main
@@ -280,11 +280,20 @@ func run(parent context.Context, args []string, stdout, stderr io.Writer) int {
 		logger.Error("progress report failed", "error", reportErr)
 		return 2
 	}
-	// スーパーバイザーの下では詳しい結果を出さない。supervisor は標準エラー出力の末尾 64,000 バイトしか送らない。
+	// スーパーバイザーの下では詳しい結果を出さず、採点内訳だけを標準エラー出力に出す。
+	// supervisor は標準エラー出力の末尾 64,000 バイトしか送らない。
 	if reporter == nil {
 		enc := json.NewEncoder(stdout)
 		enc.SetIndent("", "  ")
 		if err := enc.Encode(result); err != nil {
+			return fail("encode result failed", 2)
+		}
+	} else {
+		enc := json.NewEncoder(stderr)
+		enc.SetIndent("", "  ")
+		if err := enc.Encode(struct {
+			Breakdown map[string]int64 `json:"breakdown"`
+		}{result.Breakdown}); err != nil {
 			return fail("encode result failed", 2)
 		}
 	}
