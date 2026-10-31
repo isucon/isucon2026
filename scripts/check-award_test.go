@@ -165,7 +165,7 @@ func TestCLI(t *testing.T) {
 			}
 		}
 		var out, stderr bytes.Buffer
-		if code := runCLI([]string{input}, bytes.NewReader(document(teamInput(1, 55634))), &out, &stderr); code != 0 {
+		if code := runCLI([]string{"--json", input}, bytes.NewReader(document(teamInput(1, 55634))), &out, &stderr); code != 0 {
 			t.Fatalf("%d: %s", code, &stderr)
 		}
 		var result Result
@@ -265,5 +265,74 @@ func TestExample(t *testing.T) {
 		if len(a.Winners) == 0 || len(a.NearMisses) == 0 {
 			t.Fatalf("example must show winners and near misses for %s", a.ID)
 		}
+	}
+}
+
+func TestTableCLI(t *testing.T) {
+	var out, stderr bytes.Buffer
+	teams := []map[string]any{teamInput(24, 65000), teamInput(25, 60000), teamInput(26, 55635)}
+	if code := runCLI([]string{"-"}, bytes.NewReader(document(teams...)), &out, &stderr); code != 0 {
+		t.Fatalf("%d: %s", code, &stderr)
+	}
+	text := out.String()
+	for _, want := range []string{"フォルシア賞", "STATUS", "RANK", "SCORE", "NEAR", "WIN", "Team 25"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("missing %q: %s", want, text)
+		}
+	}
+	if strings.HasPrefix(strings.TrimSpace(text), "{") {
+		t.Fatal("default output is JSON")
+	}
+	start := strings.Index(text, "フォルシア賞")
+	section := text[start : strings.Index(text[start:], "カウシェ")+start]
+	if !(strings.Index(section, "Team 24") < strings.Index(section, "Team 25") && strings.Index(section, "Team 25") < strings.Index(section, "Team 26")) {
+		t.Fatal(section)
+	}
+}
+func TestTableTiesWarningsAndEmpty(t *testing.T) {
+	var out, stderr bytes.Buffer
+	dq := teamInput(4, 1)
+	dq["disqualified"] = true
+	code := runCLI([]string{"-"}, bytes.NewReader(document(teamInput(1, 55633), teamInput(2, 55635), teamInput(3, 0, runInput(0, 15, false), runInput(100, 17, true)), dq)), &out, &stderr)
+	if code != 0 {
+		t.Fatal(stderr.String())
+	}
+	for _, want := range []string{"TIE", "REVIEW", "Excluded", "disqualified", "Warnings", "first score is zero"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("missing %s", want)
+		}
+	}
+	out.Reset()
+	if code := runCLI([]string{"-"}, bytes.NewReader(document()), &out, &stderr); code != 0 || !strings.Contains(out.String(), "(no candidates)") {
+		t.Fatal(out.String(), stderr.String())
+	}
+}
+
+func TestTableExampleAndNames(t *testing.T) {
+	f, err := os.Open("testdata/check-award-example.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	var out, stderr bytes.Buffer
+	if code := runCLI([]string{"-"}, f, &out, &stderr); code != 0 {
+		t.Fatal(stderr.String())
+	}
+	if strings.Count(out.String(), "STATUS") != 13 {
+		t.Fatal("missing award table")
+	}
+	for _, want := range []string{"gain=50000", "score/member=88888", "10x-distance=299/1996", "8s:score=5, rank=0", "As=1", "20260-distance=0, runs=3"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("missing %s", want)
+		}
+	}
+	team := teamInput(1, 100)
+	team["name"] = "日本語\tチーム\n名前\x1b"
+	out.Reset()
+	if code := runCLI([]string{"-"}, bytes.NewReader(document(team)), &out, &stderr); code != 0 {
+		t.Fatal(stderr.String())
+	}
+	if !strings.Contains(out.String(), "日本語 チーム 名前 ") || strings.ContainsRune(out.String(), '\x1b') {
+		t.Fatal("team name broke terminal output")
 	}
 }
