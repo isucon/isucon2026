@@ -313,44 +313,14 @@ func fixedRanks(id string) []int64 {
 // nearMisses keeps unresolved ties separate and never includes ineligible teams.
 func nearMisses(teams []teamStats, r rule, award Award) []Candidate {
 	out := []Candidate{}
+	if len(fixedRanks(r.id)) > 0 {
+		return out
+	}
 	excluded := map[int64]bool{}
 	for _, group := range [][]Candidate{award.Winners, award.TiedCandidates} {
 		for _, t := range group {
 			excluded[t.ID] = true
 		}
-	}
-	if targets := fixedRanks(r.id); len(targets) > 0 {
-		for _, target := range targets {
-			var before, after *teamStats
-			for i := range teams {
-				t := &teams[i]
-				if excluded[t.ID] {
-					continue
-				}
-				if t.FinalRank < target && (before == nil || t.FinalRank > before.FinalRank) {
-					before = t
-				}
-				if t.FinalRank > target && (after == nil || t.FinalRank < after.FinalRank) {
-					after = t
-				}
-			}
-			for _, t := range []*teamStats{before, after} {
-				if t != nil {
-					out = append(out, candidate(*t, numbers(t.FinalRank)))
-				}
-			}
-		}
-		// A sparse ranking can share the same neighbor across target ranks.
-		seen := map[int64]bool{}
-		unique := []Candidate{}
-		for _, c := range out {
-			if !seen[c.ID] {
-				unique = append(unique, c)
-				seen[c.ID] = true
-			}
-		}
-		sort.Slice(unique, func(i, j int) bool { return unique[i].FinalRank < unique[j].FinalRank })
-		return unique
 	}
 	type entry struct {
 		team teamStats
@@ -481,9 +451,6 @@ func writeTable(w io.Writer, result Result) error {
 		if len(rows) == 0 {
 			fmt.Fprintln(&out, "(no candidates)")
 			continue
-		}
-		if len(fixedRanks(a.ID)) > 0 {
-			sort.Slice(rows, func(i, j int) bool { return rows[i].c.FinalRank < rows[j].c.FinalRank })
 		}
 		table := tabwriter.NewWriter(&out, 0, 4, 2, ' ', 0)
 		fmt.Fprintln(table, "STATUS\tRANK\tSCORE\tID\tVALUE\tTEAM")

@@ -208,13 +208,13 @@ func TestNearMisses(t *testing.T) {
 			t.Fatal(got)
 		}
 	})
-	t.Run("each fixed rank has both neighbors", func(t *testing.T) {
+	t.Run("fixed ranks omit neighbors", func(t *testing.T) {
 		teams := []map[string]any{}
 		for _, rank := range []int64{2, 3, 4, 32, 33, 34, 332, 333, 334} {
 			teams = append(teams, teamInput(rank, 10000-rank))
 		}
 		a := awardResult(t, "m3", teams...)
-		if got := ids(a.NearMisses); !reflect.DeepEqual(got, []int64{2, 4, 32, 34, 332, 334}) {
+		if got := ids(a.NearMisses); !reflect.DeepEqual(got, []int64{}) {
 			t.Fatal(got)
 		}
 	})
@@ -222,7 +222,7 @@ func TestNearMisses(t *testing.T) {
 		dq := teamInput(24, 200)
 		dq["disqualified"] = true
 		a := awardResult(t, "forcia", teamInput(23, 300), dq, teamInput(26, 100))
-		if got := ids(a.NearMisses); !reflect.DeepEqual(got, []int64{23, 26}) {
+		if got := ids(a.NearMisses); !reflect.DeepEqual(got, []int64{}) {
 			t.Fatal(got)
 		}
 	})
@@ -262,7 +262,7 @@ func TestExample(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, a := range result.Awards {
-		if len(a.Winners) == 0 || len(a.NearMisses) == 0 {
+		if len(a.Winners) == 0 || (len(fixedRanks(a.ID)) == 0 && len(a.NearMisses) == 0) {
 			t.Fatalf("example must show winners and near misses for %s", a.ID)
 		}
 	}
@@ -285,7 +285,7 @@ func TestTableCLI(t *testing.T) {
 	}
 	start := strings.Index(text, "フォルシア賞")
 	section := text[start : strings.Index(text[start:], "カウシェ")+start]
-	if !(strings.Index(section, "Team 24") < strings.Index(section, "Team 25") && strings.Index(section, "Team 25") < strings.Index(section, "Team 26")) {
+	if strings.Contains(section, "NEAR") || strings.Contains(section, "Team 24") || strings.Contains(section, "Team 26") {
 		t.Fatal(section)
 	}
 }
