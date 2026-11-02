@@ -16,6 +16,7 @@ export const requiredSecrets = [
 ];
 export const defaults = {
   natGatewayCount: 2,
+  portalDesiredCount: 2,
   availabilityZones: ["ap-northeast-1a", "ap-northeast-1c"],
   vpcCidr: "10.26.0.0/16",
   auroraEngineVersion: "17.7",
@@ -85,6 +86,9 @@ export function validateConfig(c: PortalConfig): PortalConfig {
   if (![1, 2].includes(c.natGatewayCount)) {
     throw new Error("natGatewayCount must be 1 or 2");
   }
+  if (!Number.isInteger(c.portalDesiredCount) || c.portalDesiredCount < 1) {
+    throw new Error("portalDesiredCount must be a positive integer");
+  }
   if (
     c.auroraMinAcu < 0.5 || c.auroraMaxAcu < c.auroraMinAcu ||
     c.auroraMaxAcu > 256 || !Number.isInteger(c.auroraMinAcu * 2) ||
@@ -146,6 +150,8 @@ export function loadConfig(): PortalConfig {
     githubOidcProviderArn: config.require("githubOidcProviderArn"),
     natGatewayCount: config.getNumber("natGatewayCount") ??
       defaults.natGatewayCount,
+    portalDesiredCount: config.getNumber("portalDesiredCount") ??
+      defaults.portalDesiredCount,
     availabilityZones: config.getObject<string[]>("availabilityZones") ??
       defaults.availabilityZones,
     vpcCidr: config.get("vpcCidr") ?? defaults.vpcCidr,

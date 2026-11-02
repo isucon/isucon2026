@@ -113,6 +113,14 @@ exports `vpcId`, `privateSubnetIds`, and `natPublicIps` for consumers such as
 the trial Supervisor. A single NAT reduces cost and EIP allocation at the
 expense of outbound AZ redundancy.
 
+For a low-traffic production stack, set `natGatewayCount: 1`,
+`auroraMinAcu: 0.5`, and `portalDesiredCount: 1` explicitly in that stack.
+Keep `auroraMaxAcu: 16`; Aurora and Valkey still have two instances each.
+`portalDesiredCount` defaults to 2 and is exported to the ecspresso service
+definition. Apply Pulumi, then deploy through ecspresso to apply the task count.
+The production supervisor has its own stack and `desiredCount` setting; set it
+to 2 and deploy its generated ecspresso definition separately.
+
 ## Route 53 以外の DNS を使用する場合
 
 `dnsManagement=external` を指定すると、Route 53 のレコードを作成せず、ACM の DNS 検証と HTTPS リスナーは引き続き Pulumi で管理します。

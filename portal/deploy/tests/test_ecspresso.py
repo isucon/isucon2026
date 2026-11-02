@@ -82,6 +82,13 @@ class EcspressoTest(unittest.TestCase):
         )
         self.assertEqual(service["loadBalancers"][0]["containerPort"], 8081)
 
+    def test_portal_count_can_be_reduced_without_affecting_other_services(self):
+        self.infra.update(portalDesiredCount=1, enableBot=True)
+        (self.path / "infra.json").write_text(json.dumps(self.infra))
+        for service in ("portal", "worker", "notifyloop", "bot"):
+            with self.subTest(service=service):
+                self.assertEqual(self.render(service, "servicedef")["desiredCount"], 1)
+
     def test_standby_runs_only_portal_even_with_bot_enabled(self):
         self.infra.update(standby=True, enableBot=True)
         (self.path / "infra.json").write_text(json.dumps(self.infra))
