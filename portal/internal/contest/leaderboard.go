@@ -98,7 +98,8 @@ func (b *condBuilder) addVisibility(vis Visibility, t config.Timing, teamID int6
 		teamID = 0 // visible_not_frozen(nil): team_id = NULL は決してマッチしない
 	}
 	if t.ContestEnd != nil {
-		b.add("benchmark_results.marked_at < ?", t.ContestEnd.UTC())
+		// Jobs accepted before the deadline remain eligible even when they finish later.
+		b.add("EXISTS (SELECT 1 FROM benchmark_jobs deadline_job WHERE deadline_job.id = benchmark_results.benchmark_job_id AND deadline_job.team_id = benchmark_results.team_id AND deadline_job.created_at < ?)", t.ContestEnd.UTC())
 	}
 	if t.ContestFreeze != nil {
 		b.add("(benchmark_results.team_id = ? OR benchmark_results.marked_at < ?)", teamID, t.ContestFreeze.UTC())

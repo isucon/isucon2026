@@ -33,6 +33,9 @@ func TestTeamRenameRefreshesCachedDashboards(t *testing.T) {
 			// Keep the score history fixed throughout the rename, including a score
 			// after the freeze that must remain private to staff and the team itself.
 			for i, markedAt := range []time.Time{now.Add(-2 * time.Hour), now.Add(-30 * time.Minute)} {
+				if _, err := p.DB.Exec(`INSERT INTO benchmark_jobs(id,team_id,status,created_at,updated_at) VALUES($1,$2,4,$3,$3)`, i+1, id, markedAt.Add(-time.Minute)); err != nil {
+					t.Fatal(err)
+				}
 				if _, err := p.DB.Exec(`INSERT INTO benchmark_results(team_id,benchmark_job_id,score,finished,passed,exit_status,marked_at,created_at,updated_at) VALUES($1,$2,$3,true,true,0,$4,$4,$4)`, id, i+1, (i+1)*100, markedAt); err != nil {
 					t.Fatal(err)
 				}
