@@ -569,6 +569,7 @@ export function createPortal(c: PortalConfig) {
     enableBot: c.enableBot,
     enableBotInStandby: c.enableBotInStandby,
     standby: c.standby,
+    portalDesiredCount: c.portalDesiredCount,
     environment: {
       ISUXPORTAL_ADMIN_ONLY: "1",
       ISUXPORTAL_ADMIN_LOGIN: "admin",
