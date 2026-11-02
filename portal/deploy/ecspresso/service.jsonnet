@@ -4,7 +4,7 @@ local standby = std.get(infra, 'standby', false);
 local singleton = std.member(['bot', 'notifyloop'], service);
 {
   serviceName: service,
-  desiredCount: if service == 'portal' then 2 else if standby && !(service == 'bot' && std.get(infra, 'enableBotInStandby', false)) then 0 else if service == 'bot' && !infra.enableBot then 0 else 1,
+  desiredCount: if service == 'portal' then std.get(infra, 'portalDesiredCount', 2) else if standby && !(service == 'bot' && std.get(infra, 'enableBotInStandby', false)) then 0 else if service == 'bot' && !infra.enableBot then 0 else 1,
   launchType: 'FARGATE',
   availabilityZoneRebalancing: if singleton then 'DISABLED' else 'ENABLED',
   propagateTags: 'NONE',
