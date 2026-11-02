@@ -50,6 +50,8 @@ const config = {
   redisDatabase: 1,
   secretKeys: [...defaults.secretKeys, "ISUXPORTAL_SLACK_WEBHOOK_URL"],
   natGatewayCount: 1,
+  portalDesiredCount: 1,
+  auroraMinAcu: 0.5,
   name: "portal-test",
   region: "ap-northeast-1",
   domainName: "portal.example.com",
@@ -119,7 +121,7 @@ describe("portal infrastructure", () => {
       storageEncrypted: true,
       deletionProtection: true,
       manageMasterUserPassword: true,
-      serverlessv2ScalingConfiguration: { minCapacity: 2, maxCapacity: 16 },
+      serverlessv2ScalingConfiguration: { minCapacity: 0.5, maxCapacity: 16 },
     });
     const instances = ofType("aws:rds/clusterInstance:ClusterInstance");
     expect(instances).toHaveLength(2);
@@ -187,6 +189,7 @@ describe("portal infrastructure", () => {
       name: "portal-test",
       region: "ap-northeast-1",
       enableBot: false,
+      portalDesiredCount: 1,
     });
     expect(data).not.toHaveProperty("tasks");
     expect(data).not.toHaveProperty("services");
@@ -281,4 +284,13 @@ test("validates the NAT count while retaining a redundant default", () => {
   expect(() => validateConfig({ ...config, natGatewayCount: 3 })).toThrow(
     "natGatewayCount",
   );
+});
+
+test("requires a positive integer portal task count and defaults to two", () => {
+  expect(defaults.portalDesiredCount).toBe(2);
+  for (const portalDesiredCount of [0, -1, 1.5]) {
+    expect(() => validateConfig({ ...config, portalDesiredCount })).toThrow(
+      "portalDesiredCount",
+    );
+  }
 });
