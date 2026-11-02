@@ -317,9 +317,9 @@ RSpec.describe 'Contest.leaderboard' do
             create(:benchmark_job, :passed, scored: 600, team: team2, marked_at: now+69)
 
             ##
-            create(:benchmark_job, :passed, scored: 900, team: team3, marked_at: now+121)
-            create(:benchmark_job, :passed, scored: 800, team: team2, marked_at: now+121)
-            create(:benchmark_job, :failed, scored: 300, team: team1, marked_at: now+121)
+            create(:benchmark_job, :passed, scored: 900, team: team3, created_at: now + 120, marked_at: now + 121)
+            create(:benchmark_job, :passed, scored: 800, team: team2, created_at: now + 120, marked_at: now + 121)
+            create(:benchmark_job, :failed, scored: 300, team: team1, created_at: now + 120, marked_at: now + 121)
 
             update_best_score()
           end
