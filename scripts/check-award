@@ -1,0 +1,12 @@
+#!/bin/sh
+# Build the standalone Go implementation without leaving a binary in the repository.
+set -u
+script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd) || exit 1
+build_dir=$(mktemp -d "${TMPDIR:-/tmp}/check-award.XXXXXX") || exit 1
+trap 'rm -rf "$build_dir"' EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+go build -o "$build_dir/check-award" "$script_dir/check-award.go" || exit "$?"
+"$build_dir/check-award" "$@"
+exit "$?"
