@@ -789,7 +789,7 @@ func (e *Env) ExecuteOnMultipleContestantInstances(ctx context.Context, teamIDs 
 	return nil
 }
 
-// LongRunningCheck は clar 2 分滞留・ベンチ 150 秒超を Slack 警告する（notifyloop が 60 秒間隔で叩く）。
+// LongRunningCheck は clar 2 分滞留・ベンチ作成から 5 分以上を Slack 警告する（notifyloop が 60 秒間隔で叩く）。
 func (e *Env) LongRunningCheck(ctx context.Context) error {
 	now := time.Now().UTC()
 	var messages []string
@@ -814,7 +814,7 @@ func (e *Env) LongRunningCheck(ctx context.Context) error {
 	jobs, err := model.QueryJobs(ctx, e.DB, `
 		SELECT `+"benchmark_jobs.id, benchmark_jobs.team_id, benchmark_jobs.status, benchmark_jobs.instance_name, benchmark_jobs.handle, benchmark_jobs.started_at, benchmark_jobs.finished_at, benchmark_jobs.created_at, benchmark_jobs.updated_at, benchmark_jobs.target_id, benchmark_jobs.enqueued_by_id, benchmark_jobs.post_validation"+`
 		FROM benchmark_jobs WHERE status IN ($1, $2) AND created_at <= $3`,
-		model.JobPending, model.JobRunning, now.Add(-150*time.Second))
+		model.JobPending, model.JobRunning, now.Add(-5*time.Minute))
 	if err != nil {
 		return err
 	}
