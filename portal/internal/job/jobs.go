@@ -790,6 +790,7 @@ func (e *Env) ExecuteOnMultipleContestantInstances(ctx context.Context, teamIDs 
 }
 
 // LongRunningCheck は clar 2 分滞留・ベンチ作成から 5 分以上を Slack 警告する（notifyloop が 60 秒間隔で叩く）。
+// ベンチの閾値は感想戦用に 5 分としている。本来はベンチ 60 秒 + 余裕分で 120 秒。
 func (e *Env) LongRunningCheck(ctx context.Context) error {
 	now := time.Now().UTC()
 	var messages []string
