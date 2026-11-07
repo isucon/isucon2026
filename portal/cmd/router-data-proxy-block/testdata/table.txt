@@ -1,0 +1,6 @@
+table inet isucon_data_proxy_block {
+	chain input {
+		type filter hook input priority filter; policy accept;
+		ip daddr 192.168.10.10 tcp dport { 443, 8080 } counter packets 0 bytes 0 drop
+	}
+}
