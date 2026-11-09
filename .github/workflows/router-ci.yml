@@ -10,8 +10,12 @@ on:
       - "Makefile"
       - "docs/router.md"
       - "gen/go/**"
-      - "portal-mock/server/**"
-      - "proto/portal/**"
+      - "proto/**"
+      - "gen/ts/**"
+      - "buf.yaml"
+      - "buf.gen.yaml"
+      - "mise.toml"
+      - "mise.lock"
       - "router/**"
   pull_request:
     paths:
@@ -20,8 +24,12 @@ on:
       - "Makefile"
       - "docs/router.md"
       - "gen/go/**"
-      - "portal-mock/server/**"
-      - "proto/portal/**"
+      - "proto/**"
+      - "gen/ts/**"
+      - "buf.yaml"
+      - "buf.gen.yaml"
+      - "mise.toml"
+      - "mise.lock"
       - "router/**"
   workflow_dispatch:
 
@@ -34,10 +42,74 @@ concurrency:
 
 env:
   GO_VERSION: "1.26.5"
+  NODE_VERSION: "24.14.1"
+  BUF_VERSION: "1.72.0"
+  PROTOC_VERSION: "35.1"
+  PROTOC_GEN_GO_VERSION: "1.36.11"
+  PROTOC_GEN_CONNECT_GO_VERSION: "1.20.0"
+  PROTOC_GEN_ES_VERSION: "2.13.0"
 
 jobs:
+  proto:
+    name: Proto lint / build / drift / breaking
+    runs-on: actions-runner-processor
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: jdx/mise-action@b44d12e7d0d8ee7461bb893e1b1993500433185b # v5.2.7
+        with:
+          install: true
+          cache: true
+      - name: Verify pinned tool versions
+        run: |
+          test "$(mise exec -- buf --version)" = "$BUF_VERSION"
+          mise exec -- protoc --version | grep -Fx "libprotoc $PROTOC_VERSION"
+          test "$(mise exec -- protoc-gen-go --version | awk '{print $2}')" = "v$PROTOC_GEN_GO_VERSION"
+          mise exec -- protoc-gen-connect-go --version | grep -F "$PROTOC_GEN_CONNECT_GO_VERSION"
+          mise exec -- protoc-gen-es --version | grep -F "$PROTOC_GEN_ES_VERSION"
+      - run: mise exec -- buf lint
+      - run: mise exec -- buf build -o /tmp/portal.binpb
+      - name: Verify generated source is reproducible
+        run: |
+          cp gen/go/go.mod /tmp/gen-go.mod
+          cp gen/ts/package.json /tmp/gen-ts-package.json
+          cp gen/ts/package-lock.json /tmp/gen-ts-package-lock.json
+          mise exec -- buf generate
+          cp /tmp/gen-go.mod gen/go/go.mod
+          cp /tmp/gen-ts-package.json gen/ts/package.json
+          cp /tmp/gen-ts-package-lock.json gen/ts/package-lock.json
+          git diff --exit-code -- gen/go gen/ts
+      # The removed portal_mock API is not part of the production Router protocol.
+      - name: Check compatibility against pull-request base
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if git cat-file -e "$BASE_SHA:proto" 2>/dev/null; then
+            base_dir="$(mktemp -d)"
+            git archive "$BASE_SHA" proto buf.yaml | tar -x -C "$base_dir"
+            mise exec -- buf build "$base_dir" -o "$base_dir/base.binpb"
+            mise exec -- buf breaking --limit-to-input-files --against "$base_dir/base.binpb"
+          else
+            echo "Base revision has no proto directory; skipping the initial breaking-change comparison."
+          fi
+      - name: Check compatibility against previous commit
+        if: github.event_name == 'push' && github.event.before != '0000000000000000000000000000000000000000'
+        env:
+          BASE_SHA: ${{ github.event.before }}
+        run: |
+          if git cat-file -e "$BASE_SHA:proto" 2>/dev/null; then
+            base_dir="$(mktemp -d)"
+            git archive "$BASE_SHA" proto buf.yaml | tar -x -C "$base_dir"
+            mise exec -- buf build "$base_dir" -o "$base_dir/base.binpb"
+            mise exec -- buf breaking --limit-to-input-files --against "$base_dir/base.binpb"
+          else
+            echo "Previous revision has no proto directory; skipping the initial breaking-change comparison."
+          fi
+
   static:
-    name: Go / Compose / HAProxy validation
+    name: Go / HAProxy validation
     runs-on: actions-runner-processor
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -58,13 +130,11 @@ jobs:
       - name: Tests with race detector
         working-directory: router
         run: go test -race ./... -count=1 -timeout=2m
-      - name: Build Router and E2E runner
+      - name: Build Router
         working-directory: router
         run: |
           go build -trimpath -o /tmp/isureal-router ./cmd/router
-          go build -trimpath -o /tmp/router-e2e ./tests/e2e
-      - name: Validate Compose model
-        run: docker compose -f router/compose.e2e.yaml config --quiet
+          go build -trimpath -o /tmp/isureal-router-control ./cmd/router-control
       - name: Validate rendered HAProxy configuration (HTTP and HTTPS)
         run: make router-haproxy-check
 
@@ -83,19 +153,3 @@ jobs:
           cargo fmt --check
           cargo clippy --locked --all-targets -- -D warnings
           cargo test --locked
-
-  compose-e2e:
-    name: Real HAProxy / Linux network E2E
-    runs-on: actions-runner-processor
-    # The E2E also builds isureal-digest (Rust) from scratch.
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Run isolated Router E2E
-        run: timeout --signal=INT --kill-after=30s 480s router/tests/e2e/run.sh
-      - name: Print retained diagnostics
-        if: failure()
-        run: |
-          if test -f router/.e2e-artifacts/compose.log; then
-            tail -n 2000 router/.e2e-artifacts/compose.log
-          fi

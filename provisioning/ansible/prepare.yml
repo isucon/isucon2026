@@ -130,7 +130,7 @@
       changed_when: true
       when: "'router' in prepare_components"
 
-    - name: Build validation Portal
+    - name: Build Router control service
       ansible.builtin.command:
         argv:
           [
@@ -138,10 +138,10 @@
             build,
             -trimpath,
             -o,
-            "{{ build_dir }}/isureal-portal",
-            ./cmd/portal,
+            "{{ build_dir }}/isureal-router-control",
+            ./cmd/router-control,
           ]
-        chdir: "{{ repo_root }}/portal-mock/server"
+        chdir: "{{ repo_root }}/router"
       environment:
         CGO_ENABLED: "0"
         GOOS: linux

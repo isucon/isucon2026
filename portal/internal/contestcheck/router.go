@@ -108,7 +108,7 @@ func CollectRouter(ctx context.Context, run Command) (map[string]string, error) 
 	if err != nil {
 		return nil, err
 	}
-	paths := []string{"/usr/sbin/haproxy", "/usr/sbin/sshd", "/etc/sysctl.d/90-isucon-router.conf", "/run/isureal-haproxy", "/etc/ssh", "/etc/isucon/router.env", "/etc/isucon/portal.env", "/etc/isucon/haproxy", "/etc/netplan", "/opt/isucon/bin", "/etc/systemd/system/isureal-router.service", "/etc/systemd/system/isureal-haproxy.service", "/home/isuadmin/.ssh/authorized_keys"}
+	paths := []string{"/usr/sbin/haproxy", "/usr/sbin/sshd", "/etc/sysctl.d/90-isucon-router.conf", "/run/isureal-haproxy", "/etc/ssh", "/etc/isucon/router.env", "/etc/isucon/router-control.env", "/etc/isucon/haproxy", "/etc/netplan", "/opt/isucon/bin", "/etc/systemd/system/isureal-router.service", "/etc/systemd/system/isureal-router-control.service", "/etc/systemd/system/isureal-haproxy.service", "/home/isuadmin/.ssh/authorized_keys"}
 	for _, root := range paths {
 		err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 			if err != nil {

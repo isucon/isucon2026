@@ -34,8 +34,8 @@ make install   # 依存パッケージを vendor/ に入れる
 make run       # php-fpm をフォアグラウンドで起動する
 ```
 
-nginx の設定は、競技環境では `/etc/nginx/sites-available/isureal-php.conf`、開発環境では
-`deploy/dev/nginx-php.conf` です。
+nginx の設定は `provisioning/ansible/roles/webapp/files/isureal-php.nginx.conf` にあり、
+競技環境の `/etc/nginx/sites-available/isureal-php.conf` に配置します。
 
 ## 環境変数
 

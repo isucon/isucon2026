@@ -14,10 +14,6 @@
     "typecheck": "tsc -b --pretty false",
     "test": "vitest run --passWithNoTests",
     "test:e2e": "playwright test",
-    "test:e2e:compose": "ISUREAL_COMPOSE_E2E=1 ISUREAL_API_PROXY_TARGET=http://asia.127.0.0.1.nip.io:18090 PLAYWRIGHT_BASE_URL=http://127.0.0.1:5173 playwright test tests/e2e/compose-photo-upload.spec.ts",
-    "test:contract": "redocly lint --config redocly.yaml ../specs/001-isureal-social-app/contracts/openapi.yaml",
-    "generate:api": "openapi-typescript ../specs/001-isureal-social-app/contracts/openapi.yaml -o src/api/schema.d.ts",
-    "check:openapi": "node scripts/check-openapi.mjs",
     "check:browser": "node scripts/verify-browser.mjs"
   },
   "dependencies": {
@@ -28,14 +24,12 @@
   "devDependencies": {
     "@eslint/js": "10.0.1",
     "@playwright/test": "1.61.1",
-    "@redocly/cli": "2.39.0",
     "@types/node": "26.1.1",
     "@types/react": "19.2.17",
     "@types/react-dom": "19.2.3",
     "@vitejs/plugin-react": "6.0.3",
     "eslint": "10.7.0",
     "jsdom": "29.1.1",
-    "openapi-typescript": "7.13.0",
     "typescript": "5.9.3",
     "typescript-eslint": "8.64.0",
     "vite": "8.1.5",

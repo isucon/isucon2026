@@ -2,38 +2,16 @@
 
 Portal 関連の Protobuf 定義を置く。
 
-```text
-proto/
-├── portal/
-│   └── v1/
-│       └── portal.proto
-└── portal_mock/
-    └── v1/
-        └── portal_mock.proto
-```
+`portal/v1/portal.proto` は Router と `isureal-router-control` の通信定義です。
+サービス名 `PortalRouterService` は既存 Router との通信互換性のため維持しています。
+競技用 Web ポータルの API ではありません。
 
-## `portal/v1`
+- `StreamDesired`: Router へ設定を配信
+- `ReportApplied`: Router から適用結果を受信
+- `TeamKey`、`Config`、`ConfigSnapshot`: チームと固定地域配置の定義
 
-Routerとの通信に使用する定義。
-
-- Router への desired 配信
-- Router からの applied 報告
-- TeamKey、Config、Router向けConfigSnapshot
-
-## `portal_mock/v1`
-
-モックポータルのUIとCIで使用する定義。
-
-- 状態取得と設定変更
-- 対応国の取得
-- ホスト名などの計算済み表示値
-- applied、収束状態、診断情報
-- Router のスタンドイン設定
-- ベンチマークシミュレーション
-- 状態の初期化
-
-契約の詳細なstream、エラー、TeamKey検証、同値更新no-op、診断回復の規則は
-`specs/002-portal-mock/contracts/README.md`を参照する。
+実装と配備手順は [router/README.md](../router/README.md) を参照してください。
+旧モック専用の `portal_mock/v1` と生成コードは削除しています。
 
 ## コマンド
 
@@ -52,8 +30,9 @@ BASE_REF="${BASE_REF:-origin/main}"
 if git cat-file -e "$BASE_REF:proto" 2>/dev/null; then
   BASE_DIR="$(mktemp -d)"
   trap 'rm -rf "$BASE_DIR"' EXIT
-  git archive "$BASE_REF" proto | tar -x -C "$BASE_DIR"
-  mise exec -- buf breaking --against "$BASE_DIR/proto"
+  git archive "$BASE_REF" proto buf.yaml | tar -x -C "$BASE_DIR"
+  mise exec -- buf build "$BASE_DIR" -o "$BASE_DIR/base.binpb"
+  mise exec -- buf breaking --limit-to-input-files --against "$BASE_DIR/base.binpb"
 else
   echo "$BASE_REF has no proto directory; there is no prior API to compare."
 fi

@@ -1,6 +1,7 @@
 """Regression tests for CI routing. Run with uv run --with pyyaml this_file.py."""
 
 import fnmatch
+import json
 import unittest
 from pathlib import Path
 
@@ -29,6 +30,59 @@ def triggered(workflow, event, branch, path):
 
 
 class WorkflowRoutingTest(unittest.TestCase):
+    def test_retired_components_are_removed(self):
+        root = WORKFLOWS.parents[1]
+        for path in (
+            "backend",
+            "specs",
+            ".specify",
+            "portal-mock",
+            "webapp-optimized",
+            "webapp-asia-optimized",
+            "webapp-optmized-astra",
+        ):
+            with self.subTest(path=path):
+                self.assertFalse((root / path).exists())
+        self.assertFalse(list((root / ".agents/skills").glob("speckit-*")))
+
+    def test_proto_job_has_pinned_versions(self):
+        workflow = workflows()["router-ci.yml"]
+        for name in (
+            "BUF_VERSION",
+            "PROTOC_VERSION",
+            "PROTOC_GEN_GO_VERSION",
+            "PROTOC_GEN_CONNECT_GO_VERSION",
+            "PROTOC_GEN_ES_VERSION",
+        ):
+            self.assertIn(name, workflow["env"])
+
+    def test_retired_development_environments_are_removed(self):
+        root = WORKFLOWS.parents[1]
+        for path in (
+            "compose.yaml",
+            "deploy",
+            "router/compose.e2e.yaml",
+            "router/tests/e2e",
+            "router/test-fixtures/server",
+            "router/test-fixtures/portal",
+            "proto/portal_mock",
+            "gen/go/portal_mock",
+            "gen/ts/portal_mock",
+        ):
+            with self.subTest(path=path):
+                self.assertFalse((root / path).exists())
+        self.assertNotIn("compose-e2e", workflows()["router-ci.yml"]["jobs"])
+
+    def test_frontend_does_not_use_retired_contract(self):
+        root = WORKFLOWS.parents[1]
+        package = json.loads((root / "frontend/package.json").read_text())
+        for name in ("test:contract", "generate:api", "check:openapi"):
+            self.assertNotIn(name, package["scripts"])
+        self.assertFalse((root / "frontend/src/api/schema.d.ts").exists())
+        workflow = (WORKFLOWS / "frontend-ci.yml").read_text()
+        self.assertNotIn("test:contract", workflow)
+        self.assertNotIn("check:openapi", workflow)
+
     def test_ci_builds_pull_from_mirror(self):
         for job in workflows()["portal-ci.yml"]["jobs"].values():
             for service in job.get("services", {}).values():
@@ -39,10 +93,6 @@ class WorkflowRoutingTest(unittest.TestCase):
             "portal/rspec/Dockerfile",
             "supervisor/Dockerfile",
             "router/Dockerfile",
-            "router/tests/e2e/Dockerfile",
-            "router/test-fixtures/server/Dockerfile",
-            "portal-mock/server/Dockerfile",
-            "portal-mock/web/Dockerfile",
         ]:
             for line in (root / path).read_text().splitlines():
                 if line.startswith("# syntax="):
@@ -82,18 +132,16 @@ class WorkflowRoutingTest(unittest.TestCase):
 
     def test_component_routing(self):
         cases = {
-            "backend/internal/service/auth.go": {"backend-ci.yml"},
+            "backend/internal/service/auth.go": set(),
             "frontend/src/App.tsx": {"frontend-ci.yml"},
             "portal/internal/handler/admin.go": {"portal-ci.yml", "supervisor-ci.yml"},
             "supervisor/src/main.rs": {"supervisor-ci.yml"},
             "bench/main.go": {"supervisor-ci.yml"},
             "router/internal/config/config.go": {"router-ci.yml"},
-            "portal-mock/web/src/App.tsx": {"portal-mock-ci.yml"},
-            "gen/go/portal/v1/config.pb.go": {"portal-mock-ci.yml", "router-ci.yml"},
-            "specs/001-isureal-social-app/contracts/openapi.yaml": {
-                "backend-ci.yml",
-                "frontend-ci.yml",
-            },
+            "portal-mock/web/src/App.tsx": set(),
+            "router/internal/control/server.go": {"router-ci.yml"},
+            "gen/go/portal/v1/config.pb.go": {"router-ci.yml"},
+            "specs/001-isureal-social-app/contracts/openapi.yaml": set(),
             "README.md": set(),
         }
         all_workflows = workflows()

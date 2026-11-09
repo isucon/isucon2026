@@ -66,7 +66,7 @@ func Load(lookup LookupFunc) (Config, error) {
 	}
 
 	cfg := Config{
-		PortalEndpoint:        stringValue(lookup, "ROUTER_PORTAL_ENDPOINT", "http://portal:8080"),
+		PortalEndpoint:        stringValue(lookup, "ROUTER_PORTAL_ENDPOINT", "http://127.0.0.1:18082"),
 		TeamNumber:            teamNumber,
 		StatusListenAddress:   stringValue(lookup, "ROUTER_STATUS_LISTEN_ADDRESS", "0.0.0.0:18081"),
 		HTTPListenAddress:     stringValue(lookup, "ROUTER_HTTP_LISTEN_ADDRESS", "0.0.0.0:8080"),

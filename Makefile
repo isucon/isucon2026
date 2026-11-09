@@ -1,20 +1,20 @@
-.PHONY: tools fmt vet build test frontend-install frontend-lint frontend-typecheck frontend-test frontend-e2e contract generate-api proto-lint proto-generate proto-build portal-fmt portal-vet portal-test portal-build portal-web-install portal-web-lint portal-web-typecheck portal-web-test portal-web-build portal-web-e2e portal-check router-fmt router-vet router-test router-build router-compose-check router-haproxy-check router-e2e router-check ami aws-infra-install aws-infra-check aws-infra-preview aws-infra-up aws-infra-destroy aws-benchmark datagen datagen-test datagen-load check
+.PHONY: tools fmt vet build test frontend-install frontend-lint frontend-typecheck frontend-test frontend-e2e proto-lint proto-generate proto-build portal-fmt portal-vet portal-test portal-build portal-check router-fmt router-vet router-test router-build router-haproxy-check router-check ami aws-infra-install aws-infra-check aws-infra-preview aws-infra-up aws-infra-destroy aws-benchmark datagen datagen-test check
 
 tools:
 	mise install
 
 fmt:
-	gofmt -w $$(find backend -name '*.go' -type f)
+	gofmt -w $$(find webapp/go -name '*.go' -type f)
 
 vet:
-	go -C backend vet ./...
+	go -C webapp/go vet ./...
 
 build:
-	go -C backend build ./cmd/api ./cmd/worker ./cmd/image-sanitizer
+	go -C webapp/go build ./...
 	npm --prefix frontend run build
 
 test:
-	go -C backend test ./...
+	go -C webapp/go test ./...
 	npm --prefix frontend test
 
 frontend-install:
@@ -32,28 +32,12 @@ frontend-test:
 frontend-e2e:
 	npm --prefix frontend run test:e2e
 
-contract:
-	npm --prefix frontend run test:contract
-
 datagen:
 	cd webapp/datagen && go run .
 
 datagen-test:
 	cd dataset && go test ./...
 	cd webapp/datagen && go test ./...
-
-# Docker Compose の DB に、ファイルを経ずに初期データを入れ直す（SCALE=large で本番の規模）。
-# bench は同じ -scale で実行する。WEBAPP=webapp-optimized で最適化版のスキーマを使う。
-SCALE ?= small
-WEBAPP ?= webapp
-DB_PSQL = docker compose exec -T db-asia psql -U isureal -d isureal -v ON_ERROR_STOP=1 -q
-datagen-load:
-	$(DB_PSQL) < $(WEBAPP)/sql/001-schema.sql
-	cd webapp/datagen && go run . -scale $(SCALE) -out - | $(DB_PSQL)
-	$(DB_PSQL) < $(WEBAPP)/sql/003-initial-snapshot.sql
-
-generate-api:
-	npm --prefix frontend run generate:api
 
 proto-lint:
 	mise exec -- buf lint
@@ -67,42 +51,18 @@ proto-build:
 	mise exec -- buf build -o /tmp/isucon2026-proto.binpb
 
 portal-fmt:
-	gofmt -w $$(find portal-mock/server -name '*.go' -type f)
+	go -C portal fmt ./...
 
 portal-vet:
-	go -C portal-mock/server vet ./...
+	go -C portal vet ./...
 
 portal-test:
-	go -C portal-mock/server test ./...
+	$(MAKE) -C portal test
 
 portal-build:
-	go -C portal-mock/server build ./cmd/portal
+	$(MAKE) -C portal build
 
-portal-web-install:
-	npm --prefix portal-mock/web ci
-
-portal-web-lint:
-	npm --prefix portal-mock/web run lint
-
-portal-web-typecheck:
-	npm --prefix portal-mock/web run typecheck
-
-portal-web-test:
-	npm --prefix portal-mock/web test
-
-portal-web-build:
-	npm --prefix portal-mock/web run build
-
-portal-web-e2e:
-	npm --prefix portal-mock/web run test:e2e
-
-portal-check: proto-lint proto-generate portal-vet portal-test portal-build
-	npm --prefix gen/ts ci --ignore-scripts
-	npm --prefix portal-mock/web ci
-	npm --prefix portal-mock/web run lint
-	npm --prefix portal-mock/web run typecheck
-	npm --prefix portal-mock/web test
-	npm --prefix portal-mock/web run build
+portal-check: portal-vet portal-test portal-build
 
 router-fmt:
 	gofmt -w $$(find router -name '*.go' -type f)
@@ -115,9 +75,7 @@ router-test:
 
 router-build:
 	go -C router build -trimpath -o /tmp/isureal-router ./cmd/router
-
-router-compose-check:
-	docker compose -f router/compose.e2e.yaml config --quiet
+	go -C router build -trimpath -o /tmp/isureal-router-control ./cmd/router-control
 
 # 生成した HAProxy の設定を、コンテナと同じ版の HAProxy で検証する。既定の環境変数（HTTP だけ）と、
 # AWS と同じ HTTPS あり（使い捨ての自己署名の PEM、上流は 80）の 2 通り
@@ -133,10 +91,7 @@ router-haproxy-check:
 		ROUTER_UPSTREAM_PORT=80 go -C router run ./cmd/router haproxy-config && \
 	docker run --rm -v "$$dir:$$dir:ro" mirror.gcr.io/library/haproxy:2.8.16-alpine haproxy -c -f "$$dir/haproxy.cfg"
 
-router-e2e:
-	router/tests/e2e/run.sh
-
-router-check: router-vet router-test router-build router-compose-check router-haproxy-check
+router-check: router-vet router-test router-build router-haproxy-check
 
 AWS_SDK_ENV = AWS_CONFIG_FILE=$(CURDIR)/provisioning/aws-sdk.config AWS_PROFILE=default AWS_SDK_LOAD_CONFIG=1
 
@@ -218,51 +173,4 @@ supervisor-image: $(SUPERVISOR_PHOTOS) $(SUPERVISOR_DIGESTS)
 bench-image-digests:
 	cd bench && go run ./cmd/imagedigests -scale large -out ../var/image-digests/large.bin
 
-check: proto-lint vet frontend-lint frontend-typecheck contract test build
-
-.PHONY: dev-up dev-down dev-logs dev-check
-
-dev-up:
-	docker compose up -d --build --wait --wait-timeout 180
-
-dev-down:
-	docker compose down
-
-dev-logs:
-	docker compose logs -f
-
-dev-check:
-	python3 deploy/dev/smoke.py
-
-# Isolated portal -> supervisor -> real webapp development environment.
-DEBUG_COMPOSE := docker compose -f deploy/local-debug/compose.yaml
-.PHONY: debug-up debug-down debug-register debug-bench debug-result debug-logs debug-loadfixture
-
-debug-up:
-	python3 deploy/local-debug/scripts/timing.py
-	$(DEBUG_COMPOSE) --env-file deploy/local-debug/.env.timing up -d --build --wait
-	$(DEBUG_COMPOSE) exec -T portal-db psql -U isuxportal -d isuxportal -v ON_ERROR_STOP=1 -c "INSERT INTO jobs (name, args) VALUES ('update_contestant_dashboard', '{}');"
-	@echo "Portal: http://localhost:$${DEBUG_PORTAL_PORT:-18081}; run make debug-register next"
-
-debug-down:
-	$(DEBUG_COMPOSE) down
-
-debug-register:
-	$(DEBUG_COMPOSE) exec -T portal /opt/portal/bin/local-debug register
-
-debug-bench: debug-register
-	$(DEBUG_COMPOSE) exec -T portal /opt/portal/bin/local-debug enqueue
-
-debug-result:
-	$(DEBUG_COMPOSE) exec -T portal /opt/portal/bin/local-debug status
-
-debug-logs:
-	$(DEBUG_COMPOSE) logs -f --tail=100 portal portal-worker supervisor
-
-# Append synthetic history to the running debug portal, preserving existing teams.
-debug-loadfixture:
-	bash deploy/local-debug/scripts/loadfixture.sh
-
-.PHONY: debug-refresh-scores
-debug-refresh-scores:
-	bash deploy/local-debug/scripts/loadfixture.sh --scores-only
+check: proto-lint vet frontend-lint frontend-typecheck test build

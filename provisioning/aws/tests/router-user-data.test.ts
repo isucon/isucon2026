@@ -65,7 +65,7 @@ test("starts the router services only after data0 has its static routes", () => 
 	const runcmd = userData.slice(userData.indexOf("runcmd:\n"));
 	expect(runcmd).toBe(`runcmd:
   - until ${routerNetworkScriptPath}; do sleep 5; done
-  - systemctl enable --now isureal-portal isureal-router isureal-haproxy
+  - systemctl enable --now isureal-router-control isureal-router isureal-haproxy
 `);
 });
 
@@ -92,4 +92,12 @@ test("points the Router and HAProxy at the team's servers", () => {
 	);
 	expect(env).toContain(`ROUTER_UPSTREAM_PORT=${appHttpPort}\n`);
 	expect(env).not.toMatch(/XDS|ENVOY/);
+});
+
+test("deploys the production Router control service without mock settings", () => {
+	expect(writtenFile("/etc/isucon/router-control.env").content).toBe(
+		"ROUTER_CONTROL_TEAM_NUMBER=6\nROUTER_CONTROL_LISTEN_ADDRESS=127.0.0.1:18082\nROUTER_CONTROL_DEFAULT_COUNTRY=JP\n",
+	);
+	expect(userData).not.toContain("isureal-portal");
+	expect(userData).not.toContain("/etc/isucon/portal.env");
 });
