@@ -56,21 +56,13 @@ Docker 内で生成された Linux 用バイナリは macOS では実行でき�
 
 ## ローカルのポータルと webapp に接続する
 
-一式を起動して試験データも登録する場合は、[ローカル結合環境](../deploy/local-debug/README.md) の `make debug-up` と `make debug-register` を使用できます。
 以下は既存の開発環境へ個別に接続する手順です。
 
 ### 接続先を用意する
 
-リポジトリルートで webapp を起動します。
-ベンチは実行時に webapp のデータを初期化するため、試験用環境を使用します。
-
-```bash
-docker compose up -d --build --wait
-curl -fsS http://localhost:8080/health/ready
-```
-
-別のターミナルで実ポータルを起動します。
-`portal-mock` は結果報告 API を提供しないため、ここでは使用できません。
+構築済みの試験用 webapp を用意します。
+ベンチは実行時に webapp のデータを初期化します。
+実ポータルは次のコマンドで起動します。
 
 ```bash
 make -C portal frontend
@@ -106,35 +98,6 @@ supervisor/target/release/isuxportal-supervisor \
 `pending → running → finished` の遷移と、ベンチのスコアがポータルに保存されることを確認します。
 接続確認後は `-cycles 1` を外すと通常の60秒負荷になります。
 採点失敗や実行異常では `errored` になる場合があるため、結果の pass と終了情報も確認してください。
-
-### Docker で supervisor を起動する
-
-Docker Desktop でホスト上のポータルに接続する例です。
-webapp の Compose ネットワークに参加し、ログは volume に保持します。
-
-```bash
-docker run --rm --init --name isucon2026-supervisor-local \
-  --network isureal_default \
-  --add-host host.docker.internal:host-gateway \
-  --env-file supervisor/.env \
-  -e ISUXPORTAL_SUPERVISOR_ENDPOINT_URL=http://host.docker.internal:8081 \
-  -e ISUXPORTAL_SUPERVISOR_LOG_DIRECTORY=/var/log/isuxportal-supervisor \
-  -v isucon2026-supervisor-logs:/var/log/isuxportal-supervisor \
-  isucon2026-supervisor:local \
-  /usr/local/bin/isureal-bench --target-port 8080 -users 2 -cycles 1
-```
-
-この場合、対象インスタンスの IP は supervisor コンテナから到達できる webapp API の IP にします。
-既定の Compose プロジェクトなら、次で取得できます。
-コンテナ再作成で IP が変わった場合は登録値も更新してください。
-
-```bash
-docker inspect --format '{{(index .NetworkSettings.Networks "isureal_default").IPAddress}}' \
-  "$(docker compose ps -q api)"
-```
-
-コンテナ内の `127.0.0.1` は supervisor 自身を指します。
-`--target` や `ISUXBENCH_REPORT_FD` を手動で設定する必要はありません。
 
 ## 設定
 

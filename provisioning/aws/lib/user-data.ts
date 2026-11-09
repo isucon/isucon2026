@@ -130,13 +130,10 @@ export function routerEnvironment(t: Team): string {
 	return `${lines.join("\n")}\n`;
 }
 
-export function portalEnvironment(t: Team): string {
-	return `PORTAL_TEAM_NUMBER=${t.number}
-PORTAL_TEAM_HASH=aws
-PORTAL_DOMAIN_SUFFIX=${t.domain.slice(t.domain.indexOf(".") + 1)}
-PORTAL_ROUTER_MODE=external-router
-PORTAL_LISTEN_ADDRESS=127.0.0.1:18082
-PORTAL_WEB_DIR=
+export function routerControlEnvironment(t: Team): string {
+	return `ROUTER_CONTROL_TEAM_NUMBER=${t.number}
+ROUTER_CONTROL_LISTEN_ADDRESS=127.0.0.1:18082
+ROUTER_CONTROL_DEFAULT_COUNTRY=JP
 `;
 }
 
@@ -194,11 +191,11 @@ ${file(routerDataReconfigurePath, routerDataReconfigureScript, "0755")}
 ${file(routerNetworkScriptPath, networkScript, "0755")}
 ${file("/etc/netplan/90-isucon.yaml", routerNetplan(t, dataMac), "0600")}
 ${file("/etc/isucon/router.env", routerEnvironment(t), "0640", "root:isureal-router")}
-${file("/etc/isucon/portal.env", portalEnvironment(t), "0640", "root:isureal-router")}
+${file("/etc/isucon/router-control.env", routerControlEnvironment(t), "0640", "root:isureal-router")}
 ${file(tlsCertificatePath, tlsPem(tlsCertificate, tlsPrivateKey), "0640", "root:isureal-router")}
 runcmd:
 ${adminCommands.map((cmd) => `  - ${JSON.stringify(cmd)}`).join("\n")}${adminCommands.length ? "\n" : ""}  - until ${routerNetworkScriptPath}; do sleep 5; done
-  - systemctl enable --now isureal-portal isureal-router isureal-haproxy
+  - systemctl enable --now isureal-router-control isureal-router isureal-haproxy
 `;
 }
 

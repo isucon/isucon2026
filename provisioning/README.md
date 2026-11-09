@@ -105,18 +105,11 @@ Router の 443/8080 は `clientCidrs`（複数指定可）からしか受け付�
 aws ec2-instance-connect ssh --instance-id i-xxxxxxxx --connection-type eice
 ```
 
-Terminal Bでhealthを確認し、UIを起動します。
+Router の設定配信サービス `isureal-router-control` は `router/cmd/router-control` からビルドします。
+本番の競技環境でも使うローカル専用サービスです。
+配備と旧 AMI からの移行手順は [Router の README](../router/README.md) を参照してください。
+競技用ポータルの構築は [portal/README.md](../portal/README.md) を参照してください。
 
-```bash
-curl -fsS http://127.0.0.1:28082/healthz
-npm --prefix portal-mock/web ci
-PORTAL_API_TARGET=http://127.0.0.1:28082 \
-  npm --prefix portal-mock/web run dev -- --host 127.0.0.1 --port 15174
-```
-
-ブラウザで`http://127.0.0.1:15174/`を開きます。SSHを有効化したstackでは、同じloopback宛ての
-local port forwardingをSSHで作ることもできます。`portal-mock/compose.yaml`は別のローカルPortal APIを
-起動するため、AWS Routerの状態確認には使いません。
 検証環境はAMIから独立したPulumi stackなので、`aws-infra-destroy`はEC2、ENI、
 VPC、route、SGを削除しますがAMIを削除しません。
 

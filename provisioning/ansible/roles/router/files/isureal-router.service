@@ -2,8 +2,8 @@
 Description=ISUReal Router controller
 # The first snapshot is applied through the HAProxy runtime API, so HAProxy
 # must listen before the controller starts.
-After=network-online.target isureal-haproxy.service
-Wants=network-online.target
+After=network-online.target isureal-haproxy.service isureal-router-control.service
+Wants=network-online.target isureal-router-control.service
 
 [Service]
 Type=simple

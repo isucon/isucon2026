@@ -25,6 +25,8 @@ benchmark enters through HTTP port 8080 with the team-specific Host.
 Set `ISUXPORTAL_QUALIFY_AMI_ID` in the portal's Pulumi deployment configuration to
 the ISUCON2026 **service** AMI. The existing environment variable name is retained.
 Set `ISUXPORTAL_ROUTER_AMI_ID` to the Router AMI built by `provisioning/packer`.
+The AMI must contain `isureal-router-control` and its systemd unit.
+Build and select the new AMI before deploying the template that uses it; older AMIs containing only `isureal-portal` are incompatible.
 Downloads embed both configured AMI IDs directly in the instance definitions;
 participants do not choose AMIs through stack parameters. Both AMIs must be launchable in the participant account
 and region. This change does not publish or rebuild AMIs.

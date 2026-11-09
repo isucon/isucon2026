@@ -5,40 +5,71 @@
 Portal の desired config に追従し、HAProxy の HTTP routing/shaping と Linux の server 間 routing/shaping を一体で管理する
 擬似地理分散 Router である。実装の構成と rollback 境界は [設計文書](../docs/router.md) を参照する。
 
-## すぐに検証する
+## 本番の設定配信サービス
 
-前提は Linux、Docker Engine + Docker Compose v2、`NET_ADMIN` container と HTB/netem/nftables を利用できる kernel である。
-host で静的 gate を実行する場合は Go 1.26.5 も必要になる。
+`cmd/router-control` は、競技環境の Router サーバーで動く設定配信サービスです。
+バイナリと systemd unit の名前は `isureal-router-control` です。
+競技用の Web ポータル（`portal/`）とは別のプロセスです。
+
+```text
+isureal-router-control (127.0.0.1:18082)
+    └─ 設定配信 → isureal-router → HAProxy と Linux の通信制御
+    └─ 適用結果 ← isureal-router
+```
+
+配信する地域配置は app1=AP、app2=EU、app3=US、db1=AP に固定しています。
+既定国は JP です。
+設定は起動中に変更せず、環境変数を変更してサービスを再起動すると新しい snapshot を配信します。
+Router は再接続して設定を適用します。
+適用結果は構成と snapshot ID を検証し、journal に記録します。
+状態を DB に永続化する処理はありません。
+
+| 環境変数 | 内容 |
+|---|---|
+| `ROUTER_CONTROL_TEAM_NUMBER` | 必須。正のチーム番号 |
+| `ROUTER_CONTROL_LISTEN_ADDRESS` | 既定 `127.0.0.1:18082`。loopback IP のみ指定可能 |
+| `ROUTER_CONTROL_DEFAULT_COUNTRY` | 既定 `JP`。Router が対応する国コード |
+
+設定ファイルは `/etc/isucon/router-control.env` です。
+認証を提供しないローカル専用サービスのため、外部向けのポート転送は行わないでください。
+`GET /healthz` は設定配信プロセスの生存確認です。
+Router 自身の設定適用は `isureal-router` の `/readyz` で確認してください。
+
+既存 Router との互換性のため、通信上のサービス名 `portal.v1.PortalRouterService` と
+Router 側の環境変数名 `ROUTER_PORTAL_ENDPOINT` は維持しています。
+旧モックの UI、模擬ベンチマーク、Router 代替動作、`portal_mock.v1` API は提供しません。
+
+### 配備と旧構成からの移行
+
+`provisioning/ansible/prepare.yml` が両方の Go バイナリをビルドし、Router AMI に配置します。
+Pulumi の user-data と参加者用 CloudFormation は、新しい unit と環境変数を使用します。
+
+1. 新しいコードで Router AMI をビルドします。
+2. 作問用 Pulumi の `routerAmiId`、またはポータルの `ISUXPORTAL_ROUTER_AMI_ID` を新しい AMI に設定します。
+3. Pulumi の変更を適用します。ポータルの環境変数を変えた場合は ecspresso でポータルも再デプロイします。
+4. 新規の検証用競技環境を作成し、両サービスの起動、Router の `/readyz`、実ベンチの成功を確認します。
+
+古い AMI には `isureal-router-control` がないため、新しいテンプレートと組み合わせないでください。
+既存の競技インスタンスをこのソース変更だけで自動更新する処理はありません。
+旧 `isureal-portal` との同時起動はポートが競合するため避けてください。
+
+## 検証
+
+Go と Docker が必要です。
 
 ```bash
 make router-check
-make router-e2e
 ```
 
-`router-check` は go vet/test/build、Compose model、既定の環境変数で生成した HAProxy の設定を検証する。
-`router-e2e` は Portal Mock、Router、HAProxy、isureal-digest、3つの server segment、runner を project
-`isureal-router-e2e` に構築し、routing、実測 shaping、ベンチの画像のダイジェストと isureal-digest 停止時の切り替え、動的変更、
-再起動回復、Router 停止中の隔離を自動判定して cleanup する。既存の root/Portal Mock Compose project は停止しない。
-
-失敗後に container と network を残して調査する場合だけ次を使う。
-
-```bash
-ROUTER_E2E_KEEP_ON_FAILURE=1 router/tests/e2e/run.sh
-docker compose --project-name isureal-router-e2e -f router/compose.e2e.yaml ps --all
-docker compose --project-name isureal-router-e2e -f router/compose.e2e.yaml logs --no-color router haproxy portal
-```
-
-失敗ログは `router/.e2e-artifacts/compose.log` にも保存される。調査後の cleanup は次で行う。
-
-```bash
-docker compose --project-name isureal-router-e2e -f router/compose.e2e.yaml \
-  down --volumes --remove-orphans
-```
+`router-check` は go vet/test/build と、HTTP/HTTPS 用の HAProxy 設定を検証します。
+旧モックに依存した Compose E2E は削除しています。
 
 ## Source layout
 
 ```text
 cmd/router/             process wiring
+cmd/router-control/     production configuration service
+internal/control/       fixed configuration stream and report validation
 internal/config/        strict environment/topology configuration
 internal/domain/        fixed region/server/country/snapshot invariants
 internal/netcontrol/    interface discovery, nftables, HTB/netem, rollback
@@ -46,12 +77,7 @@ internal/haproxy/       HAProxy config rendering, runtime API (default country)
 internal/reconcile/     Portal stream, latest-wins apply, report retry
 internal/status/        /healthz and /readyz
 digest/                 isureal-digest (Rust): digests of the benchmark's image downloads
-test-fixtures/server/   bounded E2E-only backend and peer probe
-tests/e2e/              compiled assertions and Compose orchestration
-compose.e2e.yaml        isolated five-network topology
 ```
-
-production binary には fixture endpoint や Docker API client を含めない。
 
 ## Runtime configuration
 
@@ -62,7 +88,7 @@ production binary には fixture endpoint や Docker API client を含めない�
 
 | Environment variable | Default | Meaning |
 |---|---|---|
-| `ROUTER_PORTAL_ENDPOINT` | `http://portal:8080` | Portal Connect base URL |
+| `ROUTER_PORTAL_ENDPOINT` | `http://127.0.0.1:18082` | Router control Connect base URL |
 | `ROUTER_TEAM_NUMBER` | `1` | 正の TeamKey number |
 | `ROUTER_STATUS_LISTEN_ADDRESS` | `0.0.0.0:18081` | health/readiness listener |
 | `ROUTER_COMMAND_TIMEOUT` | `5s` | 個々の nft/tc/sysctl command と HAProxy runtime API の timeout |
@@ -117,44 +143,26 @@ Controller は region local IP から interface 名を解決するため、Compo
 遅延と帯域は同一リージョンと、AP（asia）・EU（europe）・US（america）の3つのリージョンペアごとに設定する。
 ペアの設定は双方向に共通で、AP-EU は AP→EU と EU→AP の両方に適用される。
 
-| Environment variable | Production default | E2E override |
-|---|---:|---:|
-| `ROUTER_SAME_REGION_DELAY` | `0s` | `0s` |
-| `ROUTER_SAME_REGION_BANDWIDTH_BPS` | `1000000000` | `100000000` |
-| `ROUTER_AP_EU_DELAY` | `100ms` | `120ms` |
-| `ROUTER_AP_EU_BANDWIDTH_BPS` | `200000000` | `1000000` |
-| `ROUTER_EU_US_DELAY` | `100ms` | `120ms` |
-| `ROUTER_EU_US_BANDWIDTH_BPS` | `200000000` | `1000000` |
-| `ROUTER_AP_US_DELAY` | `100ms` | `120ms` |
-| `ROUTER_AP_US_BANDWIDTH_BPS` | `200000000` | `1000000` |
+| Environment variable | Production default |
+|---|---:|
+| `ROUTER_SAME_REGION_DELAY` | `0s` |
+| `ROUTER_SAME_REGION_BANDWIDTH_BPS` | `1000000000` |
+| `ROUTER_AP_EU_DELAY` | `100ms` |
+| `ROUTER_AP_EU_BANDWIDTH_BPS` | `200000000` |
+| `ROUTER_EU_US_DELAY` | `100ms` |
+| `ROUTER_EU_US_BANDWIDTH_BPS` | `200000000` |
+| `ROUTER_AP_US_DELAY` | `100ms` |
+| `ROUTER_AP_US_BANDWIDTH_BPS` | `200000000` |
 
 delay は end-to-end の追加遅延を表す。HTTP は HAProxy が設定値を1回注入し（ミリ秒単位に切り上げる）、サーバー間通信は往復で設定値に
 なるよう tc が各方向へ半分ずつ注入する（production の `100ms` は片道50 ms、RTT 100 ms）。
 bandwidth は bit/s で、正数かつ各ペアが same 以下でなければならない。delay は0または1 ms以上を受け付ける。
-E2E override は class 判定を変えず、共有 CI host でも差を測定できるよう値だけを縮尺する。
 
 ## Health and diagnostics
 
 - `GET /healthz`: process が稼働中なら `200`。
 - `GET /readyz`: Portal snapshot が network へ反映され、要求の時点で HAProxy がその既定の国を使っていれば `200`。
 - 後続 apply が失敗しても last-known-good が利用可能なら ready は維持し、body の `phase` / `last_error` に失敗を残す。
-
-E2E を保持した状態で確認する例:
-
-```bash
-docker compose --project-name isureal-router-e2e -f router/compose.e2e.yaml \
-  exec -T router wget -q -O - http://127.0.0.1:18081/readyz
-docker compose --project-name isureal-router-e2e -f router/compose.e2e.yaml \
-  exec -T router nft list table inet isureal_router
-docker compose --project-name isureal-router-e2e -f router/compose.e2e.yaml \
-  exec -T router tc -s qdisc show
-docker compose --project-name isureal-router-e2e -f router/compose.e2e.yaml \
-  exec -T haproxy sh -c 'echo "show map /run/isureal-haproxy/default-country.map" | nc 127.0.0.1 18001'
-docker compose --project-name isureal-router-e2e -f router/compose.e2e.yaml \
-  exec -T haproxy cat /run/isureal-haproxy/haproxy.cfg
-```
-
-Router と HAProxy は namespace を共有するため、runtime API は Router container の loopback から確認できる。
 
 ## Deployment requirements and limitations
 

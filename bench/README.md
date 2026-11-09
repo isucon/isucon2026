@@ -90,9 +90,9 @@ TCP接続には接続時に `SO_LINGER=0` を設定し、閉じるときはRST�
 ## 使い方
 
 ```sh
-# Compose を起動済みのリポジトリルートから実行
+# 構築済みの Router の IP とアプリケーションのホスト名を指定
 # 対象の共有 DB は initialize により初期化される
-go -C bench run . -users 8 -duration 25s
+go -C bench run . -target "http://ROUTER_IP:8080" -host "APP_HOSTNAME" -scale large -users 8 -duration 25s
 ```
 
 | フラグ | 既定値 | 内容 |
@@ -117,7 +117,6 @@ go -C bench run . -users 8 -duration 25s
 1 回の走行で asia / europe / america の 3 リージョンを同時に扱う。各ユーザーは自分のリージョンに
 ルーターが振り分ける国（asia は JP / KR / CN / AU、europe は GB / DE / FR、america は US / CA / MX）を
 `X-Country-Code` に付けて送る。管理者は JP から送る。
-VM 環境では `make vm-benchmark BENCH_ARGS='-users 2 -duration 25s'` でも実行できる。
 
 ## 実行内容
 

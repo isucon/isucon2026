@@ -1,1 +1,0 @@
-../../webapp/sql/002-seed.sql

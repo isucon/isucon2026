@@ -160,7 +160,7 @@ jobs:
         working-directory: portal/deploy/pulumi
       - run: npm run typecheck && npm test
         working-directory: portal/deploy/pulumi
-      - uses: kayac/ecspresso@aff803a87548687aa8e6aa0fdc45ea8f00b6fbef # v2.8.7
+      - uses: kayac/ecspresso@a695f3b95f6460a89995299ba049bc8177131759 # v2.8.8
         with:
           version-file: portal/deploy/.ecspresso-version
       - run: python3 -m unittest discover -s portal/deploy/tests -v
@@ -193,7 +193,7 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
           cache-dependency-path: portal/go.sum
-      - uses: ruby/setup-ruby@7f797815d8adceb1c412e7abefdd1ab4abc47a5f # v1.335.0
+      - uses: ruby/setup-ruby@b3aaceaef7e0ee231b499e7b5f49c03fc1d32199 # v1.338.0
         with:
           ruby-version: '3.3'
           bundler-cache: true

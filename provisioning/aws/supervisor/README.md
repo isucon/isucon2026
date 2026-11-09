@@ -37,7 +37,7 @@ Fargateへ配置します。
 複数チームでVPC、NAT Gateway、ECRを共有します。
 Supervisorは実ポータルからジョブを取得し、ベンチを子プロセスとして実行して結果を報告します。
 実ポータル、対象チーム、問題サーバーは事前に構築してください。
-`portal-mock`には結果報告APIがないため接続できません。
+`isureal-router-control` は Router の設定配信専用で、ベンチ結果報告 API は提供しません。
 
 ## ISUCON14との対応
 
