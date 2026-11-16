@@ -13,7 +13,7 @@ func TestLoadDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.TeamNumber != 1 || cfg.PortalEndpoint != "http://portal:8080" {
+	if cfg.TeamNumber != 1 || cfg.PortalEndpoint != "http://127.0.0.1:18082" {
 		t.Fatalf("unexpected portal defaults: %+v", cfg)
 	}
 	crossRegion := domain.TrafficClass{Delay: 100 * time.Millisecond, BandwidthBPS: 200_000_000}

@@ -396,16 +396,13 @@ Resources:
               ROUTER_{{if .Region}}APP{{.Number}}{{else}}DB1{{end}}_REGION_LOCAL_IP=192.168.10.10
               ROUTER_{{if .Region}}APP{{.Number}}{{else}}DB1{{end}}_IP=192.168.{{.Number}}.10
 {{end}}
-          - path: /etc/isucon/portal.env
+          - path: /etc/isucon/router-control.env
             owner: root:isureal-router
             permissions: '0640'
             content: |
-              PORTAL_TEAM_NUMBER={{.TeamID}}
-              PORTAL_TEAM_HASH=aws
-              PORTAL_DOMAIN_SUFFIX=127.0.0.1.nip.io
-              PORTAL_ROUTER_MODE=external-router
-              PORTAL_LISTEN_ADDRESS=127.0.0.1:18082
-              PORTAL_WEB_DIR=
+              ROUTER_CONTROL_TEAM_NUMBER={{.TeamID}}
+              ROUTER_CONTROL_LISTEN_ADDRESS=127.0.0.1:18082
+              ROUTER_CONTROL_DEFAULT_COUNTRY=JP
           - path: /etc/systemd/system/isucon-register.service.d/router.conf
             permissions: '0644'
             content: |
@@ -425,7 +422,7 @@ Resources:
               [Service]
               Type=oneshot
               ExecStart=/usr/bin/python3 /opt/isucon-registration/router-bootstrap.py
-              ExecStart=/usr/bin/systemctl start isureal-portal isureal-router isureal-haproxy
+              ExecStart=/usr/bin/systemctl start isureal-router-control isureal-router isureal-haproxy
               Restart=on-failure
               RestartSec=10s
               RemainAfterExit=yes

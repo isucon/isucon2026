@@ -94,7 +94,7 @@ Docker によるビルドと、ローカルのポータルおよび webapp へ�
 
 ## テスト
 
-backend/ と同じ構成（tests/{contract,integration,concurrency} + testkit）。
+`tests/{contract,integration,concurrency}` と `testkit` で構成する。
 CI は portal-unit-contract-build / portal-integration-migration / portal-concurrency / portal-rspec の 4 ジョブ。
 
 ```sh

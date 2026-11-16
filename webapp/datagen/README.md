@@ -4,7 +4,7 @@
 書き出す作問用のツールです。DB は使いません。競技者へ配布するアプリ本体 (`webapp/go`) とは
 独立した Go モジュールです。
 
-`002-seed.sql` は生成物なので git では管理しません。Docker Compose や VM で起動する前に、
+`002-seed.sql` は生成物なので git では管理しません。DB に初期データを投入する前に、
 リポジトリ直下で一度生成してください。
 
 ```sh
@@ -54,8 +54,7 @@ cd webapp/datagen && go run .   # -out で出力先を変えられる
 投稿、RealMoji、コメントの既存の行は bench が書き換えないので、戻しません。消す行を外部キーで
 確かめると、索引のない列では 1 行ごとに表を全件走査するので、初期化の間だけ
 `session_replication_role = replica` で外部キーの検査を止めます。この設定には、スーパー
-ユーザーか `GRANT SET ON PARAMETER session_replication_role` の権限が要ります（Docker Compose の
-`isureal` はスーパーユーザー）。
+ユーザーか `GRANT SET ON PARAMETER session_replication_role` の権限が要ります。
 
 アプリの作る行の作成時刻が初期データの最後の作成時刻より後であること（時計が初期データより
 進んでいること）を前提にしています。

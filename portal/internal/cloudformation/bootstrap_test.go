@@ -156,3 +156,21 @@ func TestContestRouterSSHIsolation(t *testing.T) {
 		}
 	}
 }
+
+func TestContestTemplateUsesRouterControl(t *testing.T) {
+	cfg := &config.Config{IsuconAdminSSHKeyPath: adminKey(t), PublicURLHost: "portal.example", ContestAMIID: "ami-test", CheckerSecret: []byte("test")}
+	document, err := ContestTemplate(cfg, 7, "apne1-az1", time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"/etc/isucon/router-control.env", "ROUTER_CONTROL_TEAM_NUMBER=7", "ROUTER_CONTROL_LISTEN_ADDRESS=127.0.0.1:18082", "ROUTER_CONTROL_DEFAULT_COUNTRY=JP", "systemctl start isureal-router-control isureal-router isureal-haproxy"} {
+		if !strings.Contains(document, want) {
+			t.Errorf("missing %q", want)
+		}
+	}
+	for _, retired := range []string{"isureal-portal", "/etc/isucon/portal.env", "PORTAL_ROUTER_MODE", "PORTAL_WEB_DIR"} {
+		if strings.Contains(document, retired) {
+			t.Errorf("retired mock setting: %s", retired)
+		}
+	}
+}

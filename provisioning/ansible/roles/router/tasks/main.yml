@@ -23,7 +23,7 @@
     src: "{{ build_dir }}/{{ item }}"
     dest: /opt/isucon/bin/{{ item }}
     mode: "0755"
-  loop: [isureal-router, isureal-portal, isureal-digest]
+  loop: [isureal-router, isureal-router-control, isureal-digest]
 
 # Ubuntu 24.04 の 2.8 LTS（Lua と帯域制限のフィルターが入っている）。設定は isureal-haproxy.service が起動のたびに作る
 - name: Install HAProxy
@@ -43,7 +43,7 @@
     dest: /etc/systemd/system/{{ item }}
     mode: "0644"
   # isureal-digest.service は isureal-haproxy.service（Wants=）と一緒に起動する
-  loop: [isureal-router.service, isureal-haproxy.service, isureal-portal.service, isureal-digest.service]
+  loop: [isureal-router.service, isureal-haproxy.service, isureal-router-control.service, isureal-digest.service]
 
 - name: Forward packets between server subnets
   ansible.builtin.copy:
