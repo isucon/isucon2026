@@ -142,6 +142,39 @@ make datagen
 生成した `webapp/sql/002-seed.sql` は git 管理対象外です。
 本番規模のデータ生成と投入方法は [webapp/datagen/README.md](webapp/datagen/README.md) を参照してください。
 
+## docker compose での環境構築
+
+作問時に利用した docker compose で、3地域のアプリケーション、DB、Router を手元に構築できます。
+ただし、スペックなどは競技環境と異なります。
+地域間の遅延は Router が再現します（既定 100ms）。
+
+### アプリケーションの起動
+
+事前に初期データを生成してから起動します。
+
+```sh
+go -C webapp/datagen run .
+docker compose up -d --build --wait
+```
+
+初期実装は既定で Go です。
+`ISUREAL_WEBAPP_LANGUAGE` で他の言語に切り替えられます。
+
+```sh
+ISUREAL_WEBAPP_LANGUAGE=ruby docker compose up -d --build --wait
+```
+
+停止するときは `docker compose down`、DB を初期状態に戻すときは `docker compose down -v` を実行します。
+詳細は [deploy/dev/README.md](deploy/dev/README.md) を参照してください。
+
+### 負荷走行の実行
+
+ベンチマーカーは既定で `http://app.127.0.0.1.nip.io:18090` を対象にします。
+
+```sh
+go -C bench run .
+```
+
 ## 運営向けの資料
 
 ポータル、Supervisor など大会運営のためのインフラについては [docs/for-committee](docs/for-committee/README.md) を参照してください。
