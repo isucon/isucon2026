@@ -56,10 +56,9 @@ make ami ROLE=router              # Router のみ
 
 ### Pulumi による環境の構築
 
-`provisioning/aws/mise.toml` の `PULUMI_BACKEND_URL` は運営用の S3 バケットを指しています。
-使用する Pulumi の backend に書き換えてください。
-`Pulumi.dev.yaml` は運営用 stack の設定です。
-別の名前で stack を作成してください。
+Pulumi の backend と stack は各自で用意してください。
+`provisioning/aws/mise.toml` の `PULUMI_BACKEND_URL` を使用する backend に変更し、`pulumi stack init` で stack を作成します。
+stack の設定は `pulumi config set` で `Pulumi.<stack>.yaml` に書き込まれます。
 
 ```sh
 make aws-infra-install
