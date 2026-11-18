@@ -1,4 +1,4 @@
-.PHONY: tools fmt vet build test frontend-install frontend-lint frontend-typecheck frontend-test frontend-e2e proto-lint proto-generate proto-build portal-fmt portal-vet portal-test portal-build portal-check router-fmt router-vet router-test router-build router-haproxy-check router-check ami aws-infra-install aws-infra-check aws-infra-preview aws-infra-up aws-infra-destroy aws-benchmark datagen datagen-test check
+.PHONY: tools fmt vet build test frontend-install frontend-lint frontend-typecheck frontend-test frontend-e2e proto-lint proto-generate proto-build portal-fmt portal-vet portal-test portal-build portal-check router-fmt router-vet router-test router-build router-haproxy-check router-check ami aws-infra-install aws-infra-check aws-infra-preview aws-infra-up aws-infra-destroy aws-benchmark datagen datagen-test datagen-load check
 
 tools:
 	mise install
@@ -38,6 +38,15 @@ datagen:
 datagen-test:
 	cd dataset && go test ./...
 	cd webapp/datagen && go test ./...
+
+# Docker Compose の DB に、ファイルを経ずに初期データを入れ直す（SCALE=large で本番の規模）。
+# bench は同じ -scale で実行する。
+SCALE ?= small
+DB_PSQL = docker compose exec -T db-asia psql -U isureal -d isureal -v ON_ERROR_STOP=1 -q
+datagen-load:
+	$(DB_PSQL) < webapp/sql/001-schema.sql
+	cd webapp/datagen && go run . -scale $(SCALE) -out - | $(DB_PSQL)
+	$(DB_PSQL) < webapp/sql/003-initial-snapshot.sql
 
 proto-lint:
 	mise exec -- buf lint
@@ -174,3 +183,17 @@ bench-image-digests:
 	cd bench && go run ./cmd/imagedigests -scale large -out ../var/image-digests/large.bin
 
 check: proto-lint vet frontend-lint frontend-typecheck test build
+
+.PHONY: dev-up dev-down dev-logs dev-check
+
+dev-up:
+	docker compose up -d --build --wait --wait-timeout 180
+
+dev-down:
+	docker compose down
+
+dev-logs:
+	docker compose logs -f
+
+dev-check:
+	python3 deploy/dev/smoke.py

@@ -59,8 +59,6 @@ class WorkflowRoutingTest(unittest.TestCase):
     def test_retired_development_environments_are_removed(self):
         root = WORKFLOWS.parents[1]
         for path in (
-            "compose.yaml",
-            "deploy",
             "router/compose.e2e.yaml",
             "router/tests/e2e",
             "router/test-fixtures/server",
@@ -72,6 +70,22 @@ class WorkflowRoutingTest(unittest.TestCase):
             with self.subTest(path=path):
                 self.assertFalse((root / path).exists())
         self.assertNotIn("compose-e2e", workflows()["router-ci.yml"]["jobs"])
+
+    def test_development_compose_uses_router_control(self):
+        root = WORKFLOWS.parents[1]
+        compose = yaml.safe_load((root / "compose.yaml").read_text())
+        services = compose["services"]
+        self.assertNotIn("portal", services)
+        control = services["router-control"]
+        self.assertEqual(control["build"]["dockerfile"], "router/Dockerfile")
+        self.assertEqual(control["build"]["target"], "router-control")
+        # router-control accepts only loopback, so it shares the Router's namespace.
+        self.assertEqual(control["network_mode"], "service:router")
+        address = control["environment"]["ROUTER_CONTROL_LISTEN_ADDRESS"]
+        endpoint = services["router"]["environment"]["ROUTER_PORTAL_ENDPOINT"]
+        self.assertEqual(endpoint, "http://" + address)
+        dockerfile = (root / "router/Dockerfile").read_text()
+        self.assertIn("AS router-control", dockerfile)
 
     def test_frontend_does_not_use_retired_contract(self):
         root = WORKFLOWS.parents[1]

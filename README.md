@@ -3,93 +3,188 @@
 ISUCON2026 の問題アプリケーション「ISUReal」、ベンチマーカー、競技環境の構築コードを収録しています。
 ISUReal は、asia、europe、america の3地域で写真を共有する SNS です。
 
-## マニュアル
+## 当日に公開したマニュアルおよびアプリケーションについての説明
 
-- [当日マニュアル](docs/guide.md)
-- [アプリケーションマニュアル](docs/manual.md)
+- [ISUCON2026 当日マニュアル](https://gist.github.com/whywaita/17f3ab1a8c1b7585c571f4f8afe5f531)
+- [ISUCON2026 アプリケーションマニュアル](docs/manual.md)
 - [ベンチマーカーの仕様と実行方法](bench/README.md)
 - [Router の通信制御](docs/router.md)
 
-## ディレクトリ構成
+## ISUCON2026 で使用した競技環境
 
-| ディレクトリ | 内容 |
-|---|---|
-| `webapp/` | 問題アプリケーションの初期実装と SQL |
-| `frontend/` | 全言語共通のフロントエンド |
-| `bench/` | ベンチマーカー |
-| `dataset/` | 初期データの定義 |
-| `webapp/datagen/` | 初期データ生成プログラム |
-| `guard/` | アプリケーションログを監視するプログラム |
-| `router/` | 地域間の通信制御と、本番用の設定配信サービス `isureal-router-control` |
-| `portal/` | 競技用ポータル |
-| `supervisor/` | ベンチマークジョブの実行管理 |
-| `proto/`, `gen/` | Protobuf 定義と生成コード |
-| `provisioning/` | Ansible、Packer、Pulumi による環境構築 |
-| `docs/` | マニュアル、設計資料、開発時の調査記録 |
-| `scripts/` | 運営用スクリプト |
+1チームあたり、以下の5台で構成されます。
+地域間の遅延と帯域は Router が再現します。
+初期状態の DB は asia の db1 です。
+
+| ホスト | 役割 | InstanceType |
+|---|---|---|
+| app1 | asia のアプリケーションサーバー | c5.large (2vCPU, 4GiB Mem) |
+| app2 | europe のアプリケーションサーバー | c7i.large (2vCPU, 4GiB Mem) |
+| app3 | america のアプリケーションサーバー | c7i.large (2vCPU, 4GiB Mem) |
+| db1 | asia の DB サーバー | c5.large (2vCPU, 4GiB Mem) |
+| Router | 地域間の通信制御とベンチマーカーの入口 | c6in.large (2vCPU, 4GiB Mem) |
+
+- ボリューム: gp3、アプリケーションサーバーと DB サーバーは 60GB、Router は 20GB
+  - db1 は 6,000 IOPS、200 MiB/s
+- ベンチマーカー: ECS Fargate (4vCPU, 8GiB Mem)
 
 初期実装は Go、Ruby、Rust、Python、PHP、Perl、Node.js です。
-言語ごとの起動方法は `webapp/` 配下の各実装と [Ansible の構成](provisioning/ansible/README.md) を参照してください。
 
-## 競技環境の構成
+## AWS 上での過去問環境の構築方法
 
-アプリケーションサーバー3台（各地域に1台）、共有 DB サーバー1台、通信を制御する Router 1台で構成されます。
-初期状態では asia の DB に接続します。
-ベンチマーカーはポータルから Supervisor を経由して実行します。
+AMI は提供していません。
+Packer と Ansible で AMI を作成し、Pulumi で環境を構築してください。
 
-参加者環境のテンプレートは [portal/internal/cloudformation](portal/internal/cloudformation/README.md)、作問用 AWS 環境は [provisioning](provisioning/README.md) にあります。
-インスタンスタイプ、AMI、リソース上限は構築方法と設定によって異なります。
+必要なツールとバージョンは [mise.toml](mise.toml) に記録しています。
+Pulumi は [provisioning/aws/mise.toml](provisioning/aws/mise.toml) で指定しています。
+AWS の認証情報を設定してから実行してください。
 
-## 初期データと実行環境
+### AMI のビルド
 
-ツールのバージョンは [mise.toml](mise.toml) に記録しています。
+リポジトリルートで以下を実行します。
+問題サーバー（app1〜3 と db1 で共用）と Router の2種類の AMI を作成します。
+
+```sh
+make ami                          # 両方
+make ami ROLE=problem-server      # 問題サーバーのみ
+make ami ROLE=router              # Router のみ
+```
+
+問題サーバーの AMI には本番規模の初期データ（DB で約 18GB）を投入するため、ビルドに 45 分ほどかかります。
+ビルド用インスタンスは c6i.2xlarge、ディスクは 60GB です。
+すべての言語の初期実装をビルドするため、必要に応じて下記の[対象言語の絞り込み](#対象言語の絞り込み)も確認してください。
+
+### Pulumi による環境の構築
+
+Pulumi の backend と stack は各自で用意してください。
+`provisioning/aws/mise.toml` の `PULUMI_BACKEND_URL` を使用する backend に変更し、`pulumi stack init` で stack を作成します。
+stack の設定は `pulumi config set` で `Pulumi.<stack>.yaml` に書き込まれます。
+
+```sh
+make aws-infra-install
+
+cd provisioning/aws
+pulumi stack init mystack
+pulumi config set aws:region ap-northeast-1
+pulumi config set --path 'clientCidrs[0]' 203.0.113.10/32   # 手元の IP アドレス
+cd ../..
+
+make aws-infra-preview STACK=mystack
+make aws-infra-up STACK=mystack
+```
+
+指定がなければ、タグが一致する最新の AMI を使用します。
+TLS 証明書を指定しない場合は自己署名証明書を生成します。
+その他の設定項目は [provisioning/README.md](provisioning/README.md) を参照してください。
+
+使い終わったら環境を削除してください。
+AMI と EBS スナップショットは自動では削除されません。
+
+```sh
+make aws-infra-destroy STACK=mystack
+```
+
+### 構築時の注意事項
+
+- 1チームで 10 vCPU を使用します。オンデマンドの標準インスタンスの vCPU 上限（`L-1216C47A`）に注意してください
+- Router の `TCP/443` と `TCP/8080` は `clientCidrs` からのみ受け付けます。手元の IP アドレスが変わったら設定し直してください
+- SSH は公開していません。SSM Session Manager または EC2 Instance Connect Endpoint で接続してください
+  ```sh
+  aws ec2-instance-connect ssh --instance-id i-xxxxxxxx --connection-type eice
+  ```
+  - 接続後は `sudo su - isucon` で `isucon` ユーザーに切り替えてください
+- Router の IP アドレスとホスト名は `pulumi stack output teamOutputs` で確認できます
+
+## Ansible による AMI の構成
+
+AMI の中身は [provisioning/ansible](provisioning/ansible/README.md) の Ansible で構成します。
+`make ami` から Packer 経由で実行されます。
+
+| playbook | 内容 |
+|---|---|
+| `prepare.yml` | 手元で webapp、frontend、datagen、Router などをビルドする |
+| `problem-server.yml` | 問題サーバー（app1〜3 と db1）の言語環境、PostgreSQL、nginx、webapp を構成し、初期データを投入する |
+| `router.yml` | Router と HAProxy を構成する |
+
+チームごとに異なる設定（地域、DB の接続先、起動するサービス、Router の設定）は Pulumi の user-data が起動時に設定します。
+
+### 対象言語の絞り込み
+
+デフォルトでは、初期状態に含まれるすべての言語環境をビルドするため、時間がかかります。
+`provisioning/ansible/problem-server.yml` の言語のロールと、`provisioning/ansible/roles/webapp/tasks/main.yml` の該当する言語のタスクをコメントアウトすることで、ビルド時間を短縮できます。
+
+## ベンチマーカーの実行
+
+構築した環境の Router を対象に、リポジトリルートから実行します。
+ベンチマーカーは開始時に対象アプリケーションのデータを初期化します。
+
+```sh
+make aws-benchmark STACK=mystack TEAM=1
+```
+
+Router のアドレスを直接指定する場合は、以下のように実行します。
+
+```sh
+go -C bench run . -target "http://ROUTER_IP:8080" -host "APP_HOSTNAME" -scale large
+```
+
+`-scale` は AMI に投入した初期データの規模（本番は `large`）に合わせてください。
+写真データ、負荷や検証のオプションは [bench/README.md](bench/README.md) を参照してください。
+
+## 初期データ
+
 初期データの生成には Go が必要です。
 
-```bash
+```sh
 make datagen
 ```
 
 生成した `webapp/sql/002-seed.sql` は git 管理対象外です。
 本番規模のデータ生成と投入方法は [webapp/datagen/README.md](webapp/datagen/README.md) を参照してください。
-アプリケーションの実行環境は、以下の AWS 構築手順を参照してください。
-旧モックに依存していた Docker Compose 開発環境と Router E2E は削除しています。
 
-## ベンチマーカーの実行
+## docker compose での環境構築
 
-構築した競技環境の Router を対象に、リポジトリルートから実行します。
-ベンチマーカーは開始時に対象アプリケーションのデータを初期化します。
+作問時に利用した docker compose で、3地域のアプリケーション、DB、Router を手元に構築できます。
+ただし、スペックなどは競技環境と異なります。
+地域間の遅延は Router が再現します（既定 100ms）。
 
-```bash
-go -C bench run . -target "http://ROUTER_IP:8080" -host "APP_HOSTNAME" -scale large
+### アプリケーションの起動
+
+事前に初期データを生成してから起動します。
+
+```sh
+go -C webapp/datagen run .
+docker compose up -d --build --wait
 ```
 
-`-scale` は初期データを生成した規模に合わせてください。
-本番規模の `large`、写真データ、負荷や検証のオプションは [bench/README.md](bench/README.md) を参照してください。
+初期実装は既定で Go です。
+`ISUREAL_WEBAPP_LANGUAGE` で他の言語に切り替えられます。
 
-## AWS 上での環境構築
-
-Packer と Ansible で AMI を作成し、Pulumi で環境を構築します。
-AWS の認証情報、利用するリージョン、接続元 CIDR などを設定する必要があります。
-運営用 stack の設定をそのまま適用せず、使用する AWS アカウントに合わせて構築してください。
-
-- [AMI の作成と Pulumi の設定](provisioning/README.md)
-- [Ansible による配布物とサービスの構成](provisioning/ansible/README.md)
-- [ポータルのデプロイ](portal/deploy/README.md)
-- [Supervisor のデプロイ](provisioning/aws/supervisor/README.md)
-
-TLS 証明書の設定は構築方法に従ってください。
-作問用 Pulumi 環境は証明書を指定しない場合、自己署名証明書を生成します。
-
-## 開発時の検証
-
-```bash
-make test
-make build
-make router-check
+```sh
+ISUREAL_WEBAPP_LANGUAGE=ruby docker compose up -d --build --wait
 ```
 
-`make test` と `make build` は Go 初期実装とフロントエンドを対象にします。
-フロントエンドの依存パッケージは事前に `make frontend-install` でインストールしてください。
-各コンポーネントの追加テストは、それぞれの README を参照してください。
+停止するときは `docker compose down`、DB を初期状態に戻すときは `docker compose down -v` を実行します。
+詳細は [deploy/dev/README.md](deploy/dev/README.md) を参照してください。
 
-README の項目構成は [ISUCON14 の README](https://github.com/isucon/isucon14/blob/main/README.md) を参考にしています。
+### 負荷走行の実行
+
+ベンチマーカーは既定で `http://app.127.0.0.1.nip.io:18090` を対象にします。
+
+```sh
+go -C bench run .
+```
+
+## 運営向けの資料
+
+ポータル、Supervisor など大会運営のためのインフラについては [docs/for-committee](docs/for-committee/README.md) を参照してください。
+
+## Links
+
+- [ISUCON2026 まとめ](https://isucon.net/archives/60124520.html)
+- 講評: TBD
+- 解説: TBD
+
+## License
+
+[MIT License](LICENSE)
