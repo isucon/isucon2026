@@ -13,7 +13,8 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 COPY router/ ./
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
-    CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/router ./cmd/router
+    CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/router ./cmd/router && \
+    CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/router-control ./cmd/router-control
 
 # HAProxy runs next to the Router in its network namespace. It renders its
 # configuration from the same environment as the Router when it starts.
@@ -46,6 +47,13 @@ FROM mirror.gcr.io/library/alpine:3.23 AS digest
 COPY --from=digest-build /out/isureal-digest /usr/local/bin/isureal-digest
 USER nobody
 ENTRYPOINT ["/usr/local/bin/isureal-digest"]
+
+# isureal-router-control serves the fixed competition configuration to the
+# Router. It listens on loopback in the Router's network namespace.
+FROM mirror.gcr.io/library/alpine:3.23 AS router-control
+COPY --from=build /out/router-control /usr/local/bin/isureal-router-control
+USER nobody
+ENTRYPOINT ["/usr/local/bin/isureal-router-control"]
 
 FROM mirror.gcr.io/library/alpine:3.23 AS router
 
