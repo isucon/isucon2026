@@ -142,10 +142,6 @@ make datagen
 生成した `webapp/sql/002-seed.sql` は git 管理対象外です。
 本番規模のデータ生成と投入方法は [webapp/datagen/README.md](webapp/datagen/README.md) を参照してください。
 
-## ローカル環境
-
-docker compose によるローカル環境は準備中です。
-
 ## 運営向けの資料
 
 ポータル、Supervisor など大会運営のためのインフラについては [docs/for-committee](docs/for-committee/README.md) を参照してください。
