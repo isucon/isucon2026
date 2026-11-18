@@ -6,16 +6,16 @@
 
 ```bash
 # 初期データの生成（webapp/sql/002-seed.sql。初回のみ）
-make datagen
+go -C webapp/datagen run .
 
 # 起動
-make dev-up
+docker compose up -d --build --wait
 
 # 動作確認（スモークテスト）
-make dev-check
+python3 deploy/dev/smoke.py
 
 # 停止（DB データを維持）
-make dev-down
+docker compose down
 
 # 停止（DB ボリュームを破棄して初期状態に戻す）
 docker compose down -v
@@ -40,7 +40,7 @@ Router の設定は、本番の Router AMI と同じく `isureal-router-control`
 `ISUREAL_WEBAPP_LANGUAGE=ruby` を付けて起動すると、アプリコンテナが Ruby 実装（`webapp/ruby`）になります。Go に戻すときは付けずに起動し直します。
 
 ```bash
-ISUREAL_WEBAPP_LANGUAGE=ruby make dev-up
+ISUREAL_WEBAPP_LANGUAGE=ruby docker compose up -d --build --wait
 ```
 
 ## Rust 実装で起動
@@ -48,7 +48,7 @@ ISUREAL_WEBAPP_LANGUAGE=ruby make dev-up
 `ISUREAL_WEBAPP_LANGUAGE=rust` を付けて起動すると、アプリコンテナが Rust 実装（`webapp/rust`）になります。Go に戻すときは付けずに起動し直します。
 
 ```bash
-ISUREAL_WEBAPP_LANGUAGE=rust make dev-up
+ISUREAL_WEBAPP_LANGUAGE=rust docker compose up -d --build --wait
 ```
 
 ## Python 実装で起動
@@ -56,7 +56,7 @@ ISUREAL_WEBAPP_LANGUAGE=rust make dev-up
 `ISUREAL_WEBAPP_LANGUAGE=python` を付けて起動すると、アプリコンテナが Python 実装（`webapp/python`）になります。Go に戻すときは付けずに起動し直します。
 
 ```bash
-ISUREAL_WEBAPP_LANGUAGE=python make dev-up
+ISUREAL_WEBAPP_LANGUAGE=python docker compose up -d --build --wait
 ```
 
 ## PHP 実装で起動
@@ -64,7 +64,7 @@ ISUREAL_WEBAPP_LANGUAGE=python make dev-up
 `ISUREAL_WEBAPP_LANGUAGE=php` を付けて起動すると、アプリコンテナが PHP 実装（`webapp/php`）になります。Go に戻すときは付けずに起動し直します。
 
 ```bash
-ISUREAL_WEBAPP_LANGUAGE=php make dev-up
+ISUREAL_WEBAPP_LANGUAGE=php docker compose up -d --build --wait
 ```
 
 PHP 実装のコンテナでは、nginx が `127.0.0.1:8080` でも待ち受け、FastCGI で php-fpm に渡します（`deploy/dev/nginx-php.conf`）。
@@ -74,7 +74,7 @@ PHP 実装のコンテナでは、nginx が `127.0.0.1:8080` でも待ち受け�
 `ISUREAL_WEBAPP_LANGUAGE=perl` を付けて起動すると、アプリコンテナが Perl 実装（`webapp/perl`）になります。Go に戻すときは付けずに起動し直します。
 
 ```bash
-ISUREAL_WEBAPP_LANGUAGE=perl make dev-up
+ISUREAL_WEBAPP_LANGUAGE=perl docker compose up -d --build --wait
 ```
 
 ## Node.js 実装で起動
@@ -82,7 +82,7 @@ ISUREAL_WEBAPP_LANGUAGE=perl make dev-up
 `ISUREAL_WEBAPP_LANGUAGE=nodejs` を付けて起動すると、アプリコンテナが Node.js 実装（`webapp/nodejs`）になります。Go に戻すときは付けずに起動し直します。
 
 ```bash
-ISUREAL_WEBAPP_LANGUAGE=nodejs make dev-up
+ISUREAL_WEBAPP_LANGUAGE=nodejs docker compose up -d --build --wait
 ```
 
 アプリのイメージは `deploy/dev/app-<言語>.Dockerfile`（`app-go.Dockerfile`、`app-ruby.Dockerfile`、`app-rust.Dockerfile`、`app-python.Dockerfile`、`app-php.Dockerfile`、`app-perl.Dockerfile`、`app-nodejs.Dockerfile`）でビルドします。実装を追加するときは同じ名前で Dockerfile を置き、`ISUREAL_WEBAPP_LANGUAGE` にその言語名を指定します。
