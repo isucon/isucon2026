@@ -153,7 +153,7 @@ docker compose によるローカル環境は準備中です。
 
 ## Links
 
-- ISUCON2026 まとめ: TBD
+- [ISUCON2026 まとめ](https://isucon.net/archives/60124520.html)
 - 講評: TBD
 - 解説: TBD
 
