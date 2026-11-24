@@ -3,12 +3,7 @@
 ISUCON2026 の問題アプリケーション「ISUReal」、ベンチマーカー、競技環境の構築コードを収録しています。
 ISUReal は、asia、europe、america の3地域で写真を共有する SNS です。
 
-## 当日に公開したマニュアルおよびアプリケーションについての説明
-
 - [ISUCON2026 当日マニュアル](https://gist.github.com/whywaita/17f3ab1a8c1b7585c571f4f8afe5f531)
-- [ISUCON2026 アプリケーションマニュアル](docs/manual.md)
-- [ベンチマーカーの仕様と実行方法](bench/README.md)
-- [Router の通信制御](docs/router.md)
 
 ## ISUCON2026 で使用した競技環境
 
@@ -182,8 +177,7 @@ go -C bench run .
 ## Links
 
 - [ISUCON2026 まとめ](https://isucon.net/archives/60124520.html)
-- 講評: TBD
-- 解説: TBD
+- 講評・講評: TBD
 
 ## License
 
