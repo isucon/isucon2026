@@ -30,6 +30,11 @@ def triggered(workflow, event, branch, path):
 
 
 class WorkflowRoutingTest(unittest.TestCase):
+    def test_no_active_workflows(self):
+        active = WORKFLOWS.parents[1] / ".github/workflows"
+        for pattern in ("*.yaml", "*.yml"):
+            self.assertEqual(list(active.glob(pattern)), [])
+
     def test_retired_components_are_removed(self):
         root = WORKFLOWS.parents[1]
         for path in (
